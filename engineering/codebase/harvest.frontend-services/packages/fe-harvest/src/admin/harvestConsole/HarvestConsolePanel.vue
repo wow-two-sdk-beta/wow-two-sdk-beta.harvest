@@ -138,6 +138,11 @@ function openSection(tab: (typeof tabs)[number]) {
   failure.value = null;
 }
 
+function openNavigation() {
+  sidebarCollapsed.value = false;
+  sidebarOpen.value = !sidebarOpen.value;
+}
+
 function openPipeline(id: string) {
   pipelineId.value = id;
   openSection('Pipelines');
@@ -478,7 +483,7 @@ onScopeDispose(() => {
           variant="ghost"
           class="md:hidden"
           aria-label="Open navigation"
-          @click="sidebarOpen = !sidebarOpen"
+          @click="openNavigation"
         >
           ☰
         </Button>
@@ -513,7 +518,7 @@ onScopeDispose(() => {
         <Button v-if="connected" size="sm" variant="outline" @click="disconnect">Disconnect</Button>
       </div>
     </AppShellHeader>
-    <AppShellSidebar v-if="connected" class="border-r border-border bg-transparent">
+    <AppShellSidebar v-if="connected" class="border-r border-border bg-transparent [&>nav]:p-0">
       <div class="flex h-full min-h-0 flex-col">
         <div v-if="!sidebarCollapsed" class="border-b border-border px-4 py-5">
           <p class="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Workspace</p>
@@ -543,7 +548,9 @@ onScopeDispose(() => {
                   <path :d="sectionIcons[tab]" />
                 </svg>
               </template>
-              <button type="button" @click="openSection(tab)">{{ tab }}</button>
+              <button type="button" :title="tab" @click="openSection(tab)">
+                <span :class="sidebarCollapsed ? 'sr-only' : 'min-w-0 flex-1 truncate text-left'">{{ tab }}</span>
+              </button>
             </SidebarMenuItem>
             <SidebarMenuSection v-if="!sidebarCollapsed" label="Pipelines">
               <SidebarMenuItem
@@ -564,7 +571,7 @@ onScopeDispose(() => {
                   :title="pipeline.name ?? pipeline.id"
                   @click="openPipeline(pipeline.id)"
                 >
-                  {{ pipelineLabel(pipeline) }}
+                  <span class="min-w-0 flex-1 truncate">{{ pipelineLabel(pipeline) }}</span>
                 </button>
               </SidebarMenuItem>
               <Button
