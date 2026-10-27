@@ -14,6 +14,34 @@ namespace Harvest.Tests.Unit.Extraction;
 public sealed class RulesPostExtractorTests
 {
     [Fact]
+    public async Task Extract_ShouldMapPublishedProductOffersWithoutTreatingThemAsEventTickets()
+    {
+        var capture = new Capture
+        {
+            ExternalKey = "item-1", Url = "https://source.example/item-1", RequestUrl = "https://source.example/item-1",
+            FinalUrl = "https://source.example/item-1", Body = "fixture"u8.ToArray(), ContentProjection = "product",
+            CapturedAtUtc = DateTimeOffset.UtcNow,
+            Structured = [JsonSerializer.SerializeToElement(new Dictionary<string, object?>
+            {
+                ["@type"] = "Product", ["name"] = "Desk", ["description"] = "Oak desk",
+                ["offers"] = new { price = 700, priceCurrency = "USD", seller = new { name = "Public seller" }, areaServed = new { name = "Tashkent" }, url = "https://source.example/item-1" },
+            })],
+        };
+
+        PostEnvelope post = (await new RulesPostExtractor().ExtractAsync(capture, new() { Family = SourceFamily.Site })).Data();
+
+        post.Kind.Should().Be(PostKind.Listing);
+        post.Prices.Should().ContainSingle().Which.Role.Should().Be(PriceRole.Listed);
+        post.Prices[0].Amount.Should().Be(700);
+        post.Prices[0].Currency.Should().Be("USD");
+        post.Author!.Name.Should().Be("Public seller");
+        post.Location!.Mentions.Should().Contain(mention => mention.Text == "Tashkent");
+        post.Links.Should().OnlyContain(link => link.Kind == PostLinkKind.Site);
+        post.Dates.Should().BeEmpty();
+        post.Extras.ContainsKey("event").Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Extract_ShouldKeepNativeFieldsAndTagsSeparateFromMappedCategories_AndNormalizeUnicodePhoneSeparators()
     {
         var capture = new Capture
@@ -40,7 +68,7 @@ public sealed class RulesPostExtractorTests
         post.Flags.Should().Contain("source_warning:fixture_warning");
         post.Extras["source"].GetProperty("fields").GetProperty("customField").GetString().Should().Be("retained");
         post.FieldSources["sourceTags"].Tier.Should().Be(ExtractionTier.Deterministic);
-        post.Extraction.RulesVersion.Should().Be("rules@2");
+        post.Extraction.RulesVersion.Should().Be("rules@3");
     }
 
     [Theory]

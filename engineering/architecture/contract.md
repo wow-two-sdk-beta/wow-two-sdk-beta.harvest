@@ -100,6 +100,13 @@ the private adapters repository. Every type references the BCL and the kernel on
   preserves it under `PostEnvelope.Extras["source"]`. Original publisher labels use `SourceTags`, independently
   of the shared-vocabulary `Tags`. Source snapshots and mapped values are inspectable without executing native HTML.
   `PostLinkModel.SourceFields` exposes each link's latest native snapshot independently of merged mapped fields.
+- `IFetchDestinationPolicy` optionally restricts a named source's initial and redirected page URLs before transport.
+  Robots, host/network restrictions and refusal backoff still apply independently.
+- `ILinkAvailabilityReader` optionally validates a known link's identity and source-specific unavailable markers.
+  An inconclusive HTTP 200 becomes `Unrecognized` with no existence signal; ordinary HTTP-only sources keep their
+  existing check behavior. Direct 404/410 and conditional 304 retain their transport evidence.
+- Explicit schema.org Product nodes map to `PostKind.Listing`, listed prices, seller and place without event dates
+  or ticket semantics; the common rule version is `rules@3`.
 
 ---
 

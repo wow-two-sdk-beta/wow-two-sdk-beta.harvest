@@ -56,7 +56,21 @@ function json(value: unknown) {
       </p>
     </header>
 
-    <dl v-if="post.base.dates?.length || post.base.location" class="grid gap-3 text-sm sm:grid-cols-2">
+    <dl
+      v-if="post.base.dates?.length || post.base.location || post.base.prices?.length || post.base.author?.name"
+      class="grid gap-3 text-sm sm:grid-cols-2"
+    >
+      <div v-if="post.base.author?.name">
+        <dt class="font-medium">Published by</dt>
+        <dd class="mt-1">{{ post.base.author.name }}</dd>
+      </div>
+      <div v-if="post.base.prices?.length">
+        <dt class="font-medium">Published price</dt>
+        <dd v-for="(price, index) in post.base.prices" :key="index" class="mt-1">
+          {{ price.raw ?? (price.free ? 'Free' : 'See mapped price range') }}
+          {{ price.currency && !price.raw?.toUpperCase().includes(price.currency.toUpperCase()) ? price.currency : '' }}
+        </dd>
+      </div>
       <div v-for="(item, index) in post.base.dates" :key="index">
         <dt class="font-medium capitalize">{{ item.role }}</dt>
         <dd class="mt-1">{{ item.value }}{{ item.end ? ` – ${item.end}` : '' }} · {{ item.precision }} precision</dd>
@@ -139,7 +153,8 @@ function json(value: unknown) {
     <div>
       <h4 class="text-sm font-semibold">Source availability</h4>
       <p class="mt-2 text-xs text-muted-foreground">
-        Times shown in {{ timeZone }}. Availability is separate from event cancellation.
+        Times shown in {{ timeZone }}.
+        <span v-if="post.base.kind === 'event'">Availability is separate from event cancellation.</span>
       </p>
       <ul class="mt-3 space-y-4">
         <li v-for="link in post.links" :key="link.id" class="rounded-lg border border-border p-3 text-sm">

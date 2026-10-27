@@ -65,6 +65,14 @@ export interface PostModel {
     readonly kind?: string;
     readonly title?: string;
     readonly text?: string;
+    readonly author?: { readonly name?: string; readonly url?: string; readonly id?: string };
+    /** Published strings are displayed directly; this view performs no decimal arithmetic. */
+    readonly prices?: readonly {
+      readonly raw?: string;
+      readonly currency?: string;
+      readonly role: string;
+      readonly free: boolean;
+    }[];
     readonly postedAt?: { readonly value: string; readonly precision: string; readonly timeZone?: string };
     readonly dates?: readonly {
       readonly role: string;

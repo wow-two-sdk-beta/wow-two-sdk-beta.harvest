@@ -35,9 +35,12 @@ public sealed class GenericStepBroker : IStepBroker
     {
         if (!Uri.TryCreate(item.Target, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
             return new() { Outcome = FetchOutcome.UnexpectedContent, Message = "The target is not an absolute HTTP URL." };
+        IFetchDestinationPolicy? destinations = readers.OfType<IFetchDestinationPolicy>().FirstOrDefault();
+        if (destinations is not null && !destinations.Allows(uri))
+            return new() { Outcome = FetchOutcome.NotApproved, Message = "The target is outside the source's supported public routes." };
         var response = await fetcher.FetchAsync(new FetchRequest
         {
-            Uri = uri, RobotsPolicy = context.Source.RobotsPolicy, MinDelay = context.Plan.Requirements.MinDelay,
+            Uri = uri, RobotsPolicy = context.Source.RobotsPolicy, MinDelay = context.Plan.Requirements.MinDelay, DestinationPolicy = destinations,
         }, cancellationToken);
         var document = response.Document;
         var bytes = response.Usage.Bytes;
@@ -50,6 +53,18 @@ public sealed class GenericStepBroker : IStepBroker
         var externalKey = item.Payload is { ValueKind: System.Text.Json.JsonValueKind.Object } payload
             && payload.TryGetProperty("externalKey", out var key) && key.ValueKind == System.Text.Json.JsonValueKind.String
             ? key.GetString()! : item.Target;
+        ILinkAvailabilityReader? availability = document is null ? null : readers.OfType<ILinkAvailabilityReader>()
+            .FirstOrDefault(candidate => candidate.CanCheck(document));
+        if (response.Outcome == FetchOutcome.Gone && document?.StatusCode is 404 or 410 && availability is not null)
+        {
+            LinkObservation? missing = await availability.ReadAvailabilityAsync(document, externalKey, cancellationToken);
+            return new()
+            {
+                Outcome = missing is null ? FetchOutcome.Unrecognized : FetchOutcome.Gone,
+                Usage = usage, Links = missing is null ? [] : [missing],
+                Message = missing is null ? "The missing response did not establish the requested source identity." : response.Message,
+            };
+        }
         if (response.Outcome != FetchOutcome.Ok)
             return new()
             {
@@ -65,6 +80,16 @@ public sealed class GenericStepBroker : IStepBroker
                 Links = StepKey == "check" ? [new() { ExternalKey = externalKey, Signal = LinkSignal.Present, Reason = "seen_again", HttpStatus = 304 }] : [],
             };
         if (document is null) return new() { Outcome = FetchOutcome.UnexpectedContent, Usage = usage };
+        if (StepKey == "check" && availability is not null)
+        {
+            LinkObservation? observation = await availability.ReadAvailabilityAsync(document, externalKey, cancellationToken);
+            return new()
+            {
+                Outcome = observation is null ? FetchOutcome.Unrecognized : FetchOutcome.Ok,
+                Usage = usage, Links = observation is null ? [] : [observation],
+                Message = observation is null ? "The source response did not establish the known link's availability." : null,
+            };
+        }
         if (StepKey == "check")
             return new()
             {

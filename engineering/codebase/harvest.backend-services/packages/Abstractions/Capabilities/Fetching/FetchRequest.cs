@@ -17,4 +17,7 @@ public sealed record FetchRequest
 
     /// <summary>Gets the run's anonymous cookie jar, when one is used.</summary>
     public CookieContainer? Cookies { get; init; }
+
+    /// <summary>Gets an optional source route restriction, applied before initial and redirected page requests.</summary>
+    public IFetchDestinationPolicy? DestinationPolicy { get; init; }
 }

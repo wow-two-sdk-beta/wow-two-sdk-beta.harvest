@@ -13,6 +13,46 @@ namespace Harvest.Tests.Unit.Readers;
 /// <summary>Checks that generic steps preserve fetch outcomes and never turn refusals into deletion evidence.</summary>
 public sealed class GenericStepBrokerTests
 {
+    [Fact]
+    public async Task Check_ShouldDeferSuccessfulHttpResponsesToTheSourceReader()
+    {
+        var document = CaptureReaderTests.Document("<h1>Unavailable</h1>");
+        var fetcher = new Fetcher(new() { Outcome = FetchOutcome.Ok, Document = document });
+        var evidence = new LinkObservation { ExternalKey = "stable-id", Signal = LinkSignal.StrongNegative, Reason = "soft_404", HttpStatus = 200 };
+
+        StepResult result = await new GenericStepBroker("fixture", "check", fetcher, [new AvailabilityReader(evidence)])
+            .ExecuteAsync(Item(), new Context());
+
+        result.Outcome.Should().Be(FetchOutcome.Ok);
+        result.Links.Should().ContainSingle().Which.Signal.Should().Be(LinkSignal.StrongNegative);
+        result.Links[0].Reason.Should().Be("soft_404");
+        fetcher.Calls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Check_ShouldKeepAnUnrecognizedSourceResponseInconclusive()
+    {
+        var fetcher = new Fetcher(new() { Outcome = FetchOutcome.Ok, Document = CaptureReaderTests.Document("<h1>Unknown</h1>") });
+
+        StepResult result = await new GenericStepBroker("fixture", "check", fetcher, [new AvailabilityReader(null)])
+            .ExecuteAsync(Item(), new Context());
+
+        result.Outcome.Should().Be(FetchOutcome.Unrecognized);
+        result.Links.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Check_ShouldNotAttributeAnUnrelatedMissingResponseToTheKnownLink()
+    {
+        var fetcher = new Fetcher(new() { Outcome = FetchOutcome.Gone, Document = CaptureReaderTests.Document("") with { StatusCode = 404 } });
+
+        StepResult result = await new GenericStepBroker("fixture", "check", fetcher, [new AvailabilityReader(null)])
+            .ExecuteAsync(Item(), new Context());
+
+        result.Outcome.Should().Be(FetchOutcome.Unrecognized);
+        result.Links.Should().BeEmpty();
+    }
+
     [Theory]
     [InlineData(FetchOutcome.Challenge)]
     [InlineData(FetchOutcome.Blocked)]
@@ -97,6 +137,17 @@ public sealed class GenericStepBrokerTests
         var result = await new GenericStepBroker("generic-page", "detail", fetcher, [new PageCaptureReader()]).ExecuteAsync(Item(), new Context());
         result.Outcome.Should().Be(FetchOutcome.RenderRequired);
         result.Captures.Should().BeEmpty();
+    }
+
+    private sealed class AvailabilityReader(LinkObservation? observation) : ICaptureReader, ILinkAvailabilityReader
+    {
+        public string Key => "fixture";
+        public bool CanRead(FetchedDocument document) => true;
+        public bool CanCheck(FetchedDocument document) => true;
+        public Task<WoW.Two.Sdk.Beta.Be.Foundation.Results.Result<CaptureReadResult>> ReadAsync(FetchedDocument document, CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("An availability check must not create a capture.");
+        public Task<LinkObservation?> ReadAvailabilityAsync(FetchedDocument document, string externalKey, CancellationToken cancellationToken = default)
+            => Task.FromResult(observation);
     }
 
     private static StepItem Item() => new()

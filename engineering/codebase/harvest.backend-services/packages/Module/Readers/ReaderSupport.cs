@@ -157,6 +157,13 @@ internal static partial class ReaderSupport
                 || name.EndsWith("Event", StringComparison.Ordinal) || name.EndsWith("/Event", StringComparison.Ordinal)));
     }
 
+    internal static bool IsProduct(JsonElement node)
+    {
+        if (node.ValueKind != JsonValueKind.Object || !node.TryGetProperty("@type", out JsonElement type)) return false;
+        return (type.ValueKind == JsonValueKind.Array ? type.EnumerateArray().Select(Scalar) : [Scalar(type)])
+            .Any(name => name is "Product" or "https://schema.org/Product" or "http://schema.org/Product");
+    }
+
     internal static IEnumerable<JsonElement> Nodes(JsonElement node)
     {
         if (node.ValueKind == JsonValueKind.Array)

@@ -17,15 +17,20 @@ public sealed class RulesPostExtractor : IPostExtractor
         ArgumentNullException.ThrowIfNull(capture);
         ArgumentNullException.ThrowIfNull(request);
         var schemaOrg = capture.Structured.FirstOrDefault(ReaderSupport.IsEvent);
+        bool hasEvent = schemaOrg.ValueKind == JsonValueKind.Object;
+        if (!hasEvent) schemaOrg = capture.Structured.FirstOrDefault(ReaderSupport.IsProduct);
+        bool hasListing = !hasEvent && schemaOrg.ValueKind == JsonValueKind.Object;
+        bool hasStructured = hasEvent || hasListing;
         var metadata = capture.Structured.FirstOrDefault(node => ReaderSupport.String(node, "reader") is "page" or "feed");
-        var hasEvent = schemaOrg.ValueKind == JsonValueKind.Object;
         var hasMetadata = metadata.ValueKind == JsonValueKind.Object;
-        var title = hasEvent ? ReaderSupport.String(schemaOrg, "name") : hasMetadata ? ReaderSupport.String(metadata, "title") : null;
-        var text = hasEvent ? ReaderSupport.String(schemaOrg, "description") : hasMetadata ? ReaderSupport.String(metadata, "text") : capture.ContentProjection;
+        var title = hasStructured ? ReaderSupport.String(schemaOrg, "name") : hasMetadata ? ReaderSupport.String(metadata, "title") : null;
+        var text = hasStructured ? ReaderSupport.String(schemaOrg, "description") : hasMetadata ? ReaderSupport.String(metadata, "text") : capture.ContentProjection;
         title = NullText(title);
         text = NullText(text, preserveLineBreaks: true);
         var fieldSources = new Dictionary<string, FieldSource>();
-        var parser = hasEvent ? "schema.org.event" : hasMetadata ? ReaderSupport.String(metadata, "reader") : "capture";
+        var parser = hasEvent ? "schema.org.event" : hasListing ? "schema.org.product"
+            : hasMetadata ? ReaderSupport.String(metadata, "reader") : "capture";
+        if (hasStructured) fieldSources["kind"] = Deterministic(parser);
         if (title is not null) fieldSources["title"] = Deterministic(parser);
         if (text is not null) fieldSources["text"] = Deterministic(parser);
         var allText = (title ?? string.Empty) + " " + (text ?? string.Empty);
@@ -45,14 +50,17 @@ public sealed class RulesPostExtractor : IPostExtractor
                 .Select(tag => tag.GetString()!).Where(tag => !string.IsNullOrWhiteSpace(tag))
                 .Distinct(StringComparer.Ordinal).ToArray() : [];
         if (sourceTags.Length > 0) fieldSources["sourceTags"] = Deterministic(parser);
-        if (hasEvent)
+        if (hasStructured)
         {
             extras["schemaOrg"] = schemaOrg.Clone();
-            if (ExtractionRules.Date(ReaderSupport.String(schemaOrg, "startDate"), DateRole.Start) is { } start) dates.Add(start);
-            if (ExtractionRules.Date(ReaderSupport.String(schemaOrg, "endDate"), DateRole.End) is { } end) dates.Add(end);
-            if (dates.Count > 0) fieldSources["dates"] = Deterministic("schema.org.event");
+            if (hasEvent)
+            {
+                if (ExtractionRules.Date(ReaderSupport.String(schemaOrg, "startDate"), DateRole.Start) is { } start) dates.Add(start);
+                if (ExtractionRules.Date(ReaderSupport.String(schemaOrg, "endDate"), DateRole.End) is { } end) dates.Add(end);
+                if (dates.Count > 0) fieldSources["dates"] = Deterministic(parser);
+            }
             if (schemaOrg.TryGetProperty("location", out var place)) location = Location(place);
-            if (location is not null) fieldSources["location"] = Deterministic("schema.org.event");
+            if (location is not null) fieldSources["location"] = Deterministic(parser);
             if (schemaOrg.TryGetProperty("organizer", out var organizer))
                 author = new PostAuthor
                 {
@@ -63,18 +71,25 @@ public sealed class RulesPostExtractor : IPostExtractor
             {
                 foreach (var offer in offers.ValueKind == JsonValueKind.Array ? offers.EnumerateArray().ToArray() : [offers])
                 {
+                    if (hasListing && offer.ValueKind == JsonValueKind.Object)
+                    {
+                        if (location is null && offer.TryGetProperty("areaServed", out JsonElement area)) location = Location(area);
+                        if (offer.TryGetProperty("seller", out JsonElement seller))
+                            author = new() { Name = ReaderSupport.String(seller, "name"), Url = ReaderSupport.Url(new Uri(capture.Url), ReaderSupport.String(seller, "url")) };
+                    }
                     var raw = ReaderSupport.String(offer, "price");
                     if (ExtractionRules.Amount(raw, out var amount))
-                        prices.Add(new() { Amount = amount, Currency = ReaderSupport.String(offer, "priceCurrency"), Free = amount == 0, Raw = raw, Role = PriceRole.Ticket });
+                        prices.Add(new() { Amount = amount, Currency = ReaderSupport.String(offer, "priceCurrency"), Free = amount == 0, Raw = raw, Role = hasEvent ? PriceRole.Ticket : PriceRole.Listed });
                     else if (ExtractionRules.Amount(ReaderSupport.String(offer, "lowPrice"), out var low))
                     {
                         var hasHigh = ExtractionRules.Amount(ReaderSupport.String(offer, "highPrice"), out var high);
-                        prices.Add(new() { Min = low, Max = hasHigh ? high : null, Currency = ReaderSupport.String(offer, "priceCurrency"), Role = PriceRole.Ticket });
+                        prices.Add(new() { Min = low, Max = hasHigh ? high : null, Currency = ReaderSupport.String(offer, "priceCurrency"), Role = hasEvent ? PriceRole.Ticket : PriceRole.Listed });
                     }
                     if (ReaderSupport.Url(new Uri(capture.Url), ReaderSupport.String(offer, "url")) is { } offerUrl)
-                        links.Add(new() { Url = offerUrl, Kind = PostLinkKind.Ticket });
+                        links.Add(new() { Url = offerUrl, Kind = hasEvent ? PostLinkKind.Ticket : PostLinkKind.Site });
                 }
-                if (prices.Count > 0) fieldSources["prices"] = Deterministic("schema.org.event");
+                if (prices.Count > 0) fieldSources["prices"] = Deterministic(parser);
+                if (location is not null) fieldSources["location"] = Deterministic(parser);
             }
             if (schemaOrg.TryGetProperty("image", out var images))
             {
@@ -91,6 +106,8 @@ public sealed class RulesPostExtractor : IPostExtractor
             extras[ReaderSupport.String(metadata, "reader") == "feed" ? "feed" : "openGraph"] = metadata.Clone();
             if (ReaderSupport.String(metadata, "author") is { Length: > 0 } name) author = new() { Name = name };
         }
+        if (author is null && hasMetadata && ReaderSupport.String(metadata, "author") is { Length: > 0 } publisher)
+            author = new() { Name = publisher };
         if (author is not null) fieldSources["author"] = Deterministic(parser);
         var ruleDates = ExtractionRules.Dates(allText).Where(date => dates.All(existing => existing.Value != date.Value)).ToList();
         dates.AddRange(ruleDates);
@@ -116,7 +133,7 @@ public sealed class RulesPostExtractor : IPostExtractor
         if (links.Count > 0) fieldSources["links"] = Deterministic(parser);
         var envelope = new PostEnvelope
         {
-            Kind = hasEvent ? PostKind.Event : request.DefaultKind,
+            Kind = hasEvent ? PostKind.Event : hasListing ? PostKind.Listing : request.DefaultKind,
             Title = title, Text = text, Author = author, Language = language, PostedAt = postedAt,
             Dates = dates, Prices = prices, Location = location, Contacts = contacts, SourceTags = sourceTags,
             Media = media.DistinctBy(item => item.Url).ToList(), Links = links.DistinctBy(item => item.Url).ToList(),
@@ -124,7 +141,7 @@ public sealed class RulesPostExtractor : IPostExtractor
             Flags = capture.Warnings.Select(warning => "source_warning:" + warning)
                 .Concat(request.Ai != AiMode.Off ? ["ai_skipped:capability_unavailable"] : Array.Empty<string>())
                 .Distinct(StringComparer.Ordinal).ToArray(),
-            Extraction = new() { NormVersion = "norm@1", RulesVersion = "rules@2", TiersRun = [ExtractionTier.Deterministic, ExtractionTier.Rules] },
+            Extraction = new() { NormVersion = "norm@1", RulesVersion = "rules@3", TiersRun = [ExtractionTier.Deterministic, ExtractionTier.Rules] },
         };
         if (EventSchemaMapper.Map(envelope) is { } mapped) extras["event"] = mapped;
         return Task.FromResult(Result<PostEnvelope>.Ok(envelope));

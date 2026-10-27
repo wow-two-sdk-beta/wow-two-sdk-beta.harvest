@@ -29,6 +29,8 @@ internal sealed class HarvestFetchHandler(
         var policy = request.Options.TryGetValue(HarvestFetchMetadata.RequestKey, out var supplied)
             ? supplied
             : new FetchRequest { Uri = uri! };
+        if (policy.DestinationPolicy is not null && !policy.DestinationPolicy.Allows(uri!))
+            return Synthetic(request, FetchOutcome.NotApproved, HttpStatusCode.BadRequest, "The source does not permit this page route.");
         await using var lease = await hosts.AcquireAsync(uri!.IdnHost.TrimEnd('.').ToLowerInvariant(), cancellationToken);
         try
         {
@@ -82,7 +84,8 @@ internal sealed class HarvestFetchHandler(
                 {
                     Uri? location = response.Headers.Location;
                     Uri? next = location is null ? null : location.IsAbsoluteUri ? location : new Uri(uri, location);
-                    if (redirects >= options.MaximumRedirects || !IsSafeRedirect(uri, next) || !route.Allows(next!))
+                    if (redirects >= options.MaximumRedirects || !IsSafeRedirect(uri, next) || !route.Allows(next!)
+                        || policy.DestinationPolicy is not null && !policy.DestinationPolicy.Allows(next!))
                     {
                         response.Dispose();
                         return Synthetic(request, FetchOutcome.InvalidRedirect, HttpStatusCode.BadGateway, "Redirect left the source host or violated its transport policy.");

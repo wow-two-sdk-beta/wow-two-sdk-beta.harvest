@@ -13,6 +13,43 @@ namespace Harvest.Tests.Unit.Capabilities;
 public sealed class PageFetcherTests
 {
     [Fact]
+    public async Task Fetch_ShouldApplyTheSourceRouteRestrictionBeforeTransport()
+    {
+        var host = new FetchTestHost();
+
+        FetchResponse result = await host.Fetcher.FetchAsync(new FetchRequest
+        {
+            Uri = new Uri("https://example.com/account"), RobotsPolicy = RobotsPolicy.Ignore, DestinationPolicy = new CatalogPolicy(),
+        });
+
+        result.Outcome.Should().Be(FetchOutcome.NotApproved);
+        host.Transport.Requests.Should().BeEmpty();
+        result.Usage.Requests.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Fetch_ShouldRejectARedirectOutsideTheSourceRoutesBeforeFollowingIt()
+    {
+        var host = new FetchTestHost();
+        var redirect = FetchTestHost.Response(HttpStatusCode.Redirect);
+        redirect.Headers.Location = new Uri("https://example.com/account");
+        host.Transport.Responses.Enqueue(redirect);
+
+        FetchResponse result = await host.Fetcher.FetchAsync(new FetchRequest
+        {
+            Uri = new Uri("https://example.com/catalog/ad"), RobotsPolicy = RobotsPolicy.Ignore, DestinationPolicy = new CatalogPolicy(),
+        });
+
+        result.Outcome.Should().Be(FetchOutcome.InvalidRedirect);
+        host.Transport.Requests.Should().ContainSingle().Which.Uri.AbsolutePath.Should().Be("/catalog/ad");
+    }
+
+    private sealed class CatalogPolicy : IFetchDestinationPolicy
+    {
+        public bool Allows(Uri destination) => destination.AbsolutePath.StartsWith("/catalog/", StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task FetchAsync_ShouldNotRequestADisallowedPath_WhenRobotsRefusesIt()
     {
         var host = new FetchTestHost();
