@@ -1,5 +1,6 @@
-# The contract's conformance suite against the released image: pulls the image, starts it on a throwaway SQLite
-# volume, and runs the Client side of Harvest.Tests.Conformance against it (CONFORMANCE_BASE_URL). Runs after each
+# The contract's conformance suite against the released image: pulls the image, starts it beside a throwaway
+# PostgreSQL (the platform image) with a one-run operator key, and runs the Client side of Harvest.Tests.Conformance
+# against it (CONFORMANCE_BASE_URL, CONFORMANCE_API_KEY). Runs after each
 # image publish on main, nightly and on dispatch. It cannot block a publish; the descriptor's verify dev check is the
 # promotion gate.
 name: conformance
@@ -47,14 +48,26 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
-      # Development mode skips the HTTPS redirect a production host applies behind its ingress.
+      # Development mode skips the HTTPS redirect a production host applies behind its ingress. The operator key is
+      # minted for this run only: hv_ plus 32 hex digits.
       - name: Start the released image
         run: |
           set -euo pipefail
           image="ghcr.io/${GITHUB_REPOSITORY,,}/harvest:$TAG"
-          docker run --detach --name harvest --publish 127.0.0.1:8080:8080 \
-            --env ASPNETCORE_ENVIRONMENT=Development --env DB_CONNECTION="Data Source=/data/harvest.db" \
-            --volume harvest-data:/data "$image"
+          key="hv_$(openssl rand -hex 16)"
+          echo "::add-mask::$key"
+          echo "CONFORMANCE_API_KEY=$key" >> "$GITHUB_ENV"
+          docker network create harvest-conformance
+          docker run --detach --name harvest-db --network harvest-conformance \
+            --env POSTGRES_DB=harvest --env POSTGRES_USER=harvest --env POSTGRES_PASSWORD=conformance postgres:16-alpine
+          for _ in $(seq 1 30); do
+            docker exec harvest-db pg_isready --username harvest --dbname harvest >/dev/null 2>&1 && break
+            sleep 2
+          done
+          docker run --detach --name harvest --network harvest-conformance --publish 127.0.0.1:8080:8080 \
+            --env ASPNETCORE_ENVIRONMENT=Development \
+            --env DB_CONNECTION="Host=harvest-db;Database=harvest;Username=harvest;Password=conformance" \
+            --env Harvest__Operator__ApiKey="$key" "$image"
           for _ in $(seq 1 30); do
             curl --fail --silent http://127.0.0.1:8080/health >/dev/null && exit 0
             sleep 2
@@ -67,7 +80,7 @@ jobs:
           CONFORMANCE_BASE_URL: http://127.0.0.1:8080
         run: >-
           dotnet test engineering/codebase/harvest.backend-services/tests/Harvest.Tests.Conformance -p:BuildSpa=false
-          --filter "FullyQualifiedName~ClientGreetingsConformanceTests"
+          --filter "FullyQualifiedName~ClientRegistrationConformanceTests"
 
       - name: Service log
         if: failure()

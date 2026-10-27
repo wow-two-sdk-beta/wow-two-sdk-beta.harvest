@@ -1,10 +1,23 @@
 # Local verification only. Bring up from engineering/deployment/:
 #
-#   docker compose up -d --build     the service answers on http://127.0.0.1:8397
+#   docker compose up -d --build     the database and the service; the service answers on http://127.0.0.1:8397
 #
-# The SQLite file lives on the named volume, so data survives container replacement. A deployed environment's path
-# comes from its Wheelhouse target settings, never from here.
+# The credentials and the operator key are local-only test values; a deployed environment's live in its Wheelhouse
+# target settings. The database stays on the compose network; an IDE run points appsettings.Local.json at its own.
 services:
+  database:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: harvest
+      POSTGRES_USER: harvest
+      POSTGRES_PASSWORD: harvest
+    volumes:
+      - database:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U harvest -d harvest"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
   harvest:
     image: harvest:local
     build:
@@ -14,9 +27,12 @@ services:
     ports:
       - "127.0.0.1:8397:8080"
     environment:
-      DB_CONNECTION: "Data Source=/data/harvest.db"
-    volumes:
-      - harvest-data:/data
+      DB_CONNECTION: "Host=database;Database=harvest;Username=harvest;Password=harvest"
+      Harvest__Operator__ApiKey: "hv_LocalComposeOperatorKey000000000"
+    depends_on:
+      database:
+        condition: service_healthy
+    mem_limit: 256m
 
 volumes:
-  harvest-data:
+  database:

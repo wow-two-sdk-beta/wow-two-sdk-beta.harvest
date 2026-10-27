@@ -6,8 +6,8 @@
 #   docker build --build-arg APP_VERSION=0.1.99 --build-arg VCS_REF=$(git rev-parse HEAD) \
 #     -f engineering/deployment/Dockerfile -t harvest:local engineering/codebase
 #
-# The image holds no environment: the SQLite path (a file on the /data volume) arrives at run time, through the
-# environment's settings file (/app/appsettings.Target.json) or the DB_CONNECTION variable.
+# The image holds no environment: the PostgreSQL connection string and the operator key arrive at run time, through the
+# environment's settings file (/app/appsettings.Target.json), DB_CONNECTION and Harvest__Operator__ApiKey.
 
 # ---- Stage 1: build the frontend workspace (the fe-harvest package first, then apps/web) ----
 FROM node:24.11.0-alpine AS spa
@@ -45,9 +45,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /app ./
-
-# The SQLite file lives on a volume so data survives container replacement; the volume inherits this ownership.
-RUN mkdir -p /data && chown app:app /data
 
 ENV ASPNETCORE_HTTP_PORTS=8080
 USER app
