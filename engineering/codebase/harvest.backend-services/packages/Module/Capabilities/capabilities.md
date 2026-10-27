@@ -1,16 +1,18 @@
 # Capabilities/
 
-The inline capability layer — iteration 2, the fetch lane. Built here behind Social- and core-shaped contracts and moved
-out at the next +0.1: egress to core `Http/Egress`, sessions to Social; only the namespace changes.
+The inline capability layer — iteration 2, the fetch lane: direct fetching, per-host pacing, robots and challenge
+detection.
 
 | Implements (Abstractions) | Slice 1 |
 |---|---|
-| `Capabilities.Egress.IEgressPool` · `IEgressClientFactory` | direct egress over core `Http/Safety`; paid kinds declared, unavailable |
-| `Capabilities.Sessions.ISessionLeases` | anonymous run and host jars, sealed at rest |
-| `Capabilities.Profiles.IProfileCatalog` | `bot` and `browser:chromium-desktop` |
-| `Capabilities.Challenges.IChallengeDetector` | the generic detector; adapters add their own |
-| `Capabilities.CapabilityRungs` | the ladder engine over `harvest_host_lane`: `R0`–`R1` live, later rungs `capability-unavailable` |
+| `Capabilities.Fetching.IFetchClientFactory` | direct clients over core `Http/Safety`; one honest, configurable user agent that names Harvest; a run-scoped anonymous cookie jar |
+| `Capabilities.Challenges.IChallengeDetector` | the generic detector: challenge, block or rate limit; adapters add their own |
+| `Capabilities.Rendering.IBrowserRenderer` | declared, unbound; a step that needs it reports `capabilityUnavailable` |
 
-- Owns: `harvest_host_state` (with the robots cache), `harvest_host_lane`, `harvest_usage` rows for egress meters.
-- Rules: rate limits pace and never promote; three challenges or blocks promote one rung; a probe after 24 h demotes;
-  no generic HTTP resilience on fetch clients.
+- Owns: `harvest_host_state` (pacing, `Retry-After`, the robots cache), `harvest_host_lane` (each lane's pause,
+  failures, last challenge and concurrency), `harvest_usage` request and byte meters.
+- Rules: a challenge, block or rate limit is an outcome the run records; the lane pauses and its delay widens on each
+  repeat, and a rate limit waits at least its `Retry-After`. Nothing retries past one through another route: no proxies
+  or rotation, no disguised clients, no solvers, no sign-ins or accounts.
+- Every fetch obeys the source's robots policy and sends conditional requests (`ETag`, `Last-Modified`); no generic HTTP
+  resilience on fetch clients.

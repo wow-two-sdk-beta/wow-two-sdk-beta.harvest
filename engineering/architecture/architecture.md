@@ -28,7 +28,7 @@ private adapters repo ──► Abstractions (ISourceAdapter, IStepBroker) + cor
 | `fe-harvest` | the TypeScript contract mirror, the registry client (`./kit`), the management screens (`./admin`) |
 | `apps/web` | the console (`/`, composing `fe-harvest/admin`), on `fe-harvest` through its exports |
 
-- Lanes run in parallel on disjoint folders; the schema in SQL `001` is their shared seam, and each lane's lead doc
-  names the contract seam it implements and the tables it owns.
-- Egress and sessions are built inline in `Module/Capabilities/` behind core- and Social-shaped contracts, and move out
-  at the next +0.1 by a namespace change.
+- Lanes run in parallel on disjoint folders; the schema in the SQL migrations is their shared seam, and each lane's lead
+  doc names the contract seam it implements and the tables it owns.
+- Fetching is direct only, built inline in `Module/Capabilities/` over core `Http/Safety`. Harvest never escalates
+  around a site's defences: a challenge, block or rate limit is an outcome, and the host backs off.

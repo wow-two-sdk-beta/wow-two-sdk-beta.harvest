@@ -33,8 +33,8 @@
 - Schedules: one row per kind of `capture` · `discover` · `refresh` · `check` · `metrics` (a sweep is three rows);
   `interval` ≥ 5 min, `cron` five or six fields, `adaptive` min and max, IANA zone (default `Asia/Tashkent`), optional
   daily window. `nextDueAtUtc` stays null until the scheduler computes it.
-- Step overrides and capability policies name rungs from `CapabilityRungs` (`R0`–`R8`); a ladder climbs strictly,
-  inside its floor and ceiling; step keys and lanes match `StepConstants.KeyPattern`.
+- Step overrides and capability policies set a step's lane and monthly cap (never negative); a policy adds the source's
+  monthly cap. Step keys and lanes match `StepConstants.KeyPattern`.
 
 | Form | Implementation | Wire |
 |---|---|---|
@@ -73,19 +73,21 @@ the private adapters repository. Every type references the BCL and the kernel on
 | `ISourceAdapter` → `AdapterDescriptor` (`StepDescriptor`, plans per `WorkKind`) | `Steps` | Readers lane (generic family adapters) · private adapters repo (named sources) | Engine |
 | `IStepBroker.ExecuteAsync(StepItem, IStepContext)` → `StepResult` | `Steps` | the same adapters, one broker per step | Engine |
 | `IStepContext` (`ResolvedPlan`, `Observe(StepSignal)`) | `Steps` | Engine lane (iteration 3) | step brokers |
-| `StepRequirements` (floor · ladder · ceiling, `EgressNeed`, `SessionNeed`, `RenderNeed`, `ChallengePolicy`), `CapabilityRungs` | `Steps` · `Capabilities` | vocabulary | adapters, the resolver |
+| `StepRequirements` (`RenderNeed`, `MinDelay`) | `Steps` | vocabulary | adapters, Engine |
 | outcomes: `FetchOutcome`, `ItemOutcome`, `LinkSignal` · `LinkObservation`, `RunReason` | `Steps` · `Runs` | vocabulary | adapters, Engine, Posts |
-| `IEgressPool` · `IEgressClientFactory` (`EgressRequest`, `EgressLease`) | `Capabilities.Egress` | Fetching lane (iteration 2), inline in `Module/Capabilities/`; moves to core `Http/Egress` by namespace | the resolver |
-| `ISessionLeases` (`SessionRequest`, `SessionLease`) | `Capabilities.Sessions` | Fetching lane; Social-shaped | the resolver |
-| `IProfileCatalog` (`RequestProfile`) | `Capabilities.Profiles` | Fetching lane | the resolver |
-| `IChallengeDetector` (`ChallengeProbe` → `ChallengeVerdict`, `ChallengeKind`) | `Capabilities.Challenges` | Fetching lane (generic) · adapters (their own) | step brokers |
-| `IBrowserRenderer` · `IChallengeSolver` | `Capabilities.Rendering` · `.Challenges` | declared, unbound in v0.1; only `R0`–`R1` are live, later rungs report `capabilityUnavailable` | the resolver |
+| `IFetchClientFactory` — direct clients, one user agent, a run's cookie jar | `Capabilities.Fetching` | Fetching lane (iteration 2), inline in `Module/Capabilities/` over core `Http/Safety` | Engine |
+| `IChallengeDetector` (`ChallengeProbe` → `ChallengeVerdict`: challenge, block or rate limit; `ChallengeKind`) | `Capabilities.Challenges` | Fetching lane (generic) · adapters (their own) | step brokers |
+| `IBrowserRenderer` | `Capabilities.Rendering` | declared, unbound in v0.1; a step that needs it reports `capabilityUnavailable` | Engine |
 | `ICaptureReader` → `CaptureReadResult` (`Capture`, `DiscoveredUrl`) over `FetchedDocument` | `Readers` | Readers lane (iteration 4) | step brokers |
 | `IPostExtractor` → `PostEnvelope` (`wow2.post.v1`) | `Extraction` | Extraction lane (iteration 5) | Engine |
 | `PostState` · `LinkState` · `LinkRole` | `Posts` | Posts lane (iteration 6) over its tables | Delivery, console |
 | `SubscriptionModel` · `DeliveryEvent` · `DeliveryEventTypes` · `CursorPage<T>` | `Delivery` | Delivery lane (iteration 7), which declares the subscription broker | consumers |
 
-- The schema in SQL `001` is the shared seam between lanes: each lane maps the tables its folder's lead doc names.
+- No escalation: a challenge, a block or a rate limit is a `FetchOutcome` the run records, and the host backs off.
+  Nothing retries it through another route — no proxy or rotation, no disguised client, no solver, no sign-in or account.
+- The renderer serves pages that show their content only through JavaScript, never a challenge.
+- The schema in the SQL migrations (`001` baseline, `002` without the ladder) is the shared seam between lanes: each
+  lane maps the tables its folder's lead doc names.
 - `Capture.ContentProjection` drives the content hash; a capture row exists only when it changes.
 
 ---
