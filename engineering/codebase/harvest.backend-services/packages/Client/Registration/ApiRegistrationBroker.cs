@@ -81,6 +81,10 @@ internal sealed class ApiRegistrationBroker(HttpClient http) : IRegistrationBrok
         SendAsync<PipelineModel>(HttpMethod.Post, RegistrationRouteConstants.Pipelines, declaration, cancellationToken);
 
     /// <inheritdoc />
+    public Task<Result<PipelineModel>> UpdatePipelineAsync(Guid pipelineId, PipelineUpdate update, CancellationToken cancellationToken = default) =>
+        SendAsync<PipelineModel>(HttpMethod.Put, $"{RegistrationRouteConstants.Pipelines}/{pipelineId}", update, cancellationToken);
+
+    /// <inheritdoc />
     public Task<Result<PipelineModel>> GetPipelineAsync(Guid pipelineId, CancellationToken cancellationToken = default) =>
         SendAsync<PipelineModel>(HttpMethod.Get, $"{RegistrationRouteConstants.Pipelines}/{pipelineId}", null, cancellationToken);
 

@@ -41,7 +41,8 @@ describe('console route', () => {
     const wrapper = await renderAt('/');
 
     expect(wrapper.get('[aria-label="App version"]').text()).toBe('app test');
-    expect(wrapper.get('[aria-label="API version"]').text()).toBe('api 0.1.4+abc1234');
+    expect(wrapper.get('[aria-label="API version"]').text()).toBe('api 0.1.4');
+    expect(wrapper.get('[aria-label="API version"]').attributes('title')).toBe('0.1.4+abc1234');
     expect(wrapper.text()).toContain('Connect to Harvest');
     expect(wrapper.find('input[type="password"]').exists()).toBe(true);
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);

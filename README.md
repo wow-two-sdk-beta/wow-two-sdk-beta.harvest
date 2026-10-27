@@ -64,6 +64,15 @@ An adapter host references that package and registers its parsers and providers 
 
 The browser keeps its API key in memory. A disconnected console makes no authenticated registry requests.
 
+The console uses a responsive sidebar with a pipeline list. Select a pipeline to edit its starting URL (including
+search filters), query parameter overrides and per-kind cadence. Interval, cron, adaptive and manual modes support
+IANA timezones and optional active-hour windows. Disabled schedules stay manual-only. Collection still requires a
+matching adapter; saving a URL does not establish that the source can be read.
+
+`IRegistrationBroker.UpdatePipelineAsync(id, update)` / `PUT api/pipelines/{id}` replaces the name, complete scope and
+schedule list. It preserves the pipeline/source identity, lifecycle, limits, step overrides, schedule IDs and run
+history. Omitted work kinds are disabled. Queued runs keep their frozen scope and cadence; future runs use the edit.
+
 ## Layout
 
 ```

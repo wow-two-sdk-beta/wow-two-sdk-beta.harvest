@@ -4,6 +4,7 @@ import type {
   ContainerModel,
   SourceModel,
   PipelineModel,
+  PipelineUpdate,
   TenantModel,
   RunModel,
   HostHealthModel,
@@ -32,6 +33,7 @@ export interface HarvestClient extends RegistryClient {
     signal?: AbortSignal,
   ): Promise<Result<PipelineModel, ApiFailure>>;
   setPipelinePaused(id: string, paused: boolean, signal?: AbortSignal): Promise<Result<PipelineModel, ApiFailure>>;
+  updatePipeline(id: string, body: PipelineUpdate, signal?: AbortSignal): Promise<Result<PipelineModel, ApiFailure>>;
   startRun(pipelineId: string, kind?: WorkKind, signal?: AbortSignal): Promise<Result<RunModel, ApiFailure>>;
   cancelRun(id: string, signal?: AbortSignal): Promise<Result<RunModel, ApiFailure>>;
   listRuns(pipelineId: string, signal?: AbortSignal): Promise<Result<readonly RunModel[], ApiFailure>>;
@@ -87,6 +89,8 @@ export function createHarvestClient(options: RegistryClientOptions = {}): Harves
       api.post('api/sources', { body, ...signalOf(signal), decode: object<SourceModel> }),
     declarePipeline: (body, signal) =>
       api.post('api/pipelines', { body, ...signalOf(signal), decode: object<PipelineModel> }),
+    updatePipeline: (id, body, signal) =>
+      api.put(`api/pipelines/${encodeURIComponent(id)}`, { body, ...signalOf(signal), decode: object<PipelineModel> }),
     setPipelinePaused: (id, paused, signal) =>
       api.post(`api/pipelines/${encodeURIComponent(id)}/pause`, {
         body: { paused },

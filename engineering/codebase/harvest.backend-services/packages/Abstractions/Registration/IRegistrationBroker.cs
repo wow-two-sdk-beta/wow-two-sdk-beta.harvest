@@ -108,6 +108,14 @@ public interface IRegistrationBroker
     /// or limits, <c>Conflict</c> when a pipeline with the same container, source and scope key exists.</returns>
     Task<Result<PipelineModel>> DeclarePipelineAsync(PipelineDeclaration declaration, CancellationToken cancellationToken = default);
 
+    /// <summary>Replaces the saved scope and schedules without changing queued runs or the source. Missing cadence
+    /// kinds are disabled; schedule identifiers and run history are retained.</summary>
+    /// <param name="pipelineId">The pipeline to edit.</param>
+    /// <param name="update">The complete name, scope and cadence configuration.</param>
+    /// <param name="cancellationToken">The token that cancels the call.</param>
+    /// <returns>The pipeline; validation and identity conflicts follow declaration, or NotFound for an unknown pipeline.</returns>
+    Task<Result<PipelineModel>> UpdatePipelineAsync(Guid pipelineId, PipelineUpdate update, CancellationToken cancellationToken = default);
+
     /// <summary>Reads a pipeline with its schedule rows.</summary>
     /// <param name="pipelineId">The pipeline's identifier.</param>
     /// <param name="cancellationToken">The token that cancels the call.</param>

@@ -87,7 +87,7 @@ describe('HarvestConsolePanel', () => {
     });
     wrappers.push(wrapper);
     await flushPromises();
-    expect(wrapper.get('[aria-label="Pipelines"]').text()).toContain('Upcoming events');
+    expect(wrapper.get('[aria-label="Pipeline overview"]').text()).toContain('Upcoming events');
     await wrapper
       .findAll('button')
       .find((button) => button.text() === 'Run now')!

@@ -22,12 +22,14 @@ internal sealed class ModuleRunBroker(
     {
         if (!Enum.IsDefined(kind))
             return Result<RunModel>.Fail(AppErrorFactory.Validation("Unknown work kind."));
+        await using NpgsqlConnection connection = await database.OpenConnectionAsync(cancellationToken);
+        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await EngineSql.ExecuteAsync(connection, transaction,
+            "SELECT pg_advisory_xact_lock(hashtextextended('harvest:scheduler',0))", cancellationToken);
         if (await registry.GetPipelineAsync(pipelineId, cancellationToken) is not Result<PipelineModel>.Success { Value: var pipeline })
             return Result<RunModel>.Fail(RegistrationErrors.PipelineNotFound(pipelineId));
         if (await registry.GetSourceAsync(pipeline.SourceId, cancellationToken) is not Result<SourceModel>.Success { Value: var source })
             return Result<RunModel>.Fail(RegistrationErrors.SourceNotFound(pipeline.SourceId));
-        await using NpgsqlConnection connection = await database.OpenConnectionAsync(cancellationToken);
-        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken);
         Result<Guid> queued = await RunPlanner.QueueAsync(connection, transaction, pipeline, source, [.. adapters], kind,
             clock.GetUtcNow(), null, null, cancellationToken);
         if (queued is Result<Guid>.Failure failure)

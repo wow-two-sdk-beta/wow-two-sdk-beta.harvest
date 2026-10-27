@@ -25,6 +25,7 @@
 | `GetSourceAsync(id)` · `ListSourcesAsync(containerId)` | one · by family and handle | `NotFound` |
 | `DeclarePipelineAsync(PipelineDeclaration)` | `PipelineModel` with its schedule rows; `active` over an open or granted source, else `pendingApproval` | `NotFound` container, source · `Validation` source of another container, denied source, filtered source without scope, schedules, step overrides, limits · `Conflict` same `(container, source, scope key)` |
 | `GetPipelineAsync(id)` · `ListPipelinesAsync(containerId)` | one · oldest first | `NotFound` |
+| `UpdatePipelineAsync(id, PipelineUpdate)` | replaces name, full scope and schedules; retains IDs/history, limits, lifecycle and queued plans; omitted kinds disabled | `NotFound` pipeline · `Validation` as declaration · `Conflict` duplicate scope |
 
 - Normalization: web handles reduce to their IDNA host; Telegram handles become `tg:{username}`; the scope key is `*`
   for the whole source, else the normalized URL (sorted query, no fragment) and the parameters sorted by name.
@@ -55,6 +56,7 @@
 | `POST api/containers` · `POST api/sources` | `containers:manage` · `sources:manage` | nothing (403) |
 | `GET api/containers` · `GET api/sources` | any live key | the pool and its own tenant's |
 | `POST api/pipelines` | `pipelines:manage` | its own private containers; the pool is 403 |
+| `PUT api/pipelines/{id}` | `pipelines:manage` | edits its own private pipelines; the pool is 403 and foreign pipelines are 404 |
 | `GET api/pipelines` | `pipelines:read` | the pool and its own tenant's; another tenant's is 404 |
 
 - Keys: core `Identity/ApiKeys` (`ApiKey` scheme, gate on `/api`, no local pass); `/api/system/status` stays open.

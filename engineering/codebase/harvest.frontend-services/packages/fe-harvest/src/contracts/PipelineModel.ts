@@ -14,6 +14,13 @@ export interface ScheduleModel {
   readonly nextDueAtUtc?: string;
 }
 
+/** Replaces the saved target and cadence; run history, limits and source identity remain intact. */
+export interface PipelineUpdate {
+  readonly name?: string;
+  readonly scope: PipelineModel['scope'];
+  readonly schedules: readonly Omit<ScheduleModel, 'id' | 'nextDueAtUtc'>[];
+}
+
 /** Mirrors `PipelineModel`: a standing harvest of a source, identified by container, source and scope key. */
 export interface PipelineModel {
   readonly id: string;

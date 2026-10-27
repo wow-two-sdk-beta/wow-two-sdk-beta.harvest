@@ -329,6 +329,84 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
     }
 
     /// <inheritdoc />
+    public async Task<Result<PipelineModel>> UpdatePipelineAsync(Guid pipelineId, PipelineUpdate update, CancellationToken cancellationToken = default)
+    {
+        if (update.Scope is null || update.Schedules is null)
+            return Result<PipelineModel>.Fail(RegistrationErrors.Invalid("Scope and schedules are required."));
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        // Use the scheduler's gate before the pipeline lock, so an edited cadence cannot race a frozen run.
+        await db.Database.ExecuteSqlRawAsync(
+            "SELECT pg_advisory_xact_lock(hashtextextended('harvest:scheduler',0))", cancellationToken);
+        var pipeline = await db.Pipelines.FromSqlInterpolated(
+            $"SELECT * FROM harvest_pipelines WHERE id = {pipelineId} FOR UPDATE").SingleOrDefaultAsync(cancellationToken);
+        if (pipeline is null)
+            return Result<PipelineModel>.Fail(RegistrationErrors.PipelineNotFound(pipelineId));
+        await db.Entry(pipeline).ReloadAsync(cancellationToken);
+        var source = await db.Sources.AsNoTracking().SingleAsync(row => row.Id == pipeline.SourceId, cancellationToken);
+        var declaration = new PipelineDeclaration
+        {
+            ContainerId = pipeline.ContainerId, SourceId = pipeline.SourceId,
+            Name = update.Name, Scope = update.Scope, Schedules = update.Schedules,
+        };
+        if ((PipelineRules.ValidateSource(declaration, source.ContainerId, source.Permission, source.Coverage)
+            ?? RegistrationRules.ValidatePipeline(declaration)) is { } error)
+            return Result<PipelineModel>.Fail(error);
+        var (scopeKey, scopeError) = RegistrationRules.CanonicalScopeKey(update.Scope);
+        if (scopeError is not null)
+            return Result<PipelineModel>.Fail(scopeError);
+        if (await db.Pipelines.AnyAsync(row => row.Id != pipelineId && row.ContainerId == pipeline.ContainerId
+                && row.SourceId == pipeline.SourceId && row.ScopeKey == scopeKey, cancellationToken))
+            return Result<PipelineModel>.Fail(RegistrationErrors.PipelineExists(scopeKey!));
+
+        var schedules = await db.Schedules.Where(row => row.PipelineId == pipelineId).ToListAsync(cancellationToken);
+        foreach (var row in schedules)
+        {
+            await db.Entry(row).ReloadAsync(cancellationToken);
+            if (update.Schedules.All(spec => spec.Kind != row.Kind))
+            {
+                row.Enabled = false;
+                row.NextDueAt = null;
+            }
+        }
+        foreach (var spec in update.Schedules)
+        {
+            var row = schedules.SingleOrDefault(candidate => candidate.Kind == spec.Kind);
+            if (row is null)
+            {
+                row = new ScheduleRow
+                {
+                    Id = Guid.CreateVersion7(Now()), ContainerId = pipeline.ContainerId, PipelineId = pipelineId,
+                    Kind = spec.Kind, Mode = spec.Mode, TimeZone = spec.TimeZone, Enabled = spec.Enabled, CreatedAt = Now(),
+                };
+                schedules.Add(row);
+                db.Schedules.Add(row);
+            }
+            // Keep due times when only the name or URL changes; cadence edits are recomputed from the next tick.
+            var previous = row.ToModel();
+            var changed = previous.Mode != spec.Mode || previous.Every != spec.Every || previous.MaxEvery != spec.MaxEvery
+                || previous.Cron != spec.Cron?.Trim() || previous.TimeZone != spec.TimeZone
+                || previous.Window != spec.Window || previous.Enabled != spec.Enabled;
+            row.Mode = spec.Mode;
+            row.EveryInterval = spec.Every;
+            row.MaxInterval = spec.MaxEvery;
+            row.Cron = spec.Cron?.Trim();
+            row.TimeZone = spec.TimeZone;
+            row.WindowStart = spec.Window?.Start;
+            row.WindowEnd = spec.Window?.End;
+            row.Enabled = spec.Enabled;
+            if (changed)
+                row.NextDueAt = null;
+        }
+        pipeline.Name = update.Name?.Trim();
+        pipeline.Scope = StoreJson.Write(update.Scope);
+        pipeline.ScopeKey = scopeKey!;
+        var result = await SaveAsync(() => pipeline.ToModel(schedules), () => RegistrationErrors.PipelineExists(scopeKey!), cancellationToken);
+        if (result is Result<PipelineModel>.Success)
+            await transaction.CommitAsync(cancellationToken);
+        return result;
+    }
+
+    /// <inheritdoc />
     public async Task<Result<PipelineModel>> GetPipelineAsync(Guid pipelineId, CancellationToken cancellationToken = default)
     {
         var row = await db.Pipelines.AsNoTracking().SingleOrDefaultAsync(pipeline => pipeline.Id == pipelineId, cancellationToken);

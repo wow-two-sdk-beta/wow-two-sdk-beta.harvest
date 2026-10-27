@@ -484,6 +484,71 @@ public abstract class RegistrationBrokerConformance
             Error(await Broker.DeclarePipelineAsync(declaration)).Type.Should().Be(AppErrorType.Validation, declaration.ToString());
     }
 
+    /// <summary>Saved filters and cadence can change without replacing a pipeline or its schedule history.</summary>
+    [Fact]
+    public async Task UpdatePipeline_ShouldKeepIdentityAndDisableOmittedKinds()
+    {
+        var (container, source) = await SourceAsync(SourceCoverage.Whole);
+        var original = Value(await Broker.DeclarePipelineAsync(Pipeline(container, source) with
+        {
+            Pinned = true,
+            Schedules =
+            [
+                new() { Kind = WorkKind.Capture, Mode = ScheduleMode.Interval, Every = TimeSpan.FromHours(1) },
+                new() { Kind = WorkKind.Check, Mode = ScheduleMode.Interval, Every = TimeSpan.FromHours(6) },
+            ],
+        }));
+        var scope = new PipelineScope
+        {
+            Url = $"https://{source.Handle}/search?q=fashion",
+            Parameters = new Dictionary<string, string> { ["city"] = "Samarqand" },
+        };
+        var updated = Value(await Broker.UpdatePipelineAsync(original.Id, new PipelineUpdate
+        {
+            Name = " Saved filter ", Scope = scope,
+            Schedules = [new() { Kind = WorkKind.Capture, Mode = ScheduleMode.Cron, Cron = "0 9 * * *", TimeZone = "Asia/Tashkent", Enabled = false }],
+        }));
+        updated.Id.Should().Be(original.Id);
+        updated.Pinned.Should().BeTrue();
+        updated.SourceId.Should().Be(original.SourceId);
+        updated.Name.Should().Be("Saved filter");
+        updated.Scope.Should().BeEquivalentTo(scope);
+        updated.Schedules.Select(row => row.Id).Should().BeEquivalentTo(original.Schedules.Select(row => row.Id));
+        updated.Schedules.Should().OnlyContain(row => !row.Enabled);
+        updated.Schedules.Single(row => row.Kind == WorkKind.Capture).Cron.Should().Be("0 9 * * *");
+        Value(await Broker.GetPipelineAsync(original.Id)).Should().BeEquivalentTo(updated);
+    }
+
+    /// <summary>A conflicting normalized URL cannot overwrite another saved filter.</summary>
+    [Fact]
+    public async Task UpdatePipeline_ShouldRejectDuplicateScopesAndLeaveOriginalUnchanged()
+    {
+        var (container, source) = await SourceAsync(SourceCoverage.Whole);
+        var original = Value(await Broker.DeclarePipelineAsync(Pipeline(container, source)));
+        Value(await Broker.DeclarePipelineAsync(Pipeline(container, source) with { Scope = new() { Url = $"https://{source.Handle}/search?a=1&b=2" } }));
+        Error(await Broker.UpdatePipelineAsync(original.Id, new PipelineUpdate
+        {
+            Scope = new() { Url = $"https://{source.Handle}/search?b=2&a=1" }, Schedules = [],
+        })).Type.Should().Be(AppErrorType.Conflict);
+        Value(await Broker.GetPipelineAsync(original.Id)).Should().BeEquivalentTo(original);
+    }
+
+    /// <summary>Invalid cadence cannot partially save a URL edit.</summary>
+    [Fact]
+    public async Task UpdatePipeline_ShouldRejectInvalidCadenceAndUnknownIdentifiers()
+    {
+        var (container, source) = await SourceAsync(SourceCoverage.Whole);
+        var original = Value(await Broker.DeclarePipelineAsync(Pipeline(container, source)));
+        var update = new PipelineUpdate
+        {
+            Scope = new() { Url = $"https://{source.Handle}/filtered" },
+            Schedules = [new() { Kind = WorkKind.Capture, Mode = ScheduleMode.Interval, Every = TimeSpan.FromMinutes(1) }],
+        };
+        Error(await Broker.UpdatePipelineAsync(original.Id, update)).Type.Should().Be(AppErrorType.Validation);
+        Value(await Broker.GetPipelineAsync(original.Id)).Should().BeEquivalentTo(original);
+        Error(await Broker.UpdatePipelineAsync(Guid.NewGuid(), update)).Type.Should().Be(AppErrorType.NotFound);
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>Returns twelve lowercase hex characters, unique per call.</summary>

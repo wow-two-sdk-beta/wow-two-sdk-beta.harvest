@@ -42,6 +42,28 @@ public sealed class PipelinesController(IRegistrationBroker broker, CallerResolv
             this.ToProblem);
     }
 
+    /// <summary>Edits the saved scope and cadence in a container the caller owns.</summary>
+    /// <param name="pipelineId">The pipeline's identifier.</param>
+    /// <param name="update">The replacement name, scope and schedules.</param>
+    /// <param name="ct">The token that cancels the request.</param>
+    [HttpPut("{pipelineId:guid}")]
+    [Authorize(Policy = HarvestScopeConstants.PipelinesManage)]
+    [ProducesResponseType<ApiResponse<PipelineModel>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Update(Guid pipelineId, [FromBody] PipelineUpdate update, CancellationToken ct)
+    {
+        if (await callers.ResolveAsync(User, ct) is not { } caller)
+            return this.ToProblem(AppErrorFactory.Unauthorized());
+        if (await broker.GetPipelineAsync(pipelineId, ct) is not Result<PipelineModel>.Success { Value: var pipeline }
+            || await broker.GetContainerAsync(pipeline.ContainerId, ct) is not Result<ContainerModel>.Success { Value: var container }
+            || !caller.CanRead(container))
+            return this.ToProblem(RegistrationErrors.PipelineNotFound(pipelineId));
+        if (!caller.CanWrite(container))
+            return this.ToProblem(AppErrorFactory.Forbidden("A tenant edits pipelines in its own private containers."));
+
+        return (await broker.UpdatePipelineAsync(pipelineId, update, ct)).Match<IActionResult>(
+            saved => Ok(ApiResponse<PipelineModel>.Ok(saved)), this.ToProblem);
+    }
+
     /// <summary>Reads a pipeline in a container the caller may see.</summary>
     /// <param name="pipelineId">The pipeline's identifier.</param>
     /// <param name="ct">The token that cancels the request.</param>

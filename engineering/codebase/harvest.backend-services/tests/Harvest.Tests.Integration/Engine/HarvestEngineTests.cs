@@ -5,6 +5,7 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Delivery;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Engine;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Posts;
+using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
 using WoW.Two.Sdk.Beta.Be.Harvest.Runs;
 using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
@@ -14,6 +15,45 @@ namespace Harvest.Tests.Integration.Engine;
 /// <summary>Exercises the engine against real durable stores and offline source fixtures.</summary>
 public sealed class HarvestEngineTests
 {
+    [Fact]
+    public async Task EditingAFilter_ShouldPreserveQueuedScopeAndUseNewScopeForTheNextRun()
+    {
+        await using var host = await EngineHost.StartAsync();
+        var registration = await host.RegisterAsync(family: SourceFamily.Structured,
+            pipelineScope: new() { Url = "https://mstar.uz/old?city=1" });
+        host.Fetcher.Set("https://mstar.uz/old?city=1", Event("mstar.uz", 1));
+        host.Fetcher.Set("https://mstar.uz/new?city=2", Event("mstar.uz", 2));
+        using var scope = host.Services.CreateScope();
+        var registry = scope.ServiceProvider.GetRequiredService<IRegistrationBroker>();
+        var runs = scope.ServiceProvider.GetRequiredService<IRunBroker>();
+        EngineHost.Data(await runs.StartAsync(registration.PipelineId));
+        EngineHost.Data(await registry.UpdatePipelineAsync(registration.PipelineId, new()
+        {
+            Scope = new() { Url = "https://mstar.uz/new?city=2" }, Schedules = [],
+        }));
+        await host.DrainAsync();
+        host.Fetcher.Calls.Should().Equal("https://mstar.uz/old?city=1");
+        host.Clock.Advance(TimeSpan.FromMinutes(1));
+        EngineHost.Data(await runs.StartAsync(registration.PipelineId));
+        await host.DrainAsync();
+        host.Fetcher.Calls.Should().Equal("https://mstar.uz/old?city=1", "https://mstar.uz/new?city=2");
+    }
+
+    [Fact]
+    public async Task DisablingASchedule_ShouldStopNewScheduledRunsAndKeepItsIdentifier()
+    {
+        await using var host = await EngineHost.StartAsync();
+        var registration = await host.RegisterAsync(schedules:
+            [new() { Kind = WorkKind.Capture, Mode = ScheduleMode.Interval, Every = TimeSpan.FromMinutes(5) }]);
+        using var scope = host.Services.CreateScope();
+        var registry = scope.ServiceProvider.GetRequiredService<IRegistrationBroker>();
+        var before = EngineHost.Data(await registry.GetPipelineAsync(registration.PipelineId));
+        var after = EngineHost.Data(await registry.UpdatePipelineAsync(registration.PipelineId, new() { Scope = before.Scope, Schedules = [] }));
+        after.Schedules.Single().Id.Should().Be(before.Schedules.Single().Id);
+        (await scope.ServiceProvider.GetRequiredService<HarvestEngine>().QueueDueAsync()).Should().Be(0);
+        (await host.ScalarAsync<long>("SELECT count(*) FROM harvest_runs")).Should().Be(0);
+    }
+
     [Fact]
     public async Task DiscoveringANewMissingPage_ShouldFinishWithoutCreatingADeletionForAnUnknownLink()
     {

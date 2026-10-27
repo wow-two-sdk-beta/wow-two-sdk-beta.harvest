@@ -338,6 +338,46 @@ public sealed partial class FakeRegistrationBroker(TimeProvider? time = null) : 
     }
 
     /// <inheritdoc />
+    public Task<Result<PipelineModel>> UpdatePipelineAsync(Guid pipelineId, PipelineUpdate update, CancellationToken cancellationToken = default)
+    {
+        lock (gate)
+        {
+            int index = pipelines.FindIndex(candidate => candidate.Id == pipelineId);
+            if (index < 0)
+                return Fail<PipelineModel>(RegistrationErrors.PipelineNotFound(pipelineId));
+            var pipeline = pipelines[index];
+            var source = sources.Single(candidate => candidate.Id == pipeline.SourceId);
+            var scopeKey = ScopeKey(update.Scope);
+            if (update.Scope is null || update.Schedules is null || scopeKey is null
+                || source.Permission == SourcePermission.Denied
+                || (source.Coverage == SourceCoverage.Filtered && scopeKey == PipelineConstants.WholeScopeKey)
+                || (update.Name is { } name && Name(name, PipelineConstants.MaxNameLength) is null)
+                || !IsValid(update.Schedules))
+                return Fail<PipelineModel>(RegistrationErrors.Invalid("The pipeline is malformed."));
+            if (pipelines.Any(candidate => candidate.Id != pipelineId && candidate.ContainerId == pipeline.ContainerId
+                    && candidate.SourceId == pipeline.SourceId && candidate.ScopeKey == scopeKey))
+                return Fail<PipelineModel>(RegistrationErrors.PipelineExists(scopeKey));
+            var schedules = pipeline.Schedules.ToDictionary(row => row.Kind);
+            foreach (var previous in pipeline.Schedules)
+                if (update.Schedules.All(spec => spec.Kind != previous.Kind))
+                    schedules[previous.Kind] = previous with { Enabled = false, NextDueAtUtc = null };
+            foreach (var spec in update.Schedules)
+                schedules[spec.Kind] = new ScheduleModel
+                {
+                    Id = schedules.GetValueOrDefault(spec.Kind)?.Id ?? Guid.CreateVersion7(Clock.GetUtcNow()),
+                    Kind = spec.Kind, Mode = spec.Mode, Every = spec.Every, MaxEvery = spec.MaxEvery,
+                    Cron = spec.Cron?.Trim(), TimeZone = spec.TimeZone, Window = spec.Window, Enabled = spec.Enabled,
+                };
+            pipelines[index] = pipeline with
+            {
+                Name = update.Name?.Trim(), Scope = update.Scope, ScopeKey = scopeKey,
+                Schedules = [.. schedules.Values.OrderBy(row => row.Kind)],
+            };
+            return Ok(pipelines[index]);
+        }
+    }
+
+    /// <inheritdoc />
     public Task<Result<PipelineModel>> GetPipelineAsync(Guid pipelineId, CancellationToken cancellationToken = default)
     {
         lock (gate)

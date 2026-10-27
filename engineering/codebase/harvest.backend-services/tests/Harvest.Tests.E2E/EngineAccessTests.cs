@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using AwesomeAssertions;
@@ -33,6 +34,10 @@ public sealed class EngineAccessTests(HarvestApiFixture fixture)
         var other = await LaneAsync(operatorClient);
         var pooled = await PoolLaneAsync(operatorClient);
         using var client = fixture.CreateClient(await KeyAsync(operatorClient, own.TenantId, TenantScopes));
+        var edit = new { name = "Saved search", scope = new { url = $"https://{own.Host}/search?q=fashion" }, schedules = Array.Empty<object>() };
+        await ExpectAsync(client.PutAsJsonAsync($"/api/pipelines/{other.PipelineId}", edit), HttpStatusCode.NotFound);
+        await ExpectAsync(client.PutAsJsonAsync($"/api/pipelines/{pooled.PipelineId}", edit), HttpStatusCode.Forbidden);
+        await ExpectAsync(client.PutAsJsonAsync($"/api/pipelines/{own.PipelineId}", edit), HttpStatusCode.OK);
         var ownRun = await DataAsync(await PostAsync(client, "/api/runs", new { pipelineId = own.PipelineId }));
         var otherRun = await DataAsync(await PostAsync(operatorClient, "/api/runs", new { pipelineId = other.PipelineId }));
         var ownRunId = ownRun.GetProperty("id").GetString();
