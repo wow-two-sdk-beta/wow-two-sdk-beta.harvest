@@ -46,6 +46,9 @@ public sealed record PostEnvelope
     /// <summary>Gets the contact points the post gives.</summary>
     public IReadOnlyList<PostContact> Contacts { get; init; } = [];
 
+    /// <summary>Gets the publisher's original labels, before mapping into the shared tag vocabulary.</summary>
+    public IReadOnlyList<string> SourceTags { get; init; } = [];
+
     /// <summary>Gets the tags from the shared vocabulary.</summary>
     public IReadOnlyList<PostTag> Tags { get; init; } = [];
 

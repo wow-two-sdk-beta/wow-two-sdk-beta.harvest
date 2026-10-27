@@ -12,6 +12,65 @@ namespace Harvest.Tests.Integration.Posts;
 public sealed class PostStoreTests
 {
     [Fact]
+    public async Task ReextractingASavedCapture_ShouldNotClaimANewAvailabilityCheck()
+    {
+        await using var host = await PostHost.StartAsync();
+        var capture = Capture(host, "reextract", "An unchanged source snapshot.");
+        host.Clock.Advance(TimeSpan.FromHours(1));
+        var saved = PostHost.Value(await host.Posts.SaveCaptureAsync(host.ContainerId, host.SourceId, null, capture,
+            Envelope("Original extraction", capture.ContentProjection)));
+        host.Clock.Advance(TimeSpan.FromHours(12));
+
+        var replay = PostHost.Value(await host.Posts.SaveCaptureAsync(host.ContainerId, host.SourceId, null,
+            capture with { ContentProjection = "New parser projection of the same saved source bytes." },
+            Envelope("Corrected extraction", "Complete source text")));
+
+        replay.Post.Id.Should().Be(saved.Post.Id);
+        replay.Post.Revision.Should().Be(2);
+        replay.Post.Links.Single().CapturedAtUtc.Should().Be(capture.CapturedAtUtc);
+        replay.Post.Links.Single().LastSeenAtUtc.Should().Be(capture.CapturedAtUtc);
+        replay.Post.Links.Single().LastCheckedAtUtc.Should().BeNull();
+        replay.Post.Links.Single().CheckCount.Should().Be(0);
+        replay.Post.Links.Single().NextCheckEligibleAtUtc.Should().Be(capture.CapturedAtUtc.AddHours(6));
+    }
+
+    [Fact]
+    public async Task Query_ShouldExposeAvailabilityEvidenceSeparatelyFromTheContentCapture()
+    {
+        await using var host = await PostHost.StartAsync();
+        var capture = Capture(host, "checks", "A source post with immutable content.");
+        var saved = PostHost.Value(await host.Posts.SaveCaptureAsync(host.ContainerId, host.SourceId, null, capture,
+            Envelope("Checks", capture.ContentProjection) with
+            {
+                Extras = new Dictionary<string, System.Text.Json.JsonElement>
+                {
+                    ["source"] = System.Text.Json.JsonSerializer.SerializeToElement(new { schema = "fixture.v1", fields = new { sourceOnly = true } }),
+                },
+            }));
+        saved.Post.Links.Single().LastCheckedAtUtc.Should().BeNull();
+        host.Clock.Advance(TimeSpan.FromHours(1));
+        var observation = new LinkObservation
+        {
+            ExternalKey = capture.ExternalKey, Signal = LinkSignal.Present, Reason = "seen_again", HttpStatus = 304,
+        };
+
+        PostHost.Value(await host.Posts.ObserveLinkAsync(host.ContainerId, host.SourceId, observation));
+        var post = PostHost.Value(await host.Posts.GetPostAsync(host.ContainerId, saved.Post.Id));
+        var link = post.Links.Single();
+
+        link.CapturedAtUtc.Should().Be(capture.CapturedAtUtc);
+        link.LastCheckedAtUtc.Should().Be(host.Clock.GetUtcNow());
+        link.LastSeenAtUtc.Should().Be(host.Clock.GetUtcNow());
+        link.NextCheckEligibleAtUtc.Should().Be(host.Clock.GetUtcNow().AddHours(6));
+        link.LastCheckOutcome.Should().Be("Present");
+        link.LastCheckHttpStatus.Should().Be(304);
+        link.CheckCount.Should().Be(1);
+        link.SourceFields!.Value.GetProperty("fields").GetProperty("sourceOnly").GetBoolean().Should().BeTrue();
+        link.LastCheckRunId.Should().BeNull();
+        post.Revision.Should().Be(1);
+    }
+
+    [Fact]
     public async Task SaveCapture_ShouldWriteOneCaptureAndEvent_WhenAClaimIsReplayed()
     {
         await using var host = await PostHost.StartAsync();

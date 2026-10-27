@@ -22,6 +22,8 @@ public static class EventSchemaMapper
             organizer = envelope.Author,
             place = envelope.Location,
             offers = envelope.Prices,
+            contacts = envelope.Contacts,
+            sourceTags = envelope.SourceTags,
             links = envelope.Links,
             media = envelope.Media,
             language = envelope.Language,

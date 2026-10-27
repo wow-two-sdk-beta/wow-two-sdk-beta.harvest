@@ -78,6 +78,9 @@ public sealed class FakePostBroker(IRegistrationBroker registry, TimeProvider? c
             }
             if (restored) { entry.State = LinkState.Relisted; entry.StateSince = now; }
             entry.Missing = 0;
+            if (entry.LastSeen is null || entry.LastSeen < capture.CapturedAtUtc) entry.LastSeen = capture.CapturedAtUtc;
+            if (entry.NextCheck is null || entry.NextCheck < capture.CapturedAtUtc.AddHours(6))
+                entry.NextCheck = capture.CapturedAtUtc.AddHours(6);
             if (changed || restored || isNew)
             {
                 Resolve(entry.PostId, !isNewPost);
@@ -101,6 +104,13 @@ public sealed class FakePostBroker(IRegistrationBroker registry, TimeProvider? c
             if (observation.Signal != LinkSignal.Present && (!entry.Checkable || sourceResult is not Result<SourceModel>.Success { Value.State: SourceState.Active }))
                 return Result<PostModel>.Ok(Read(entry.PostId));
             if (runId is { } run && !observed.Add((entry.Id, run))) return Result<PostModel>.Ok(Read(entry.PostId));
+            entry.CheckedAt = time.GetUtcNow();
+            entry.NextCheck = entry.CheckedAt.Value.AddHours(6);
+            entry.CheckCount++;
+            entry.Outcome = observation.Signal.ToString();
+            entry.CheckHttpStatus = observation.HttpStatus;
+            entry.CheckRunId = runId;
+            if (observation.Signal == LinkSignal.Present) entry.LastSeen = entry.CheckedAt;
             entry.Missing = observation.Signal == LinkSignal.Present ? 0 : entry.Missing + 1;
             var next = observation.Signal switch
             {
@@ -185,6 +195,10 @@ public sealed class FakePostBroker(IRegistrationBroker registry, TimeProvider? c
     private PostModel Read(Guid id) => posts[id] with { Links = links.Values.Where(link => link.PostId == id).Select(link => new PostLinkModel
     {
         Id = link.Id, SourceId = link.SourceId, ExternalKey = link.Key, Url = link.Url, State = link.State, Role = link.Role, CaptureId = link.CaptureId, CapturedAtUtc = link.At,
+        LastCheckedAtUtc = link.CheckedAt, LastSeenAtUtc = link.LastSeen, NextCheckEligibleAtUtc = link.NextCheck,
+        LastCheckOutcome = link.Outcome, LastCheckHttpStatus = link.CheckHttpStatus,
+        LastCheckRunId = link.CheckRunId, CheckCount = link.CheckCount,
+        SourceFields = link.Envelope.Extras.TryGetValue("source", out var native) ? native : null,
     }).ToArray() };
 
     private void Resolve(Guid postId, bool bump)
@@ -233,6 +247,11 @@ public sealed class FakePostBroker(IRegistrationBroker registry, TimeProvider? c
         internal LinkRole Role;
         internal Guid? CaptureId;
         internal DateTimeOffset? At;
+        internal DateTimeOffset? CheckedAt, LastSeen, NextCheck;
+        internal string? Outcome;
+        internal int CheckCount;
+        internal int? CheckHttpStatus;
+        internal Guid? CheckRunId;
         internal DateTimeOffset StateSince;
     }
 }

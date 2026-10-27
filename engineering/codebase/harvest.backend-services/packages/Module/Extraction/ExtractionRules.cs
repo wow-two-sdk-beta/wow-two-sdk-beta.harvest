@@ -88,10 +88,11 @@ internal static partial class ExtractionRules
         foreach (Match match in Phone().Matches(text))
         {
             var raw = match.Value.Trim();
+            string international = match.Groups["international"].Value;
             var digits = new string(raw.Where(char.IsAsciiDigit).ToArray());
-            if (raw.StartsWith("00", StringComparison.Ordinal)) digits = digits[2..];
-            else if (!raw.StartsWith('+') && digits.Length == 9 && uzbekSource && UzbekLocal().IsMatch(digits)) digits = "998" + digits;
-            else if (!raw.StartsWith('+') && !(digits.Length == 12 && digits.StartsWith("998", StringComparison.Ordinal))) continue;
+            if (international == "00") digits = digits[2..];
+            else if (international.Length == 0 && digits.Length == 9 && uzbekSource && UzbekLocal().IsMatch(digits)) digits = "998" + digits;
+            else if (international.Length == 0 && !(digits.Length == 12 && digits.StartsWith("998", StringComparison.Ordinal))) continue;
             if (digits.Length is >= 8 and <= 15 && digits[0] != '0')
                 contacts.Add(new PostContact { Kind = ContactKind.Phone, Value = "+" + digits, Raw = raw });
         }
@@ -127,7 +128,7 @@ internal static partial class ExtractionRules
     private static partial Regex Price();
     [GeneratedRegex(@"\b(?:free|bepul|бесплатно)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex Free();
-    [GeneratedRegex(@"(?<![\w\d])(?:\+|00)?\d[\d ()\-]{6,}\d(?!\d)", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"(?<![\w\d])(?:\(\p{Zs}*)?(?<international>\+|00)?\d[\d\p{Zs}()\-\u2010-\u2015\u2212]{6,}\d(?!\d)", RegexOptions.CultureInvariant)]
     private static partial Regex Phone();
     [GeneratedRegex(@"^(?:20|33|50|55|61|62|65|66|67|69|70|71|72|73|74|75|76|77|78|79|88|90|91|93|94|95|97|98|99)\d{7}$", RegexOptions.CultureInvariant)]
     private static partial Regex UzbekLocal();

@@ -43,6 +43,15 @@ export interface PostLinkModel {
   readonly role: string;
   readonly captureId?: string;
   readonly capturedAtUtc?: string;
+  readonly lastCheckedAtUtc?: string;
+  readonly lastSeenAtUtc?: string;
+  readonly nextCheckEligibleAtUtc?: string;
+  readonly lastCheckOutcome?: string;
+  readonly lastCheckHttpStatus?: number;
+  readonly lastCheckRunId?: string;
+  readonly lastCheckRunKind?: string;
+  readonly checkCount?: number;
+  readonly sourceFields?: Readonly<Record<string, unknown>>;
 }
 
 /** Mirrors a canonical post, its source links and field provenance. */
@@ -56,6 +65,29 @@ export interface PostModel {
     readonly kind?: string;
     readonly title?: string;
     readonly text?: string;
+    readonly postedAt?: { readonly value: string; readonly precision: string; readonly timeZone?: string };
+    readonly dates?: readonly {
+      readonly role: string;
+      readonly value: string;
+      readonly end?: string;
+      readonly precision: string;
+      readonly raw?: string;
+    }[];
+    readonly location?: {
+      readonly mentions: readonly { readonly text: string; readonly kind: string }[];
+      readonly geo?: { readonly latitude: number; readonly longitude: number };
+    };
+    readonly contacts?: readonly { readonly kind: string; readonly value: string; readonly raw?: string }[];
+    readonly media?: readonly { readonly kind: string; readonly url: string; readonly role?: string }[];
+    readonly links?: readonly { readonly kind: string; readonly url: string; readonly text?: string }[];
+    readonly sourceTags?: readonly string[];
+    readonly tags?: readonly { readonly tag: string; readonly tier: string; readonly version?: string }[];
+    readonly flags?: readonly string[];
+    readonly extraction?: {
+      readonly normVersion: string;
+      readonly rulesVersion: string;
+      readonly ai?: unknown;
+    };
     readonly language?: {
       readonly code: string;
       readonly script?: string;

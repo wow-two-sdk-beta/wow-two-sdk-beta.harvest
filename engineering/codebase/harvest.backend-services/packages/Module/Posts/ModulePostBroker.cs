@@ -73,7 +73,7 @@ internal sealed partial class ModulePostBroker(
                 ("origin", capture.OriginKey), ("role", capture.Role.ToString().ToLowerInvariant()), ("locale", capture.Locale), ("now", now));
             await PostSql.ExecuteAsync(connection, transaction,
                 "INSERT INTO harvest_link_schedule(link_id,container_id,next_check_at,last_seen_at) VALUES(@id,@container,@next,@now)", cancellationToken,
-                ("id", linkId), ("container", containerId), ("next", now.AddHours(6)), ("now", now));
+                ("id", linkId), ("container", containerId), ("next", capture.CapturedAtUtc.AddHours(6)), ("now", capture.CapturedAtUtc));
             link = new LinkRow(linkId, postId.Value, null, LinkState.Live, null, now);
         }
 
@@ -116,8 +116,9 @@ internal sealed partial class ModulePostBroker(
                 ("fields", StoreJson.Write(envelope)), ("tiers", StoreJson.Write(envelope.FieldSources)), ("contacts", StoreJson.Write(envelope.Contacts)));
         }
         await PostSql.ExecuteAsync(connection, transaction, """
-            UPDATE harvest_link_schedule SET last_seen_at=@now,consecutive_missing=0,fail_count=0,next_check_at=@next,due=true WHERE link_id=@id
-            """, cancellationToken, ("now", now), ("next", now.AddHours(6)), ("id", link.Id));
+            UPDATE harvest_link_schedule SET last_seen_at=GREATEST(last_seen_at,@at),
+                consecutive_missing=0,fail_count=0,next_check_at=GREATEST(next_check_at,@next),due=true WHERE link_id=@id
+            """, cancellationToken, ("at", capture.CapturedAtUtc), ("next", capture.CapturedAtUtc.AddHours(6)), ("id", link.Id));
         if (restored)
             await SetLinkStateAsync(connection, transaction, containerId, link, LinkState.Relisted, "seen_again", runId, now, cancellationToken);
 

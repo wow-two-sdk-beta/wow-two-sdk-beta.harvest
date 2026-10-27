@@ -36,6 +36,9 @@ Shape: wow-two-ws/conventions/planning/version-track/version-track.md
 | Full-sweep absence inference | feature | current deletion evidence comes from direct known-link checks |
 | Per-request budget enforcement within a step | engineering | current request/byte budgets stop at step boundaries, including robots and redirect usage |
 | Consumer JSON Schema registration and validation | feature | deterministic event projection is available; arbitrary schema validation remains separate |
+| Versioned source schemas and immutable readings | feature | native `extras.source` snapshots are inspectable; schema enforcement and mapping history remain separate |
+| Availability attempt history and forced per-link checks | feature | link observations are exposed; failed attempts and source-aware HTTP 200/soft-deletion checks remain separate |
+| Contact ownership and participation evidence | feature | normalized phones/emails retain raw text; owner, purpose and evidence spans need a richer contract |
 
 ## Delivery
 

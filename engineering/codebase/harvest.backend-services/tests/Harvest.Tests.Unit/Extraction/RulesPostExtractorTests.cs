@@ -14,6 +14,50 @@ namespace Harvest.Tests.Unit.Extraction;
 public sealed class RulesPostExtractorTests
 {
     [Fact]
+    public async Task Extract_ShouldKeepNativeFieldsAndTagsSeparateFromMappedCategories_AndNormalizeUnicodePhoneSeparators()
+    {
+        var capture = new Capture
+        {
+            ExternalKey = "fixture", Url = "https://source.uz/event", RequestUrl = "https://source.uz/event",
+            FinalUrl = "https://source.uz/event", CapturedAtUtc = DateTimeOffset.UtcNow,
+            Body = "event"u8.ToArray(), ContentProjection = "event", Locale = "ru",
+            Warnings = ["fixture_warning"],
+            Structured =
+            [
+                JsonSerializer.SerializeToElement(new { reader = "page", title = "Fair", text = "First paragraph.\nТелефон: (+998) 71−205−1414.",
+                    sourceTags = new[] { "выставка", "iteca", "выставка" },
+                    sourceFields = new { schema = "fixture.material.v1", parserVersion = "fixture@2", fields = new { customField = "retained" } } }),
+            ],
+        };
+
+        var post = (await new RulesPostExtractor().ExtractAsync(capture, new() { Family = SourceFamily.Page })).Data();
+
+        post.Contacts.Should().ContainSingle().Which.Value.Should().Be("+998712051414");
+        post.Contacts[0].Raw.Should().Be("(+998) 71−205−1414");
+        post.SourceTags.Should().Equal("выставка", "iteca");
+        post.Tags.Should().BeEmpty();
+        post.Text.Should().Contain("paragraph.\nТелефон");
+        post.Flags.Should().Contain("source_warning:fixture_warning");
+        post.Extras["source"].GetProperty("fields").GetProperty("customField").GetString().Should().Be("retained");
+        post.FieldSources["sourceTags"].Tier.Should().Be(ExtractionTier.Deterministic);
+        post.Extraction.RulesVersion.Should().Be("rules@2");
+    }
+
+    [Theory]
+    [InlineData("(+44) 20−7946−0123", "+442079460123")]
+    [InlineData("(00998) 71–205–1414", "+998712051414")]
+    [InlineData("71 205 14 14", "+998712051414")]
+    public async Task Extract_ShouldPreserveParenthesizedInternationalPrefixes(string raw, string normalized)
+    {
+        var read = await new PageCaptureReader().ReadAsync(CaptureReaderTests.Document(
+            "<html><main><p>Phone: " + raw + "</p></main></html>", "https://source.uz/event"));
+        var post = (await new RulesPostExtractor().ExtractAsync(read.Data().Captures.Single(), new() { Family = SourceFamily.Page })).Data();
+
+        post.Contacts.Should().ContainSingle().Which.Value.Should().Be(normalized);
+        post.Contacts[0].Raw.Should().Be(raw);
+    }
+
+    [Fact]
     public async Task Extract_ShouldMapEventFieldsWithoutAnAiProvider()
     {
         var read = await new JsonLdEventReader().ReadAsync(CaptureReaderTests.Document("""

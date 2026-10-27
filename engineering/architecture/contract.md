@@ -96,6 +96,10 @@ the private adapters repository. Every type references the BCL and the kernel on
 - The schema in the SQL migrations (`001` baseline, `002` without the ladder) is the shared seam between lanes: each
   lane maps the tables its folder's lead doc names.
 - `Capture.ContentProjection` drives the content hash; a capture row exists only when it changes.
+- Source readers can retain their versioned native field envelope in page metadata's `sourceFields`; extraction
+  preserves it under `PostEnvelope.Extras["source"]`. Original publisher labels use `SourceTags`, independently
+  of the shared-vocabulary `Tags`. Source snapshots and mapped values are inspectable without executing native HTML.
+  `PostLinkModel.SourceFields` exposes each link's latest native snapshot independently of merged mapped fields.
 
 ---
 
@@ -126,6 +130,10 @@ the private adapters repository. Every type references the BCL and the kernel on
 - HTTP capture/observation/merge controls require operator scope; no tenant can ingest into or merge the shared pool
 - a hash-identical capture creates no new capture or delivery revision; replayed negative observations count once per run
 - 404/410 evidence follows the source's check policy; challenges and rate limits never establish disappearance
+- post links expose the last recorded availability observation and last confirmed-present time separately from
+  their immutable content-capture time; outcome, HTTP status, run ID/kind and observation count explain the evidence
+- next-check eligibility does not promise execution; the console separately reports enabled check schedules
+- re-extracting a historical capture does not advance its last-seen time to the ingestion time
 - merges retain an undo record; undo restores moved links and prevents the separated posts from being auto-merged again
 - delivery stores immutable revision snapshots; `wow2.event.v1` selects the event projection while retaining post identity and provenance
 - pull cursors contain the subscription and `(transaction, row id)` position, and read only below PostgreSQL's snapshot horizon

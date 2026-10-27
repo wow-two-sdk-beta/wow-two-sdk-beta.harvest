@@ -37,6 +37,7 @@ import type {
 } from '../../contracts';
 import { createHarvestClient, type HarvestClient } from '../../kit';
 import PipelineSettings from './PipelineSettings.vue';
+import PostDetailsPanel from './PostDetailsPanel.vue';
 
 /** Reusable pipeline, run, source, post and delivery management for every Harvest capability form. */
 defineOptions({ name: 'HarvestConsolePanel' });
@@ -183,7 +184,11 @@ async function refresh() {
       if (!pipelines.value.some((item) => item.id === pipelineId.value))
         pipelineId.value = pipelines.value[0]?.id ?? '';
     }
-    if (postResult.ok) posts.value = postResult.value;
+    if (postResult.ok) {
+      posts.value = postResult.value;
+      if (selectedPost.value)
+        selectedPost.value = posts.value.find((post) => post.id === selectedPost.value?.id) ?? null;
+    }
     if (hostResult.ok) hosts.value = hostResult.value;
     if (subscriptionResult.ok) subscriptions.value = subscriptionResult.value;
     if (!sourceResult.ok) failure.value = message(sourceResult.failure);
@@ -414,16 +419,6 @@ async function pull(subscription: SubscriptionModel) {
     }
     return result;
   }, 'Delivery cursor advanced.');
-}
-
-/** Rejects non-web link schemes at the presentation boundary. */
-function webUrl(url: string) {
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.href : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 function date(value?: string) {
@@ -925,35 +920,7 @@ onScopeDispose(() => {
                   </p>
                 </Card>
                 <Card variant="glass" class="self-start p-6">
-                  <template v-if="selectedPost">
-                    <h3 class="text-lg font-semibold">{{ selectedPost.base.title ?? 'Post details' }}</h3>
-                    <p class="mt-4 whitespace-pre-wrap text-sm leading-relaxed">{{ selectedPost.base.text }}</p>
-                    <h4 class="mt-6 text-sm font-semibold">Source links</h4>
-                    <ul class="mt-3 space-y-3">
-                      <li v-for="link in selectedPost.links" :key="link.id" class="break-all text-sm">
-                        <a
-                          :href="webUrl(link.url)"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          class="text-primary underline underline-offset-4"
-                        >
-                          {{ link.url }}
-                        </a>
-                        <p class="mt-1 text-xs text-muted-foreground">
-                          {{ link.state }} · {{ date(link.capturedAtUtc) }}
-                        </p>
-                      </li>
-                    </ul>
-                    <h4 class="mt-6 text-sm font-semibold">Field sources</h4>
-                    <dl class="mt-3 space-y-2 text-xs">
-                      <div v-for="(linkId, field) in selectedPost.fieldSources" :key="field">
-                        <dt class="font-medium">{{ field }}</dt>
-                        <dd class="mt-1 break-all text-muted-foreground">
-                          {{ selectedPost.links.find((link) => link.id === linkId)?.url ?? linkId }}
-                        </dd>
-                      </div>
-                    </dl>
-                  </template>
+                  <PostDetailsPanel v-if="selectedPost" :post="selectedPost" :pipelines="pipelines" />
                   <p v-else class="text-sm text-muted-foreground">
                     Select a post to inspect its source links and field evidence.
                   </p>

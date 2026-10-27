@@ -23,7 +23,7 @@ public sealed class RulesPostExtractor : IPostExtractor
         var title = hasEvent ? ReaderSupport.String(schemaOrg, "name") : hasMetadata ? ReaderSupport.String(metadata, "title") : null;
         var text = hasEvent ? ReaderSupport.String(schemaOrg, "description") : hasMetadata ? ReaderSupport.String(metadata, "text") : capture.ContentProjection;
         title = NullText(title);
-        text = NullText(text);
+        text = NullText(text, preserveLineBreaks: true);
         var fieldSources = new Dictionary<string, FieldSource>();
         var parser = hasEvent ? "schema.org.event" : hasMetadata ? ReaderSupport.String(metadata, "reader") : "capture";
         if (title is not null) fieldSources["title"] = Deterministic(parser);
@@ -36,6 +36,15 @@ public sealed class RulesPostExtractor : IPostExtractor
         var media = capture.Media.Select(item => new PostMedia { Kind = item.Kind, Url = item.Url }).ToList();
         var links = capture.Links.Select(item => new PostLink { Url = item.Url, Text = item.Text, Kind = PostLinkKind.Site }).ToList();
         var extras = new Dictionary<string, JsonElement>();
+        if (hasMetadata && metadata.TryGetProperty("sourceFields", out JsonElement sourceFields)
+            && sourceFields.ValueKind == JsonValueKind.Object)
+            extras["source"] = sourceFields.Clone();
+        string[] sourceTags = hasMetadata && metadata.TryGetProperty("sourceTags", out JsonElement tagNodes)
+            && tagNodes.ValueKind == JsonValueKind.Array
+            ? tagNodes.EnumerateArray().Where(tag => tag.ValueKind == JsonValueKind.String)
+                .Select(tag => tag.GetString()!).Where(tag => !string.IsNullOrWhiteSpace(tag))
+                .Distinct(StringComparer.Ordinal).ToArray() : [];
+        if (sourceTags.Length > 0) fieldSources["sourceTags"] = Deterministic(parser);
         if (hasEvent)
         {
             extras["schemaOrg"] = schemaOrg.Clone();
@@ -99,7 +108,7 @@ public sealed class RulesPostExtractor : IPostExtractor
         if (hasMetadata && metadata.TryGetProperty("contacts", out var contactNodes) && contactNodes.ValueKind == JsonValueKind.Array)
             contactText += " " + string.Join(" ", contactNodes.EnumerateArray().Select(ReaderSupport.Scalar));
         var contacts = ExtractionRules.Contacts(contactText, uzbek);
-        if (contacts.Count > 0) fieldSources["contacts"] = Rules("e164-and-email@1");
+        if (contacts.Count > 0) fieldSources["contacts"] = Rules("e164-and-email@2");
         var postedAt = capture.PublishedAtUtc is { } published
             ? new PostTimestamp { Value = published.ToString("O"), Precision = DatePrecision.Second, TimeZone = "UTC" } : null;
         if (postedAt is not null) fieldSources["postedAt"] = Deterministic(parser);
@@ -109,19 +118,23 @@ public sealed class RulesPostExtractor : IPostExtractor
         {
             Kind = hasEvent ? PostKind.Event : request.DefaultKind,
             Title = title, Text = text, Author = author, Language = language, PostedAt = postedAt,
-            Dates = dates, Prices = prices, Location = location, Contacts = contacts,
+            Dates = dates, Prices = prices, Location = location, Contacts = contacts, SourceTags = sourceTags,
             Media = media.DistinctBy(item => item.Url).ToList(), Links = links.DistinctBy(item => item.Url).ToList(),
             Extras = extras, FieldSources = fieldSources,
-            Flags = request.Ai != AiMode.Off ? ["ai_skipped:capability_unavailable"] : [],
-            Extraction = new() { NormVersion = "norm@1", RulesVersion = "rules@1", TiersRun = [ExtractionTier.Deterministic, ExtractionTier.Rules] },
+            Flags = capture.Warnings.Select(warning => "source_warning:" + warning)
+                .Concat(request.Ai != AiMode.Off ? ["ai_skipped:capability_unavailable"] : Array.Empty<string>())
+                .Distinct(StringComparer.Ordinal).ToArray(),
+            Extraction = new() { NormVersion = "norm@1", RulesVersion = "rules@2", TiersRun = [ExtractionTier.Deterministic, ExtractionTier.Rules] },
         };
         if (EventSchemaMapper.Map(envelope) is { } mapped) extras["event"] = mapped;
         return Task.FromResult(Result<PostEnvelope>.Ok(envelope));
     }
 
-    private static string? NullText(string? value)
+    private static string? NullText(string? value, bool preserveLineBreaks = false)
     {
-        var text = ReaderSupport.HtmlText(value);
+        string text = preserveLineBreaks && value is not null
+            ? string.Join('\n', value.Split('\n').Select(ReaderSupport.HtmlText).Where(line => line.Length > 0))
+            : ReaderSupport.HtmlText(value);
         return text.Length == 0 ? null : text;
     }
 

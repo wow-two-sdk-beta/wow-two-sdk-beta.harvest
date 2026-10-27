@@ -62,8 +62,19 @@ internal sealed partial class ModulePostBroker
         }
         var links = new List<PostLinkModel>();
         await using (var command = PostSql.Command(connection, transaction, """
-                         SELECT id,source_id,external_key,url,state,role,latest_capture_id,latest_captured_at FROM harvest_post_links
-                         WHERE container_id=@container AND post_id=@post AND retired_at IS NULL ORDER BY first_seen_at,id
+                         SELECT l.id,l.source_id,l.external_key,l.url,l.state,l.role,l.latest_capture_id,l.latest_captured_at,
+                             s.last_checked_at,s.last_seen_at,s.next_check_at,s.last_outcome,
+                             c.http_status,c.run_id,r.kind,COALESCE(s.check_count,0),(n.fields->'extras'->'source')::text
+                         FROM harvest_post_links l
+                         LEFT JOIN harvest_link_schedule s ON s.container_id=l.container_id AND s.link_id=l.id
+                         LEFT JOIN harvest_link_readings n ON n.container_id=l.container_id AND n.link_id=l.id
+                         LEFT JOIN LATERAL (
+                             SELECT http_status,run_id FROM harvest_link_check_log
+                             WHERE container_id=l.container_id AND link_id=l.id ORDER BY checked_at DESC,id DESC LIMIT 1
+                         ) c ON true
+                         LEFT JOIN harvest_runs r ON r.container_id=l.container_id AND r.id=c.run_id
+                         WHERE l.container_id=@container AND l.post_id=@post AND l.retired_at IS NULL
+                         ORDER BY l.first_seen_at,l.id
                          """, ("container", containerId), ("post", postId)))
         await using (var reader = await command.ExecuteReaderAsync(ct))
             while (await reader.ReadAsync(ct))
@@ -72,6 +83,15 @@ internal sealed partial class ModulePostBroker
                     Id = reader.GetGuid(0), SourceId = reader.GetGuid(1), ExternalKey = reader.GetString(2), Url = reader.GetString(3),
                     State = Enum.Parse<LinkState>(reader.GetString(4), true), Role = Enum.Parse<LinkRole>(reader.GetString(5), true),
                     CaptureId = reader.IsDBNull(6) ? null : reader.GetGuid(6), CapturedAtUtc = reader.IsDBNull(7) ? null : reader.GetFieldValue<DateTimeOffset>(7),
+                    LastCheckedAtUtc = reader.IsDBNull(8) ? null : reader.GetFieldValue<DateTimeOffset>(8),
+                    LastSeenAtUtc = reader.IsDBNull(9) ? null : reader.GetFieldValue<DateTimeOffset>(9),
+                    NextCheckEligibleAtUtc = reader.IsDBNull(10) ? null : reader.GetFieldValue<DateTimeOffset>(10),
+                    LastCheckOutcome = reader.IsDBNull(11) ? null : reader.GetString(11),
+                    LastCheckHttpStatus = reader.IsDBNull(12) ? null : reader.GetInt16(12),
+                    LastCheckRunId = reader.IsDBNull(13) ? null : reader.GetGuid(13),
+                    LastCheckRunKind = reader.IsDBNull(14) ? null : reader.GetString(14),
+                    CheckCount = reader.GetInt32(15),
+                    SourceFields = reader.IsDBNull(16) ? null : JsonSerializer.Deserialize<JsonElement>(reader.GetString(16)),
                 });
         return post with { Links = links };
     }

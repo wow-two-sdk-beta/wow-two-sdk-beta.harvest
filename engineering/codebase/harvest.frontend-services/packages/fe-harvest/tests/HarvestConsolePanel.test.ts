@@ -133,6 +133,41 @@ describe('HarvestConsolePanel', () => {
     expect(wrapper.find('[aria-label="Pipelines"]').exists()).toBe(false);
   });
 
+  it('refreshes the selected post when new content or availability evidence arrives', async () => {
+    const api = createHarvestClient({ fetch: fixtureFetch() });
+    const loadPosts = api.listPosts;
+    let changed = false;
+    api.listPosts = async (containerId, signal) => {
+      const result = await loadPosts(containerId, signal);
+      if (!result.ok || !changed) return result;
+      return ResultExtensions.ok(
+        result.value.map((post) => ({
+          ...post,
+          base: { ...post.base, text: 'Updated source body.' },
+          links: post.links.map((link) => ({ ...link, lastCheckOutcome: 'Present', lastCheckHttpStatus: 304 })),
+        })),
+      );
+    };
+    const wrapper = mount(HarvestConsolePanel, { props: { client: api } });
+    wrappers.push(wrapper);
+    await flushPromises();
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Posts')!
+      .trigger('click');
+    await wrapper.get('[aria-label="Posts"] button').trigger('click');
+    changed = true;
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Refresh')!
+      .trigger('click');
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('Updated source body.');
+    expect(wrapper.text()).toContain('Present · HTTP 304');
+  });
+
   it('renders the backend post text with its supporting link', async () => {
     const wrapper = mount(HarvestConsolePanel, { props: { client: createHarvestClient({ fetch: fixtureFetch() }) } });
     wrappers.push(wrapper);
