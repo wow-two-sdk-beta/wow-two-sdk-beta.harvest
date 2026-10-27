@@ -20,6 +20,10 @@ internal static class RetryAfterPolicy
         return null;
     }
 
+    /// <summary>Tells whether a <c>Retry-After</c> value is present and readable, in either form.</summary>
+    /// <param name="value">The header value, or null.</param>
+    public static bool IsPresent(string? value) => TryParseSeconds(value) is not null || TryParseDate(value) is not null;
+
     /// <summary>Parses the seconds form of <c>Retry-After</c>; null when the value is absent or not a plain count of
     /// seconds.</summary>
     /// <param name="value">The header value, or null.</param>

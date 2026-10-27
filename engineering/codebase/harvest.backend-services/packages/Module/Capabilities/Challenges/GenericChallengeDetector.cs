@@ -39,7 +39,7 @@ internal sealed class GenericChallengeDetector : IChallengeDetector
         // A throttle the host asked us to wait out.
         if (probe.StatusCode == 429)
             return Verdict(FetchOutcome.RateLimited, kind: null, probe: probe, evidence: "429 Too Many Requests");
-        if (probe.StatusCode == 503 && RetryAfterPolicy.TryParseSeconds(Header(probe, "retry-after")) is not null)
+        if (probe.StatusCode == 503 && RetryAfterPolicy.IsPresent(Header(probe, "retry-after")))
             return Verdict(FetchOutcome.RateLimited, kind: null, probe: probe, evidence: "503 with Retry-After");
 
         // A flat refusal, with no challenge to pass.
