@@ -1,4 +1,5 @@
 export type * from './RegistrationEnums';
+export type * from './EngineModels';
 export type { ApiKeyModel, TenantModel } from './TenantModel';
 export type { ContainerModel } from './ContainerModel';
 export type { SourceModel } from './SourceModel';

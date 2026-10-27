@@ -20,6 +20,13 @@ A product pins the family with one `HarvestSdkVersion` property beside `BackendS
 ```csharp
 // Form 1 — in process, over the product's own PostgreSQL (UTF-8, pg_trgm); boot creates, checks and migrates it
 services.AddHarvest().Configure(options => options.ConnectionString = "...");
+services.AddHarvestFetching();
+services.AddHarvestReaders();
+services.AddHarvestExtraction();
+services.AddHarvestPosts();
+services.AddHarvestDelivery();
+services.AddHarvestEngine();
+services.AddHarvestWorker(); // explicit opt-in to background schedules
 await app.Services.MigrateHarvestOnStartupAsync();
 
 // Forms 2 and 3 — over the running Harvest service with an API key; the product's code does not change
@@ -28,7 +35,28 @@ services.AddHarvestClient(options =>
     options.BaseAddress = new Uri("https://harvest.example.com/");
     options.ApiKey = "hv_…";
 });
+services.AddHarvestDataClient(); // IPostBroker and IDeliveryBroker
+services.AddHarvestRunClient();  // IRunBroker
 ```
+
+The registration extensions live in `Module.Capabilities`, `Module.Readers`, `Module.Extraction`, `Module.Posts`,
+`Module.Delivery`, `Module.Engine`, `Client.Delivery` and `Client.Runs`, under `WoW.Two.Sdk.Beta.Be.Harvest`.
+
+## Direct harvesting
+
+The generic service reads sitemaps, JSON-LD events, RSS/Atom, ICS and ordinary pages. It runs deterministic extraction,
+keeps immutable captures and field provenance, merges duplicates, checks known links and offers resumable pull delivery.
+The reusable console manages sources, pipelines, runs and subscriptions and shows posts and host health.
+
+Fetching uses the host's own network connection, a transparent Harvest user agent, robots policy, per-host pacing and
+conditional requests. Challenges, blocks and rate limits become recorded outcomes and persistent pauses. No CAPTCHA,
+proxy/IP, account-pool, browser-renderer, AI-provider or named-source integration is required or registered.
+
+Runtime requirements are PostgreSQL 16+ with UTF-8 and `pg_trgm`, the database connection and an operator API key.
+The service starts the worker by default; set `Harvest:Worker:Enabled=false` for a management-only host.
+`Harvest:Fetch` binds `HarvestFetchOptions`, including its user agent, deadline and response-size limit.
+
+The browser keeps its API key in memory. A disconnected console makes no authenticated registry requests.
 
 ## Layout
 

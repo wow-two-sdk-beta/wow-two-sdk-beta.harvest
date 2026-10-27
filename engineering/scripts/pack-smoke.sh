@@ -43,16 +43,49 @@ XML
 cat > "$consumer/Program.cs" <<CS
 using Microsoft.Extensions.DependencyInjection;
 using WoW.Two.Sdk.Beta.Be.Harvest.Client;
+using WoW.Two.Sdk.Beta.Be.Harvest.Client.Delivery;
+using WoW.Two.Sdk.Beta.Be.Harvest.Client.Runs;
+using WoW.Two.Sdk.Beta.Be.Harvest.Delivery;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Capabilities;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Delivery;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Engine;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Extraction;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Posts;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Readers;
+using WoW.Two.Sdk.Beta.Be.Harvest.Posts;
+using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
+using WoW.Two.Sdk.Beta.Be.Harvest.Runs;
+using WoW.Two.Sdk.Beta.Be.Harvest.Testing.Delivery;
+using WoW.Two.Sdk.Beta.Be.Harvest.Testing.Posts;
 using WoW.Two.Sdk.Beta.Be.Harvest.Testing.Registration;
+using WoW.Two.Sdk.Beta.Be.Harvest.Testing.Runs;
 
-var formOne = new ServiceCollection();
+var formOne = new ServiceCollection().AddLogging();
 formOne.AddHarvest().Configure(options => options.ConnectionString = "Host=localhost;Database=harvest");
+formOne.AddHarvestFetching();
+formOne.AddHarvestReaders();
+formOne.AddHarvestExtraction();
+formOne.AddHarvestPosts();
+formOne.AddHarvestDelivery();
+formOne.AddHarvestEngine();
 
 var formThree = new ServiceCollection();
 formThree.AddHarvestClient(options => options.BaseAddress = new Uri("https://service.example.test/"));
+formThree.AddHarvestDataClient();
+formThree.AddHarvestRunClient();
 
-Console.WriteLine(\$"pack smoke: {nameof(RegistrationBrokerConformance)} and both forms resolve from the packed family");
+foreach (var collection in new[] { formOne, formThree })
+{
+    using var provider = collection.BuildServiceProvider(validateScopes: true);
+    using var scope = provider.CreateScope();
+    scope.ServiceProvider.GetRequiredService<IRegistrationBroker>();
+    scope.ServiceProvider.GetRequiredService<IRunBroker>();
+    scope.ServiceProvider.GetRequiredService<IPostBroker>();
+    scope.ServiceProvider.GetRequiredService<IDeliveryBroker>();
+}
+
+Console.WriteLine(\$"pack smoke: {nameof(RegistrationBrokerConformance)}, {nameof(PostDeliveryBrokerConformance)} and {nameof(RunBrokerConformance)}; all brokers resolve in both packed forms");
 CS
 
 # No HTTP cache: a core version published minutes ago must resolve, not a cached index that predates it.

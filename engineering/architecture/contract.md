@@ -103,6 +103,34 @@ the private adapters repository. Every type references the BCL and the kernel on
 
 ---
 
+## Runs, posts and pull delivery
+
+- `IRunBroker`: `StartAsync`, `GetAsync`, `ListAsync`, `CancelAsync`, `SetPausedAsync`, `HostsAsync`.
+  Routes: `api/runs`, `api/runs/{id}/cancel`, `api/pipelines/{id}/pause`, `api/hosts?containerId`.
+- `IPostBroker`: `SaveCaptureAsync`, `ObserveLinkAsync`, `GetPostAsync`, `ListPostsAsync`, `MergeAsync`, `UnmergeAsync`.
+  Routes: `api/posts`, operator-only `captures`/`observations`, `api/post-merges`.
+- `IDeliveryBroker`: `SubscribeAsync`, `GetSubscriptionAsync`, `ListSubscriptionsAsync`, `PullAsync`.
+  Routes: `api/subscriptions`, `api/subscriptions/{id}/events`.
+
+- all successful routes use the same `{ data }` envelope, including `{ data: { data, next, hasMore } }` for pull pages
+- queueing joins an active run of the same pipeline and work kind; only active, permitted pipelines queue work
+- runs, posts and host queues read inside visible containers; tenant run/pause controls require their own private container
+- subscription creation verifies the tenant and readable container; subscription reads and pulls require its owning tenant
+- HTTP capture/observation/merge controls require operator scope; no tenant can ingest into or merge the shared pool
+- a hash-identical capture creates no new capture or delivery revision; replayed negative observations count once per run
+- 404/410 evidence follows the source's check policy; challenges and rate limits never establish disappearance
+- merges retain an undo record; undo restores moved links and prevents the separated posts from being auto-merged again
+- delivery stores immutable revision snapshots; `wow2.event.v1` selects the event projection while retaining post identity and provenance
+- pull cursors contain the subscription and `(transaction, row id)` position, and read only below PostgreSQL's snapshot horizon
+- a transaction committed late therefore cannot be skipped by an identity-only cursor; an old cursor replays stable event IDs
+- module and HTTP forms share `RunBrokerConformance` and `PostDeliveryBrokerConformance` with the consumer fakes
+
+`AddHarvestClient` registers the registry. `Client.Runs.AddHarvestRunClient` and
+`Client.Delivery.AddHarvestDataClient` explicitly add the other HTTP brokers under its configured endpoint and key.
+The module's `Module.*` registration extensions likewise opt each capability in separately.
+
+---
+
 ## Wire
 
 - Enums travel as camelCase labels (`ownFetch`, `pendingApproval`); durations as ISO 8601 (`PT1H`); nulls are omitted.

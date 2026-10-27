@@ -42,6 +42,7 @@ public sealed class HarvestApiFixture : IAsyncLifetime
             [HostConfiguration.OperatorApiKeySetting] = OperatorKey,
             ["AllowedHosts"] = PublicHost + ";localhost",
             ["Logging:LogLevel:Default"] = "Warning",
+            ["Harvest:Worker:Enabled"] = "false",
         }),
     };
 

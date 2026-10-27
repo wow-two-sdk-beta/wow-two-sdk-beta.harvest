@@ -357,6 +357,18 @@ public sealed partial class FakeRegistrationBroker(TimeProvider? time = null) : 
         }
     }
 
+    internal Result<PipelineModel> SetPipelineState(Guid pipelineId, PipelineState state, PipelinePauseReason? pauseReason)
+    {
+        lock (gate)
+        {
+            int index = pipelines.FindIndex(pipeline => pipeline.Id == pipelineId);
+            if (index < 0)
+                return Result<PipelineModel>.Fail(RegistrationErrors.PipelineNotFound(pipelineId));
+            pipelines[index] = pipelines[index] with { State = state, PauseReason = pauseReason };
+            return Result<PipelineModel>.Ok(pipelines[index]);
+        }
+    }
+
     private static Task<Result<T>> Ok<T>(T value) where T : notnull => Task.FromResult(Result<T>.Ok(value));
 
     private static Task<Result<T>> Fail<T>(AppError error) where T : notnull => Task.FromResult(Result<T>.Fail(error));

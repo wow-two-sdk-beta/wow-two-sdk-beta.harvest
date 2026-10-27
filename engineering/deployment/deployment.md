@@ -28,6 +28,11 @@ The packages ship separately, from `publish-packages.yml` (`engineering/scripts/
 
 ## Local run
 
+The generic service needs only PostgreSQL and the operator key. `Harvest:Fetch` configures the honest user agent,
+two-second minimum host gap, timeout and response limit. `Harvest:Worker` configures leases and run limits;
+`Enabled=false` disables processing without disabling the API or console. No CAPTCHA, proxy/IP, renderer, model
+provider or source-specific account credentials are required. The console key is entered by the operator and held in memory.
+
 ```bash
 docker build --build-arg APP_VERSION=0.1.99 --build-arg VCS_REF=$(git rev-parse HEAD) \
   -f engineering/deployment/Dockerfile -t harvest:local engineering/codebase

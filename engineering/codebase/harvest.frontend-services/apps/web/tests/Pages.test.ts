@@ -33,7 +33,7 @@ async function renderAt(path: string) {
 }
 
 describe('console route', () => {
-  it('shows the running versions and composes the admin containers panel', async () => {
+  it('shows the running versions and composes the reusable console connection panel', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => answer(input)),
@@ -42,6 +42,8 @@ describe('console route', () => {
 
     expect(wrapper.get('[aria-label="App version"]').text()).toBe('app test');
     expect(wrapper.get('[aria-label="API version"]').text()).toBe('api 0.1.4+abc1234');
-    expect(wrapper.get('[role="alert"]').text()).toBe('An API key is needed to read the registry.');
+    expect(wrapper.text()).toContain('Connect to Harvest');
+    expect(wrapper.find('input[type="password"]').exists()).toBe(true);
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   });
 });

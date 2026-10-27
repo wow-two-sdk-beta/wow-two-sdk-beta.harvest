@@ -1,5 +1,11 @@
 using Harvest.Api.Registration.Access;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Capabilities;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Delivery;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Engine;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Extraction;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Posts;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Readers;
 using WoW.Two.Sdk.Beta.Be.Harvest.Tenants;
 using WoW.Two.Sdk.Beta.Be.Identity.ApiKeys;
 using WoW.Two.Sdk.Beta.Be.Web.Json;
@@ -20,6 +26,17 @@ public static partial class HostConfiguration
             options.ConnectionString = ResolveConnectionString(configuration);
             options.OperatorApiKey = configuration[OperatorApiKeySetting];
         });
+        builder.Services.AddHarvestFetching();
+        builder.Services.Configure<HarvestFetchOptions>(builder.Configuration.GetSection("Harvest:Fetch"));
+        builder.Services.AddHarvestReaders();
+        builder.Services.AddHarvestExtraction();
+        builder.Services.AddHarvestPosts();
+        builder.Services.AddHarvestDelivery();
+        builder.Services.AddHarvestEngine().Configure<IConfiguration>((options, configuration) =>
+        {
+            configuration.GetSection("Harvest:Worker").Bind(options);
+        });
+        builder.Services.AddHarvestWorker();
         return builder;
     }
 
