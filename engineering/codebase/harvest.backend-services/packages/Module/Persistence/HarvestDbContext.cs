@@ -83,6 +83,8 @@ internal sealed class HarvestDbContext(DbContextOptions<HarvestDbContext> option
 
         var hostLane = modelBuilder.Entity<HostLaneRow>().ToTable(HostLaneRow.TableName);
         hostLane.HasKey(row => new { row.HostKey, row.Lane });
+        // The lane's host_key references the host row; declaring it orders inserts host-before-lane.
+        hostLane.HasOne<HostStateRow>().WithMany().HasForeignKey(row => row.HostKey).HasPrincipalKey(row => row.HostKey);
     }
 
     /// <summary>Converts an enum to the snake_case text the schema's CHECK constraints name.</summary>
