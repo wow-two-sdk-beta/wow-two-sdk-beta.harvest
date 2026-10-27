@@ -10,7 +10,6 @@ Shape: wow-two-ws/conventions/planning/version-track/version-track.md
 | Feature | State | Spec |
 |---|---|---|
 | Pipelines, steps and runs | planned | — |
-| Capability ladder | planned | — |
 | Posts, dedup and deletion checks | planned | — |
 | Pull delivery | planned | — |
 | Console | planned | — |
@@ -25,8 +24,6 @@ Shape: wow-two-ws/conventions/planning/version-track/version-track.md
 |---|---|---|
 | Private adapters repo with OLX, Domtut and Afisha brokers | engineering | one package per source on a private feed; it builds WoW2's Harvest image |
 | Telegram `t.me/s` broker | feature | private adapters repo |
-| Proxy and IP-server egress | feature | core `Http/Egress`; built inline first, extracted at the +0.1 |
-| Captcha solver clients | feature | core module beside egress |
 | Render companion | engineering | core companion package on Playwright; iticket waits on it |
 
 ## Delivery
