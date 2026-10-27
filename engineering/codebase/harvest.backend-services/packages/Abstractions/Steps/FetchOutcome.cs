@@ -9,6 +9,9 @@ public enum FetchOutcome
     /// <summary>The content arrived.</summary>
     Ok,
 
+    /// <summary>The source answered <c>304 Not Modified</c> to a conditional request; the last capture still stands.</summary>
+    NotModified,
+
     /// <summary>The target says it no longer exists (410, 404 on a direct fetch, a named not-found redirect) — a finding.</summary>
     Gone,
 

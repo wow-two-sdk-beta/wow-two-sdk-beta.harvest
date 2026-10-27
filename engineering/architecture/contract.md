@@ -85,6 +85,12 @@ the private adapters repository. Every type references the BCL and the kernel on
 
 - No escalation: a challenge, a block or a rate limit is a `FetchOutcome` the run records, and the host backs off.
   Nothing retries it through another route — no proxy or rotation, no disguised client, no solver, no sign-in or account.
+- Fetching (iteration 2): the Fetching lane paces each host over `harvest_host_state` (one connection, `min_delay` ≥ 2 s,
+  a robots `crawl_delay` capped at 30 s), obeys the source's robots policy, sends conditional requests (`ETag`,
+  `If-Modified-Since`) and answers a 304 with `FetchOutcome.NotModified`, and honours `Retry-After`. The generic
+  `IChallengeDetector` tells a challenge from a block from a rate limit; the lane records the outcome against the host
+  and lane and widens the back-off. Its orchestration is Module-internal and the Engine (iteration 3) drives it; a plain,
+  honest, operator-set user agent is set on every fetch.
 - The renderer serves pages that show their content only through JavaScript, never a challenge.
 - The schema in the SQL migrations (`001` baseline, `002` without the ladder) is the shared seam between lanes: each
   lane maps the tables its folder's lead doc names.
