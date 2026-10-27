@@ -1,7 +1,6 @@
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
 
-/// <summary>Represents a contact point a post gives; personal data, kept out of pool reads and keyed by HMAC for
-/// matching.</summary>
+/// <summary>Represents a contact point a post gives, stored as normalized plain text and matched directly.</summary>
 public sealed record PostContact
 {
     /// <summary>Gets the kind of contact point.</summary>
