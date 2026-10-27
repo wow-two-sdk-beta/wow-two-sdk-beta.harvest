@@ -9,10 +9,17 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Module;
 namespace Harvest.Tests.Migrations;
 
 /// <summary>The module's migration set over a fresh PostgreSQL database: apply, idempotency, the Apply → Rollback → Apply
-/// round trip, and the shape SQL 001 promises the lanes.</summary>
+/// round trip, and the shape SQL 001 and 002 promise the lanes.</summary>
 public sealed class MigrationTests : IAsyncLifetime
 {
-    /// <summary>Holds every table 001 creates, partitions aside.</summary>
+    /// <summary>Holds every migration of the set, in order.</summary>
+    private static readonly string[] Migrations = ["001-baseline", "002-drop-escalation"];
+
+    /// <summary>Holds the escalation columns 002 drops.</summary>
+    private const string EscalationColumns =
+        "'rung', 'rung_since', 'probe_due_at', 'cost_per_success_usd', 'egress', 'egress_lease_id', 'session_lease_id'";
+
+    /// <summary>Holds every table 001 creates, partitions aside; 002 drops none.</summary>
     private static readonly string[] Tables =
     [
         "harvest_api_keys", "harvest_captures", "harvest_check_policies", "harvest_containers", "harvest_enumerations",
@@ -50,10 +57,23 @@ public sealed class MigrationTests : IAsyncLifetime
     {
         var applied = Unwrap(await Runner.ApplyPendingAsync("startup", CancellationToken.None));
 
-        applied.Should().Equal("001-baseline");
+        applied.Should().Equal(Migrations);
         (await HarvestTablesAsync()).Should().BeEquivalentTo(Tables);
-        (await ScalarAsync<long>("SELECT count(*) FROM harvest_migration_history WHERE applied_by = 'startup'")).Should().Be(1);
+        (await ScalarAsync<long>("SELECT count(*) FROM harvest_migration_history WHERE applied_by = 'startup'")).Should().Be(2);
         Unwrap(await Runner.ApplyPendingAsync("startup", CancellationToken.None)).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ApplyPending_ShouldDropTheEscalationColumnsAndKeepTheLaneBackoff_WhenTheLadderIsGone()
+    {
+        Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None));
+
+        (await ColumnCountAsync($"column_name IN ({EscalationColumns})")).Should().Be(0);
+        (await ColumnCountAsync("table_name = 'harvest_host_lane' AND column_name IN ('paused_until', 'consecutive_failures', "
+            + "'last_challenge_kind', 'max_concurrency', 'in_flight')")).Should().Be(5);
+        (await ConstraintAsync("ck_harvest_usage_meter")).Should().NotContain("solves").And.NotContain("egress").And.Contain("render_seconds");
+        (await ConstraintAsync("ck_harvest_work_item_route")).Should().NotContain("account").And.Contain("render");
+        (await ConstraintAsync("ck_harvest_pipelines_pause")).Should().NotContain("account").And.Contain("operator");
     }
 
     [Fact]
@@ -85,14 +105,18 @@ public sealed class MigrationTests : IAsyncLifetime
     {
         Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None));
 
+        Unwrap(await Runner.RollbackAsync(targetOrdinal: 1, CancellationToken.None)).Should().Equal("002-drop-escalation");
+        (await ColumnCountAsync($"column_name IN ({EscalationColumns})")).Should().Be(11, "002's rollback restores every column 001 made");
+        (await ConstraintAsync("ck_harvest_work_item_route")).Should().Contain("account");
+
         Unwrap(await Runner.RollbackAsync(targetOrdinal: 0, CancellationToken.None)).Should().Equal("001-baseline");
         (await HarvestTablesAsync()).Should().BeEmpty();
         (await ScalarAsync<bool>("SELECT to_regproc('harvest_ensure_capture_partitions') IS NULL")).Should().BeTrue();
 
-        Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None)).Should().Equal("001-baseline");
+        Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None)).Should().Equal(Migrations);
         (await HarvestTablesAsync()).Should().BeEquivalentTo(Tables);
         var status = Unwrap(await Runner.GetStatusAsync(CancellationToken.None));
-        status.Applied.Select(migration => migration.Ordinal).Should().Equal(1);
+        status.Applied.Select(migration => migration.Ordinal).Should().Equal(1, 2);
         status.Pending.Should().BeEmpty();
         status.Drifted.Should().BeEmpty();
     }
@@ -113,6 +137,17 @@ public sealed class MigrationTests : IAsyncLifetime
             tables.Add(reader.GetString(0));
         return tables;
     }
+
+    /// <summary>Counts the columns of non-partition <c>harvest_</c> tables that match a condition.</summary>
+    private Task<long> ColumnCountAsync(string condition) => ScalarAsync<long>(
+        $"""
+         SELECT count(*) FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name LIKE 'harvest\_%' AND table_name NOT LIKE 'harvest\_captures\_%' AND {condition}
+         """);
+
+    /// <summary>Returns a constraint's definition.</summary>
+    private Task<string> ConstraintAsync(string name) =>
+        ScalarAsync<string>($"SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = '{name}'");
 
     private async Task<T> ScalarAsync<T>(string sql)
     {
