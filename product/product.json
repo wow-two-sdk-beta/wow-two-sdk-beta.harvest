@@ -1,0 +1,6 @@
+{
+  "$schema": "../../../../conventions/design/identity/product.schema.json",
+  "manifest": 1,
+  "name": "Harvest",
+  "description": "Harvest: one 24/7 harvester that captures posts from web, feed and social sources, merges duplicates, checks deletions and delivers them to subscribing products."
+}

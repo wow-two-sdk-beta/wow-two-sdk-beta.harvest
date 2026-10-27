@@ -1,0 +1,18 @@
+<Solution>
+  <Folder Name="/Packages/">
+    <Project Path="packages/Abstractions/WoW.Two.Sdk.Beta.Be.Harvest.Abstractions.csproj" />
+    <Project Path="packages/Client/WoW.Two.Sdk.Beta.Be.Harvest.Client.csproj" />
+    <Project Path="packages/Module/WoW.Two.Sdk.Beta.Be.Harvest.Module.csproj" />
+    <Project Path="packages/Testing/WoW.Two.Sdk.Beta.Be.Harvest.Testing.csproj" />
+  </Folder>
+  <Folder Name="/Services/">
+    <Project Path="service/Harvest.Api/Harvest.Api.csproj" />
+  </Folder>
+  <Folder Name="/Tests/">
+    <Project Path="tests/Harvest.Tests.Conformance/Harvest.Tests.Conformance.csproj" />
+    <Project Path="tests/Harvest.Tests.E2E/Harvest.Tests.E2E.csproj" />
+    <Project Path="tests/Harvest.Tests.Integration/Harvest.Tests.Integration.csproj" />
+    <Project Path="tests/Harvest.Tests.Migrations/Harvest.Tests.Migrations.csproj" />
+    <Project Path="tests/Harvest.Tests.Unit/Harvest.Tests.Unit.csproj" />
+  </Folder>
+</Solution>
