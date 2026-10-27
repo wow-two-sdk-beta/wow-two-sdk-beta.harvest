@@ -30,6 +30,10 @@ internal sealed class HarvestDbContext(DbContextOptions<HarvestDbContext> option
 
     public DbSet<ScheduleRow> Schedules => Set<ScheduleRow>();
 
+    public DbSet<HostStateRow> HostStates => Set<HostStateRow>();
+
+    public DbSet<HostLaneRow> HostLanes => Set<HostLaneRow>();
+
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -73,6 +77,12 @@ internal sealed class HarvestDbContext(DbContextOptions<HarvestDbContext> option
         schedule.HasKey(row => row.Id);
         schedule.Property(row => row.Kind).HasConversion(Text<WorkKind>());
         schedule.Property(row => row.Mode).HasConversion(Text<ScheduleMode>());
+
+        var hostState = modelBuilder.Entity<HostStateRow>().ToTable(HostStateRow.TableName);
+        hostState.HasKey(row => row.HostKey);
+
+        var hostLane = modelBuilder.Entity<HostLaneRow>().ToTable(HostLaneRow.TableName);
+        hostLane.HasKey(row => new { row.HostKey, row.Lane });
     }
 
     /// <summary>Converts an enum to the snake_case text the schema's CHECK constraints name.</summary>
