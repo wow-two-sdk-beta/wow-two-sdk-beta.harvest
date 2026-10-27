@@ -16,3 +16,18 @@ detection.
   or rotation, no disguised clients, no solvers, no sign-ins or accounts.
 - Every fetch obeys the source's robots policy and sends conditional requests (`ETag`, `Last-Modified`); no generic HTTP
   resilience on fetch clients.
+
+## Built — iteration 2 (fetching)
+
+| Piece | File |
+|---|---|
+| `IFetchClientFactory`: direct `SocketsHttpHandler`, one connection per host, no redirects/proxy, the operator UA, a run's cookie jar, core's address validator | `Fetching/FetchClientFactory.cs`, `Fetching/FetchingOptions.cs` |
+| `IChallengeDetector`: the generic challenge / block / rate-limit classifier, first verdict wins | `Challenges/GenericChallengeDetector.cs` |
+| robots parse + allow/deny + crawl delay | `Robots/RobotsFile.cs` |
+| per-host pacing + back-off math (2 s floor, 30 s crawl ceiling, `Retry-After`, widening pause) | `Pacing/HostPacing.cs` |
+| `Retry-After` reading (seconds or HTTP-date) | `Fetching/RetryAfterPolicy.cs` |
+| the host/lane read-write over `harvest_host_state` and `harvest_host_lane` | `HostStateStore.cs`, `Persistence/Rows/Host{State,Lane}Row.cs` |
+| `IPoliteFetcher`: paces, obeys robots, sends conditionals, answers 304 as not-modified, honours `Retry-After`, classifies, records the host's back-off | `PoliteFetcher.cs`, `FetchRequest.cs`, `FetchResult.cs` |
+
+- The orchestration is Module-internal; the Engine (iteration 3) drives `IPoliteFetcher` and records the outcome on the
+  run. A block, a challenge or a rate limit is recorded and backs the host off — never worked around.

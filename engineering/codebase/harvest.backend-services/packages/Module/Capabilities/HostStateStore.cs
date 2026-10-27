@@ -43,6 +43,19 @@ internal sealed class HostStateStore(HarvestDbContext db)
         return row;
     }
 
+    /// <summary>Reads the host's row without tracking it, or null when the host is new.</summary>
+    /// <param name="hostKey">The host's key.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    public Task<HostStateRow?> PeekHostAsync(string hostKey, CancellationToken cancellationToken) =>
+        db.HostStates.AsNoTracking().FirstOrDefaultAsync(state => state.HostKey == hostKey, cancellationToken);
+
+    /// <summary>Reads the host and lane's row without tracking it, or null when the lane is new.</summary>
+    /// <param name="hostKey">The host's key.</param>
+    /// <param name="lane">The lane.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    public Task<HostLaneRow?> PeekLaneAsync(string hostKey, string lane, CancellationToken cancellationToken) =>
+        db.HostLanes.AsNoTracking().FirstOrDefaultAsync(entry => entry.HostKey == hostKey && entry.Lane == lane, cancellationToken);
+
     /// <summary>Writes the tracked changes.</summary>
     /// <param name="cancellationToken">The cancellation token.</param>
     public Task SaveAsync(CancellationToken cancellationToken) => db.SaveChangesAsync(cancellationToken);
