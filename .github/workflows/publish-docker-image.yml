@@ -26,8 +26,8 @@ permissions:
 
 concurrency:
   group: delivery-${{ github.repository }}-${{ inputs.commit || github.ref }}
-  # main queues, so a newer push never cancels an active target operation; other refs cancel a superseded run.
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref != 'refs/heads/main') }}
+  # Every ref queues, so a newer push never cancels an active target operation. GitHub rejects queue: max together with
+  # a cancel-in-progress that evaluates true, so a superseded branch run still builds.
   queue: max
 
 jobs:
