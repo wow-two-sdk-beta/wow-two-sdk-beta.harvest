@@ -1,26 +1,16 @@
 <script setup lang="ts">
-import { Button } from '@wow-two-beta/fe/presentation/actions';
-import { Badge, Card } from '@wow-two-beta/fe/presentation/display';
-import { GreetingsStatusPanel } from '@wow-two-beta/fe-harvest/admin';
-import { GreetingWidget, forwardToHostedGreeting } from '@wow-two-beta/fe-harvest/kit';
+import { Badge } from '@wow-two-beta/fe/presentation/display';
+import { ContainersPanel } from '@wow-two-beta/fe-harvest/admin';
 import { useSystemStatus } from '../../../application/system/UseSystemStatus';
 
 /**
- * Renders the console: the running versions, the fe-harvest package's management screens (`./admin`) and both modes of
- * its kit, consumed through its exports.
+ * Renders the console: the running versions and the fe-harvest package's management screens (`./admin`), consumed
+ * through its exports. Pipelines, runs, hosts and posts join as the console lane lands.
  */
 defineOptions({ name: 'ConsolePage' });
 
 const appVersion = __APP_VERSION__;
 const { status } = useSystemStatus();
-
-function forward() {
-  forwardToHostedGreeting({
-    serviceUrl: window.location.origin,
-    name: 'Ann',
-    returnUrl: window.location.href,
-  });
-}
 </script>
 
 <template>
@@ -35,21 +25,9 @@ function forward() {
       </div>
     </header>
 
-    <section class="mt-8" aria-labelledby="admin-heading">
-      <h2 id="admin-heading" class="mb-3 text-sm font-medium text-muted-foreground">Status</h2>
-      <GreetingsStatusPanel />
-    </section>
-
-    <section class="mt-8" aria-labelledby="embed-heading">
-      <h2 id="embed-heading" class="mb-3 text-sm font-medium text-muted-foreground">Embedded widget</h2>
-      <GreetingWidget />
-    </section>
-
-    <section class="mt-8" aria-labelledby="forward-heading">
-      <Card class="p-6">
-        <h2 id="forward-heading" class="text-sm font-medium text-muted-foreground">Forward to the hosted page</h2>
-        <Button class="mt-3" @click="forward">Open the hosted greeting</Button>
-      </Card>
+    <section class="mt-8" aria-labelledby="registry-heading">
+      <h2 id="registry-heading" class="mb-3 text-sm font-medium text-muted-foreground">Registry</h2>
+      <ContainersPanel />
     </section>
   </main>
 </template>

@@ -1,7 +1,7 @@
 {
   "name": "@wow-two-beta/fe-harvest",
   "version": "0.0.0",
-  "description": "Harvest domain UI: the Greetings contract, an embeddable greeting widget, the forward to the hosted page and the console's status panel.",
+  "description": "Harvest domain UI: the TypeScript mirror of the registry contract, a registry client and the console's management screens.",
   "type": "module",
   "license": "MIT",
   "repository": {
