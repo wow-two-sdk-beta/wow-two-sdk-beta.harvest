@@ -5,14 +5,15 @@
   </PropertyGroup>
 
   <!--
-    Conformance tier — the one IGreetingsBroker suite (GreetingsBrokerConformance, shipped in the Testing package) run
-    against every implementation: the in-process Module over SQLite, the Client against the service host (in process,
-    or a running image when CONFORMANCE_BASE_URL is set), and the test kit's fake. No Docker needed by default.
+    Conformance tier — the one IRegistrationBroker suite (RegistrationBrokerConformance, shipped in the Testing package)
+    run against every implementation: the in-process Module over PostgreSQL in Testcontainers, the Client against the
+    service host (in process over PostgreSQL, or a running image when CONFORMANCE_BASE_URL and CONFORMANCE_API_KEY are
+    set), and the test kit's fake. Needs Docker unless pointed at a running image.
   -->
   <ItemGroup>
-    <PackageReference Include="WoW2.Sdk.Beta.Be.Testing.Data" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
   </ItemGroup>
 
   <ItemGroup>
@@ -23,6 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\Shared\PostgresServer.cs" Link="Shared\PostgresServer.cs" />
     <Using Include="Xunit" />
   </ItemGroup>
 

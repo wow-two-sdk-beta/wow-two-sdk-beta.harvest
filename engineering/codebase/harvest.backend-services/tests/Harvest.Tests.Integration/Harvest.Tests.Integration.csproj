@@ -5,11 +5,12 @@
   </PropertyGroup>
 
   <!--
-    Integration tier — the Form 1 module wired as a consumer wires it (AddHarvest) over a real, throwaway SQLite file
-    whose schema the module's own migrations build. No HTTP, no Docker.
+    Integration tier — the Form 1 module wired as a consumer wires it (AddHarvest + MigrateHarvestOnStartupAsync) over a
+    real PostgreSQL in Testcontainers (postgres:16-alpine, Docker): the store's rows, the boot self-test, the key store
+    and the capture partitions. No HTTP.
   -->
   <ItemGroup>
-    <PackageReference Include="WoW2.Sdk.Beta.Be.Testing.Data" />
+    <PackageReference Include="WoW2.Sdk.Beta.Be.Testing" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
@@ -22,6 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\Shared\PostgresServer.cs" Link="Shared\PostgresServer.cs" />
     <Using Include="Xunit" />
   </ItemGroup>
 

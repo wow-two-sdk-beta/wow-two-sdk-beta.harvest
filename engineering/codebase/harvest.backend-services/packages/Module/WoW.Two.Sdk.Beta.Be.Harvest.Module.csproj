@@ -1,11 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Form 1: the greetings capability in the consumer's process, over the consumer's database. Ships its schema as
-    embedded Migrations/NNN-name/{Apply,Rollback}.sql; the host applies them (the service does on boot).
+    Form 1: Harvest in the consumer's process, over the consumer's PostgreSQL database (Npgsql, keyed data source).
+    Ships its schema as the embedded migration set "harvest" (Migrations/NNN-name/{Apply,Rollback}.sql); the host applies
+    it with MigrateHarvestOnStartupAsync (the service does on boot), which also runs the store's self-test.
   -->
   <PropertyGroup>
-    <Description>Harvest Form 1: the in-process greetings module over the consumer's database, with its SQL migrations.</Description>
+    <Description>Harvest Form 1: the registry and engine over the consumer's PostgreSQL database, with its SQL migration set and boot self-test.</Description>
   </PropertyGroup>
 
   <ItemGroup>
@@ -27,6 +28,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Harvest.Tests.Unit" />
     <InternalsVisibleTo Include="Harvest.Tests.Integration" />
+    <InternalsVisibleTo Include="Harvest.Tests.Migrations" />
   </ItemGroup>
 
 </Project>

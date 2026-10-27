@@ -1,31 +1,54 @@
-using WoW.Two.Sdk.Beta.Be.Data.Abstractions;
-using WoW.Two.Sdk.Beta.Be.Data.Dapper;
-using WoW.Two.Sdk.Beta.Be.Data.EntityFrameworkCore;
-using WoW.Two.Sdk.Beta.Be.Data.Migrations.Bespoke;
+using Harvest.Api.Registration.Access;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module;
+using WoW.Two.Sdk.Beta.Be.Harvest.Tenants;
+using WoW.Two.Sdk.Beta.Be.Identity.ApiKeys;
 using WoW.Two.Sdk.Beta.Be.Web.Json;
 
 namespace Harvest.Api.Configurations;
 
 public static partial class HostConfiguration
 {
-    /// <summary>Hosts the Form 1 module over the service's SQLite store, with the migrator over the module's SQL.</summary>
+    /// <summary>Holds the configuration key of the operator API key, set from a host file or the vault.</summary>
+    public const string OperatorApiKeySetting = "Harvest:Operator:ApiKey";
+
+    /// <summary>Hosts the Form 1 module over the service's PostgreSQL database, with its migration set and self-test.</summary>
     private static WebApplicationBuilder AddHarvestModule(this WebApplicationBuilder builder)
     {
-        // Resolved lazily, so a test host's configuration overrides still reach the connection string.
-        builder.Services.AddSingleton(provider => new DatabaseSettings
+        // Resolved lazily, so a test host's configuration overrides still reach the connection string and the key.
+        builder.Services.AddHarvest().Configure<IConfiguration>((options, configuration) =>
         {
-            ConnectionString = ResolveConnectionString(provider.GetRequiredService<IConfiguration>()),
+            options.ConnectionString = ResolveConnectionString(configuration);
+            options.OperatorApiKey = configuration[OperatorApiKeySetting];
         });
-        builder.Services.AddSingleton<IDbConnectionFactory>(provider =>
-            new SqliteConnectionFactory(provider.GetRequiredService<DatabaseSettings>().ConnectionString));
-        builder.Services.AddHarvest()
-            .Configure<DatabaseSettings>((options, database) => options.ConnectionString = database.ConnectionString);
-        builder.Services.AddDatabaseBespokeMigrations(typeof(HarvestModuleAssembly).Assembly, migrations =>
+        return builder;
+    }
+
+    /// <summary>Authenticates API keys (marker <c>hv_</c>) against the module's key table and the operator key, and
+    /// registers one policy per scope.</summary>
+    private static WebApplicationBuilder AddApiKeyAccess(this WebApplicationBuilder builder)
+    {
+        builder.Services.AddHarvestApiKeys();
+        builder.Services.AddApiKeyAuthentication(
+            keys =>
+            {
+                keys.Marker = ApiKeyConstants.Marker;
+                keys.RandomLength = ApiKeyConstants.RandomLength;
+            },
+            gate =>
+            {
+                // Every /api call presents a key, this machine included; the status probe stays open.
+                gate.AllowLocalWithoutKey = false;
+                gate.OpenPaths.Add("/api/system/status");
+            });
+        builder.Services.AddAuthorization(options =>
         {
-            migrations.Provider = DatabaseProvider.Sqlite;
-            migrations.Version = MigrationVersionMapper.ToVersion(typeof(HostConfiguration).Assembly);
+            options.AddPolicy(AccessPolicies.AnyKey, policy => policy
+                .AddAuthenticationSchemes(ApiKeyAuthenticationDefaults.Scheme)
+                .RequireAuthenticatedUser());
+            foreach (var scope in HarvestScopeConstants.All)
+                options.AddPolicy(scope, policy => policy.RequireApiKeyScope(scope));
         });
+        builder.Services.AddScoped<CallerResolver>();
         return builder;
     }
 

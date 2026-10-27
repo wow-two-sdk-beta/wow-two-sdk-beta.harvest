@@ -44,15 +44,15 @@ cat > "$consumer/Program.cs" <<CS
 using Microsoft.Extensions.DependencyInjection;
 using WoW.Two.Sdk.Beta.Be.Harvest.Client;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module;
-using WoW.Two.Sdk.Beta.Be.Harvest.Testing.Greetings;
+using WoW.Two.Sdk.Beta.Be.Harvest.Testing.Registration;
 
 var formOne = new ServiceCollection();
-formOne.AddHarvest().Configure(options => options.ConnectionString = "Data Source=:memory:");
+formOne.AddHarvest().Configure(options => options.ConnectionString = "Host=localhost;Database=harvest");
 
 var formThree = new ServiceCollection();
 formThree.AddHarvestClient(options => options.BaseAddress = new Uri("https://service.example.test/"));
 
-Console.WriteLine(\$"pack smoke: {nameof(GreetingsBrokerConformance)} and both forms resolve from the packed family");
+Console.WriteLine(\$"pack smoke: {nameof(RegistrationBrokerConformance)} and both forms resolve from the packed family");
 CS
 
 # No HTTP cache: a core version published minutes ago must resolve, not a cached index that predates it.

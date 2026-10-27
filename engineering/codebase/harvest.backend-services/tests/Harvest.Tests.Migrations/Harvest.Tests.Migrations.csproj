@@ -5,11 +5,12 @@
   </PropertyGroup>
 
   <!--
-    Migrator-engine suite: the module's embedded Migrations/NNN/*.sql — apply, idempotency, rollback — against a
-    throwaway SQLite file (no Docker). No HTTP, no EF model. Rides the SDK Testing.Data harness (MigratorHarness).
+    Migration tier — the module's embedded migration set "harvest" (Migrations/NNN/*.sql): apply, idempotency, rollback,
+    re-apply, partitions and the trigram index, against a real PostgreSQL in Testcontainers (postgres:16-alpine, Docker).
+    No HTTP, no EF model.
   -->
   <ItemGroup>
-    <PackageReference Include="WoW2.Sdk.Beta.Be.Testing.Data" />
+    <PackageReference Include="WoW2.Sdk.Beta.Be.Testing" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
@@ -21,6 +22,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\Shared\PostgresServer.cs" Link="Shared\PostgresServer.cs" />
     <Using Include="Xunit" />
   </ItemGroup>
 

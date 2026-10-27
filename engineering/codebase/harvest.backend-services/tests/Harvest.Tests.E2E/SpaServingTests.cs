@@ -3,13 +3,12 @@ using AwesomeAssertions;
 
 namespace Harvest.Tests.E2E;
 
-/// <summary>The single-host contract: the built Vue app (console and hosted pages) is served at <c>/</c>, its hosted <c>/greet</c> page and any unknown route falls back to it, and an unmatched <c>/api</c> path answers JSON, never the app shell.</summary>
+/// <summary>The single-host contract: the built Vue app (the console) is served at <c>/</c>, any unknown route falls back to it, and an unmatched <c>/api</c> path answers JSON — 401 without a key, 404 with one — never the app shell.</summary>
 [Collection(HarvestApiCollection.Name)]
 public sealed class SpaServingTests(HarvestApiFixture fixture)
 {
     [Theory]
     [InlineData("/")]
-    [InlineData("/greet")]
     [InlineData("/some/client/route")]
     public async Task Get_ShouldServeTheAppShell_WhenTheRouteIsNotAnApiRoute(string path)
     {
@@ -22,14 +21,16 @@ public sealed class SpaServingTests(HarvestApiFixture fixture)
         (await response.Content.ReadAsStringAsync()).Should().Contain("<div id=\"root\">");
     }
 
-    [Fact]
-    public async Task Get_ShouldReturn404AsJson_WhenAnApiRouteDoesNotExist()
+    [Theory]
+    [InlineData(null, HttpStatusCode.Unauthorized)]
+    [InlineData(HarvestApiFixture.OperatorKey, HttpStatusCode.NotFound)]
+    public async Task Get_ShouldAnswerJsonNotTheAppShell_WhenAnApiRouteDoesNotExist(string? apiKey, HttpStatusCode expected)
     {
-        using var client = fixture.Host.CreateClient();
+        using var client = fixture.CreateClient(apiKey);
 
         using var response = await client.GetAsync("/api/does-not-exist");
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.StatusCode.Should().Be(expected);
         response.Content.Headers.ContentType?.MediaType.Should().NotBe("text/html");
         (await response.Content.ReadAsStringAsync()).Should().NotContain("<div id=\"root\">");
     }

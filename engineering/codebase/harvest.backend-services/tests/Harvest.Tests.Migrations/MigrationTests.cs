@@ -1,65 +1,125 @@
 using AwesomeAssertions;
-using WoW.Two.Sdk.Beta.Be.Harvest.Module;
+using Harvest.Tests.Shared;
+using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using WoW.Two.Sdk.Beta.Be.Data.Migrations.Bespoke;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
-using WoW.Two.Sdk.Beta.Be.Testing.Data.Migrations;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module;
 
 namespace Harvest.Tests.Migrations;
 
-/// <summary>The module's embedded migrations over a throwaway SQLite file: apply, idempotency, and the Apply → Rollback → Apply round trip.</summary>
-public sealed class MigrationTests : IDisposable
+/// <summary>The module's migration set over a fresh PostgreSQL database: apply, idempotency, the Apply → Rollback → Apply
+/// round trip, and the shape SQL 001 promises the lanes.</summary>
+public sealed class MigrationTests : IAsyncLifetime
 {
-    private static readonly string[] Names = ["baseline"];
+    /// <summary>Holds every table 001 creates, partitions aside.</summary>
+    private static readonly string[] Tables =
+    [
+        "harvest_api_keys", "harvest_captures", "harvest_check_policies", "harvest_containers", "harvest_enumerations",
+        "harvest_host_lane", "harvest_host_policies", "harvest_host_state", "harvest_link_check_log", "harvest_link_events",
+        "harvest_link_readings", "harvest_link_schedule", "harvest_pipelines", "harvest_post_links", "harvest_post_texts",
+        "harvest_posts", "harvest_retention_policies", "harvest_runs", "harvest_schedules", "harvest_source_scopes",
+        "harvest_sources", "harvest_subscription_event", "harvest_subscriptions", "harvest_tenants", "harvest_usage",
+        "harvest_work_item",
+    ];
 
-    private readonly string databasePath = Path.Combine(Path.GetTempPath(), $"harvest-migrations-{Guid.NewGuid():N}.db");
+    private ServiceProvider services = null!;
+    private string connectionString = null!;
 
-    /// <summary>Gets the connection string; pooling is off so the file is unlocked for teardown.</summary>
-    private string ConnectionString => $"Data Source={databasePath};Pooling=False";
+    private IMigrationRunnerService Runner =>
+        services.GetRequiredService<IMigrationSetRegistry>().GetRunner(HarvestModuleConstants.MigrationSetName);
 
-    public void Dispose()
+    public async Task InitializeAsync()
     {
-        if (File.Exists(databasePath))
-            File.Delete(databasePath);
+        connectionString = (await PostgresServer.SharedAsync()).NewDatabase("migrations");
+        var collection = new ServiceCollection().AddLogging();
+        collection.AddHarvest().Configure(options => options.ConnectionString = connectionString);
+        collection.Configure<MigrationOptions>(HarvestModuleConstants.MigrationSetName, options => options.AllowRollback = true);
+        services = collection.BuildServiceProvider();
+        await services.GetRequiredKeyedService<IMigrationDialect>(HarvestModuleConstants.MigrationSetName).EnsureDatabaseExistsAsync(connectionString);
     }
 
-    private MigratorHarness CreateMigrator(Action<MigrationOptions>? configure = null) =>
-        MigratorHarness.CreateSqlite(ConnectionString, typeof(HarvestModuleAssembly).Assembly, configure);
+    public async Task DisposeAsync()
+    {
+        await services.DisposeAsync();
+        NpgsqlConnection.ClearAllPools();
+    }
 
     [Fact]
-    public async Task ApplyPending_ShouldCreateTheModuleSchemaAndBeIdempotent_WhenTheDatabaseIsFresh()
+    public async Task ApplyPending_ShouldCreateTheSliceSchemaAndBeIdempotent_WhenTheDatabaseIsFresh()
     {
-        await using var migrator = CreateMigrator();
-
-        var applied = Unwrap(await migrator.Runner.ApplyPendingAsync("startup", CancellationToken.None));
+        var applied = Unwrap(await Runner.ApplyPendingAsync("startup", CancellationToken.None));
 
         applied.Should().Equal("001-baseline");
-        (await migrator.HasTableAsync("harvest_greeting_logs")).Should().BeTrue();
-        var history = await migrator.ReadHistoryAsync();
-        history.Select(row => row.Ordinal).Should().Equal(1);
-        history.Select(row => row.Name).Should().Equal(Names);
-        history.Should().OnlyContain(row => row.AppliedBy == "startup" && row.Checksum.Length == 64);
+        (await HarvestTablesAsync()).Should().BeEquivalentTo(Tables);
+        (await ScalarAsync<long>("SELECT count(*) FROM harvest_migration_history WHERE applied_by = 'startup'")).Should().Be(1);
+        Unwrap(await Runner.ApplyPendingAsync("startup", CancellationToken.None)).Should().BeEmpty();
+    }
 
-        Unwrap(await migrator.Runner.ApplyPendingAsync("startup", CancellationToken.None)).Should().BeEmpty();
-        (await migrator.ReadHistoryAsync()).Should().HaveCount(1);
+    [Fact]
+    public async Task ApplyPending_ShouldPartitionCapturesByMonthWithADefault_WhenTheSchemaIsCreated()
+    {
+        Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None));
+
+        (await ScalarAsync<string>("SELECT partstrat::text FROM pg_partitioned_table WHERE partrelid = 'harvest_captures'::regclass")).Should().Be("r");
+        (await ScalarAsync<long>("SELECT count(*) FROM pg_inherits WHERE inhparent = 'harvest_captures'::regclass")).Should().Be(5);
+        (await ScalarAsync<bool>("SELECT to_regclass('harvest_captures_default') IS NOT NULL")).Should().BeTrue();
+        (await ScalarAsync<string>("SELECT 'harvest_captures_y' || to_char(now() AT TIME ZONE 'UTC', 'YYYY\"m\"MM')")).Should()
+            .Match(name => name.Length == "harvest_captures_y2026m10".Length);
+        (await ScalarAsync<bool>("SELECT to_regclass('harvest_captures_y' || to_char(now() AT TIME ZONE 'UTC', 'YYYY\"m\"MM')) IS NOT NULL")).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ApplyPending_ShouldInstallTrigramsAndSeedTheConfigTables_WhenTheSchemaIsCreated()
+    {
+        Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None));
+
+        (await ScalarAsync<string>("SELECT indexdef FROM pg_indexes WHERE indexname = 'ix_harvest_post_texts_match'")).Should().Contain("gin_trgm_ops");
+        (await ScalarAsync<int>("SELECT array_length(show_trgm('привет'), 1)")).Should().BePositive();
+        (await ScalarAsync<long>("SELECT count(*) FROM harvest_retention_policies")).Should().Be(6);
+        (await ScalarAsync<string>("SELECT string_agg(key, ',' ORDER BY key) FROM harvest_check_policies")).Should().Be("none,web-direct");
     }
 
     [Fact]
     public async Task ApplyPending_ShouldRestoreTheSchema_WhenEveryMigrationWasRolledBack()
     {
-        await using var migrator = CreateMigrator(options => options.AllowRollback = true);
-        Unwrap(await migrator.Runner.ApplyPendingAsync("test", CancellationToken.None));
+        Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None));
 
-        Unwrap(await migrator.Runner.RollbackAsync(targetOrdinal: 0, CancellationToken.None))
-            .Should().Equal("001-baseline");
-        (await migrator.HasTableAsync("harvest_greeting_logs")).Should().BeFalse();
-        (await migrator.ReadHistoryAsync()).Should().BeEmpty();
+        Unwrap(await Runner.RollbackAsync(targetOrdinal: 0, CancellationToken.None)).Should().Equal("001-baseline");
+        (await HarvestTablesAsync()).Should().BeEmpty();
+        (await ScalarAsync<bool>("SELECT to_regproc('harvest_ensure_capture_partitions') IS NULL")).Should().BeTrue();
 
-        Unwrap(await migrator.Runner.ApplyPendingAsync("test", CancellationToken.None)).Should().Equal("001-baseline");
-        (await migrator.HasTableAsync("harvest_greeting_logs")).Should().BeTrue();
-        var status = Unwrap(await migrator.Runner.GetStatusAsync(CancellationToken.None));
-        status.Applied.Select(applied => applied.Ordinal).Should().Equal(1);
+        Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None)).Should().Equal("001-baseline");
+        (await HarvestTablesAsync()).Should().BeEquivalentTo(Tables);
+        var status = Unwrap(await Runner.GetStatusAsync(CancellationToken.None));
+        status.Applied.Select(migration => migration.Ordinal).Should().Equal(1);
         status.Pending.Should().BeEmpty();
         status.Drifted.Should().BeEmpty();
+    }
+
+    private async Task<List<string>> HarvestTablesAsync()
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND NOT c.relispartition
+              AND c.relname LIKE 'harvest\_%' AND c.relname <> 'harvest_migration_history'
+            """, connection);
+        var tables = new List<string>();
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+            tables.Add(reader.GetString(0));
+        return tables;
+    }
+
+    private async Task<T> ScalarAsync<T>(string sql)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(sql, connection);
+        return (T)(await command.ExecuteScalarAsync())!;
     }
 
     /// <summary>Returns a migrator result's value, failing the test with the migrator's own message otherwise.</summary>
