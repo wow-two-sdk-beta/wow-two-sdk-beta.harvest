@@ -41,6 +41,7 @@ Shape: wow-two-ws/conventions/planning/version-track/version-track.md
 | Item | Type | Notes |
 |---|---|---|
 | GitHub repo, settings and `main-guard` ruleset | engineering | auto mode refused `gh repo create`; the developer creates it |
+| Core pin past `10.0.81-beta` | engineering | core `10.0.82` moved `Identity/ApiKeys` to the Identity repo; re-pin with `WoW2.Sdk.Beta.Be.Identity.Auth` (same namespace) once it publishes; `core-latest.yml` is red until then |
 | Image and Wheelhouse dev rollout | engineering | after the GitHub repo |
 | NuGet trusted-publishing policy and npm first version | engineering | after the content gate |
 | Move the Harvest analysis into `engineering/research/` | engineering | after the private-facts strip pass |

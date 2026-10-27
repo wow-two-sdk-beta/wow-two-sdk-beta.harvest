@@ -37,15 +37,15 @@
 ### `codebase/harvest.backend-services/`
 | Project | What it is |
 |---|---|
-| `packages/Abstractions` | the contract: `IGreetingsBroker`, model, constants, error catalogue |
-| `packages/Module` | Form 1: the broker over the module's store, `AddHarvest()`, embedded SQL migrations |
+| `packages/Abstractions` | the contract: `IRegistrationBroker`, the step-broker and capability seams, `Capture`, `wow2.post.v1`, delivery types |
+| `packages/Module` | Form 1: the store on PostgreSQL, `AddHarvest()`, the SQL migration set and boot self-test, the lane folders |
 | `packages/Client` | Forms 2/3: the broker over the service's HTTP API, `AddHarvestClient()` |
-| `packages/Testing` | fake broker and the conformance suite |
-| `service/Harvest.Api` | the deployable host: the module, the HTTP mirror, the hosted pages |
+| `packages/Testing` | `FakeRegistrationBroker` and the conformance suite |
+| `service/Harvest.Api` | the deployable host: the module, API key access, the HTTP mirror, the console |
 | `tests/Harvest.Tests.{Unit,Integration,E2E,Conformance,Migrations}` | the test tiers |
 
 ### `codebase/harvest.frontend-services/`
 | Project | What it is |
 |---|---|
-| `packages/fe-harvest` | `@wow-two-beta/fe-harvest`: `./contracts` mirror, `./kit` (`GreetingWidget`, forward to the hosted page), `./admin` (`GreetingsStatusPanel`) |
-| `apps/web` | hosted pages (`/greet`) and the console (`/`, composing `./admin`), served by `Harvest.Api` |
+| `packages/fe-harvest` | `@wow-two-beta/fe-harvest`: `./contracts` mirror, `./kit` (`createRegistryClient`), `./admin` (`ContainersPanel`) |
+| `apps/web` | the console (`/`, composing `./admin`), served by `Harvest.Api` |

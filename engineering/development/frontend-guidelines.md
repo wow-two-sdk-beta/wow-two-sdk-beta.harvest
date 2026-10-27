@@ -5,18 +5,18 @@ Defer to `wow-two-ws/conventions/development/frontend/`.
 ## Workspace
 
 - Frontend root: `engineering/codebase/harvest.frontend-services/`; Node `24.11.0` from `.nvmrc`, `pnpm@10.33.2`.
-- `packages/fe-harvest` is `@wow-two-beta/fe-harvest`, published to npm: `./contracts` (the TypeScript mirror of the be
-  contract), `./kit` (`GreetingWidget`, `createGreetingsClient`, `forwardToHostedGreeting`) and `./admin`
-  (`GreetingsStatusPanel`, the management screens). It peers `@wow-two-beta/fe` at `>=0.0.n <0.1.0`, `n` the pinned
+- `packages/fe-harvest` is `@wow-two-beta/fe-harvest`, published to npm: `./contracts` (the TypeScript mirror of the
+  registry contract), `./kit` (`createRegistryClient`) and `./admin` (`ContainersPanel`, the management screens). It peers `@wow-two-beta/fe` at `>=0.0.n <0.1.0`, `n` the pinned
   version; `check:package` enforces it and fails when one of the three exports is missing.
-- `apps/web` is `@harvest/web`, private: the hosted pages (`/greet`) and the console (`/`). It takes `fe-harvest` by
-  `workspace:*`, through its `exports` only — the way a product would; the package never imports `apps/`.
+- `apps/web` is `@harvest/web`, private: the console (`/`); hosted pages join as consumers forward to them. It takes
+  `fe-harvest` by `workspace:*`, through its `exports` only — the way a product would; the package never imports
+  `apps/`.
 - App source uses `bootstrap`, `presentation`, `application`, `domain`, and `integration` layers.
 - Routes live in `src/bootstrap/router/Routes.ts` on the fe sdk router (`createAppRouter`, `lazyPage`); a new hosted
   page is one route there, its path a constant in `fe-harvest/contracts`, its props decoded from the route.
-- The kit's UI is form-agnostic: it calls the consumer's origin (Form 1) or the service's (`baseUrl`), never both.
-- Management screens live in `fe-harvest/src/admin/`, exported as `./admin`, each taking an optional client like the
-  widget; the console page composes them, and a central console or a product's admin page imports the same export.
+- The kit is form-agnostic: it calls the consumer's origin (Form 1) or the service's (`baseUrl`), never both, with the
+  Harvest API key in `X-Api-Key` when one is given.
+- Management screens live in `fe-harvest/src/admin/`, exported as `./admin`, each taking an optional client; the console page composes them, and a central console or a product's admin page imports the same export.
   The console never builds a management screen of its own.
 
 ## Commands
