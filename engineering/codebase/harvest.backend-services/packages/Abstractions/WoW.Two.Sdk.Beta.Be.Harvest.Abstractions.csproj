@@ -2,7 +2,8 @@
 
   <!--
     The Harvest contract: the registration broker and its models, the step-broker contract source adapters implement,
-    the capability seams (egress, sessions, profiles, challenges), reader and extraction output, and delivery types.
+    the capability seams (direct fetching, challenge detection, rendering), reader and extraction output, and delivery
+    types.
     It references the kernel WoW2.Sdk.Beta.Be.Abstractions only (Result, AppError, IEvent) — no core, no framework
     reference, no third-party package — and holds no options binding, DI registration or I/O.
   -->

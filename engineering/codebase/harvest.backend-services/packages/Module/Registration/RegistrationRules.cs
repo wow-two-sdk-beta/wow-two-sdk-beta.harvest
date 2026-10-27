@@ -2,7 +2,6 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
-using WoW.Two.Sdk.Beta.Be.Harvest.Capabilities;
 using WoW.Two.Sdk.Beta.Be.Harvest.Containers;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
@@ -122,32 +121,21 @@ internal static partial class RegistrationRules
         return registration.CapabilityPolicy is { } policy ? ValidateCapabilityPolicy(policy) : null;
     }
 
-    /// <summary>Validates a capability policy: step keys, rung names and order, non-negative caps.</summary>
+    /// <summary>Validates a capability policy: step keys and lanes, non-negative caps.</summary>
     public static AppError? ValidateCapabilityPolicy(CapabilityPolicy policy)
     {
-        if (policy.Defaults is { } defaults && ValidateStepCapability("defaults", defaults) is { } defaultsError)
+        if (policy.Defaults is { } defaults && ValidateStep("defaults", defaults.Lane, defaults.MaxUsdPerMonth) is { } defaultsError)
             return defaultsError;
 
         foreach (var (stepKey, step) in policy.Steps)
         {
             if (!IsKey(stepKey))
                 return RegistrationErrors.Invalid($"The step key '{stepKey}' must match {StepConstants.KeyPattern}.");
-            if (ValidateStepCapability(stepKey, step) is { } stepError)
+            if (ValidateStep(stepKey, step.Lane, step.MaxUsdPerMonth) is { } stepError)
                 return stepError;
         }
 
-        if (policy.MonthUsd is < 0)
-            return RegistrationErrors.Invalid("A monthly cap must not be negative.");
-
-        foreach (var cap in policy.MaxUsdPerSuccess)
-        {
-            if (!CapabilityRungs.Ordered.Contains(cap.Rung))
-                return RegistrationErrors.Invalid($"'{cap.Rung}' is not a rung.");
-            if (cap.MaxUsdPerSuccess < 0)
-                return RegistrationErrors.Invalid("A cost cap must not be negative.");
-        }
-
-        return null;
+        return policy.MonthUsd is < 0 ? RegistrationErrors.Invalid("A monthly cap must not be negative.") : null;
     }
 
     /// <summary>Validates a pipeline's display name, schedules, step overrides and limits.</summary>
@@ -180,17 +168,15 @@ internal static partial class RegistrationRules
         return null;
     }
 
-    /// <summary>Validates step overrides: keys and lanes, rung names, order and bounds, non-negative caps.</summary>
+    /// <summary>Validates step overrides: keys and lanes, non-negative caps.</summary>
     public static AppError? ValidateStepOverrides(IReadOnlyDictionary<string, StepOverride> steps)
     {
         foreach (var (stepKey, step) in steps)
         {
             if (!IsKey(stepKey))
                 return RegistrationErrors.Invalid($"The step key '{stepKey}' must match {StepConstants.KeyPattern}.");
-            if (ValidateLadder(stepKey, step.Lane, step.Floor, step.Ladder, step.Ceiling) is { } ladderError)
-                return ladderError;
-            if (step.MaxUsdPerMonth is < 0)
-                return RegistrationErrors.Invalid($"The step '{stepKey}' has a negative monthly cap.");
+            if (ValidateStep(stepKey, step.Lane, step.MaxUsdPerMonth) is { } stepError)
+                return stepError;
         }
 
         return null;
@@ -275,54 +261,14 @@ internal static partial class RegistrationRules
         _ => null,
     };
 
-    private static AppError? ValidateStepCapability(string stepKey, StepCapabilityPolicy step)
-    {
-        if (ValidateLadder(stepKey, step.Lane, step.Floor, step.Ladder, step.Ceiling) is { } ladderError)
-            return ladderError;
-        if (step.Profile is { } profile && string.IsNullOrWhiteSpace(profile))
-            return RegistrationErrors.Invalid($"The step '{stepKey}' names a blank profile.");
-
-        return step.SolverMaxUsdPer1k is < 0 || step.SolverMaxSolvesPerDay is < 0 || step.MaxUsdPerMonth is < 0
-            ? RegistrationErrors.Invalid($"The step '{stepKey}' has a negative cap.")
-            : null;
-    }
-
-    /// <summary>Validates a lane and a ladder: known rungs, strictly ascending, inside the floor and the ceiling.</summary>
-    private static AppError? ValidateLadder(string stepKey, string? lane, string? floor, IReadOnlyList<string>? ladder, string? ceiling)
+    /// <summary>Validates one step's lane and monthly cap.</summary>
+    private static AppError? ValidateStep(string stepKey, string? lane, decimal? maxUsdPerMonth)
     {
         if (lane is not null && !IsKey(lane))
             return RegistrationErrors.Invalid($"The lane of step '{stepKey}' must match {StepConstants.KeyPattern}.");
 
-        var floorIndex = RungIndex(floor);
-        var ceilingIndex = RungIndex(ceiling);
-        if (floorIndex == -1 || ceilingIndex == -1)
-            return RegistrationErrors.Invalid($"The step '{stepKey}' names a rung outside R0–R8.");
-        if (floor is not null && ceiling is not null && floorIndex > ceilingIndex)
-            return RegistrationErrors.Invalid($"The step '{stepKey}' has its floor above its ceiling.");
-        if (ladder is null)
-            return null;
-        if (ladder.Count == 0)
-            return RegistrationErrors.Invalid($"The step '{stepKey}' declares an empty ladder.");
-
-        var previous = -1;
-        foreach (var rung in ladder)
-        {
-            var index = RungIndex(rung);
-            if (index < 0)
-                return RegistrationErrors.Invalid($"The step '{stepKey}' names a rung outside R0–R8.");
-            if (index <= previous)
-                return RegistrationErrors.Invalid($"The ladder of step '{stepKey}' must climb, cheapest rung first.");
-            if ((floor is not null && index < floorIndex) || (ceiling is not null && index > ceilingIndex))
-                return RegistrationErrors.Invalid($"The ladder of step '{stepKey}' leaves its floor and ceiling.");
-            previous = index;
-        }
-
-        return null;
+        return maxUsdPerMonth is < 0 ? RegistrationErrors.Invalid($"The step '{stepKey}' has a negative monthly cap.") : null;
     }
-
-    /// <summary>Returns a rung's position, -2 for null and -1 for an unknown name.</summary>
-    private static int RungIndex(string? rung) =>
-        rung is null ? -2 : CapabilityRungs.Ordered.ToList().IndexOf(rung);
 
     private static bool IsKey(string value) => KeyPattern().IsMatch(value);
 

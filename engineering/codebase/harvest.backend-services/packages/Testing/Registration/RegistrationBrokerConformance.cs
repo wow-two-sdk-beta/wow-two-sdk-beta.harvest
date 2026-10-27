@@ -1,7 +1,6 @@
 using AwesomeAssertions;
 using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
-using WoW.Two.Sdk.Beta.Be.Harvest.Capabilities;
 using WoW.Two.Sdk.Beta.Be.Harvest.Containers;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
@@ -285,7 +284,7 @@ public abstract class RegistrationBrokerConformance
         Error(await Broker.ListSourcesAsync(Guid.NewGuid())).Type.Should().Be(AppErrorType.NotFound);
     }
 
-    /// <summary>A malformed handle, authority, retention class, check policy or capability ladder fails validation.</summary>
+    /// <summary>A malformed handle, authority, retention class, check policy or capability policy fails validation.</summary>
     [Fact]
     public async Task RegisterSource_ShouldFailValidation_WhenAFieldIsMalformed()
     {
@@ -299,7 +298,8 @@ public abstract class RegistrationBrokerConformance
             valid with { Authority = 101 },
             valid with { RetentionClass = "forever" },
             valid with { CheckPolicy = "hourly" },
-            valid with { CapabilityPolicy = new CapabilityPolicy { Defaults = new StepCapabilityPolicy { Ladder = [CapabilityRungs.R3, CapabilityRungs.R0] } } },
+            valid with { CapabilityPolicy = new CapabilityPolicy { Defaults = new StepCapabilityPolicy { Lane = "Lane One" } } },
+            valid with { CapabilityPolicy = new CapabilityPolicy { Steps = new Dictionary<string, StepCapabilityPolicy> { ["detail"] = new() { MaxUsdPerMonth = -1 } } } },
             valid with { CapabilityPolicy = new CapabilityPolicy { Steps = new Dictionary<string, StepCapabilityPolicy> { ["has_underscore"] = new() } } },
         ];
 
@@ -314,13 +314,12 @@ public abstract class RegistrationBrokerConformance
         var container = await PrivateContainerAsync(await TenantAsync());
         var policy = new CapabilityPolicy
         {
-            Defaults = new StepCapabilityPolicy { Profile = "browser:chromium-desktop", Ladder = [CapabilityRungs.R0, CapabilityRungs.R3], Ceiling = CapabilityRungs.R5 },
+            Defaults = new StepCapabilityPolicy { MaxUsdPerMonth = 10m },
             Steps = new Dictionary<string, StepCapabilityPolicy>
             {
-                ["contact"] = new() { Lane = "contact", Floor = CapabilityRungs.R3, Ladder = [CapabilityRungs.R3, CapabilityRungs.R4], Ceiling = CapabilityRungs.R4, SolverMaxUsdPer1k = 3m },
+                ["contact"] = new() { Lane = "contact", MaxUsdPerMonth = 3m },
             },
             MonthUsd = 30m,
-            MaxUsdPerSuccess = [new RungCostCap { Rung = CapabilityRungs.R3, MaxUsdPerSuccess = 0.005m }],
         };
 
         var source = Value(await Broker.RegisterSourceAsync(Source(container.Id, SourceFamily.Listing, "olx.uz") with
@@ -367,7 +366,7 @@ public abstract class RegistrationBrokerConformance
             ],
             Steps = new Dictionary<string, StepOverride>
             {
-                ["contact"] = new() { Enabled = true, Lane = "contact", Ceiling = CapabilityRungs.R4 },
+                ["contact"] = new() { Enabled = true, Lane = "contact", MaxUsdPerMonth = 5m },
             },
             Limits = new PipelineLimits { MaxRequests = 5000, MaxDuration = TimeSpan.FromHours(2) },
             Ai = AiMode.Gaps,
@@ -473,8 +472,8 @@ public abstract class RegistrationBrokerConformance
             valid with { Schedules = [new ScheduleDeclaration { Kind = WorkKind.Sweep, Mode = ScheduleMode.Manual }] },
             valid with { Schedules = [Every(TimeSpan.FromHours(1)) with { TimeZone = "Mars/Olympus" }] },
             valid with { Schedules = [new ScheduleDeclaration { Kind = WorkKind.Check, Mode = ScheduleMode.Adaptive, Every = TimeSpan.FromHours(2), MaxEvery = TimeSpan.FromHours(1) }] },
-            valid with { Steps = new Dictionary<string, StepOverride> { ["detail"] = new() { Floor = CapabilityRungs.R4, Ceiling = CapabilityRungs.R2 } } },
-            valid with { Steps = new Dictionary<string, StepOverride> { ["detail"] = new() { Ladder = ["R9"] } } },
+            valid with { Steps = new Dictionary<string, StepOverride> { ["detail"] = new() { Lane = "Lane One" } } },
+            valid with { Steps = new Dictionary<string, StepOverride> { ["detail"] = new() { MaxUsdPerMonth = -1 } } },
             valid with { Steps = new Dictionary<string, StepOverride> { ["has_underscore"] = new() } },
             valid with { Limits = new PipelineLimits { MaxPages = 0 } },
             valid with { Limits = new PipelineLimits { MaxItems = PipelineConstants.MaxItemsCap + 1 } },

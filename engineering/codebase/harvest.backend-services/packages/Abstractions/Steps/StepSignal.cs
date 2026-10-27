@@ -2,7 +2,7 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Capabilities.Challenges;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 
-/// <summary>Represents one observation a step reports while it runs, which the ladder and the usage meters learn from.</summary>
+/// <summary>Represents one observation a step reports while it runs, which the host gate and the usage meters learn from.</summary>
 public sealed record StepSignal
 {
     /// <summary>Gets what the host answered.</summary>

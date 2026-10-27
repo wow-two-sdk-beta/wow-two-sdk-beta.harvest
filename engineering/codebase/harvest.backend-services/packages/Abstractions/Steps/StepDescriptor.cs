@@ -9,7 +9,7 @@ public sealed record StepDescriptor
     /// <summary>Gets what the step does.</summary>
     public required StepRole Role { get; init; }
 
-    /// <summary>Gets the capabilities the step needs.</summary>
+    /// <summary>Gets what the step needs to read its content.</summary>
     public StepRequirements Requires { get; init; } = new();
 
     /// <summary>Gets the lane the step runs in, so a block in it never pauses the host's other steps.</summary>

@@ -11,7 +11,7 @@ picks an implementation:
 | `Registration` | `IRegistrationBroker` — tenants, API keys, containers, sources, pipelines — its routes and errors |
 | `Tenants` · `Containers` · `Sources` · `Pipelines` | the registry's models, posture switches, capability policy, schedules, step overrides |
 | `Steps` | the step-broker contract source adapters implement: `ISourceAdapter`, `IStepBroker`, `IStepContext`, requirements, outcomes |
-| `Capabilities.*` | `IEgressPool`, `IEgressClientFactory`, `ISessionLeases`, `IProfileCatalog`, `IChallengeDetector`, the rung ladder |
+| `Capabilities.*` | `IFetchClientFactory` (direct fetching), `IChallengeDetector` (challenge, block or rate limit), `IBrowserRenderer` |
 | `Readers` | `ICaptureReader` and its output, `Capture` |
 | `Extraction` | `IPostExtractor` and the base envelope `wow2.post.v1` (`PostEnvelope`) |
 | `Posts` · `Runs` · `Delivery` | link and post states, run vocabulary, subscriptions, events and the cursor page |

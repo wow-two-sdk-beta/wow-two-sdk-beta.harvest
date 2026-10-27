@@ -12,9 +12,6 @@ public enum PipelinePauseReason
     /// <summary>The source's permission no longer allows it.</summary>
     Permission,
 
-    /// <summary>An account or a connection it needs is down.</summary>
-    Account,
-
     /// <summary>Its last channel subscriber left and it is not pinned.</summary>
     Idle,
 }

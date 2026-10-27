@@ -3,7 +3,7 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Capabilities.Challenges;
 /// <summary>Refers to the kind of check a host put between a request and its content.</summary>
 public enum ChallengeKind
 {
-    /// <summary>A JavaScript interstitial that a rendering browser clears.</summary>
+    /// <summary>A JavaScript interstitial.</summary>
     JsInterstitial,
 
     /// <summary>A reCAPTCHA widget.</summary>

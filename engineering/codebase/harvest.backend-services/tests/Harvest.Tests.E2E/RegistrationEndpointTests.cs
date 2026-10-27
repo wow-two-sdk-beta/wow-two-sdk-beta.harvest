@@ -61,7 +61,7 @@ public sealed class RegistrationEndpointTests(HarvestApiFixture fixture)
         using var response = await PostAsync(client, "/api/sources", $$"""
             {"containerId":"{{container}}","family":"structured","handle":"https://Voyage.uz/events","coverage":"whole",
              "completeness":"complete","posture":"ownFetch","robotsPolicy":"ignore",
-             "capabilityPolicy": { "steps": { "detail": { "ladder": ["R0","R2","R3"], "ceiling": "R3" } } } }
+             "capabilityPolicy": { "steps": { "detail": { "lane": "detail", "maxUsdPerMonth": 3 } } } }
             """);
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
@@ -70,7 +70,7 @@ public sealed class RegistrationEndpointTests(HarvestApiFixture fixture)
         source.GetProperty("posture").GetString().Should().Be("ownFetch");
         source.GetProperty("permission").GetString().Should().Be("open");
         source.GetProperty("robotsPolicy").GetString().Should().Be("ignore");
-        source.GetProperty("capabilityPolicy").GetProperty("steps").GetProperty("detail").GetProperty("ceiling").GetString().Should().Be("R3");
+        source.GetProperty("capabilityPolicy").GetProperty("steps").GetProperty("detail").GetProperty("lane").GetString().Should().Be("detail");
     }
 
     [Fact]

@@ -9,9 +9,6 @@ public sealed record StepUsage
     /// <summary>Gets the bytes the step read.</summary>
     public long Bytes { get; init; }
 
-    /// <summary>Gets the captcha solves the step spent.</summary>
-    public int Solves { get; init; }
-
     /// <summary>Gets the step's estimated cost (USD).</summary>
     public decimal EstimatedUsd { get; init; }
 }

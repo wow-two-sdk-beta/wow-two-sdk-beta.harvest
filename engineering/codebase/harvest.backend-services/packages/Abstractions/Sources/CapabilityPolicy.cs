@@ -11,9 +11,6 @@ public sealed record CapabilityPolicy
     /// <summary>Gets the limits per step key, over <see cref="Defaults"/>.</summary>
     public IReadOnlyDictionary<string, StepCapabilityPolicy> Steps { get; init; } = new Dictionary<string, StepCapabilityPolicy>();
 
-    /// <summary>Gets the source's monthly spending cap across paid rungs (USD).</summary>
+    /// <summary>Gets the source's monthly spending cap across paid work — rendering, providers, models (USD).</summary>
     public decimal? MonthUsd { get; init; }
-
-    /// <summary>Gets the most one success may cost, per rung.</summary>
-    public IReadOnlyList<RungCostCap> MaxUsdPerSuccess { get; init; } = [];
 }

@@ -27,9 +27,6 @@ public enum StepRole
     /// <summary>Submits, polls and collects a licensed provider's run.</summary>
     ProviderJob,
 
-    /// <summary>Acts with an account: resolve, join, leave.</summary>
-    AccountOp,
-
     /// <summary>Runs the extraction cascade.</summary>
     Extract,
 }

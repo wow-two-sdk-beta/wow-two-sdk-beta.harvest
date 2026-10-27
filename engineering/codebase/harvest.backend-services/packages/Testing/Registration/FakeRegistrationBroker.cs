@@ -4,7 +4,6 @@ using System.Text;
 using System.Text.RegularExpressions;
 using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
-using WoW.Two.Sdk.Beta.Be.Harvest.Capabilities;
 using WoW.Two.Sdk.Beta.Be.Harvest.Containers;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
@@ -458,20 +457,12 @@ public sealed partial class FakeRegistrationBroker(TimeProvider? time = null) : 
     }
 
     private static bool IsValid(IReadOnlyDictionary<string, StepOverride> steps) =>
-        steps.All(pair => KeyPattern().IsMatch(pair.Key)
-                          && IsLadder(pair.Value.Lane, pair.Value.Floor, pair.Value.Ladder, pair.Value.Ceiling)
-                          && pair.Value.MaxUsdPerMonth is not < 0);
+        steps.All(pair => KeyPattern().IsMatch(pair.Key) && IsStep(pair.Value.Lane, pair.Value.MaxUsdPerMonth));
 
     private static bool IsValid(CapabilityPolicy policy) =>
-        (policy.Defaults is null || IsValid(policy.Defaults))
-        && policy.Steps.All(pair => KeyPattern().IsMatch(pair.Key) && IsValid(pair.Value))
-        && policy.MonthUsd is not < 0
-        && policy.MaxUsdPerSuccess.All(cap => CapabilityRungs.Ordered.Contains(cap.Rung) && cap.MaxUsdPerSuccess >= 0);
-
-    private static bool IsValid(StepCapabilityPolicy step) =>
-        IsLadder(step.Lane, step.Floor, step.Ladder, step.Ceiling)
-        && (step.Profile is null || !string.IsNullOrWhiteSpace(step.Profile))
-        && step.SolverMaxUsdPer1k is not < 0 && step.SolverMaxSolvesPerDay is not < 0 && step.MaxUsdPerMonth is not < 0;
+        (policy.Defaults is null || IsStep(policy.Defaults.Lane, policy.Defaults.MaxUsdPerMonth))
+        && policy.Steps.All(pair => KeyPattern().IsMatch(pair.Key) && IsStep(pair.Value.Lane, pair.Value.MaxUsdPerMonth))
+        && policy.MonthUsd is not < 0;
 
     private static bool IsValid(PipelineLimits limits) =>
         limits.MaxPages is null or (>= 1 and <= PipelineConstants.MaxPagesCap)
@@ -479,28 +470,8 @@ public sealed partial class FakeRegistrationBroker(TimeProvider? time = null) : 
         && limits.MaxRequests is not <= 0 && limits.MaxBytes is not <= 0 && limits.MaxProbes is not <= 0
         && (limits.MaxDuration is not { } duration || duration > TimeSpan.Zero);
 
-    private static bool IsLadder(string? lane, string? floor, IReadOnlyList<string>? ladder, string? ceiling)
-    {
-        var rungs = CapabilityRungs.Ordered.ToList();
-        int Index(string? rung) => rung is null ? -2 : rungs.IndexOf(rung);
-        if (lane is not null && !KeyPattern().IsMatch(lane))
-            return false;
-        if (Index(floor) == -1 || Index(ceiling) == -1 || (floor is not null && ceiling is not null && Index(floor) > Index(ceiling)))
-            return false;
-        if (ladder is null)
-            return true;
-
-        var previous = -1;
-        foreach (var rung in ladder)
-        {
-            var index = Index(rung);
-            if (index < 0 || index <= previous || (floor is not null && index < Index(floor)) || (ceiling is not null && index > Index(ceiling)))
-                return false;
-            previous = index;
-        }
-
-        return ladder.Count > 0;
-    }
+    private static bool IsStep(string? lane, decimal? maxUsdPerMonth) =>
+        (lane is null || KeyPattern().IsMatch(lane)) && maxUsdPerMonth is not < 0;
 
     [GeneratedRegex("^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")]
     private static partial Regex SlugPattern();

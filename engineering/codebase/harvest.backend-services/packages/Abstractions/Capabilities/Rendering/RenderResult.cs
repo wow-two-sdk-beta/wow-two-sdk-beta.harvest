@@ -1,6 +1,6 @@
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Capabilities.Rendering;
 
-/// <summary>Represents a rendered page: its DOM, the JSON it fetched and the session state it left.</summary>
+/// <summary>Represents a rendered page: its DOM and the JSON it fetched.</summary>
 public sealed record RenderResult
 {
     /// <summary>Gets the URL that answered, after redirects.</summary>
@@ -14,7 +14,4 @@ public sealed record RenderResult
 
     /// <summary>Gets the JSON responses the page fetched.</summary>
     public IReadOnlyList<RenderedResponse> Responses { get; init; } = [];
-
-    /// <summary>Gets the browser storage state after the render, as JSON.</summary>
-    public string? StorageState { get; init; }
 }

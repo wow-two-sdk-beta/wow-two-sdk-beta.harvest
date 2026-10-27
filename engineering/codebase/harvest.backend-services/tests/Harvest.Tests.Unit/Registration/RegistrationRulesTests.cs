@@ -1,5 +1,4 @@
 using AwesomeAssertions;
-using WoW.Two.Sdk.Beta.Be.Harvest.Capabilities;
 using WoW.Two.Sdk.Beta.Be.Harvest.Containers;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Registration;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
@@ -117,24 +116,19 @@ public sealed class RegistrationRulesTests
     }
 
     [Fact]
-    public void ValidateStepOverrides_ShouldAcceptAClimbingLadderInsideItsBounds_WhenTheRungsAreKnown()
+    public void ValidateStepOverrides_ShouldAcceptALaneAndACap_WhenBothAreWellFormed()
     {
         RegistrationRules.ValidateStepOverrides(new Dictionary<string, StepOverride>
         {
-            ["contact"] = new() { Lane = "olx-contact", Floor = CapabilityRungs.R3, Ladder = [CapabilityRungs.R3, CapabilityRungs.R4, CapabilityRungs.R7], Ceiling = CapabilityRungs.R7 },
+            ["contact"] = new() { Enabled = true, Lane = "olx-contact", MaxUsdPerMonth = 5 },
         }).Should().BeNull();
     }
 
-    [Theory]
-    [InlineData("R3,R2")]
-    [InlineData("R3,R3")]
-    [InlineData("R1,R4")]
-    public void ValidateStepOverrides_ShouldFail_WhenTheLadderDoesNotClimbInsideItsBounds(string ladder)
+    [Fact]
+    public void ValidateStepOverrides_ShouldFail_WhenTheMonthlyCapIsNegative()
     {
-        RegistrationRules.ValidateStepOverrides(new Dictionary<string, StepOverride>
-        {
-            ["detail"] = new() { Floor = CapabilityRungs.R2, Ladder = ladder.Split(','), Ceiling = CapabilityRungs.R3 },
-        }).Should().NotBeNull();
+        RegistrationRules.ValidateStepOverrides(new Dictionary<string, StepOverride> { ["detail"] = new() { MaxUsdPerMonth = -1 } })
+            .Should().NotBeNull();
     }
 
     [Fact]
@@ -153,12 +147,21 @@ public sealed class RegistrationRulesTests
     }
 
     [Fact]
-    public void ValidateCapabilityPolicy_ShouldFail_WhenACapIsNegativeOrARungUnknown()
+    public void ValidateCapabilityPolicy_ShouldFail_WhenACapIsNegativeOrALaneMalformed()
     {
         RegistrationRules.ValidateCapabilityPolicy(new CapabilityPolicy { MonthUsd = -1 }).Should().NotBeNull();
-        RegistrationRules.ValidateCapabilityPolicy(new CapabilityPolicy { MaxUsdPerSuccess = [new RungCostCap { Rung = "R9", MaxUsdPerSuccess = 1 }] })
+        RegistrationRules.ValidateCapabilityPolicy(new CapabilityPolicy { Defaults = new StepCapabilityPolicy { MaxUsdPerMonth = -1 } })
             .Should().NotBeNull();
-        RegistrationRules.ValidateCapabilityPolicy(new CapabilityPolicy { Defaults = new StepCapabilityPolicy { Profile = " " } }).Should().NotBeNull();
+        RegistrationRules.ValidateCapabilityPolicy(new CapabilityPolicy
+        {
+            Steps = new Dictionary<string, StepCapabilityPolicy> { ["detail"] = new() { Lane = "Lane One" } },
+        }).Should().NotBeNull();
+        RegistrationRules.ValidateCapabilityPolicy(new CapabilityPolicy
+        {
+            Defaults = new StepCapabilityPolicy { MaxUsdPerMonth = 10 },
+            Steps = new Dictionary<string, StepCapabilityPolicy> { ["contact"] = new() { Lane = "contact", MaxUsdPerMonth = 3 } },
+            MonthUsd = 30,
+        }).Should().BeNull();
     }
 
     [Fact]
