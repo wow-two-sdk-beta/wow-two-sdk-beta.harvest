@@ -5,7 +5,9 @@ using Microsoft.Extensions.Options;
 using Npgsql;
 using WoW.Two.Sdk.Beta.Be.Data.Abstractions;
 using WoW.Two.Sdk.Beta.Be.Data.Migrations.Bespoke;
+using WoW.Two.Sdk.Beta.Be.Harvest.Capabilities.Fetching;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.ApiKeys;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Capabilities.Fetching;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Persistence;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Registration;
 using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
@@ -44,6 +46,7 @@ public static class HarvestModuleServiceCollectionExtensions
             migrations.Version = MigrationVersionMapper.ToVersion(typeof(HarvestModuleAssembly).Assembly);
         });
         services.AddScoped<IRegistrationBroker, ModuleRegistrationBroker>();
+        services.AddSingleton<IFetchClientFactory, FetchClientFactory>();
         services.AddHealthChecks().AddDatabaseReadinessCheck<HarvestDbContext>();
 
         return services.AddOptions<HarvestModuleOptions>()

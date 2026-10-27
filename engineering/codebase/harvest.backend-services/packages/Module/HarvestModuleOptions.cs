@@ -1,3 +1,5 @@
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Capabilities.Fetching;
+
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Module;
 
 /// <summary>Holds the settings of the in-process Harvest module.</summary>
@@ -11,4 +13,8 @@ public sealed class HarvestModuleOptions
     /// tenant; operator access is off when it is empty. It comes from a host file or the vault, never from a settings
     /// file in the repository.</summary>
     public string? OperatorApiKey { get; set; }
+
+    /// <summary>Gets the settings that govern how Harvest fetches — the honest user agent, the safety toggles, the per-fetch
+    /// limits and the per-host pacing defaults.</summary>
+    public FetchingOptions Fetching { get; } = new();
 }
