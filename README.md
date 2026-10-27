@@ -50,11 +50,17 @@ The reusable console manages sources, pipelines, runs and subscriptions and show
 
 Fetching uses the host's own network connection, a transparent Harvest user agent, robots policy, per-host pacing and
 conditional requests. Challenges, blocks and rate limits become recorded outcomes and persistent pauses. No CAPTCHA,
-proxy/IP, account-pool, browser-renderer, AI-provider or named-source integration is required or registered.
+proxy/IP, account-pool, browser-renderer, AI-provider or named-source integration is required by the generic host.
+Private hosts can replace `IFetchTransportFactory` with explicitly configured route/session leases; the same robots,
+permission, pacing, redirect and refusal policies still apply. Provider clients and named sources live in the private
+adapters repository.
 
 Runtime requirements are PostgreSQL 16+ with UTF-8 and `pg_trgm`, the database connection and an operator API key.
 The service starts the worker by default; set `Harvest:Worker:Enabled=false` for a management-only host.
 `Harvest:Fetch` binds `HarvestFetchOptions`, including its user agent, deadline and response-size limit.
+
+`WoW2.Sdk.Beta.Be.Harvest.Hosting` provides the reusable API controllers, authentication and startup composition.
+An adapter host references that package and registers its parsers and providers after `builder.Configure()`.
 
 The browser keeps its API key in memory. A disconnected console makes no authenticated registry requests.
 

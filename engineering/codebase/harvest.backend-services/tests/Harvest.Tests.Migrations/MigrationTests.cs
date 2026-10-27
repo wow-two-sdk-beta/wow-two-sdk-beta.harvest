@@ -13,7 +13,7 @@ namespace Harvest.Tests.Migrations;
 public sealed class MigrationTests : IAsyncLifetime
 {
     /// <summary>Holds every migration of the set, in order.</summary>
-    private static readonly string[] Migrations = ["001-baseline", "002-drop-escalation", "003-fetching", "004-posts-delivery"];
+    private static readonly string[] Migrations = ["001-baseline", "002-drop-escalation", "003-fetching", "004-posts-delivery", "005-subscription-filter"];
 
     /// <summary>Holds the escalation columns 002 drops.</summary>
     private const string EscalationColumns =
@@ -59,7 +59,7 @@ public sealed class MigrationTests : IAsyncLifetime
 
         applied.Should().Equal(Migrations);
         (await HarvestTablesAsync()).Should().BeEquivalentTo(Tables);
-        (await ScalarAsync<long>("SELECT count(*) FROM harvest_migration_history WHERE applied_by = 'startup'")).Should().Be(4);
+        (await ScalarAsync<long>("SELECT count(*) FROM harvest_migration_history WHERE applied_by = 'startup'")).Should().Be(5);
         Unwrap(await Runner.ApplyPendingAsync("startup", CancellationToken.None)).Should().BeEmpty();
     }
 
@@ -105,7 +105,7 @@ public sealed class MigrationTests : IAsyncLifetime
     {
         Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None));
 
-        Unwrap(await Runner.RollbackAsync(targetOrdinal: 1, CancellationToken.None)).Should().Equal("004-posts-delivery", "003-fetching", "002-drop-escalation");
+        Unwrap(await Runner.RollbackAsync(targetOrdinal: 1, CancellationToken.None)).Should().Equal("005-subscription-filter", "004-posts-delivery", "003-fetching", "002-drop-escalation");
         (await ColumnCountAsync($"column_name IN ({EscalationColumns})")).Should().Be(11, "002's rollback restores every column 001 made");
         (await ConstraintAsync("ck_harvest_work_item_route")).Should().Contain("account");
 
@@ -116,7 +116,7 @@ public sealed class MigrationTests : IAsyncLifetime
         Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None)).Should().Equal(Migrations);
         (await HarvestTablesAsync()).Should().BeEquivalentTo(Tables);
         var status = Unwrap(await Runner.GetStatusAsync(CancellationToken.None));
-        status.Applied.Select(migration => migration.Ordinal).Should().Equal(1, 2, 3, 4);
+        status.Applied.Select(migration => migration.Ordinal).Should().Equal(1, 2, 3, 4, 5);
         status.Pending.Should().BeEmpty();
         status.Drifted.Should().BeEmpty();
     }

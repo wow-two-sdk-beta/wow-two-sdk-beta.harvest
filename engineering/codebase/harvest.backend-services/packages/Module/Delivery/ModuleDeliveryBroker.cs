@@ -13,8 +13,11 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Delivery;
 /// <summary>Integrates pull subscriptions with a durable transaction-horizon cursor.</summary>
 internal sealed class ModuleDeliveryBroker(
     [FromKeyedServices(HarvestModuleConstants.ServiceKey)] NpgsqlDataSource dataSource,
-    TimeProvider time) : IDeliveryBroker
+    TimeProvider time,
+    IEnumerable<IDeliveryPostFilter> filters) : IDeliveryBroker
 {
+    private readonly DeliveryPostFilters postFilters = new(filters);
+
     /// <inheritdoc />
     public async Task<Result<SubscriptionModel>> SubscribeAsync(SubscriptionDeclaration declaration, CancellationToken cancellationToken = default)
     {
@@ -26,6 +29,8 @@ internal sealed class ModuleDeliveryBroker(
         if (declaration.Context.Count > 64 || declaration.Context.Any(pair => string.IsNullOrWhiteSpace(pair.Key) || pair.Key.Length > 256 || pair.Value is null || pair.Value.Length > 4096))
             return Invalid<SubscriptionModel>("Subscription context exceeds its size limits.");
         if (declaration.Schema is { Length: > 200 }) return Invalid<SubscriptionModel>("The schema identifier is too long.");
+        if (declaration.FilterKey is { } filterKey && (string.IsNullOrWhiteSpace(filterKey) || filterKey.Length > 200 || !postFilters.Contains(filterKey)))
+            return Invalid<SubscriptionModel>("The requested post filter is not registered or its key is invalid.");
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         await PostSql.LockAsync(connection, transaction, declaration.ContainerId, cancellationToken);
@@ -41,10 +46,11 @@ internal sealed class ModuleDeliveryBroker(
         now = now.AddTicks(-(now.Ticks % 10));
         var id = Guid.CreateVersion7(now);
         await PostSql.ExecuteAsync(connection, transaction, """
-            INSERT INTO harvest_subscriptions(id,tenant_id,container_id,pipeline_id,kind,mode,context,schema,backfill,backfill_since,created_at)
-            VALUES(@id,@tenant,@container,@pipeline,'channel','pull',CAST(@context AS jsonb),@schema,@backfill,@since,@now)
+            INSERT INTO harvest_subscriptions(id,tenant_id,container_id,pipeline_id,kind,mode,context,schema,filter_key,backfill,backfill_since,created_at)
+            VALUES(@id,@tenant,@container,@pipeline,'channel','pull',CAST(@context AS jsonb),@schema,@filter,@backfill,@since,@now)
             """, cancellationToken, ("id", id), ("tenant", declaration.TenantId), ("container", declaration.ContainerId),
             ("pipeline", declaration.PipelineId), ("context", StoreJson.Write(declaration.Context)), ("schema", declaration.Schema),
+            ("filter", declaration.FilterKey),
             ("backfill", declaration.Backfill.ToString().ToLowerInvariant()), ("since", declaration.BackfillSinceUtc?.ToUniversalTime()), ("now", now));
         if (declaration.Backfill != BackfillMode.None)
         {
@@ -61,7 +67,8 @@ internal sealed class ModuleDeliveryBroker(
             foreach (var postId in posts)
             {
                 var post = (await ModulePostBroker.ReadPostAsync(connection, transaction, declaration.ContainerId, postId, cancellationToken))!;
-                await DeliveryEventWriter.AppendOneAsync(connection, transaction, id, post, DeliveryEventTypes.PostNew, null, null, "backfill", now, cancellationToken);
+                if (postFilters.Matches(declaration.FilterKey, post.Base))
+                    await DeliveryEventWriter.AppendOneAsync(connection, transaction, id, post, DeliveryEventTypes.PostNew, null, null, "backfill", now, cancellationToken);
             }
         }
         var model = (await ReadSubscriptionAsync(connection, transaction, id, cancellationToken))!;
@@ -102,11 +109,11 @@ internal sealed class ModuleDeliveryBroker(
         if (subscription is null) return Missing<CursorPage<DeliveryEvent>>("Subscription not found.");
         var rows = new List<(ulong TransactionId, long Id, DeliveryEvent Event)>();
         await using (var command = PostSql.Command(connection, null, """
-                         SELECT tx::text,id,event_id,item_id,type,occurred_at,post_id,revision,link_id,run_id,reason,payload::text
-                         FROM harvest_subscription_event WHERE subscription_id=@subscription
-                           AND tx < pg_snapshot_xmin(pg_current_snapshot())
-                           AND (tx,id) > (CAST(@tx AS xid8),@row)
-                         ORDER BY tx,id LIMIT @limit
+                         SELECT e.tx::text,e.id,e.event_id,e.item_id,e.type,e.occurred_at,e.post_id,e.revision,e.link_id,e.run_id,e.reason,e.payload::text
+                         FROM harvest_subscription_event e WHERE e.subscription_id=@subscription
+                           AND e.tx < pg_snapshot_xmin(pg_current_snapshot())
+                           AND (e.tx,e.id) > (CAST(@tx AS xid8),@row)
+                         ORDER BY e.tx,e.id LIMIT @limit
                          """, ("subscription", subscriptionId), ("tx", transactionId.ToString(System.Globalization.CultureInfo.InvariantCulture)), ("row", rowId), ("limit", limit + 1)))
         await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
             while (await reader.ReadAsync(cancellationToken))
@@ -128,7 +135,7 @@ internal sealed class ModuleDeliveryBroker(
     private static async Task<SubscriptionModel?> ReadSubscriptionAsync(NpgsqlConnection connection, NpgsqlTransaction? transaction, Guid id, CancellationToken ct)
     {
         await using var command = PostSql.Command(connection, transaction, """
-            SELECT id,tenant_id,pipeline_id,context::text,schema,backfill,state,created_at
+            SELECT id,tenant_id,pipeline_id,context::text,schema,backfill,state,created_at,filter_key
             FROM harvest_subscriptions WHERE id=@id
             """, ("id", id));
         await using var reader = await command.ExecuteReaderAsync(ct);
@@ -138,6 +145,7 @@ internal sealed class ModuleDeliveryBroker(
             Mode = DeliveryMode.Pull, Context = StoreJson.Read(reader.GetString(3), new Dictionary<string, string>()),
             Schema = reader.IsDBNull(4) ? null : reader.GetString(4), Backfill = Enum.Parse<BackfillMode>(reader.GetString(5), true),
             State = Enum.Parse<SubscriptionState>(reader.GetString(6), true), CreatedAtUtc = reader.GetFieldValue<DateTimeOffset>(7),
+            FilterKey = reader.IsDBNull(8) ? null : reader.GetString(8),
         };
     }
 
@@ -165,6 +173,7 @@ internal sealed class ModuleDeliveryBroker(
             || !envelope.TryGetProperty("extras", out var extras) || !extras.TryGetProperty("event", out var mapped)
             || mapped.ValueKind != JsonValueKind.Object) return payload;
         var values = mapped.EnumerateObject().ToDictionary(property => property.Name, property => property.Value.Clone());
+        if (values.TryGetValue("links", out var contentLinks)) values["contentLinks"] = contentLinks;
         foreach (var (source, target) in new[] { ("id", "postId"), ("revision", "revision"), ("state", "state"), ("links", "links"), ("fieldSources", "fieldSources"), ("mergedInto", "mergedInto") })
             if (payload.TryGetProperty(source, out var value)) values[target] = value.Clone();
         return JsonSerializer.SerializeToElement(values);

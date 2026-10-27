@@ -74,6 +74,38 @@ public sealed class PullDeliveryTests
     }
 
     [Fact]
+    public async Task Pull_ShouldOrderTransactionIdsNumerically_WhenTheirDigitCountsDiffer()
+    {
+        await using var host = await PostHost.StartAsync();
+        var subscription = PostHost.Value(await host.Delivery.SubscribeAsync(Declaration(host) with { Backfill = BackfillMode.None }));
+        await using var connection = new NpgsqlConnection(host.ConnectionString);
+        await connection.OpenAsync();
+        foreach (var (transactionId, revision) in new[] { ("9", 1), ("10", 2) })
+        {
+            await using var command = new NpgsqlCommand("""
+                INSERT INTO harvest_subscription_event(tx,subscription_id,event_id,item_id,type,revision,occurred_at,payload)
+                VALUES(CAST(@tx AS xid8),@subscription,@event,@item,'post.changed',@revision,@at,'{}')
+                """, connection);
+            command.Parameters.AddWithValue("tx", transactionId);
+            command.Parameters.AddWithValue("subscription", subscription.Id);
+            command.Parameters.AddWithValue("event", Guid.NewGuid());
+            command.Parameters.AddWithValue("item", "transaction-" + transactionId);
+            command.Parameters.AddWithValue("revision", revision);
+            command.Parameters.AddWithValue("at", host.Clock.GetUtcNow());
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var first = await host.PullUntilAsync(subscription.Id, page => page.HasMore, limit: 1);
+
+        first.Data.Should().ContainSingle(); first.Data[0].Revision.Should().Be(1);
+        first.Data[0].ItemId.Should().Be("transaction-9");
+        var second = PostHost.Value(await host.Delivery.PullAsync(subscription.Id, first.Next, limit: 1));
+        second.Data.Should().ContainSingle(); second.Data[0].Revision.Should().Be(2);
+        second.Data[0].ItemId.Should().Be("transaction-10");
+        PostHost.Value(await host.Delivery.PullAsync(subscription.Id, second.Next)).Data.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task Pull_ShouldRejectAnotherSubscriptionsCursor_WhenItIsReused()
     {
         await using var host = await PostHost.StartAsync();
@@ -105,7 +137,11 @@ public sealed class PullDeliveryTests
         {
             Extras = new Dictionary<string, System.Text.Json.JsonElement>
             {
-                ["event"] = System.Text.Json.JsonSerializer.SerializeToElement(new { schema = "wow2.event.v1", title = "Event" }),
+                ["event"] = System.Text.Json.JsonSerializer.SerializeToElement(new
+                {
+                    schema = "wow2.event.v1", title = "Event",
+                    links = new[] { new { url = "https://organizer.example/register", rel = "registration" } },
+                }),
             },
         };
         var post = PostHost.Value(await host.Posts.SaveCaptureAsync(host.ContainerId, host.SourceId, null, capture, envelope));
@@ -115,6 +151,9 @@ public sealed class PullDeliveryTests
         page.Data[0].Data!.Value.GetProperty("schema").GetString().Should().Be("wow2.event.v1");
         page.Data[0].Data!.Value.GetProperty("postId").GetGuid().Should().Be(post.Post.Id);
         page.Data[0].Data!.Value.GetProperty("revision").GetInt32().Should().Be(1);
+        page.Data[0].Data!.Value.GetProperty("links")[0].GetProperty("url").GetString().Should().Be(capture.Url);
+        page.Data[0].Data!.Value.GetProperty("contentLinks")[0].GetProperty("url").GetString().Should().Be("https://organizer.example/register");
+        page.Data[0].Data!.Value.GetProperty("contentLinks")[0].GetProperty("rel").GetString().Should().Be("registration");
     }
 
     private static SubscriptionDeclaration Declaration(PostHost host) => new()

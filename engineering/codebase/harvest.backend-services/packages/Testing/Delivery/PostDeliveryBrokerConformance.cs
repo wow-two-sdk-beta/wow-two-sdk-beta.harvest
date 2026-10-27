@@ -131,6 +131,16 @@ public abstract class PostDeliveryBrokerConformance
         Error(await Delivery.PullAsync(second.Id, limit: 0)).Type.Should().Be(AppErrorType.Validation);
     }
 
+    /// <summary>An unknown configured filter cannot silently turn into an unfiltered subscription.</summary>
+    [Fact]
+    public async Task Subscribe_ShouldRejectUnknownFilter_WhenTheHostHasNotRegisteredIt()
+    {
+        var context = await ContextAsync();
+
+        Error(await Delivery.SubscribeAsync(Declaration(context) with { FilterKey = "unregistered-" + Guid.NewGuid().ToString("N") }))
+            .Type.Should().Be(AppErrorType.Validation);
+    }
+
     private async Task<Context> ContextAsync()
     {
         var unique = Guid.NewGuid().ToString("N");

@@ -36,8 +36,8 @@ internal sealed partial class ModulePostBroker
         await ResolveAsync(connection, transaction, containerId, survivorId, now, true, cancellationToken);
         var merged = (await ReadPostAsync(connection, transaction, containerId, loserId, cancellationToken))!;
         var resolved = (await ReadPostAsync(connection, transaction, containerId, survivorId, cancellationToken))!;
-        await DeliveryEventWriter.AppendAsync(connection, transaction, merged, "post.merged", null, null, now, cancellationToken);
-        await DeliveryEventWriter.AppendAsync(connection, transaction, resolved, "post.changed", null, null, now, cancellationToken);
+        await DeliveryEventWriter.AppendAsync(connection, transaction, merged, "post.merged", null, null, now, postFilters, cancellationToken);
+        await DeliveryEventWriter.AppendAsync(connection, transaction, resolved, "post.changed", null, null, now, postFilters, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return Result<PostMergeModel>.Ok(new PostMergeModel { Id = mergeId, SurvivorId = survivorId, LoserId = loserId, Undone = false });
     }
@@ -76,8 +76,8 @@ internal sealed partial class ModulePostBroker
         await ResolveAsync(connection, transaction, containerId, loserId, now, true, cancellationToken);
         var survivor = (await ReadPostAsync(connection, transaction, containerId, survivorId, cancellationToken))!;
         var loser = (await ReadPostAsync(connection, transaction, containerId, loserId, cancellationToken))!;
-        await DeliveryEventWriter.AppendAsync(connection, transaction, survivor, "post.unmerged", null, null, now, cancellationToken);
-        await DeliveryEventWriter.AppendAsync(connection, transaction, loser, "post.unmerged", null, null, now, cancellationToken);
+        await DeliveryEventWriter.AppendAsync(connection, transaction, survivor, "post.unmerged", null, null, now, postFilters, cancellationToken);
+        await DeliveryEventWriter.AppendAsync(connection, transaction, loser, "post.unmerged", null, null, now, postFilters, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return Result<PostMergeModel>.Ok(new PostMergeModel { Id = mergeId, SurvivorId = survivorId, LoserId = loserId, Undone = true });
     }

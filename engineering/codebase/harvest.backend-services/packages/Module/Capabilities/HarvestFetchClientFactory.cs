@@ -7,7 +7,7 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Capabilities;
 
 /// <summary>Creates isolated direct clients over core's guarded, proxy-free transport.</summary>
 internal sealed class HarvestFetchClientFactory(
-    IHttpClientFactory clients,
+    IFetchTransportFactory transports,
     IHostFetchStore hosts,
     IOptions<HarvestFetchOptions> options,
     IChallengeDetector challenges,
@@ -16,7 +16,7 @@ internal sealed class HarvestFetchClientFactory(
     internal const string TransportName = "Harvest.Direct";
 
     public HttpClient CreateClient(CookieContainer? cookies = null) => new(
-        new HarvestFetchHandler(clients.CreateClient(TransportName), hosts, options.Value, challenges, clock, cookies), disposeHandler: true)
+        new HarvestFetchHandler(transports, hosts, options.Value, challenges, clock, cookies), disposeHandler: true)
     {
         Timeout = options.Value.Timeout
     };

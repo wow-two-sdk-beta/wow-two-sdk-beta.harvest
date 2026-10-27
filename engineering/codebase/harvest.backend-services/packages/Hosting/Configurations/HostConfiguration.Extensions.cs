@@ -72,7 +72,8 @@ public static partial class HostConfiguration
     /// <summary>Registers controllers on the SDK wire contract.</summary>
     private static WebApplicationBuilder AddControllers(this WebApplicationBuilder builder)
     {
-        builder.Services.AddControllersWithSdkJson();
+        builder.Services.AddControllersWithSdkJson()
+            .AddApplicationPart(typeof(HostConfiguration).Assembly);
         return builder;
     }
 

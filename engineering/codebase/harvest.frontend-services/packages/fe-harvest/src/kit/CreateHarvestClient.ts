@@ -39,7 +39,14 @@ export interface HarvestClient extends RegistryClient {
   listPosts(containerId: string, signal?: AbortSignal): Promise<Result<readonly PostModel[], ApiFailure>>;
   listSubscriptions(signal?: AbortSignal): Promise<Result<readonly SubscriptionModel[], ApiFailure>>;
   subscribe(
-    body: { tenantId: string; containerId: string; pipelineId: string; schema?: string },
+    body: {
+      tenantId: string;
+      containerId: string;
+      pipelineId: string;
+      schema?: string;
+      filterKey?: string;
+      context?: Readonly<Record<string, string>>;
+    },
     signal?: AbortSignal,
   ): Promise<Result<SubscriptionModel, ApiFailure>>;
   pull(id: string, cursor?: string, signal?: AbortSignal): Promise<Result<CursorPage<DeliveryEvent>, ApiFailure>>;

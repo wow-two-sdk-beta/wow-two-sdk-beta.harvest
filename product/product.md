@@ -31,9 +31,11 @@ state; refusals never count as deletion evidence. Reviewed merges can be undone 
 ## Source posture
 
 Harvest fetches directly and politely: an honest user agent, robots policy, one paced host connection, conditional
-requests and `Retry-After`. A challenge, block or rate limit becomes an outcome and a persistent pause. No CAPTCHA,
-proxy/IP, account pool or provider integration belongs to this build. JavaScript-only pages report the unbound
-rendering capability. AI stays off. Source-specific brokers remain in the private adapters repository.
+requests and `Retry-After`. A challenge, block or rate limit becomes an outcome and a persistent pause. Configurable
+CAPTCHA, proxy/IP and operator-supplied account-session providers belong to the private adapters host and are disabled
+until configured. The public engine exposes a leased transport seam while retaining its request policies. Generic
+fetching never automatically changes routes or submits a challenge. JavaScript-only pages report the unbound rendering
+capability. AI stays off. Source-specific brokers remain in the private adapters repository.
 
 ## Boundaries
 

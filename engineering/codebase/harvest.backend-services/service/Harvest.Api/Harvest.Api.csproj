@@ -9,7 +9,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\packages\Module\WoW.Two.Sdk.Beta.Be.Harvest.Module.csproj" />
+    <ProjectReference Include="..\..\packages\Hosting\WoW.Two.Sdk.Beta.Be.Harvest.Hosting.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

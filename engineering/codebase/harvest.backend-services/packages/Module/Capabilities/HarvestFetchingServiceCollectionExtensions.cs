@@ -33,6 +33,7 @@ public static class HarvestFetchingServiceCollectionExtensions
             .AddSafeOutboundHttp(policy => policy.RequireHttps = false);
         services.TryAddSingleton<IHostFetchStore, PostgresHostFetchStore>();
         services.TryAddSingleton<IChallengeDetector, GenericChallengeDetector>();
+        services.TryAddSingleton<IFetchTransportFactory, DirectFetchTransportFactory>();
         services.TryAddSingleton<IFetchClientFactory, HarvestFetchClientFactory>();
         services.TryAddSingleton<IPageFetcher, PageFetcher>();
         return builder;

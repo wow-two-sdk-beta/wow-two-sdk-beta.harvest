@@ -9,7 +9,7 @@ namespace Harvest.Api.Status.Controllers;
 /// <summary>Exposes system status over HTTP.</summary>
 [ApiController]
 [Route("api/system")]
-public sealed class SystemController : ControllerBase
+public sealed class SystemController(Microsoft.Extensions.Hosting.IHostEnvironment environment) : ControllerBase
 {
     /// <summary>Holds the name the service reports.</summary>
     private const string ServiceName = "harvest";
@@ -21,7 +21,7 @@ public sealed class SystemController : ControllerBase
     [ProducesResponseType<ApiResponse<SystemStatusDto>>(StatusCodes.Status200OK)]
     public IActionResult Status()
     {
-        var version = typeof(SystemController).Assembly
+        var version = Assembly.Load(environment.ApplicationName)
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown";
         var status = new SystemStatusDto { Service = ServiceName, Status = "ok", Version = version };
 

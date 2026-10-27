@@ -34,6 +34,7 @@ cat > "$consumer/Consumer.csproj" <<XML
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="WoW2.Sdk.Beta.Be.Harvest.Module" Version="$version" />
+    <PackageReference Include="WoW2.Sdk.Beta.Be.Harvest.Hosting" Version="$version" />
     <PackageReference Include="WoW2.Sdk.Beta.Be.Harvest.Client" Version="$version" />
     <PackageReference Include="WoW2.Sdk.Beta.Be.Harvest.Testing" Version="$version" />
   </ItemGroup>

@@ -23,7 +23,8 @@ public static class HarvestReaderServiceCollectionExtensions
         foreach (var family in new[] { SourceFamily.Site, SourceFamily.Structured, SourceFamily.Page, SourceFamily.Feed, SourceFamily.Link })
         {
             var adapter = new GenericSourceAdapter(family);
-            services.AddSingleton<ISourceAdapter>(adapter);
+            // Generic fallbacks precede named adapters even when a hosting-startup plugin registered first.
+            services.Insert(0, ServiceDescriptor.Singleton<ISourceAdapter>(adapter));
             foreach (var step in new[] { "enumerate", "detail", "check" })
                 services.AddScoped<IStepBroker>(provider => new GenericStepBroker(adapter.Key, step,
                     provider.GetRequiredService<IPageFetcher>(), provider.GetServices<ICaptureReader>()));

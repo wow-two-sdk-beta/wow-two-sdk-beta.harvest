@@ -11,7 +11,7 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Capabilities;
 
 /// <summary>Applies the same durable politeness policy to typed fetches and a step's raw HTTP client.</summary>
 internal sealed class HarvestFetchHandler(
-    HttpClient transport,
+    IFetchTransportFactory transports,
     IHostFetchStore hosts,
     HarvestFetchOptions options,
     IChallengeDetector challenges,
@@ -43,6 +43,13 @@ internal sealed class HarvestFetchHandler(
                     "Host remains paused after its previous response.", pausedUntil - now);
             }
 
+            await using var route = await transports.AcquireAsync(uri, cookies, cancellationToken);
+            if (!route.Allows(uri))
+                return Synthetic(request, FetchOutcome.InvalidRedirect, HttpStatusCode.BadRequest, "Configured route does not allow the destination.");
+
+            bool sharedCache = !route.IsPrivate && route.Cookies is null
+                && !request.Headers.Contains("Authorization") && !request.Headers.Contains("Cookie");
+            var robotsState = sharedCache ? lease.State : new HostFetchState();
             TimeSpan gap = options.MinimumDelay;
             if (TimeSpan.FromMilliseconds(lease.State.MinimumDelayMilliseconds) > gap)
                 gap = TimeSpan.FromMilliseconds(lease.State.MinimumDelayMilliseconds);
@@ -57,26 +64,25 @@ internal sealed class HarvestFetchHandler(
             {
                 if (policy.RobotsPolicy == RobotsPolicy.Obey)
                 {
-                    var robots = await EnsureRobotsAsync(uri, lease, gap, request, usage, cancellationToken);
+                    var robots = await EnsureRobotsAsync(uri, route, lease, robotsState, gap, request, usage, cancellationToken);
                     if (robots.Failure is { } failure)
                         return failure;
-                    var rules = RobotsRules.Parse(lease.State.RobotsBody ?? string.Empty, options.UserAgent);
-                    lease.State.CrawlDelaySeconds = rules.CrawlDelay is { } parsedDelay ? (int)Math.Ceiling(parsedDelay.TotalSeconds) : null;
+                    var rules = RobotsRules.Parse(robotsState.RobotsBody ?? string.Empty, options.UserAgent);
+                    robotsState.CrawlDelaySeconds = rules.CrawlDelay is { } parsedDelay ? (int)Math.Ceiling(parsedDelay.TotalSeconds) : null;
                     if (rules.CrawlDelay is { } crawlDelay && crawlDelay > gap)
                         gap = crawlDelay;
                     if (!rules.Allows(uri))
                         return Synthetic(request, FetchOutcome.RobotsDisallowed, HttpStatusCode.Forbidden, "Host robots policy disallows this path.");
                 }
 
-                bool sharedCache = cookies is null && !request.Headers.Contains("Authorization") && !request.Headers.Contains("Cookie");
                 var validators = sharedCache ? await lease.GetValidatorsAsync(uri.AbsoluteUri, cancellationToken) : null;
-                HttpResponseMessage response = await ReadNetworkAsync(uri, request.Method, request, validators, lease, gap, usage, cancellationToken);
+                HttpResponseMessage response = await ReadNetworkAsync(uri, route, request.Method, request, validators, lease, gap, usage, cancellationToken);
                 int status = (int)response.StatusCode;
                 if (IsRedirect(status))
                 {
                     Uri? location = response.Headers.Location;
                     Uri? next = location is null ? null : location.IsAbsoluteUri ? location : new Uri(uri, location);
-                    if (redirects >= options.MaximumRedirects || !IsSafeRedirect(uri, next))
+                    if (redirects >= options.MaximumRedirects || !IsSafeRedirect(uri, next) || !route.Allows(next!))
                     {
                         response.Dispose();
                         return Synthetic(request, FetchOutcome.InvalidRedirect, HttpStatusCode.BadGateway, "Redirect left the source host or violated its transport policy.");
@@ -135,6 +141,11 @@ internal sealed class HarvestFetchHandler(
                 return response;
             }
         }
+        catch (FetchTransportUnavailableException)
+        {
+            return Synthetic(request, FetchOutcome.CapabilityUnavailable, HttpStatusCode.ServiceUnavailable,
+                "The configured route or session is unavailable. Check its provider settings.");
+        }
         catch (HttpRequestException error) when (BlockedDestination(error))
         {
             return Synthetic(request, FetchOutcome.InvalidRedirect, HttpStatusCode.BadRequest, "Destination failed the public-network policy.");
@@ -157,23 +168,23 @@ internal sealed class HarvestFetchHandler(
     }
 
     private async Task<(HttpResponseMessage? Failure, bool Loaded)> EnsureRobotsAsync(
-        Uri uri, IHostFetchLease lease, TimeSpan gap, HttpRequestMessage original, FetchUsageCounters usage, CancellationToken cancellationToken)
+        Uri uri, IFetchTransportLease route, IHostFetchLease lease, HostFetchState robotsState, TimeSpan gap, HttpRequestMessage original, FetchUsageCounters usage, CancellationToken cancellationToken)
     {
         string origin = uri.GetLeftPart(UriPartial.Authority);
-        TimeSpan lifetime = lease.State.RobotsStatus >= 500 ? TimeSpan.FromMinutes(5) : options.RobotsCacheDuration;
-        bool fresh = lease.State.RobotsOrigin == origin && lease.State.RobotsCachedAt is { } cached && cached + lifetime > clock.GetUtcNow();
+        TimeSpan lifetime = robotsState.RobotsStatus >= 500 ? TimeSpan.FromMinutes(5) : options.RobotsCacheDuration;
+        bool fresh = robotsState.RobotsOrigin == origin && robotsState.RobotsCachedAt is { } cached && cached + lifetime > clock.GetUtcNow();
         if (!fresh)
         {
             Uri target = new(origin + "/robots.txt");
             for (int redirects = 0; ; redirects++)
             {
-                using var response = await ReadNetworkAsync(target, HttpMethod.Get, null, null, lease, gap, usage, cancellationToken);
+                using var response = await ReadNetworkAsync(target, route, HttpMethod.Get, null, null, lease, gap, usage, cancellationToken);
                 int status = (int)response.StatusCode;
                 if (IsRedirect(status))
                 {
                     Uri? location = response.Headers.Location;
                     Uri? next = location is null ? null : location.IsAbsoluteUri ? location : new Uri(target, location);
-                    if (redirects >= options.MaximumRedirects || !IsSafeRedirect(target, next))
+                    if (redirects >= options.MaximumRedirects || !IsSafeRedirect(target, next) || !route.Allows(next!))
                         return (Synthetic(original, FetchOutcome.InvalidRedirect, HttpStatusCode.BadGateway, "Robots redirect left the source host."), false);
                     target = next!;
                     continue;
@@ -186,16 +197,16 @@ internal sealed class HarvestFetchHandler(
                     return (Synthetic(original, verdict.Outcome, response.StatusCode, "Robots request was refused.", wait, verdict.Kind), false);
                 }
 
-                lease.State.RobotsOrigin = origin;
-                lease.State.RobotsStatus = status;
-                lease.State.RobotsCachedAt = clock.GetUtcNow();
-                lease.State.RobotsBody = status is 401 or 403 ? "User-agent: *\nDisallow: /"
+                robotsState.RobotsOrigin = origin;
+                robotsState.RobotsStatus = status;
+                robotsState.RobotsCachedAt = clock.GetUtcNow();
+                robotsState.RobotsBody = status is 401 or 403 ? "User-agent: *\nDisallow: /"
                     : status is >= 400 and < 500 ? string.Empty : Decode(body, response.Content.Headers.ContentType?.CharSet);
                 break;
             }
         }
 
-        if (lease.State.RobotsStatus >= 500)
+        if (robotsState.RobotsStatus >= 500)
         {
             TimeSpan delay = Pause(lease.State, FetchOutcome.HttpError, TimeSpan.FromMinutes(5));
             return (Synthetic(original, FetchOutcome.HttpError, HttpStatusCode.ServiceUnavailable, "Robots policy is temporarily unavailable.", delay), !fresh);
@@ -203,9 +214,11 @@ internal sealed class HarvestFetchHandler(
         return (null, !fresh);
     }
 
-    private async Task<HttpResponseMessage> ReadNetworkAsync(Uri uri, HttpMethod method, HttpRequestMessage? original,
+    private async Task<HttpResponseMessage> ReadNetworkAsync(Uri uri, IFetchTransportLease route, HttpMethod method, HttpRequestMessage? original,
         ResponseValidators? validators, IHostFetchLease lease, TimeSpan gap, FetchUsageCounters usage, CancellationToken cancellationToken)
     {
+        if (!route.Allows(uri))
+            throw new FetchTransportUnavailableException("The configured route does not allow this origin.");
         TimeSpan wait = lease.State.NextAllowedAt - clock.GetUtcNow();
         if (wait > TimeSpan.Zero)
             await Task.Delay(wait, clock, cancellationToken);
@@ -224,20 +237,20 @@ internal sealed class HarvestFetchHandler(
             message.Headers.TryAddWithoutValidation("If-None-Match", etag);
         if (validators?.LastModified is { } modified && message.Headers.IfModifiedSince is null)
             message.Headers.IfModifiedSince = modified;
-        if (cookies?.GetCookieHeader(uri) is { Length: > 0 } cookieHeader)
+        if (route.Cookies?.GetCookieHeader(uri) is { Length: > 0 } cookieHeader)
             message.Headers.TryAddWithoutValidation("Cookie", cookieHeader);
 
         // Advance before connecting so a timed-out or interrupted request also leaves a durable gap.
         lease.State.NextAllowedAt = clock.GetUtcNow() + gap;
         await lease.SaveAsync(cancellationToken);
         usage.Requests++;
-        HttpResponseMessage response = await transport.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        HttpResponseMessage response = await route.Client.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         try
         {
-            if (cookies is not null && response.Headers.TryGetValues("Set-Cookie", out var setCookies))
+            if (route.Cookies is { } sessionCookies && response.Headers.TryGetValues("Set-Cookie", out var setCookies))
                 foreach (string value in setCookies)
                 {
-                    try { cookies.SetCookies(uri, value); }
+                    try { sessionCookies.SetCookies(uri, value); }
                     catch (CookieException) { /* A malformed anonymous cookie cannot make a page unreadable. */ }
                 }
             if (method != HttpMethod.Head && response.Content.Headers.ContentLength > options.MaximumResponseBytes)
@@ -337,13 +350,6 @@ internal sealed class HarvestFetchHandler(
         if (retryAfter is { } delay)
             response.Headers.RetryAfter = new RetryConditionHeaderValue(delay);
         return response;
-    }
-
-    protected override void Dispose(bool disposing)
-    {
-        if (disposing)
-            transport.Dispose();
-        base.Dispose(disposing);
     }
 
     private sealed class ResponseTooLargeException : Exception;

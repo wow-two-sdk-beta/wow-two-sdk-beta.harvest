@@ -73,7 +73,7 @@ internal sealed partial class ModulePostBroker
             await SetLinkStateAsync(connection, transaction, containerId, link, next, observation.Reason, runId, now, cancellationToken);
             await ResolveAsync(connection, transaction, containerId, link.PostId, now, true, cancellationToken);
             var changed = (await ReadPostAsync(connection, transaction, containerId, link.PostId, cancellationToken))!;
-            await DeliveryEventWriter.AppendAsync(connection, transaction, changed, "link.state", runId, link.Id, now, cancellationToken);
+            await DeliveryEventWriter.AppendAsync(connection, transaction, changed, "link.state", runId, link.Id, now, postFilters, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return Result<PostModel>.Ok(changed);
         }

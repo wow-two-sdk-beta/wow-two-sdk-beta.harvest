@@ -24,6 +24,9 @@ public sealed record SubscriptionModel
     /// <summary>Gets the tenant's opaque routing data, echoed on every event, such as <c>{"catalog":"ocharo-fashion"}</c>.</summary>
     public IReadOnlyDictionary<string, string> Context { get; init; } = new Dictionary<string, string>();
 
+    /// <summary>Gets the host-registered post filter, or null when the subscription accepts all posts.</summary>
+    public string? FilterKey { get; init; }
+
     /// <summary>Gets whether the subscription wants model extraction, billed to it.</summary>
     public bool WantsAi { get; init; }
 

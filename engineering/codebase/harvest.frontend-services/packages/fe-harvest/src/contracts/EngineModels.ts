@@ -77,6 +77,7 @@ export interface SubscriptionModel {
   readonly tenantId: string;
   readonly pipelineId?: string;
   readonly schema?: string;
+  readonly filterKey?: string;
   readonly mode: string;
   readonly state: string;
   readonly context: Readonly<Record<string, string>>;

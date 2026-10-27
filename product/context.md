@@ -11,7 +11,10 @@ in the version track. No live source harvest or production rollout is claimed by
 
 ## Decisions
 
-- 2026-10-27 — build with direct HTTP and generic readers; omit CAPTCHA, proxy/IP, account-pool and provider integration.
+- 2026-10-27 — corrected the initial scope after user clarification: build configurable CAPTCHA, proxy/IP and
+  account-session integrations in the private adapter host; credentials arrive later and providers start disabled.
+- 2026-10-27 — keep direct HTTP as the public default; expose leased transports and reusable Hosting composition.
+- 2026-10-27 — filter consumer delivery through host-registered predicates; preserve raw captures and lifecycle events.
 - 2026-10-27 — challenges, blocks and rate limits are outcomes that pause the host lane, never deletion evidence.
 - 2026-10-27 — keep named-source internals and WoW2 service images in the private adapters repository.
 - 2026-10-27 — store normalized contact numbers as plain text and compare them directly for deduplication.

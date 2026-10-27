@@ -76,6 +76,7 @@ the private adapters repository. Every type references the BCL and the kernel on
 | `StepRequirements` (`RenderNeed`, `MinDelay`) | `Steps` | vocabulary | adapters, Engine |
 | outcomes: `FetchOutcome`, `ItemOutcome`, `LinkSignal` · `LinkObservation`, `RunReason` | `Steps` · `Runs` | vocabulary | adapters, Engine, Posts |
 | `IFetchClientFactory` — direct clients, one user agent, a run's cookie jar | `Capabilities.Fetching` | Fetching lane (iteration 2), inline in `Module/Capabilities/` over core `Http/Safety` | Engine |
+| `IFetchTransportFactory` → `IFetchTransportLease` | `Capabilities.Fetching` | direct public default; explicit private route/session providers | fetching policy handler, after permission/pause gates |
 | `IChallengeDetector` (`ChallengeProbe` → `ChallengeVerdict`: challenge, block or rate limit; `ChallengeKind`) | `Capabilities.Challenges` | Fetching lane (generic) · adapters (their own) | step brokers |
 | `IBrowserRenderer` | `Capabilities.Rendering` | declared, unbound in v0.1; a step that needs it reports `capabilityUnavailable` | Engine |
 | `ICaptureReader` → `CaptureReadResult` (`Capture`, `DiscoveredUrl`) over `FetchedDocument` | `Readers` | Readers lane (iteration 4) | step brokers |
@@ -83,8 +84,12 @@ the private adapters repository. Every type references the BCL and the kernel on
 | `PostState` · `LinkState` · `LinkRole` | `Posts` | Posts lane (iteration 6) over its tables | Delivery, console |
 | `SubscriptionModel` · `DeliveryEvent` · `DeliveryEventTypes` · `CursorPage<T>` | `Delivery` | Delivery lane (iteration 7), which declares the subscription broker | consumers |
 
-- No escalation: a challenge, a block or a rate limit is a `FetchOutcome` the run records, and the host backs off.
-  Nothing retries it through another route — no proxy or rotation, no disguised client, no solver, no sign-in or account.
+- A challenge, a block or a rate limit is a `FetchOutcome` the run records, and the host backs off. The generic engine
+  never automatically retries through another route or submits a challenge. A private host may explicitly configure
+  proxy/IP and supplied account-session leases, plus a source-aware challenge client. Provider failure never silently
+  falls back to direct HTTP. Route secrets do not enter captures or delivery.
+- A lease owns its client and account/IP reservation until disposal, including robots and allowed redirects. Private
+  sessions do not share cached bodies. The direct factory remains the public default.
 - The renderer serves pages that show their content only through JavaScript, never a challenge.
 - The schema in the SQL migrations (`001` baseline, `002` without the ladder) is the shared seam between lanes: each
   lane maps the tables its folder's lead doc names.

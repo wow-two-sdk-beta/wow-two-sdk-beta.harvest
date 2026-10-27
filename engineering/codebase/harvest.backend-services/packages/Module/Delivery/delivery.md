@@ -13,6 +13,12 @@
   dispatcher, pull ships first.
 - a subscription can access the shared pool or its tenant's own container; its pipeline must belong to that container
 - live/since backfill and capture writes share the container transaction lock, so joining cannot miss a racing write
+- hosts register `IDeliveryPostFilter` implementations; nullable `FilterKey` selects one independently of opaque
+  `Context`. Null accepts all posts; unknown keys fail subscription validation
+- capture and backfill snapshots apply the filter; absent or throwing filters withhold new snapshots while raw
+  posts and captures remain available. Stored filter keys survive restarts
+- known posts retain lifecycle events and rollup-state changes even after a filter stops matching, including a
+  `post.changed` that restores a gone post; new post identities always require a match
 - a pull cursor binds its subscription and reads `(tx, id)` below `pg_snapshot_xmin(pg_current_snapshot())`;
   transactions that commit late cannot be skipped, and long-running transactions can delay visibility
 - an empty poll preserves its cursor; an older cursor replays the same event identifiers and revision snapshots

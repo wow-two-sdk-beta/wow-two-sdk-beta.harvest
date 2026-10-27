@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Harvest HTTP hosting: API key access, controller contract, database startup and reusable service composition.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="WoW2.Sdk.Beta.Be" />
+    <ProjectReference Include="..\Module\WoW.Two.Sdk.Beta.Be.Harvest.Module.csproj" />
+  </ItemGroup>
+</Project>

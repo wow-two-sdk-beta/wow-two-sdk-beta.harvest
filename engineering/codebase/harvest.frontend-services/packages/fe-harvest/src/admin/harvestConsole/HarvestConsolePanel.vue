@@ -703,6 +703,7 @@ onScopeDispose(() => {
                   </p>
                   <p class="mt-1 text-xs text-muted-foreground">
                     {{ subscription.schema ?? 'Post' }} · {{ subscription.state }}
+                    <span v-if="subscription.filterKey">· {{ subscription.filterKey }}</span>
                   </p>
                 </div>
                 <Button size="sm" variant="outline" :is-disabled="pending" @click="pull(subscription)">

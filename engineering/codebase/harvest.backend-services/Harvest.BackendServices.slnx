@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/Packages/">
+    <Project Path="packages/Hosting/WoW.Two.Sdk.Beta.Be.Harvest.Hosting.csproj" />
     <Project Path="packages/Abstractions/WoW.Two.Sdk.Beta.Be.Harvest.Abstractions.csproj" />
     <Project Path="packages/Client/WoW.Two.Sdk.Beta.Be.Harvest.Client.csproj" />
     <Project Path="packages/Module/WoW.Two.Sdk.Beta.Be.Harvest.Module.csproj" />

@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
+using WoW.Two.Sdk.Beta.Be.Harvest.Delivery;
 using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Delivery;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Persistence;
@@ -15,8 +16,11 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Posts;
 /// <summary>Integrates immutable captures and resolved posts over the module's keyed PostgreSQL store.</summary>
 internal sealed partial class ModulePostBroker(
     [FromKeyedServices(HarvestModuleConstants.ServiceKey)] NpgsqlDataSource dataSource,
-    TimeProvider time) : IPostBroker
+    TimeProvider time,
+    IEnumerable<IDeliveryPostFilter> filters) : IPostBroker
 {
+    private readonly DeliveryPostFilters postFilters = new(filters);
+
     /// <inheritdoc />
     public async Task<Result<CaptureSaveResult>> SaveCaptureAsync(Guid containerId, Guid sourceId, Guid? runId, Capture capture, PostEnvelope envelope, CancellationToken cancellationToken = default)
     {
@@ -121,7 +125,7 @@ internal sealed partial class ModulePostBroker(
         {
             await ResolveAsync(connection, transaction, containerId, link.PostId, now, !isNewPost, cancellationToken);
             var post = (await ReadPostAsync(connection, transaction, containerId, link.PostId, cancellationToken))!;
-            await DeliveryEventWriter.AppendAsync(connection, transaction, post, isNewPost ? "post.new" : "post.changed", runId, link.Id, now, cancellationToken);
+            await DeliveryEventWriter.AppendAsync(connection, transaction, post, isNewPost ? "post.new" : "post.changed", runId, link.Id, now, postFilters, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return Result<CaptureSaveResult>.Ok(new CaptureSaveResult { Post = post, LinkId = link.Id, CaptureId = captureId, Changed = changed });
         }
