@@ -28,7 +28,8 @@ public sealed class ModuleHost : IAsyncDisposable
     /// <summary>Builds the host over <paramref name="connectionString"/>, or a fresh database when null; boots nothing.</summary>
     /// <param name="connectionString">The database, or null for a fresh one.</param>
     /// <param name="operatorKey">The operator key the module accepts.</param>
-    public static async Task<ModuleHost> CreateAsync(string? connectionString = null, string? operatorKey = null)
+    /// <param name="configure">A further tweak of the module's options, applied after the connection and key.</param>
+    public static async Task<ModuleHost> CreateAsync(string? connectionString = null, string? operatorKey = null, Action<HarvestModuleOptions>? configure = null)
     {
         connectionString ??= (await PostgresServer.SharedAsync()).NewDatabase("integration");
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 27, 9, 0, 0, TimeSpan.Zero));
@@ -37,6 +38,7 @@ public sealed class ModuleHost : IAsyncDisposable
         {
             options.ConnectionString = connectionString;
             options.OperatorApiKey = operatorKey;
+            configure?.Invoke(options);
         });
         services.AddHarvestApiKeys();
         return new ModuleHost(services.BuildServiceProvider(validateScopes: true), connectionString, clock);
@@ -44,9 +46,10 @@ public sealed class ModuleHost : IAsyncDisposable
 
     /// <summary>Builds the host over a fresh database and boots its store.</summary>
     /// <param name="operatorKey">The operator key the module accepts.</param>
-    public static async Task<ModuleHost> StartAsync(string? operatorKey = null)
+    /// <param name="configure">A further tweak of the module's options, applied after the connection and key.</param>
+    public static async Task<ModuleHost> StartAsync(string? operatorKey = null, Action<HarvestModuleOptions>? configure = null)
     {
-        var host = await CreateAsync(operatorKey: operatorKey);
+        var host = await CreateAsync(operatorKey: operatorKey, configure: configure);
         await host.Services.MigrateHarvestOnStartupAsync("test");
         return host;
     }
