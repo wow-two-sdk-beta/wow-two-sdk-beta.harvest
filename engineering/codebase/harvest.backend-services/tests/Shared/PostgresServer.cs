@@ -3,14 +3,14 @@ using Testcontainers.PostgreSql;
 
 namespace Harvest.Tests.Shared;
 
-/// <summary>Runs one throwaway PostgreSQL server (the platform image, <c>postgres:16-alpine</c>) per test assembly and
+/// <summary>Runs one throwaway PostgreSQL server (the platform image, <c>postgres:18-alpine</c>) per test assembly and
 /// hands out a fresh database per fixture, so suites run in parallel and never share rows by accident.</summary>
 /// <remarks>Linked into each tier that needs a database; it needs Docker. The container outlives the fixtures and is
 /// removed with the test process by the Testcontainers reaper.</remarks>
 public sealed class PostgresServer
 {
     /// <summary>Holds the image every tier tests against, the one the platform runs.</summary>
-    public const string Image = "postgres:16-alpine";
+    public const string Image = "postgres:18-alpine";
 
     private static readonly Lazy<Task<PostgresServer>> SharedServer = new(StartAsync);
 

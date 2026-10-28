@@ -6,7 +6,7 @@
 
   <!--
     Migration tier — the module's embedded migration set "harvest" (Migrations/NNN/*.sql): apply, idempotency, rollback,
-    re-apply, partitions and the trigram index, against a real PostgreSQL in Testcontainers (postgres:16-alpine, Docker).
+    re-apply, partitions and the trigram index, against a real PostgreSQL in Testcontainers (postgres:18-alpine, Docker).
     No HTTP, no EF model.
   -->
   <ItemGroup>

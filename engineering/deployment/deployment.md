@@ -7,7 +7,7 @@ The packages ship separately, from `publish-packages.yml` (`engineering/scripts/
 |---|---|
 | `deploy.yml` | descriptor 2: one service, `harvest` (`/health`, 256 MB, `needs: [postgres]`, the typed required key `DatabaseSettings:ConnectionString` and the secret `Harvest:Operator:ApiKey`); sites `app` (public, primary) and `console` (private), both at `/` and `/api`; `dotnetEnvironment: true` and the `verify` dev check |
 | `Dockerfile` | three stages: build the frontend workspace (`fe-harvest`, then `apps/web`), publish `service/Harvest.Api` with its packages and the pages in `wwwroot`, run on `aspnet` with `curl` |
-| `docker-compose.yml` | local verification: the image beside `postgres:16-alpine` with local-only credentials, on `http://127.0.0.1:8397` |
+| `docker-compose.yml` | local verification: the image beside `postgres:18-alpine` with local-only credentials, on `http://127.0.0.1:8397` |
 
 ## Contract with Wheelhouse
 

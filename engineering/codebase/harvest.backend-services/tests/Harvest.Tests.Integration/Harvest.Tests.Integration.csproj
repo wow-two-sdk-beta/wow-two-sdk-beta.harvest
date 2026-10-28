@@ -6,7 +6,7 @@
 
   <!--
     Integration tier — the Form 1 module wired as a consumer wires it (AddHarvest + MigrateHarvestOnStartupAsync) over a
-    real PostgreSQL in Testcontainers (postgres:16-alpine, Docker): the store's rows, the boot self-test, the key store
+    real PostgreSQL in Testcontainers (postgres:18-alpine, Docker): the store's rows, the boot self-test, the key store
     and the capture partitions. No HTTP.
   -->
   <ItemGroup>

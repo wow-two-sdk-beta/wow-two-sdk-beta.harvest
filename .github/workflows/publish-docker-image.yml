@@ -36,7 +36,7 @@ jobs:
     with:
       commit: ${{ inputs.commit }}
       # Backend: every tier (unit, integration, E2E, conformance in process, migrations); the database tiers run
-      # PostgreSQL in Testcontainers (postgres:16-alpine), so the runner needs Docker. The build also builds the frontend
+      # PostgreSQL in Testcontainers (postgres:18-alpine), so the runner needs Docker. The build also builds the frontend
       # workspace into wwwroot, which the E2E tier reads. Release scripts: the tag
       # version logic in throwaway repositories, and shellcheck.
       backends: |

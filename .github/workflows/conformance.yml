@@ -59,7 +59,7 @@ jobs:
           echo "CONFORMANCE_API_KEY=$key" >> "$GITHUB_ENV"
           docker network create harvest-conformance
           docker run --detach --name harvest-db --network harvest-conformance \
-            --env POSTGRES_DB=harvest --env POSTGRES_USER=harvest --env POSTGRES_PASSWORD=conformance postgres:16-alpine
+            --env POSTGRES_DB=harvest --env POSTGRES_USER=harvest --env POSTGRES_PASSWORD=conformance postgres:18-alpine
           for _ in $(seq 1 30); do
             docker exec harvest-db pg_isready --username harvest --dbname harvest >/dev/null 2>&1 && break
             sleep 2

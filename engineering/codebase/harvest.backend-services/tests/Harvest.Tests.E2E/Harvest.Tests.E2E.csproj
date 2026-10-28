@@ -6,7 +6,7 @@
 
   <!--
     E2E tier — boots the real Harvest.Api host in-process (WebApplicationFactory via the SDK WebApiTestHost) over a
-    PostgreSQL in Testcontainers (postgres:16-alpine, Docker): the store's boot and refusal, API key access, the
+    PostgreSQL in Testcontainers (postgres:18-alpine, Docker): the store's boot and refusal, API key access, the
     registration wire, the hosted pages, /health and the descriptor's dev check. The SDK testing package brings xunit,
     AwesomeAssertions and Testcontainers transitively.
   -->

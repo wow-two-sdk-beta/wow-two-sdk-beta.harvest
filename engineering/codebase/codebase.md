@@ -19,7 +19,7 @@ The code lives in `harvest.backend-services/` (.NET) and `harvest.frontend-servi
 - Tests: `Unit` (package logic, no I/O), `Integration` (the module over PostgreSQL: rows, self-test, key store,
   partitions), `E2E` (the host in process: boot and refusal, access, the wire, pages, `/health`, the descriptor's dev
   check), `Conformance` (one suite against module, client and fake), `Migrations` (the module's SQL set). The database
-  tiers run `postgres:16-alpine` in Testcontainers through `tests/Shared/PostgresServer.cs` — one server per test
+  tiers run `postgres:18-alpine` in Testcontainers through `tests/Shared/PostgresServer.cs` — one server per test
   assembly, a fresh database per fixture — so they need Docker. Run them with `dotnet test Harvest.BackendServices.slnx`.
 
 ## Frontend

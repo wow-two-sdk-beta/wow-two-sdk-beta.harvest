@@ -97,7 +97,7 @@ cd engineering/codebase/harvest.frontend-services && pnpm install --frozen-lockf
 ## Test it
 
 ```bash
-# Backend: unit, integration, E2E, conformance and migration tiers; the database tiers run postgres:16-alpine in
+# Backend: unit, integration, E2E, conformance and migration tiers; the database tiers run postgres:18-alpine in
 # Testcontainers (Docker), and the build also builds the frontend workspace, so Node and pnpm are required
 cd engineering/codebase/harvest.backend-services && dotnet test Harvest.BackendServices.slnx
 

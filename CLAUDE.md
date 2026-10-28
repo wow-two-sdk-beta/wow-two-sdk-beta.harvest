@@ -39,7 +39,7 @@ engineering/             ← the HOW
   pin moves here. `core-latest.yml` tests the newest core nightly; a red run is a fix here, not a gate.
 - Schema changes are `packages/Module/Migrations/NNN-name/{Apply,Rollback}.sql` pairs; never edit an applied one.
 - The store is PostgreSQL (UTF-8, `pg_trgm`; boot refuses anything else). The database tiers (Integration, Migrations,
-  Conformance, E2E) run `postgres:16-alpine` in Testcontainers, so they need Docker; the backend build runs the
+  Conformance, E2E) run `postgres:18-alpine` in Testcontainers, so they need Docker; the backend build runs the
   frontend build (`BuildSpa`), so it needs Node and pnpm.
 - Repository creation, GitHub settings, rollout state and hand steps: `engineering/development/development.md`
   § Repository.

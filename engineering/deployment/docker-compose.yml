@@ -2,17 +2,20 @@
 #
 #   docker compose up -d --build     the database and the service; the service answers on http://127.0.0.1:8397
 #
+# A `database` volume holding PostgreSQL 16 data cannot start on 18: remove it once (docker compose down -v); the
+# database is recreated.
+#
 # The credentials and the operator key are local-only test values; a deployed environment's live in its Wheelhouse
 # target settings. The database stays on the compose network; an IDE run points appsettings.Local.json at its own.
 services:
   database:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     environment:
       POSTGRES_DB: harvest
       POSTGRES_USER: harvest
       POSTGRES_PASSWORD: harvest
     volumes:
-      - database:/var/lib/postgresql/data
+      - database:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U harvest -d harvest"]
       interval: 5s
