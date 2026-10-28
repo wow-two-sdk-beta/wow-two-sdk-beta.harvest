@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "dev:http": "vite --mode http",
+    "dev:demo": "vite --mode demo",
     "typecheck": "vue-tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json && pnpm check:sfc",
     "check:sfc": "node scripts/check-sfc.mjs",
     "build": "pnpm typecheck && vite build",

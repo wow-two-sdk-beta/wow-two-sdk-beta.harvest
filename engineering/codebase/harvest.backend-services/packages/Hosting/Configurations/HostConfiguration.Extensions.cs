@@ -66,6 +66,7 @@ public static partial class HostConfiguration
                 options.AddPolicy(scope, policy => policy.RequireApiKeyScope(scope));
         });
         builder.Services.AddScoped<CallerResolver>();
+        builder.Services.AddScoped<Harvest.Api.Registration.SourceCapabilitiesResolver>();
         return builder;
     }
 

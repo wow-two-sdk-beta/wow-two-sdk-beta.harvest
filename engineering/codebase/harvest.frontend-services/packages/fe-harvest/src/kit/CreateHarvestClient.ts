@@ -13,11 +13,13 @@ import type {
   CursorPage,
   DeliveryEvent,
   WorkKind,
+  SourceCapabilitiesModel,
 } from '../contracts';
 import { createRegistryClient, type RegistryClient, type RegistryClientOptions } from './CreateRegistryClient';
 
 /** Exposes console operations under the same contract for an embedded or remote Harvest. */
 export interface HarvestClient extends RegistryClient {
+  getSourceCapabilities(id: string, signal?: AbortSignal): Promise<Result<SourceCapabilitiesModel, ApiFailure>>;
   listTenants(signal?: AbortSignal): Promise<Result<readonly TenantModel[], ApiFailure>>;
   registerTenant(body: { slug: string; name: string }, signal?: AbortSignal): Promise<Result<TenantModel, ApiFailure>>;
   createContainer(
@@ -68,6 +70,26 @@ function list<T>(value: unknown): Result<readonly T[], ApiFailure> {
     : ResultExtensions.fail(ApiFailureFactory.create('protocol'));
 }
 
+/** Validates discovery before presentation uses the runtime's configuration fields. */
+function sourceCapabilities(value: unknown): Result<SourceCapabilitiesModel, ApiFailure> {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return ResultExtensions.fail(ApiFailureFactory.create('protocol'));
+  const row = value as Partial<SourceCapabilitiesModel>;
+  const configuration = row.configuration;
+  const kinds = ['capture', 'discover', 'refresh', 'sweep', 'check', 'metrics', 'link', 'intake'];
+  return typeof row.sourceId === 'string' &&
+    Array.isArray(row.workKinds) &&
+    row.workKinds.every((kind) => kinds.includes(kind)) &&
+    configuration &&
+    typeof configuration.displayName === 'string' &&
+    ['ready', 'configurationRequired', 'unavailable'].includes(configuration.readiness) &&
+    configuration.scopeSchema &&
+    typeof configuration.scopeSchema === 'object' &&
+    !Array.isArray(configuration.scopeSchema)
+    ? ResultExtensions.ok(row as SourceCapabilitiesModel)
+    : ResultExtensions.fail(ApiFailureFactory.create('protocol'));
+}
+
 /** Builds an authenticated, form-agnostic console client. Credentials stay only in the caller's memory. */
 export function createHarvestClient(options: RegistryClientOptions = {}): HarvestClient {
   const api = createApiClient({
@@ -80,6 +102,11 @@ export function createHarvestClient(options: RegistryClientOptions = {}): Harves
   const signalOf = (signal?: AbortSignal) => (signal === undefined ? {} : { signal });
   return {
     ...createRegistryClient(options),
+    getSourceCapabilities: (id, signal) =>
+      api.get(`api/sources/${encodeURIComponent(id)}/capabilities`, {
+        ...signalOf(signal),
+        decode: sourceCapabilities,
+      }),
     listTenants: (signal) => api.get('api/tenants', { ...signalOf(signal), decode: list<TenantModel> }),
     registerTenant: (body, signal) =>
       api.post('api/tenants', { body, ...signalOf(signal), decode: object<TenantModel> }),

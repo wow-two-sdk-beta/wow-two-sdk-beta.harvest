@@ -34,14 +34,21 @@ import type {
   TenantModel,
   DeliveryEvent,
   PipelineUpdate,
+  SourceCapabilitiesModel,
 } from '../../contracts';
 import { createHarvestClient, type HarvestClient } from '../../kit';
 import PipelineSettings from './PipelineSettings.vue';
 import PostDetailsPanel from './PostDetailsPanel.vue';
+import SourceCapabilitiesPanel from './SourceCapabilitiesPanel.vue';
 
 /** Reusable pipeline, run, source, post and delivery management for every Harvest capability form. */
 defineOptions({ name: 'HarvestConsolePanel' });
-const props = defineProps<{ client?: HarvestClient; appVersion?: string; apiVersion?: string }>();
+const props = defineProps<{
+  client?: HarvestClient;
+  appVersion?: string;
+  apiVersion?: string;
+  connectionManaged?: boolean;
+}>();
 const tabs = ['Pipelines', 'Sources', 'Runs', 'Posts', 'Delivery', 'Hosts'] as const;
 const activeTab = ref<(typeof tabs)[number]>('Pipelines');
 const sidebarOpen = ref(false);
@@ -105,6 +112,44 @@ const activeRuns = computed(
   () => runs.value.filter((run) => run.status === 'running' || run.status === 'queued').length,
 );
 const selectedPipeline = computed(() => pipelines.value.find((item) => item.id === pipelineId.value));
+const capabilities = shallowRef<Record<string, SourceCapabilitiesModel>>({});
+const capabilityErrors = shallowRef<Record<string, string>>({});
+const selectedCapabilities = computed(() => capabilities.value[selectedPipeline.value?.sourceId ?? '']);
+const newSourceCapabilities = computed(() => capabilities.value[sourceId.value]);
+let capabilityRead: AbortController | null = null;
+
+async function loadCapabilities() {
+  const api = client.value;
+  const container = containerId.value;
+  capabilityRead?.abort();
+  if (!api || !container) return;
+  const current = new AbortController();
+  capabilityRead = current;
+  const ids = [...new Set([selectedPipeline.value?.sourceId, sourceId.value].filter((id): id is string => !!id))];
+  await Promise.all(
+    ids.map(async (id) => {
+      const result = await api.getSourceCapabilities(id, current.signal);
+      if (disposed || current.signal.aborted || client.value !== api || containerId.value !== container) return;
+      if (result.ok) {
+        capabilities.value = { ...capabilities.value, [id]: result.value };
+        capabilityErrors.value = { ...capabilityErrors.value, [id]: '' };
+      } else {
+        const remaining = { ...capabilities.value };
+        delete remaining[id];
+        capabilities.value = remaining;
+        capabilityErrors.value = {
+          ...capabilityErrors.value,
+          [id]: 'This runtime could not describe its source capabilities.',
+        };
+      }
+    }),
+  );
+}
+
+function canCapture(source: string) {
+  const metadata = capabilities.value[source];
+  return metadata?.configuration.readiness === 'ready' && metadata.workKinds.includes('capture');
+}
 
 function pipelineLabel(pipeline: PipelineModel) {
   const name =
@@ -196,6 +241,7 @@ async function refresh() {
     if (!sourceId.value || !sources.value.some((item) => item.id === sourceId.value))
       sourceId.value = sources.value[0]?.id ?? '';
     await loadRuns(current.signal);
+    await loadCapabilities();
   } catch {
     if (!current.signal.aborted) failure.value = 'The console could not refresh. Try again.';
   } finally {
@@ -248,6 +294,7 @@ async function initialize() {
 
 /** Connects with a key held in memory for this page only. */
 async function connect() {
+  if (props.connectionManaged) return;
   disconnect();
   client.value = createHarvestClient({ apiKey: key.value.trim() });
   key.value = '';
@@ -256,6 +303,9 @@ async function connect() {
 
 /** Cancels requests and removes the current connection and its data. */
 function disconnect() {
+  capabilityRead?.abort();
+  capabilities.value = {};
+  capabilityErrors.value = {};
   action?.abort();
   read?.abort();
   client.value = null;
@@ -349,6 +399,7 @@ async function registerSource() {
 }
 
 async function declarePipeline() {
+  if (!canCapture(sourceId.value)) return;
   await mutate(async (api, signal) => {
     const result = await api.declarePipeline(
       {
@@ -437,6 +488,9 @@ watch(
     hosts.value = [];
     pipelineId.value = '';
     sourceId.value = '';
+    capabilities.value = {};
+    capabilityErrors.value = {};
+    capabilityRead?.abort();
     events.value = [];
     subscriptionId.value = '';
     cursor.value = '';
@@ -449,6 +503,9 @@ watch(
 watch(pipelineId, () => {
   void loadRuns();
 });
+watch([() => selectedPipeline.value?.sourceId, sourceId], () => {
+  void loadCapabilities();
+});
 onMounted(() => {
   if (client.value) void initialize();
   timer = setInterval(() => {
@@ -457,6 +514,7 @@ onMounted(() => {
 });
 onScopeDispose(() => {
   disposed = true;
+  capabilityRead?.abort();
   action?.abort();
   read?.abort();
   if (timer) clearInterval(timer);
@@ -510,7 +568,9 @@ onScopeDispose(() => {
         >
           Refresh
         </Button>
-        <Button v-if="connected" size="sm" variant="outline" @click="disconnect">Disconnect</Button>
+        <Button v-if="connected && !props.connectionManaged" size="sm" variant="outline" @click="disconnect">
+          Disconnect
+        </Button>
       </div>
     </AppShellHeader>
     <AppShellSidebar v-if="connected" class="border-r border-border bg-transparent [&>nav]:p-0">
@@ -610,7 +670,10 @@ onScopeDispose(() => {
             <p class="mt-2 text-sm leading-relaxed text-muted-foreground">
               Bring your pipelines, captures and deliveries into one place.
             </p>
-            <form class="mt-7 space-y-4" @submit.prevent="connect">
+            <p v-if="props.connectionManaged" class="mt-7 text-sm">
+              Restore the connection through the embedding application.
+            </p>
+            <form v-else class="mt-7 space-y-4" @submit.prevent="connect">
               <label class="block space-y-2 text-sm">
                 <span>API key</span>
                 <PasswordInput
@@ -623,7 +686,7 @@ onScopeDispose(() => {
               </label>
               <Button type="submit" class="w-full" :is-loading="pending">Connect</Button>
             </form>
-            <p class="mt-4 text-xs text-muted-foreground">
+            <p v-if="!props.connectionManaged" class="mt-4 text-xs text-muted-foreground">
               The key stays in memory until you disconnect or close this page.
             </p>
           </Card>
@@ -727,7 +790,7 @@ onScopeDispose(() => {
                       <div class="flex gap-2">
                         <Button
                           size="sm"
-                          :is-disabled="pending || pipeline.state !== 'active'"
+                          :is-disabled="pending || pipeline.state !== 'active' || !canCapture(pipeline.sourceId)"
                           @click="mutate((api, signal) => api.startRun(pipeline.id, 'capture', signal), 'Run queued.')"
                         >
                           Run now
@@ -748,12 +811,19 @@ onScopeDispose(() => {
                       </div>
                     </li>
                   </ul>
+                  <SourceCapabilitiesPanel
+                    v-if="selectedPipeline"
+                    class="mt-4"
+                    :capabilities="selectedCapabilities"
+                    :error="capabilityErrors[selectedPipeline.sourceId]"
+                  />
                   <PipelineSettings
                     v-if="selectedPipeline"
                     :key="selectedPipeline.id"
                     class="mt-6 border-t border-border pt-6"
                     :pipeline="selectedPipeline"
                     :pending="pending"
+                    :capabilities="selectedCapabilities"
                     @save="savePipeline"
                   />
                   <p v-if="!pipelines.length" class="mt-8 text-sm text-muted-foreground">
@@ -794,7 +864,13 @@ onScopeDispose(() => {
                     >
                       {{ newScheduleEnabled ? 'Scheduled capture enabled' : 'Manual capture only' }}
                     </Button>
-                    <Button type="submit" :is-disabled="!sourceId" :is-loading="pending">Create pipeline</Button>
+                    <SourceCapabilitiesPanel
+                      :capabilities="newSourceCapabilities"
+                      :error="capabilityErrors[sourceId]"
+                    />
+                    <Button type="submit" :is-disabled="!sourceId || !canCapture(sourceId)" :is-loading="pending">
+                      Create pipeline
+                    </Button>
                     <Button v-if="pipelines.length" type="button" variant="ghost" @click="creatingPipeline = false">
                       Cancel
                     </Button>

@@ -2,6 +2,22 @@ import { describe, expect, it, vi } from 'vitest';
 import { createHarvestClient } from '../src/kit';
 
 describe('Harvest console client', () => {
+  it('reads safe runtime capabilities and rejects malformed discovery', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      Response.json({
+        data: {
+          sourceId: 'source',
+          workKinds: ['capture'],
+          configuration: { displayName: 'External adapter', readiness: 'ready', scopeSchema: {} },
+        },
+      }),
+    );
+    const api = createHarvestClient({ fetch });
+    expect((await api.getSourceCapabilities('source')).ok).toBe(true);
+    expect(String(fetch.mock.calls[0]?.[0])).toContain('api/sources/source/capabilities');
+    const malformed = createHarvestClient({ fetch: async () => Response.json({ data: { sourceId: 'source' } }) });
+    expect((await malformed.getSourceCapabilities('source')).ok).toBe(false);
+  });
   it('updates one pipeline with a complete saved target and schedule body', async () => {
     const fetch = vi.fn(async () => Response.json({ data: { id: 'saved-search' } }));
     const update = {

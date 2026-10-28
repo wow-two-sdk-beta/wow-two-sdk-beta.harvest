@@ -7,12 +7,30 @@ import mkcert from 'vite-plugin-mkcert';
 const version = process.env.APP_VERSION || 'dev';
 
 export default defineConfig(({ command, mode }) => {
-  const https = mode !== 'http' && process.env.VITE_HTTPS !== 'false';
+  const https = !['http', 'demo'].includes(mode) && process.env.VITE_HTTPS !== 'false';
 
   return {
     base: '/',
     define: { __APP_VERSION__: JSON.stringify(version) },
-    plugins: [vue(), tailwindcss(), ...(command === 'serve' && https ? [mkcert()] : [])],
+    plugins: [
+      vue(),
+      tailwindcss(),
+      ...(command === 'serve' && https ? [mkcert()] : []),
+      {
+        name: 'harvest-console-manifest',
+        generateBundle() {
+          this.emitFile({
+            type: 'asset',
+            fileName: 'harvest-console.json',
+            source: JSON.stringify({
+              contract: 'harvest.console.v1',
+              version,
+              sourceRevision: process.env.HARVEST_SOURCE_REVISION ?? process.env.VCS_REF ?? null,
+            }),
+          });
+        },
+      },
+    ],
     build: { outDir: 'dist', emptyOutDir: true, target: 'es2022' },
     server: {
       host: 'localhost',

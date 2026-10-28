@@ -64,6 +64,14 @@ An adapter host references that package and registers its parsers and providers 
 
 The browser keeps its API key in memory. A disconnected console makes no authenticated registry requests.
 
+The complete console belongs to this public repository. `pnpm dev:demo` in the frontend workspace opens synthetic,
+editable pipelines without a backend, private checkout or source connections. `VITE_API_TARGET` selects a real
+runtime during development. [Composition and standalone UI development](engineering/architecture/composition.md).
+
+`GET /api/sources/{sourceId}/capabilities` describes the installed adapter, supported operations, local readiness
+and saved scope schema under the source's tenant visibility rules. Adapters optionally implement
+`ISourceConfigurationProvider`; only safe display metadata crosses this seam.
+
 The console uses a responsive sidebar with a pipeline list. Select a pipeline to edit its starting URL (including
 search filters), query parameter overrides and per-kind cadence. Interval, cron, adaptive and manual modes support
 IANA timezones and optional active-hour windows. Disabled schedules stay manual-only. Collection still requires a

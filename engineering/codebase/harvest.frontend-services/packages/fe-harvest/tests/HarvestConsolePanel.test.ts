@@ -14,6 +14,15 @@ afterEach(() => {
 function fixtureFetch() {
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input), 'https://harvest.example.test');
+    if (url.pathname.endsWith('/capabilities'))
+      return Response.json({
+        data: {
+          sourceId: 'source-1',
+          adapterKey: 'fixture',
+          workKinds: ['capture', 'check'],
+          configuration: { displayName: 'Fixture source', readiness: 'ready', scopeSchema: {} },
+        },
+      });
     const body =
       url.pathname === '/api/containers'
         ? [{ id: 'container-1', kind: 'pool' }]

@@ -12,6 +12,7 @@
     "build:packages": "pnpm --filter \"./packages/**\" build",
     "dev": "pnpm build:packages && pnpm --filter @harvest/web dev",
     "dev:http": "pnpm build:packages && pnpm --filter @harvest/web dev:http",
+    "dev:demo": "pnpm build:packages && pnpm --filter @harvest/web dev:demo",
     "typecheck": "pnpm build:packages && pnpm -r typecheck",
     "build": "pnpm -r build",
     "preview": "pnpm --filter @harvest/web preview",

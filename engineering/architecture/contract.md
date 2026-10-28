@@ -73,6 +73,7 @@ the private adapters repository. Every type references the BCL and the kernel on
 | Seam | Namespace | Implemented by | Called by |
 |---|---|---|---|
 | `ISourceAdapter` → `AdapterDescriptor` (`StepDescriptor`, plans per `WorkKind`) | `Steps` | Readers lane (generic family adapters) · private adapters repo (named sources) | Engine |
+| `ISourceConfigurationProvider` → `SourceConfigurationModel` | `Sources` | Optional adapter metadata: scope schema and local readiness | Authorized source-capabilities API and shared UI |
 | `IStepBroker.ExecuteAsync(StepItem, IStepContext)` → `StepResult` | `Steps` | the same adapters, one broker per step | Engine |
 | `IStepContext` (`ResolvedPlan`, `Observe(StepSignal)`) | `Steps` | Engine lane (iteration 3) | step brokers |
 | `StepRequirements` (`RenderNeed`, `MinDelay`) | `Steps` | vocabulary | adapters, Engine |

@@ -21,6 +21,7 @@ COPY harvest.frontend-services/ ./
 # The build's version from the shared publish workflow (X.Y.Z or a pre-release); unset in a local build. Declared
 # after the dependency layers, since a changed build argument misses the cache of every RUN after it.
 ARG APP_VERSION
+ARG VCS_REF
 RUN pnpm build
 
 # ---- Stage 2: publish the .NET service with its packages (the pages arrive from stage 1) ----

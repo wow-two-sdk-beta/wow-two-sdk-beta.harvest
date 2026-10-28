@@ -32,6 +32,34 @@ function pipeline(): PipelineModel {
 }
 
 describe('Pipeline settings', () => {
+  it('uses adapter URL guidance and prevents unsupported schedules without discarding existing ones', async () => {
+    const original = pipeline();
+    const wrapper = mount(PipelineSettings, {
+      props: {
+        pipeline: original,
+        pending: false,
+        capabilities: {
+          sourceId: original.sourceId,
+          workKinds: ['capture'],
+          configuration: {
+            displayName: 'Named source',
+            readiness: 'ready',
+            scopeSchema: { required: ['url'], properties: { url: { description: 'A saved publisher profile URL.' } } },
+          },
+        },
+      },
+    });
+    try {
+      expect(wrapper.text()).toContain('A saved publisher profile URL.');
+      expect(wrapper.get('[aria-label="Enable metrics schedule"]').attributes('disabled')).toBeDefined();
+      await wrapper.get('input[name="pipeline-url"]').setValue('');
+      await wrapper.get('form').trigger('submit');
+      expect(wrapper.text()).toContain('requires a starting URL');
+      expect(wrapper.emitted('save')).toBeUndefined();
+    } finally {
+      wrapper.unmount();
+    }
+  });
   it('preserves a full filtered URL, overrides and disabled cron settings when saving', async () => {
     const wrapper = mount(PipelineSettings, { props: { pipeline: pipeline(), pending: false } });
     await wrapper

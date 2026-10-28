@@ -16,7 +16,7 @@ namespace Harvest.Api.Registration.Controllers;
 /// the containers it may see.</summary>
 [ApiController]
 [Route(RegistrationRouteConstants.Sources)]
-public sealed class SourcesController(IRegistrationBroker broker, CallerResolver callers) : ControllerBase
+public sealed class SourcesController(IRegistrationBroker broker, CallerResolver callers, Harvest.Api.Registration.SourceCapabilitiesResolver capabilities) : ControllerBase
 {
     /// <summary>Registers a source in a container.</summary>
     /// <param name="registration">The source to register.</param>
@@ -46,6 +46,24 @@ public sealed class SourcesController(IRegistrationBroker broker, CallerResolver
                && caller.CanRead(container)
             ? Ok(ApiResponse<SourceModel>.Ok(source))
             : this.ToProblem(RegistrationErrors.SourceNotFound(sourceId));
+    }
+
+    /// <summary>Reads installed adapter metadata for a source the caller may see; never probes the source.</summary>
+    /// <param name="sourceId">The visible source.</param>
+    /// <param name="ct">The token that cancels the request.</param>
+    [HttpGet("{sourceId:guid}/capabilities")]
+    [Authorize(Policy = AccessPolicies.AnyKey)]
+    [ProducesResponseType<ApiResponse<SourceCapabilitiesModel>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Capabilities(Guid sourceId, CancellationToken ct)
+    {
+        if (await callers.ResolveAsync(User, ct) is not { } caller)
+            return this.ToProblem(AppErrorFactory.Unauthorized());
+        if (await broker.GetSourceAsync(sourceId, ct) is not Result<SourceModel>.Success { Value: var source })
+            return this.ToProblem(RegistrationErrors.SourceNotFound(sourceId));
+        if (await broker.GetContainerAsync(source.ContainerId, ct) is not Result<ContainerModel>.Success { Value: var container }
+            || !caller.CanRead(container))
+            return this.ToProblem(RegistrationErrors.SourceNotFound(sourceId));
+        return Ok(ApiResponse<SourceCapabilitiesModel>.Ok(capabilities.Describe(source)));
     }
 
     /// <summary>Lists a container's sources.</summary>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { Button } from '@wow-two-beta/fe/presentation/actions';
 import {
   TextInput,
@@ -10,11 +10,11 @@ import {
   SelectPickerContent,
   SelectPickerItem,
 } from '@wow-two-beta/fe/presentation/forms';
-import type { PipelineModel, PipelineUpdate, ScheduleMode, WorkKind } from '../../contracts';
+import type { PipelineModel, PipelineUpdate, ScheduleMode, WorkKind, SourceCapabilitiesModel } from '../../contracts';
 
 /** Edits a complete saved target and cadence without resetting drafts during background refresh. */
 defineOptions({ name: 'PipelineSettings' });
-const props = defineProps<{ pipeline: PipelineModel; pending: boolean }>();
+const props = defineProps<{ pipeline: PipelineModel; pending: boolean; capabilities?: SourceCapabilitiesModel }>();
 const emit = defineEmits<{ save: [update: PipelineUpdate] }>();
 const name = ref('');
 const url = ref('');
@@ -41,6 +41,22 @@ const descriptions: Partial<Record<WorkKind, string>> = {
   check: 'Check availability',
   metrics: 'Update metrics',
 };
+
+function supported(kind: WorkKind) {
+  return props.capabilities?.workKinds.includes(kind) ?? true;
+}
+const urlGuidance = computed(() => {
+  const schema = props.capabilities?.configuration.scopeSchema as
+    { properties?: { url?: { description?: string } }; required?: string[] } | undefined;
+  return (
+    schema?.properties?.url?.description ??
+    'Copy the filtered source URL, including its query string. The URL must stay on its registered source host.'
+  );
+});
+const urlRequired = computed(() => {
+  const required = props.capabilities?.configuration.scopeSchema.required;
+  return Array.isArray(required) && required.includes('url');
+});
 
 function minutes(value?: string) {
   const match = value?.match(
@@ -75,6 +91,14 @@ watch(() => props.pipeline.id, reset, { immediate: true });
 
 function save() {
   error.value = '';
+  if (urlRequired.value && !url.value.trim()) {
+    error.value = 'This source adapter requires a starting URL.';
+    return;
+  }
+  if (props.capabilities && rows.value.some((row) => row.enabled && !supported(row.kind))) {
+    error.value = 'Disable schedules for operations this source adapter does not support.';
+    return;
+  }
   const entries = parameters.value.filter((entry) => entry.key.trim());
   if (new Set(entries.map((entry) => entry.key.trim())).size !== entries.length) {
     error.value = 'Each query parameter needs a unique name.';
@@ -129,8 +153,7 @@ function save() {
         />
       </label>
       <p class="-mt-2 text-xs leading-relaxed text-muted-foreground">
-        Copy the filtered page URL from the source, including its query string. Use one pipeline per search or account.
-        The URL must stay on the registered source host.
+        {{ urlGuidance }}
       </p>
       <details class="rounded-xl border border-border p-4">
         <summary class="cursor-pointer text-sm font-medium">
@@ -176,6 +199,9 @@ function save() {
               {{ descriptions[row.kind] }} · {{ row.enabled && row.mode !== 'manual' ? row.mode : 'Manual only' }}
             </span>
           </summary>
+          <p v-if="!supported(row.kind)" class="mt-3 text-xs text-muted-foreground">
+            Not supported by this adapter. Existing schedules can be disabled.
+          </p>
           <div class="mt-4 space-y-4">
             <Button
               type="button"
@@ -183,6 +209,7 @@ function save() {
               :variant="row.enabled ? 'outline' : 'ghost'"
               :aria-pressed="row.enabled"
               :aria-label="'Enable ' + row.kind + ' schedule'"
+              :is-disabled="!supported(row.kind) && !row.enabled"
               @click="row.enabled = !row.enabled"
             >
               {{ row.enabled ? 'Schedule enabled' : 'Schedule disabled' }}

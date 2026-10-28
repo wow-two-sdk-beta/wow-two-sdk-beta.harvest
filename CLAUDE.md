@@ -33,6 +33,10 @@ engineering/             ← the HOW
 - A package references only what its layer row allows. Hosting supplies shared startup, API key access and the HTTP
   mirror. The generic service and private adapter hosts reuse it; the service adds the console assets.
 - Management screens ship in `fe-harvest`'s `./admin` export; `apps/web`'s console composes them and builds none itself.
+- Standalone UI work uses `pnpm dev:demo` with synthetic client data. Public builds/tests require no extension
+  checkout. `VITE_API_TARGET` selects a real host during development; extension hosts consume the compiled console.
+- Source capability discovery returns declarative metadata through `ISourceConfigurationProvider`; no extension
+  implementation or credential enters the UI package. See `engineering/architecture/composition.md`.
 - Package versions come from tags (`be-v*` NuGet, `fe-v*` npm) in `publish-packages.yml`; never commit a version,
   never create a GitHub Release for a package tag. The image version comes from the version track (`v*`).
 - Core is pinned (`BackendSdkVersion`, the exact `@wow-two-beta/fe`); a needed core change goes to core first, then the

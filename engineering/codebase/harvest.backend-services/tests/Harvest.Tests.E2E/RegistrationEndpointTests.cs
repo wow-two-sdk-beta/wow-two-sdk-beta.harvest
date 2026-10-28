@@ -144,6 +144,47 @@ public sealed class RegistrationEndpointTests(HarvestApiFixture fixture)
 
     private static string Unique() => Guid.NewGuid().ToString("N")[..12];
 
+    [Fact]
+    public async Task Capabilities_ShouldUseTheInstalledAdapter_AndHideForeignSources()
+    {
+        using var admin = fixture.CreateClient(HarvestApiFixture.OperatorKey);
+        var own = await TenantAsync(admin);
+        var other = await TenantAsync(admin);
+        var ownContainer = await ContainerAsync(admin, own);
+        var otherContainer = await ContainerAsync(admin, other);
+        var source = await SourceAsync(admin, ownContainer);
+        var foreign = await SourceAsync(admin, otherContainer);
+        using var reader = fixture.CreateClient(await KeyAsync(admin, own, "pipelines:read"));
+        using var anonymous = fixture.CreateClient();
+
+        (await anonymous.GetAsync($"/api/sources/{source}/capabilities")).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        (await reader.GetAsync($"/api/sources/{foreign}/capabilities")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        using var response = await reader.GetAsync($"/api/sources/{source}/capabilities");
+        JsonElement metadata = await DataAsync(response);
+        metadata.GetProperty("sourceId").GetString().Should().Be(source);
+        metadata.GetProperty("adapterKey").GetString().Should().NotBeNullOrWhiteSpace();
+        metadata.GetProperty("workKinds").EnumerateArray().Select(kind => kind.GetString()).Should().Contain("capture");
+        metadata.GetProperty("configuration").GetProperty("readiness").GetString().Should().Be("ready");
+        metadata.GetProperty("configuration").GetProperty("scopeSchema").GetProperty("properties").GetProperty("url")
+            .GetProperty("format").GetString().Should().Be("uri");
+    }
+
+    [Fact]
+    public async Task Capabilities_ShouldReportUnavailable_WhenTheRuntimeHasNoImplementation()
+    {
+        using var admin = fixture.CreateClient(HarvestApiFixture.OperatorKey);
+        var container = await ContainerAsync(admin, await TenantAsync(admin));
+        using var registered = await PostAsync(admin, "/api/sources", $$"""
+            {"containerId":"{{container}}","family":"instagram","handle":"instagram.com","coverage":"filtered",
+             "completeness":"window","posture":"official"}
+            """);
+        var source = (await DataAsync(registered)).GetProperty("id").GetString();
+        using var response = await admin.GetAsync($"/api/sources/{source}/capabilities");
+        JsonElement metadata = await DataAsync(response);
+        metadata.GetProperty("workKinds").GetArrayLength().Should().Be(0);
+        metadata.GetProperty("configuration").GetProperty("readiness").GetString().Should().Be("unavailable");
+    }
+
     private static string Pipeline(string container, string source) => $$"""
         {"containerId":"{{container}}","sourceId":"{{source}}",
          "schedules":[{"kind":"discover","mode":"interval","every":"PT1H"}]}
