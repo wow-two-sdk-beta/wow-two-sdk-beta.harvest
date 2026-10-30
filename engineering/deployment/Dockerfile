@@ -25,8 +25,8 @@ ARG VCS_REF
 RUN pnpm build
 
 # ---- Stage 2: publish the .NET service with its packages (the pages arrive from stage 1) ----
-# Stays in global.json's 10.0.3xx band; the floating 10.0 tag moved to 10.0.4xx, which the pin refuses.
-FROM mcr.microsoft.com/dotnet/sdk:10.0.302 AS build
+# Stays in global.json's 10.0.4xx band; MCR publishes SDK images for the newest feature band only.
+FROM mcr.microsoft.com/dotnet/sdk:10.0.403 AS build
 ARG TARGETARCH
 WORKDIR /src
 # packages/ and service/ build together: the service takes the domain's packages by ProjectReference.
