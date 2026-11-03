@@ -1,4 +1,9 @@
-import { ApiFailureFactory, createApiClient, type ApiFailure } from '@wow-two-beta/fe/foundation/http';
+import {
+  ApiFailureFactory,
+  createApiClient,
+  type ApiFailure,
+  type ApiClientOptions,
+} from '@wow-two-beta/fe/foundation/http';
 import { ResultExtensions, type Result } from '@wow-two-beta/fe/foundation/results';
 import {
   ApiKeyConstants,
@@ -9,7 +14,7 @@ import {
 } from '../contracts';
 
 /** Configures where the registry is reached and with which key. */
-export interface RegistryClientOptions {
+export interface RegistryClientOptions extends Pick<ApiClientOptions, 'scope' | 'onUnauthorized' | 'antiforgery'> {
   /** The origin serving the API: empty for the consumer's own backend (Form 1), the service's URL otherwise. */
   readonly baseUrl?: string;
   /** The Harvest API key (`hv_…`) sent in `X-Api-Key`; its scopes decide what the service answers. */
@@ -45,6 +50,9 @@ export function createRegistryClient(options: RegistryClientOptions = {}): Regis
     ...(options.apiKey !== undefined ? { defaultHeaders: { [ApiKeyConstants.headerName]: options.apiKey } } : {}),
     ...(options.credentials !== undefined ? { credentials: options.credentials } : {}),
     ...(options.fetch !== undefined ? { fetch: options.fetch } : {}),
+    ...(options.scope !== undefined ? { scope: options.scope } : {}),
+    ...(options.onUnauthorized !== undefined ? { onUnauthorized: options.onUnauthorized } : {}),
+    ...(options.antiforgery !== undefined ? { antiforgery: options.antiforgery } : {}),
   });
   const byContainer = (containerId: string) => ({ [RegistrationRouteConstants.containerIdParameter]: containerId });
 

@@ -5,6 +5,7 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="WoW2.Sdk.Beta.Be" />
+    <PackageReference Include="WoW2.Sdk.Beta.Be.Identity.Client" />
     <ProjectReference Include="..\Module\WoW.Two.Sdk.Beta.Be.Harvest.Module.csproj" />
   </ItemGroup>
 </Project>

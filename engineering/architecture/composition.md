@@ -16,13 +16,30 @@ pnpm dev:demo
 Demo mode injects an in-memory `HarvestClient` with synthetic sources, editable pipelines, posts, run transitions,
 adapter metadata and resumable delivery. Changes live in one tab; Reset demo creates a fresh instance. It makes no
 backend, source or provider requests and needs no API key. Demo activation is a build/dev mode, never a URL parameter.
-The normal production console remains disconnected until a key is supplied.
+The normal console reads its host's authentication mode before offering Identity sign-in or an API-key connection.
 
 For real runtime development, set `VITE_API_TARGET` and use `pnpm dev:http`. The development proxy forwards API calls
 to that host. Deployed hosts serve the compiled console and API from one origin. An embedding frontend imports
 `HarvestConsolePanel` through `@wow-two-beta/fe-harvest/admin` and may inject its own `HarvestClient`.
 The optional `connectionManaged` prop leaves connection ownership with that caller. The demo uses it so its
 synthetic client cannot be replaced by an accidental real API connection.
+
+## Browser identity
+
+`Harvest:Console:IsIdentityEnabled=true` enables the shared Identity BFF. The app's `AuthProvider` owns session
+resolution, expiry, refresh and tab synchronization; the console supplies only Harvest's tenant access projection.
+The HTTP clients take the same request scope, unauthorized bridge and CSRF configuration. Account/organization
+changes cancel prior requests and remount private console state. Tokens and client secrets remain server-side.
+
+`GET /api/console/access` exposes the configured mode and current caller's visible tenant/scopes. It grants no
+authority. Session and sign-in/out routes belong to `/api/identity`; every management endpoint authorizes its caller
+again. `HarvestConsolePanel` accepts a managed client, sign-in path, permissions and account slot, so an embedding
+product can compose its own Identity session without copying management screens.
+
+Organization membership requires an explicit organization-to-Harvest-tenant binding. Only namespaced Harvest grants
+become console scopes. Organization owners never become registry operators; key issuance and global tenant/pool
+administration remain service-operator operations. Configuration and storage requirements live in
+[deployment](../deployment/deployment.md#identity-console).
 
 ## Adapter discovery
 

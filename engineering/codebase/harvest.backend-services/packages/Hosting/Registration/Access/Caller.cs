@@ -7,6 +7,12 @@ namespace Harvest.Api.Registration.Access;
 /// <param name="TenantId">The tenant a tenant key acts for; null for the operator.</param>
 public sealed record Caller(bool IsOperator, Guid? TenantId)
 {
+    /// <summary>Gets the scopes granted to this authenticated caller.</summary>
+    public IReadOnlyList<string> Scopes { get; init; } = [];
+
+    /// <summary>Gets whether this caller is a browser session bound to an Identity organization.</summary>
+    public bool IsIdentitySession { get; init; }
+
     /// <summary>Tells whether the caller may read a container: the operator any, a tenant the pool and its own.</summary>
     /// <param name="container">The container.</param>
     public bool CanRead(ContainerModel container) =>

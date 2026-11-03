@@ -8,6 +8,7 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="WoW2.Sdk.Beta.Be" />
+    <PackageReference Include="WoW2.Sdk.Beta.Be.Identity.Auth" />
   </ItemGroup>
 
   <ItemGroup>

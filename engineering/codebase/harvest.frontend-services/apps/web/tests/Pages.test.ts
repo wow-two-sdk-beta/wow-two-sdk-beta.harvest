@@ -13,9 +13,10 @@ afterEach(() => {
 
 const status = { data: { service: 'harvest', status: 'ok', version: '0.1.4+abc1234' } };
 
-/** Answers the console's two same-origin calls: the open status probe, and the registry, which wants a key. */
+/** Answers the open status and authentication-mode probes; registry reads still require a key in this configuration. */
 function answer(input: RequestInfo | URL) {
   const url = new URL(input instanceof Request ? input.url : String(input), 'https://harvest.example.test');
+  if (url.pathname === '/api/console/access') return Response.json({ data: { identityEnabled: false } });
   return url.pathname === '/api/system/status'
     ? Response.json(status)
     : Response.json({ title: 'Unauthorized' }, { status: 401 });

@@ -1,6 +1,6 @@
 # Harvest — product context
 
-*Last updated: 2026-10-27*
+*Last updated: 2026-11-03*
 
 ## Current state
 
@@ -8,6 +8,11 @@ The direct v0.1 engine is implemented locally: fetching, durable runs, generic r
 posts and provenance, deletion checks, pull delivery and the reusable console. Module, HTTP clients and test fakes
 share conformance suites. Automated fixture and access checks pass; developer acceptance and live rollout remain open
 in the version track. No live source harvest or production rollout is claimed by the offline fixture tests.
+
+The shared host supports optional Identity BFF sign-in alongside service API keys. An explicit organization/tenant
+binding and namespaced grants authorize browser access; organization owners have no global operator authority.
+Browser writes require the session's CSRF token. The host persists tickets in PostgreSQL and requires durable
+data-protection keys. Local Ocharo wiring is owned by the private source runtime; production acceptance remains open.
 
 ## Decisions
 

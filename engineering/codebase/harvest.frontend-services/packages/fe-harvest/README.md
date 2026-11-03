@@ -10,6 +10,9 @@ screens a console composes.
 - **Console** — `HarvestConsolePanel` manages sources, pipelines, runs and pull subscriptions and inspects posts,
   provenance and host health. Its optional `HarvestClient` works in every form. Without a client it offers an API-key
   connection held only in memory, and makes no authenticated requests until the user connects.
+- **Identity** — a host can supply a managed cookie client, sign-in path, granted permissions and account slot.
+  `RegistryClientOptions` forwards the frontend SDK's `scope`, `onUnauthorized` and `antiforgery` options to both
+  Harvest clients. The app composes the shared BFF strategy; the panels hold no client secret or OIDC token.
 
 ```bash
 pnpm add @wow-two-beta/fe-harvest @wow-two-beta/fe vue

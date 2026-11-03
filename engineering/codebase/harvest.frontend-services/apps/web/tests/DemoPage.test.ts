@@ -1,6 +1,8 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, expect, it, vi } from 'vitest';
-import ConsolePage from '../src/presentation/console/pages/ConsolePage.vue';
+import AppRoot from '../src/bootstrap/AppRoot.vue';
+import { createWebRouter } from '../src/bootstrap/router/Routes';
+import { RouterHistoryMode } from '@wow-two-beta/fe/router';
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -13,7 +15,10 @@ it('opens the demo console without a key or backend and resets its state', async
     throw new Error('The demo must not use the network');
   });
   vi.stubGlobal('fetch', fetch);
-  const wrapper = mount(ConsolePage);
+  const router = createWebRouter(RouterHistoryMode.Memory);
+  await router.push('/');
+  await router.isReady();
+  const wrapper = mount(AppRoot, { global: { plugins: [router] } });
   try {
     await flushPromises();
     expect(wrapper.get('[aria-label="Demo mode"]').text()).toContain('synthetic data');

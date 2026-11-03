@@ -97,6 +97,9 @@ export function createHarvestClient(options: RegistryClientOptions = {}): Harves
     ...(options.apiKey !== undefined ? { defaultHeaders: { 'X-Api-Key': options.apiKey } } : {}),
     ...(options.credentials !== undefined ? { credentials: options.credentials } : {}),
     ...(options.fetch !== undefined ? { fetch: options.fetch } : {}),
+    ...(options.scope !== undefined ? { scope: options.scope } : {}),
+    ...(options.onUnauthorized !== undefined ? { onUnauthorized: options.onUnauthorized } : {}),
+    ...(options.antiforgery !== undefined ? { antiforgery: options.antiforgery } : {}),
     retry: false,
   });
   const signalOf = (signal?: AbortSignal) => (signal === undefined ? {} : { signal });

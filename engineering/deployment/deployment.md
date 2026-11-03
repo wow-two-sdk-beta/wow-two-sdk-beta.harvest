@@ -37,3 +37,33 @@ provider or source-specific account credentials are required. The console key is
 docker build --build-arg APP_VERSION=0.1.99 --build-arg VCS_REF=$(git rev-parse HEAD) \
   -f engineering/deployment/Dockerfile -t harvest:local engineering/codebase
 ```
+
+## Identity console
+
+API-key mode remains the default. To enable browser sign-in, register a distinct confidential OIDC client for
+Harvest in the chosen Identity instance. Keep its secret in host configuration or the vault. Register each exact
+HTTPS callback as `{console-origin}/api/identity/callback` and its sign-out return as `{console-origin}/`.
+
+| Setting | Value |
+|---|---|
+| `Harvest:Console:IsIdentityEnabled` | `true` |
+| `Identity:Client:Authority` | the trusted HTTPS Identity issuer |
+| `Identity:Client:ClientId` | the dedicated Harvest client ID |
+| `Identity:Client:ClientSecret` | the confidential client secret; server-only |
+| `Identity:Client:CookieName` | a distinct cookie, such as `__Host-harvest` |
+| `Harvest:Console:PermissionNamespace` | `harvest` by default |
+| `Harvest:Console:OrganizationTenants:{organization-id}` | an existing, active Harvest tenant ID |
+| `DataProtection:KeysPath` | a durable, access-restricted directory shared by replicas |
+
+The BFF persists server-side tickets in the same PostgreSQL instance using the SDK's `distributed_cache` migration
+set. `MigrateHarvestHostAsync` applies both Harvest and the enabled cache set; a private source host's `migrate`
+command calls the same method. Persist and protect the data-protection key directory across restarts. HTTPS is
+required for secure cookies; trusted ingress configuration remains the host's responsibility.
+
+Identity role grants are namespaced, such as `harvest:pipelines:read`, `harvest:pipelines:run`,
+`harvest:pipelines:manage`, `harvest:subscriptions:manage` and `harvest:posts:read`. A tenant administrator may also
+receive `harvest:containers:manage` and `harvest:sources:manage`. Never map an organization owner to Harvest's global
+operator: `tenants:manage` is excluded from browser sessions. Existing integration keys remain independent.
+
+The console reads `/api/identity/session`, echoes its CSRF token on unsafe calls and signs out through the shared
+BFF. The browser receives no OIDC token or client secret. Unknown/unbound organizations see an access-denied state.

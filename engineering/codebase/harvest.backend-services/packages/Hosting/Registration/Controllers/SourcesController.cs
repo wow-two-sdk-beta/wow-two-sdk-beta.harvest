@@ -24,10 +24,18 @@ public sealed class SourcesController(IRegistrationBroker broker, CallerResolver
     [HttpPost]
     [Authorize(Policy = HarvestScopeConstants.SourcesManage)]
     [ProducesResponseType<ApiResponse<SourceModel>>(StatusCodes.Status201Created)]
-    public async Task<IActionResult> Register([FromBody] SourceRegistration registration, CancellationToken ct) =>
-        (await broker.RegisterSourceAsync(registration, ct)).Match<IActionResult>(
-            source => StatusCode(StatusCodes.Status201Created, ApiResponse<SourceModel>.Ok(source)),
-            this.ToProblem);
+    public async Task<IActionResult> Register([FromBody] SourceRegistration registration, CancellationToken ct)
+    {
+        if (await callers.ResolveAsync(User, ct) is not { } caller)
+            return this.ToProblem(AppErrorFactory.Unauthorized());
+        if (await broker.GetContainerAsync(registration.ContainerId, ct) is not Result<ContainerModel>.Success { Value: var container }
+            || !caller.CanRead(container))
+            return this.ToProblem(RegistrationErrors.ContainerNotFound(registration.ContainerId));
+        if (!caller.CanWrite(container))
+            return this.ToProblem(AppErrorFactory.Forbidden("A tenant registers sources only in its own private containers."));
+        return (await broker.RegisterSourceAsync(registration, ct)).Match<IActionResult>(
+            source => StatusCode(StatusCodes.Status201Created, ApiResponse<SourceModel>.Ok(source)), this.ToProblem);
+    }
 
     /// <summary>Reads a source in a container the caller may see.</summary>
     /// <param name="sourceId">The source's identifier.</param>

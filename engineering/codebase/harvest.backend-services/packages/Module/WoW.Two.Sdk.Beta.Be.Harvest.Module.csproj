@@ -12,6 +12,7 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="WoW2.Sdk.Beta.Be" />
+    <PackageReference Include="WoW2.Sdk.Beta.Be.Identity.Auth" />
     <PackageReference Include="AngleSharp" />
     <PackageReference Include="Cronos" />
   </ItemGroup>

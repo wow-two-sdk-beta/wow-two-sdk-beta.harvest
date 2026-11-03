@@ -5,4 +5,7 @@ public static class AccessPolicies
 {
     /// <summary>Holds the policy that admits any live key; the endpoint then narrows to the caller's containers.</summary>
     public const string AnyKey = "harvest:any-key";
+
+    /// <summary>Holds the policy for registry operators or an Identity session reading its own mapped tenant.</summary>
+    public const string TenantsRead = "harvest:tenants-read";
 }

@@ -1,4 +1,5 @@
 using Harvest.Api.Registration.Access;
+using Harvest.Api.Console;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Capabilities;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Delivery;
@@ -53,17 +54,22 @@ public static partial class HostConfiguration
             },
             gate =>
             {
-                // Every /api call presents a key, this machine included; the status probe stays open.
-                gate.AllowLocalWithoutKey = false;
+                // Key-only mode requires a key on protected /api calls, this machine included.
+                gate.IsLocalAllowedWithoutKey = false;
                 gate.OpenPaths.Add("/api/system/status");
+                gate.OpenPaths.Add("/api/console/access");
             });
         builder.Services.AddAuthorization(options =>
         {
-            options.AddPolicy(AccessPolicies.AnyKey, policy => policy
-                .AddAuthenticationSchemes(ApiKeyAuthenticationDefaults.Scheme)
-                .RequireAuthenticatedUser());
+            var scheme = builder.Configuration.GetValue<bool>(HarvestConsoleOptions.SectionName + ":IsIdentityEnabled")
+                ? ConsoleAuthenticationScheme : ApiKeyAuthenticationDefaults.Scheme;
+            options.AddPolicy(AccessPolicies.AnyKey, policy => policy.AddAuthenticationSchemes(scheme)
+                .RequireAuthenticatedUser().AddRequirements(new HarvestAccessRequirement()));
+            options.AddPolicy(AccessPolicies.TenantsRead, policy => policy.AddAuthenticationSchemes(scheme)
+                .RequireAuthenticatedUser().AddRequirements(new HarvestAccessRequirement(IsTenantRead: true)));
             foreach (var scope in HarvestScopeConstants.All)
-                options.AddPolicy(scope, policy => policy.RequireApiKeyScope(scope));
+                options.AddPolicy(scope, policy => policy.AddAuthenticationSchemes(scheme)
+                    .RequireAuthenticatedUser().AddRequirements(new HarvestAccessRequirement(scope)));
         });
         builder.Services.AddScoped<CallerResolver>();
         builder.Services.AddScoped<Harvest.Api.Registration.SourceCapabilitiesResolver>();

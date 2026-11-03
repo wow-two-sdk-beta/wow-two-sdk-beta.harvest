@@ -78,6 +78,33 @@ function fixtureFetch() {
 }
 
 describe('HarvestConsolePanel', () => {
+  it('offers Identity sign-in without requesting an integration key', async () => {
+    const wrapper = mount(HarvestConsolePanel, {
+      props: { connectionManaged: true, signInPath: '/api/identity/sign-in?returnUrl=%2F' },
+    });
+    wrappers.push(wrapper);
+    expect(wrapper.text()).toContain('Sign in to Harvest');
+    expect(wrapper.get('a[href="/api/identity/sign-in?returnUrl=%2F"]').text()).toBe('Sign in');
+    expect(wrapper.find('input[type="password"]').exists()).toBe(false);
+  });
+
+  it('keeps pipeline changes and manual runs out of a read-only session', async () => {
+    const wrapper = mount(HarvestConsolePanel, {
+      props: {
+        client: createHarvestClient({ fetch: fixtureFetch() }),
+        connectionManaged: true,
+        permissions: ['pipelines:read', 'posts:read'],
+      },
+    });
+    wrappers.push(wrapper);
+    await flushPromises();
+    expect(wrapper.get('[aria-label="Pipeline overview"]').text()).toContain('Upcoming events');
+    expect(
+      wrapper.findAll('button').some((button) => ['New pipeline', 'Run now', 'Pause'].includes(button.text())),
+    ).toBe(false);
+    expect(wrapper.find('form[aria-label="Pipeline settings"]').exists()).toBe(false);
+  });
+
   it('stays disconnected until a key is submitted', async () => {
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);

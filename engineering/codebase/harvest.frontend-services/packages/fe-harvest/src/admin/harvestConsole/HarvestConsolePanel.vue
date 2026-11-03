@@ -48,7 +48,11 @@ const props = defineProps<{
   appVersion?: string;
   apiVersion?: string;
   connectionManaged?: boolean;
+  signInPath?: string;
+  connectionMessage?: string;
+  permissions?: readonly string[];
 }>();
+const can = (scope: string) => props.permissions === undefined || props.permissions.includes(scope);
 const tabs = ['Pipelines', 'Sources', 'Runs', 'Posts', 'Delivery', 'Hosts'] as const;
 const activeTab = ref<(typeof tabs)[number]>('Pipelines');
 const sidebarOpen = ref(false);
@@ -201,7 +205,7 @@ async function savePipeline(update: PipelineUpdate) {
 
 /** Presents access failures without losing the server's actionable message. */
 function message(error: ApiFailure) {
-  return error.status === 401 ? 'An API key is needed to read the registry.' : error.message;
+  return error.status === 401 ? 'Sign in or reconnect to continue.' : error.message;
 }
 
 /** Loads a container snapshot; an aborted or replaced connection cannot overwrite newer data. */
@@ -571,6 +575,7 @@ onScopeDispose(() => {
         <Button v-if="connected && !props.connectionManaged" size="sm" variant="outline" @click="disconnect">
           Disconnect
         </Button>
+        <slot name="account"></slot>
       </div>
     </AppShellHeader>
     <AppShellSidebar v-if="connected" class="border-r border-border bg-transparent [&>nav]:p-0">
@@ -630,6 +635,7 @@ onScopeDispose(() => {
                 </button>
               </SidebarMenuItem>
               <Button
+                v-if="can('pipelines:manage')"
                 size="sm"
                 variant="ghost"
                 class="mt-2 w-full justify-start text-muted-foreground"
@@ -666,14 +672,26 @@ onScopeDispose(() => {
         <div class="space-y-6 py-3">
           <Card v-if="!connected" variant="glass" class="mx-auto max-w-xl p-7 sm:p-9">
             <p class="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Your sources, on schedule</p>
-            <h2 class="mt-3 text-2xl font-semibold">Connect to Harvest</h2>
+            <h2 class="mt-3 text-2xl font-semibold">
+              {{ props.signInPath ? 'Sign in to Harvest' : 'Connect to Harvest' }}
+            </h2>
             <p class="mt-2 text-sm leading-relaxed text-muted-foreground">
               Bring your pipelines, captures and deliveries into one place.
             </p>
-            <p v-if="props.connectionManaged" class="mt-7 text-sm">
-              Restore the connection through the embedding application.
+            <a
+              v-if="props.signInPath"
+              :href="props.signInPath"
+              class="mt-7 inline-flex rounded-lg bg-primary px-5 py-3 text-sm font-medium text-primary-foreground"
+            >
+              Sign in
+            </a>
+            <p v-if="props.signInPath && props.connectionMessage" class="mt-4 text-sm" role="status">
+              {{ props.connectionMessage }}
             </p>
-            <form v-else class="mt-7 space-y-4" @submit.prevent="connect">
+            <p v-if="!props.signInPath && props.connectionManaged" class="mt-7 text-sm">
+              {{ props.connectionMessage ?? 'Restore the connection through the embedding application.' }}
+            </p>
+            <form v-else-if="!props.signInPath" class="mt-7 space-y-4" @submit.prevent="connect">
               <label class="block space-y-2 text-sm">
                 <span>API key</span>
                 <PasswordInput
@@ -721,7 +739,7 @@ onScopeDispose(() => {
                 </p>
               </div>
               <Button
-                v-if="activeTab === 'Pipelines' && !creatingPipeline"
+                v-if="activeTab === 'Pipelines' && !creatingPipeline && can('pipelines:manage')"
                 variant="outline"
                 @click="creatingPipeline = true"
               >
@@ -733,7 +751,14 @@ onScopeDispose(() => {
               <p class="mt-2 text-sm text-muted-foreground">
                 A shared container holds sources and posts that your tenants can subscribe to.
               </p>
-              <Button class="mt-5" :is-loading="pending" @click="createPool">Create shared container</Button>
+              <Button
+                v-if="can('tenants:manage') && can('containers:manage')"
+                class="mt-5"
+                :is-loading="pending"
+                @click="createPool"
+              >
+                Create shared container
+              </Button>
             </Card>
             <template v-else>
               <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -789,6 +814,7 @@ onScopeDispose(() => {
                       </p>
                       <div class="flex gap-2">
                         <Button
+                          v-if="can('pipelines:run')"
                           size="sm"
                           :is-disabled="pending || pipeline.state !== 'active' || !canCapture(pipeline.sourceId)"
                           @click="mutate((api, signal) => api.startRun(pipeline.id, 'capture', signal), 'Run queued.')"
@@ -796,6 +822,7 @@ onScopeDispose(() => {
                           Run now
                         </Button>
                         <Button
+                          v-if="can('pipelines:manage')"
                           size="sm"
                           variant="outline"
                           :is-disabled="pending"
@@ -818,7 +845,7 @@ onScopeDispose(() => {
                     :error="capabilityErrors[selectedPipeline.sourceId]"
                   />
                   <PipelineSettings
-                    v-if="selectedPipeline"
+                    v-if="selectedPipeline && can('pipelines:manage')"
                     :key="selectedPipeline.id"
                     class="mt-6 border-t border-border pt-6"
                     :pipeline="selectedPipeline"
@@ -830,7 +857,11 @@ onScopeDispose(() => {
                     No pipelines yet. Add a source, then schedule its first harvest.
                   </p>
                 </Card>
-                <Card v-if="creatingPipeline || !pipelines.length" variant="glass" class="max-w-2xl self-start p-6">
+                <Card
+                  v-if="can('pipelines:manage') && (creatingPipeline || !pipelines.length)"
+                  variant="glass"
+                  class="max-w-2xl self-start p-6"
+                >
                   <h3 class="font-semibold">Create a pipeline</h3>
                   <form class="mt-5 space-y-4" @submit.prevent="declarePipeline">
                     <div class="space-y-2">
@@ -892,7 +923,7 @@ onScopeDispose(() => {
                   </ul>
                   <p v-if="!sources.length" class="mt-6 text-sm text-muted-foreground">No sources registered.</p>
                 </Card>
-                <Card variant="glass" class="self-start p-6">
+                <Card v-if="can('sources:manage')" variant="glass" class="self-start p-6">
                   <h3 class="font-semibold">Register a source</h3>
                   <form class="mt-5 space-y-4" @submit.prevent="registerSource">
                     <label class="block space-y-2 text-sm">
@@ -949,7 +980,7 @@ onScopeDispose(() => {
                         <p class="mt-2 text-xs text-muted-foreground">{{ date(run.queuedAtUtc) }}</p>
                       </div>
                       <Button
-                        v-if="run.status === 'queued' || run.status === 'running'"
+                        v-if="can('pipelines:run') && (run.status === 'queued' || run.status === 'running')"
                         size="sm"
                         variant="outline"
                         :is-disabled="pending"
@@ -1021,7 +1052,13 @@ onScopeDispose(() => {
                           <span v-if="subscription.filterKey">· {{ subscription.filterKey }}</span>
                         </p>
                       </div>
-                      <Button size="sm" variant="outline" :is-disabled="pending" @click="pull(subscription)">
+                      <Button
+                        v-if="can('events:read')"
+                        size="sm"
+                        variant="outline"
+                        :is-disabled="pending"
+                        @click="pull(subscription)"
+                      >
                         Pull next events
                       </Button>
                     </li>
@@ -1042,7 +1079,7 @@ onScopeDispose(() => {
                   </div>
                 </Card>
                 <div class="space-y-6">
-                  <Card variant="glass" class="p-6">
+                  <Card v-if="can('subscriptions:manage')" variant="glass" class="p-6">
                     <h3 class="font-semibold">Subscribe to a pipeline</h3>
                     <form class="mt-5 space-y-4" @submit.prevent="subscribe">
                       <label class="block space-y-2 text-sm">
@@ -1070,7 +1107,7 @@ onScopeDispose(() => {
                       </Button>
                     </form>
                   </Card>
-                  <Card variant="glass" class="p-6">
+                  <Card v-if="can('tenants:manage')" variant="glass" class="p-6">
                     <h3 class="font-semibold">Register a tenant</h3>
                     <form class="mt-4 space-y-4" @submit.prevent="addTenant">
                       <label class="block space-y-2 text-sm">

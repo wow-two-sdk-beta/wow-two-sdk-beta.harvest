@@ -59,9 +59,17 @@
 | `PUT api/pipelines/{id}` | `pipelines:manage` | edits its own private pipelines; the pool is 403 and foreign pipelines are 404 |
 | `GET api/pipelines` | `pipelines:read` | the pool and its own tenant's; another tenant's is 404 |
 
-- Keys: core `Identity/ApiKeys` (`ApiKey` scheme, gate on `/api`, no local pass); `/api/system/status` stays open.
+- Keys: Identity.Auth `Identity/ApiKeys` (`ApiKey` scheme, no local pass); `/api/system/status` stays open.
 - The operator key (`Harvest:Operator:ApiKey`, `HarvestModuleOptions.OperatorApiKey`) holds every scope and no tenant;
   it comes from a host file or the vault. Tenant keys hold `HarvestScopeConstants.TenantScopes` only.
+- Optional browser sessions use Identity.Client's BFF and an explicit organization-to-tenant binding. Granted
+  `harvest:{scope}` permissions become Harvest scopes, excluding `tenants:manage` even for organization owners.
+- Bound sessions can read their own tenant metadata and create their own private containers/sources when granted
+  `containers:manage` / `sources:manage`. They cannot issue keys, create tenants, write the shared pool or read a
+  foreign tenant. Existing tenant API-key restrictions in the table remain unchanged.
+- Cookie writes require the session-bound `X-Csrf-Token`. An explicit service credential selects API-key auth even
+  when invalid; a cookie cannot rescue an invalid key. API calls return 401/403 rather than an HTML sign-in redirect.
+- The anonymous `/api/console/access` probe describes mode and authorized visibility without returning credentials.
 
 ---
 

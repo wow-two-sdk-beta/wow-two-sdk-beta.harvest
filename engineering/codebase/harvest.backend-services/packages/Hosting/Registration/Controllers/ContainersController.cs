@@ -23,10 +23,15 @@ public sealed class ContainersController(IRegistrationBroker broker, CallerResol
     [HttpPost]
     [Authorize(Policy = HarvestScopeConstants.ContainersManage)]
     [ProducesResponseType<ApiResponse<ContainerModel>>(StatusCodes.Status201Created)]
-    public async Task<IActionResult> Register([FromBody] ContainerRegistration registration, CancellationToken ct) =>
-        (await broker.RegisterContainerAsync(registration, ct)).Match<IActionResult>(
-            container => StatusCode(StatusCodes.Status201Created, ApiResponse<ContainerModel>.Ok(container)),
-            this.ToProblem);
+    public async Task<IActionResult> Register([FromBody] ContainerRegistration registration, CancellationToken ct)
+    {
+        if (await callers.ResolveAsync(User, ct) is not { } caller)
+            return this.ToProblem(AppErrorFactory.Unauthorized());
+        if (!caller.IsOperator && (registration.Kind != ContainerKind.Private || registration.TenantId != caller.TenantId))
+            return this.ToProblem(AppErrorFactory.Forbidden("A tenant registers only its own private containers."));
+        return (await broker.RegisterContainerAsync(registration, ct)).Match<IActionResult>(
+            container => StatusCode(StatusCodes.Status201Created, ApiResponse<ContainerModel>.Ok(container)), this.ToProblem);
+    }
 
     /// <summary>Reads a container the caller may see.</summary>
     /// <param name="containerId">The container's identifier.</param>

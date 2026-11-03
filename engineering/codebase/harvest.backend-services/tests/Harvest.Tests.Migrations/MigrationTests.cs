@@ -111,6 +111,8 @@ public sealed class MigrationTests : IAsyncLifetime
 
         Unwrap(await Runner.RollbackAsync(targetOrdinal: 0, CancellationToken.None)).Should().Equal("001-baseline");
         (await HarvestTablesAsync()).Should().BeEmpty();
+        (await ScalarAsync<bool>("SELECT to_regclass('harvest_migration_history_events') IS NOT NULL"))
+            .Should().BeTrue("the SDK keeps its append-only migration audit after a rollback");
         (await ScalarAsync<bool>("SELECT to_regproc('harvest_ensure_capture_partitions') IS NULL")).Should().BeTrue();
 
         Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None)).Should().Equal(Migrations);
@@ -129,7 +131,8 @@ public sealed class MigrationTests : IAsyncLifetime
             """
             SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND NOT c.relispartition
-              AND c.relname LIKE 'harvest\_%' AND c.relname <> 'harvest_migration_history'
+              AND c.relname LIKE 'harvest\_%'
+              AND c.relname NOT IN ('harvest_migration_history', 'harvest_migration_history_events')
             """, connection);
         var tables = new List<string>();
         await using var reader = await command.ExecuteReaderAsync();
