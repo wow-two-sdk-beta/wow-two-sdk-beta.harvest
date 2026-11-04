@@ -4,10 +4,19 @@
 # and environments live in Wheelhouse targets, never here. Paths are relative to engineering/.
 descriptor: 2
 product: harvest
+name: Harvest
+description: Scheduled source capture and delivery for connected products.
 platform: linux/amd64
 # Dev runs as .NET Development, prod as Production; appsettings.Development.json holds defaults only, and an IDE
 # run's own values live in appsettings.Local.json.
 dotnetEnvironment: true
+migrate:
+  - service: harvest
+    command: [dotnet, Harvest.Api.dll, migrate]
+    timeout: 10m
+configCheck:
+  - service: harvest
+    command: [dotnet, Harvest.Api.dll, config, check]
 # The dev check: once a dev rollout succeeds, the service's own image asks it for its health (the database answers)
 # and its status over the platform network. A pass lets auto-promote take the release. Each request carries the probe Host (localhost): a
 # target's AllowedHosts names its public hosts plus localhost, so the service's platform-network name in the URL
@@ -47,8 +56,15 @@ services:
     # vault. Without the operator key, no one holds the registry scopes.
     settings:
       keys:
-        DatabaseSettings:ConnectionString: { required: true }
+        DatabaseSettings:ConnectionString: { required: true, secret: true }
         Harvest:Operator:ApiKey: { secret: true }
+        Harvest:Worker:Enabled: { type: boolean, default: true }
+        Harvest:Console:IsIdentityEnabled: { type: boolean, default: false }
+        Identity:Client:Authority: { type: url }
+        Identity:Client:ClientId: {}
+        Identity:Client:ClientSecret: { secret: true }
+    volumes:
+      session-keys: /data/keys
     needs: [postgres]
     # The bundle services harvest starts after: none, since PostgreSQL is a platform service under needs.
     dependsOn: []

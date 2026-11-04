@@ -8,6 +8,7 @@ using WoW.Two.Sdk.Beta.Be.Caching.Postgres;
 using WoW.Two.Sdk.Beta.Be.Data.Migrations.Bespoke;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Identity.Bff;
+using WoW.Two.Sdk.Beta.Be.Foundation.Configuration;
 
 namespace Harvest.Api.Configurations;
 
@@ -42,9 +43,13 @@ public static partial class HostConfiguration
     /// <param name="app">The built web application to configure.</param>
     public static async Task<WebApplication> ConfigureAsync(this WebApplication app)
     {
-        // Create the database if missing, refuse one that is not UTF-8 or lacks pg_trgm, apply the module's migration
-        // set, and refuse one whose trigrams skip Cyrillic — all before serving.
-        await app.Services.MigrateHarvestHostAsync("startup", app.Lifetime.ApplicationStopping);
+        if (app.Configuration.IsDeployed())
+        {
+            await app.Services.VerifyMigrationLevelsOnStartupAsync(app.Lifetime.ApplicationStopping);
+            await app.Services.VerifyHarvestStoreAsync(app.Lifetime.ApplicationStopping);
+        }
+        else
+            await app.Services.MigrateHarvestHostAsync("startup", app.Lifetime.ApplicationStopping);
         var hasIdentity = app.Services.GetRequiredService<IOptions<HarvestConsoleOptions>>().Value.IsIdentityEnabled;
 
         // SDK pipeline: secure headers, compression, the SPA bundle, the key gate on /api, /health (database readiness)
@@ -66,7 +71,7 @@ public static partial class HostConfiguration
         return app;
     }
 
-    /// <summary>Applies Harvest's store and, when browser sign-in is configured, its durable session cache migration set.</summary>
+    /// <summary>Applies Harvest's store and durable session cache on a local run. Deployed images use the SDK migrate command.</summary>
     /// <param name="services">The configured host services.</param>
     /// <param name="appliedBy">The migration audit actor.</param>
     /// <param name="cancellationToken">The token that cancels the migration run.</param>
@@ -75,10 +80,7 @@ public static partial class HostConfiguration
     {
         ArgumentNullException.ThrowIfNull(services);
         await services.MigrateHarvestOnStartupAsync(appliedBy, cancellationToken);
-        if (services.GetRequiredService<IOptions<HarvestConsoleOptions>>().Value.IsIdentityEnabled)
-        {
-            var cacheMigrations = services.GetRequiredService<IMigrationSetRegistry>().GetRunner(PostgresDistributedCacheConstants.MigrationSetName);
-            (await cacheMigrations.ApplyPendingAsync(appliedBy, cancellationToken)).ValueOrThrow();
-        }
+        var cacheMigrations = services.GetRequiredService<IMigrationSetRegistry>().GetRunner(PostgresDistributedCacheConstants.MigrationSetName);
+        (await cacheMigrations.ApplyPendingAsync(appliedBy, cancellationToken)).ValueOrThrow();
     }
 }

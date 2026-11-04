@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.DataProtection;
 using WoW.Two.Sdk.Beta.Be.Caching.Postgres;
 using WoW.Two.Sdk.Beta.Be.Identity.ApiKeys;
 using WoW.Two.Sdk.Beta.Be.Identity.Bff;
+using WoW.Two.Sdk.Beta.Be.Foundation.Options;
 
 namespace Harvest.Api.Configurations;
 
@@ -14,15 +15,16 @@ public static partial class HostConfiguration
 
     private static WebApplicationBuilder AddConsoleIdentity(this WebApplicationBuilder builder)
     {
-        builder.Services.AddOptions<HarvestConsoleOptions>()
-            .Bind(builder.Configuration.GetSection(HarvestConsoleOptions.SectionName))
+        builder.Services.AddValidatedSettings<HarvestConsoleOptions>(builder.Configuration, HarvestConsoleOptions.SectionName, rules => rules
             .Validate(options => !string.IsNullOrWhiteSpace(options.PermissionNamespace) && !options.PermissionNamespace.Contains(':'),
                 "Harvest:Console:PermissionNamespace must be a nonempty application namespace without ':'.")
             .Validate(options => options.OrganizationTenants.All(binding => binding.Key != Guid.Empty && binding.Value != Guid.Empty),
-                "Harvest:Console:OrganizationTenants must bind nonempty organization and tenant identifiers.")
-            .ValidateOnStart();
+                "Harvest:Console:OrganizationTenants must bind nonempty organization and tenant identifiers."));
         builder.Services.AddHttpContextAccessor();
         builder.Services.AddScoped<IAuthorizationHandler, HarvestAccessAuthorizationHandler>();
+        // Release discovery runs without target settings. Every image must describe the same migration sets,
+        // including sessions, before an environment chooses whether browser sign-in is enabled.
+        builder.Services.AddHarvestSessionCache();
         if (!builder.Configuration.GetValue<bool>(HarvestConsoleOptions.SectionName + ":IsIdentityEnabled"))
             return builder;
 
@@ -39,9 +41,7 @@ public static partial class HostConfiguration
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);
         services.AddIdentityBff();
-        services.AddPostgresDistributedCache();
-        services.AddOptions<PostgresDistributedCacheOptions>().Configure<IConfiguration>((options, configuration) =>
-            options.ConnectionString = ResolveConnectionString(configuration));
+        services.AddHarvestSessionCache();
 
         var keysPath = configuration["DataProtection:KeysPath"];
         if (string.IsNullOrWhiteSpace(keysPath))
@@ -63,5 +63,12 @@ public static partial class HostConfiguration
                 ? ApiKeyAuthenticationDefaults.Scheme
                 : BffAuthenticationSchemeConstants.Cookie);
         return services;
+    }
+
+    private static void AddHarvestSessionCache(this IServiceCollection services)
+    {
+        services.AddPostgresDistributedCache();
+        services.AddOptions<PostgresDistributedCacheOptions>().Configure<IConfiguration>((options, configuration) =>
+            options.ConnectionString = ResolveConnectionString(configuration));
     }
 }

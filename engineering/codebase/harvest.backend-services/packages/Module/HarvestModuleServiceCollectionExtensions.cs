@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Npgsql;
 using WoW.Two.Sdk.Beta.Be.Data.Abstractions;
 using WoW.Two.Sdk.Beta.Be.Data.Migrations.Bespoke;
+using WoW.Two.Sdk.Beta.Be.Foundation.Options;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.ApiKeys;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Persistence;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Registration;
@@ -46,11 +47,12 @@ public static class HarvestModuleServiceCollectionExtensions
         services.AddScoped<IRegistrationBroker, ModuleRegistrationBroker>();
         services.AddHealthChecks().AddDatabaseReadinessCheck<HarvestDbContext>();
 
-        return services.AddOptions<HarvestModuleOptions>()
+        services.AddValidatedOptions<HarvestModuleOptions>(null, rules => rules
             .Validate(options => !string.IsNullOrWhiteSpace(options.ConnectionString), "HarvestModuleOptions.ConnectionString must be set.")
             .Validate(
                 options => string.IsNullOrEmpty(options.OperatorApiKey) || IsHarvestSecret(options.OperatorApiKey),
-                $"HarvestModuleOptions.OperatorApiKey must be '{ApiKeyConstants.Marker}' followed by {ApiKeyConstants.RandomLength} letters and digits.");
+                $"HarvestModuleOptions.OperatorApiKey must be '{ApiKeyConstants.Marker}' followed by {ApiKeyConstants.RandomLength} letters and digits."));
+        return services.AddOptions<HarvestModuleOptions>();
     }
 
     /// <summary>Answers core's API key scheme from the module's key table and the operator key — for a host that serves

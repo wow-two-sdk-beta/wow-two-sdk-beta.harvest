@@ -10,6 +10,7 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Module.Readers;
 using WoW.Two.Sdk.Beta.Be.Harvest.Tenants;
 using WoW.Two.Sdk.Beta.Be.Identity.ApiKeys;
 using WoW.Two.Sdk.Beta.Be.Web.Json;
+using WoW.Two.Sdk.Beta.Be.Foundation.Options;
 
 namespace Harvest.Api.Configurations;
 
@@ -28,15 +29,18 @@ public static partial class HostConfiguration
             options.OperatorApiKey = configuration[OperatorApiKeySetting];
         });
         builder.Services.AddHarvestFetching();
-        builder.Services.Configure<HarvestFetchOptions>(builder.Configuration.GetSection("Harvest:Fetch"));
+        builder.Services.AddValidatedSettings<HarvestFetchOptions>(builder.Configuration, "Harvest:Fetch", options => options
+            .Validate(value => value.Timeout > TimeSpan.Zero && value.MaximumResponseBytes > 0 && value.MaximumRedirects >= 0,
+                "Harvest:Fetch requires a positive timeout and response limit, and a nonnegative redirect limit."));
         builder.Services.AddHarvestReaders();
         builder.Services.AddHarvestExtraction();
         builder.Services.AddHarvestPosts();
         builder.Services.AddHarvestDelivery();
-        builder.Services.AddHarvestEngine().Configure<IConfiguration>((options, configuration) =>
-        {
-            configuration.GetSection("Harvest:Worker").Bind(options);
-        });
+        builder.Services.AddHarvestEngine();
+        builder.Services.AddValidatedSettings<HarvestEngineOptions>(builder.Configuration, "Harvest:Worker", options => options
+            .Validate(value => value.LeaseDuration > TimeSpan.Zero && value.PollInterval > TimeSpan.Zero
+                && value.MaxItems > 0 && value.MaxRequests > 0 && value.MaxBytes > 0 && value.MaxDuration > TimeSpan.Zero
+                && value.RefusalBackoff > TimeSpan.Zero, "Harvest:Worker limits and intervals must be positive."));
         builder.Services.AddHarvestWorker();
         return builder;
     }
@@ -91,8 +95,6 @@ public static partial class HostConfiguration
         if (string.IsNullOrWhiteSpace(connectionString))
             connectionString = configuration["DatabaseSettings:ConnectionString"];
 
-        return string.IsNullOrWhiteSpace(connectionString)
-            ? throw new InvalidOperationException("Database connection string not found. Set DB_CONNECTION or DatabaseSettings:ConnectionString.")
-            : connectionString;
+        return connectionString ?? string.Empty;
     }
 }

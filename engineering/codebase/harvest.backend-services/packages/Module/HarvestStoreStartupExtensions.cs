@@ -44,6 +44,20 @@ public static class HarvestStoreStartupExtensions
         return applied;
     }
 
+    /// <summary>Checks the store without creating a database or changing its schema; deployed hosts call this after the migration-level check.</summary>
+    /// <param name="services">The root service provider of a host that called <c>AddHarvest</c>.</param>
+    /// <param name="cancellationToken">The token that cancels the checks.</param>
+    /// <returns>The store verification operation.</returns>
+    public static async Task VerifyHarvestStoreAsync(this IServiceProvider services, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        var connections = services.GetRequiredKeyedService<IDbConnectionFactory>(HarvestModuleConstants.ServiceKey);
+        await using var connection = await connections.CreateOpenAsync(cancellationToken);
+        var probe = await StoreSelfTest.ProbeBeforeMigrationAsync(connection, cancellationToken);
+        ThrowIfRefused(probe);
+        ThrowIfRefused(await StoreSelfTest.ProbeAfterMigrationAsync(connection, probe, cancellationToken));
+    }
+
     private static void ThrowIfRefused(StoreProbe probe)
     {
         var failures = StoreSelfTest.Evaluate(probe);

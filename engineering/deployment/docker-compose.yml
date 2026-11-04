@@ -2,14 +2,14 @@
 #
 #   docker compose up -d --build     the database and the service; the service answers on http://127.0.0.1:8397
 #
-# A `database` volume holding PostgreSQL 16 data cannot start on 18: remove it once (docker compose down -v); the
-# database is recreated.
+# PostgreSQL major upgrades require a reviewed migration; retain existing data volumes.
 #
 # The credentials and the operator key are local-only test values; a deployed environment's live in its Wheelhouse
 # target settings. The database stays on the compose network; an IDE run points appsettings.Local.json at its own.
 services:
   database:
     image: postgres:18-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: harvest
       POSTGRES_USER: harvest
@@ -32,6 +32,8 @@ services:
     environment:
       DB_CONNECTION: "Host=database;Database=harvest;Username=harvest;Password=harvest"
       Harvest__Operator__ApiKey: "hv_LocalComposeOperatorKey000000000"
+    volumes:
+      - session-keys:/data/keys
     depends_on:
       database:
         condition: service_healthy
@@ -39,3 +41,4 @@ services:
 
 volumes:
   database:
+  session-keys:

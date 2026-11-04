@@ -43,11 +43,13 @@ RUN case "$TARGETARCH" in amd64) rid=linux-x64 ;; arm64) rid=linux-arm64 ;; *) e
 # ---- Stage 3: runtime ----
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /data/keys && chown app:app /data/keys
 WORKDIR /app
 COPY --from=build /app ./
 
 ENV ASPNETCORE_HTTP_PORTS=8080
+ENV DataProtection__KeysPath=/data/keys
 USER app
 EXPOSE 8080
 HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=4 \
