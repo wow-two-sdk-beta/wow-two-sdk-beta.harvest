@@ -41,7 +41,7 @@ public sealed class SourcesController(IRegistrationBroker broker, CallerResolver
     /// <param name="sourceId">The source's identifier.</param>
     /// <param name="ct">The token that cancels the request.</param>
     [HttpGet("{sourceId:guid}")]
-    [Authorize(Policy = AccessPolicies.AnyKey)]
+    [Authorize(Policy = AccessPolicies.AnyCaller)]
     [ProducesResponseType<ApiResponse<SourceModel>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Get(Guid sourceId, CancellationToken ct)
     {
@@ -60,7 +60,7 @@ public sealed class SourcesController(IRegistrationBroker broker, CallerResolver
     /// <param name="sourceId">The visible source.</param>
     /// <param name="ct">The token that cancels the request.</param>
     [HttpGet("{sourceId:guid}/capabilities")]
-    [Authorize(Policy = AccessPolicies.AnyKey)]
+    [Authorize(Policy = AccessPolicies.AnyCaller)]
     [ProducesResponseType<ApiResponse<SourceCapabilitiesModel>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Capabilities(Guid sourceId, CancellationToken ct)
     {
@@ -78,7 +78,7 @@ public sealed class SourcesController(IRegistrationBroker broker, CallerResolver
     /// <param name="containerId">The container.</param>
     /// <param name="ct">The token that cancels the request.</param>
     [HttpGet]
-    [Authorize(Policy = AccessPolicies.AnyKey)]
+    [Authorize(Policy = AccessPolicies.AnyCaller)]
     [ProducesResponseType<ApiResponse<IReadOnlyList<SourceModel>>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List([FromQuery(Name = RegistrationRouteConstants.ContainerIdParameter)] Guid containerId, CancellationToken ct)
     {

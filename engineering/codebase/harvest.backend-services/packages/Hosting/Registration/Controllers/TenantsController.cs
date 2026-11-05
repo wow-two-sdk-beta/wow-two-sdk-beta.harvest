@@ -1,7 +1,5 @@
-using Harvest.Api.Registration.Access;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
 using WoW.Two.Sdk.Beta.Be.Harvest.Tenants;
 using WoW.Two.Sdk.Beta.Be.Web.Contracts;
@@ -9,10 +7,10 @@ using WoW.Two.Sdk.Beta.Be.Web.ExceptionHandling.Extensions;
 
 namespace Harvest.Api.Registration.Controllers;
 
-/// <summary>Exposes tenant metadata to bound sessions and reserves tenant/key administration for operators.</summary>
+/// <summary>Exposes the operator's tenant and credential registry.</summary>
 [ApiController]
 [Route(RegistrationRouteConstants.Tenants)]
-public sealed class TenantsController(IRegistrationBroker broker, CallerResolver callers) : ControllerBase
+public sealed class TenantsController(IRegistrationBroker broker) : ControllerBase
 {
     /// <summary>Registers a tenant.</summary>
     /// <param name="registration">The tenant to register.</param>
@@ -25,37 +23,24 @@ public sealed class TenantsController(IRegistrationBroker broker, CallerResolver
             tenant => StatusCode(StatusCodes.Status201Created, ApiResponse<TenantModel>.Ok(tenant)),
             this.ToProblem);
 
-    /// <summary>Lists every tenant for an operator, or the session's own bound tenant.</summary>
+    /// <summary>Lists registered tenants.</summary>
     /// <param name="ct">The token that cancels the request.</param>
     [HttpGet]
-    [Authorize(Policy = AccessPolicies.TenantsRead)]
+    [Authorize(Policy = HarvestScopeConstants.TenantsManage)]
     [ProducesResponseType<ApiResponse<IReadOnlyList<TenantModel>>>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> List(CancellationToken ct)
-    {
-        if (await callers.ResolveAsync(User, ct) is not { } caller)
-            return this.ToProblem(AppErrorFactory.Unauthorized());
-        if (caller.IsOperator)
-            return (await broker.ListTenantsAsync(ct)).Match<IActionResult>(
-                tenants => Ok(ApiResponse<IReadOnlyList<TenantModel>>.Ok(tenants)), this.ToProblem);
-        return (await broker.GetTenantAsync(caller.TenantId!.Value, ct)).Match<IActionResult>(
-            tenant => Ok(ApiResponse<IReadOnlyList<TenantModel>>.Ok([tenant])), this.ToProblem);
-    }
+    public async Task<IActionResult> List(CancellationToken ct) =>
+        (await broker.ListTenantsAsync(ct)).Match<IActionResult>(
+            tenants => Ok(ApiResponse<IReadOnlyList<TenantModel>>.Ok(tenants)), this.ToProblem);
 
     /// <summary>Reads a tenant.</summary>
     /// <param name="tenantId">The tenant's identifier.</param>
     /// <param name="ct">The token that cancels the request.</param>
     [HttpGet("{tenantId:guid}")]
-    [Authorize(Policy = AccessPolicies.TenantsRead)]
+    [Authorize(Policy = HarvestScopeConstants.TenantsManage)]
     [ProducesResponseType<ApiResponse<TenantModel>>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> Get(Guid tenantId, CancellationToken ct)
-    {
-        if (await callers.ResolveAsync(User, ct) is not { } caller)
-            return this.ToProblem(AppErrorFactory.Unauthorized());
-        if (!caller.IsOperator && caller.TenantId != tenantId)
-            return this.ToProblem(RegistrationErrors.TenantNotFound(tenantId));
-        return (await broker.GetTenantAsync(tenantId, ct)).Match<IActionResult>(
+    public async Task<IActionResult> Get(Guid tenantId, CancellationToken ct) =>
+        (await broker.GetTenantAsync(tenantId, ct)).Match<IActionResult>(
             tenant => Ok(ApiResponse<TenantModel>.Ok(tenant)), this.ToProblem);
-    }
 
     /// <summary>Issues an API key to a tenant; the secret is in this answer only.</summary>
     /// <param name="tenantId">The tenant the key acts for.</param>

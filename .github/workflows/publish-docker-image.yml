@@ -35,23 +35,18 @@ jobs:
     uses: wow-two-platform/wow-two-platform.pipelines/.github/workflows/delivery.yml@v0.15.0
     with:
       commit: ${{ inputs.commit }}
-      # Backend: every tier (unit, integration, E2E, conformance in process, migrations); the database tiers run
-      # PostgreSQL in Testcontainers (postgres:18-alpine), so the runner needs Docker. The build also builds the frontend
-      # workspace into wwwroot, which the E2E tier reads. Release scripts: the tag
-      # version logic in throwaway repositories, and shellcheck.
+      # Database test tiers use PostgreSQL in Testcontainers and require Docker.
       backends: |
         [{"name": "Backend", "dotnet": "engineering/codebase/harvest.backend-services/global.json",
-          "node": "engineering/codebase/harvest.frontend-services/.nvmrc",
           "run": "dotnet test engineering/codebase/harvest.backend-services/Harvest.BackendServices.slnx",
           "paths": ["engineering/codebase/harvest.backend-services/**",
-                    "engineering/codebase/harvest.frontend-services/**",
                     "engineering/deployment/deploy.yml"]},
          {"name": "Release scripts", "timeout": 10,
           "run": ["bash engineering/scripts/test-next-version.sh",
                   "command -v shellcheck >/dev/null || sudo apt-get install --yes --no-install-recommends shellcheck",
                   "shellcheck engineering/scripts/*.sh"],
           "paths": ["engineering/scripts/**"]}]
-      # Frontend: the fe-harvest package and the hosted pages app; check:package installs the packed archive.
+      # Independent frontend package and standalone demo checks.
       frontends: |
         [{"name": "Frontend", "dir": "engineering/codebase/harvest.frontend-services",
           "scripts": ["lint", "test", "build", "check:package"],

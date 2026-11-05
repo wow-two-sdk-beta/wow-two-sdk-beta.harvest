@@ -32,8 +32,6 @@ services:
     environment:
       DB_CONNECTION: "Host=database;Database=harvest;Username=harvest;Password=harvest"
       Harvest__Operator__ApiKey: "hv_LocalComposeOperatorKey000000000"
-    volumes:
-      - session-keys:/data/keys
     depends_on:
       database:
         condition: service_healthy
@@ -41,4 +39,3 @@ services:
 
 volumes:
   database:
-  session-keys:

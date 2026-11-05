@@ -20,7 +20,7 @@ engineering/             ← the HOW
 ├── research/ · scripts/ ← analyses · release helpers publish-packages.yml calls
 └── codebase/            ← THE CODE — only place code lives
     ├── harvest.backend-services/    ← Harvest.BackendServices.slnx: packages/{Abstractions,Module,Client,Testing,Hosting} · service/Harvest.Api · tests/Harvest.Tests.*
-    └── harvest.frontend-services/   ← pnpm workspace: packages/fe-harvest (npm: contracts · kit · admin) · apps/web (console)
+    └── harvest.frontend-services/   ← pnpm workspace: packages/fe-harvest (npm: contracts · kit · admin) · standalone demo
 ```
 
 ## Rules
@@ -30,11 +30,10 @@ engineering/             ← the HOW
   `Harvest.Tests.Conformance` runs the one suite (`RegistrationBrokerConformance`, in `packages/Testing`) against both
   and the fake. The engine seams and the lane that implements each: `engineering/architecture/contract.md`.
 - Each engine lane works in its `packages/Module/{Lane}/` folder, whose lead doc names its seam and its tables.
-- A package references only what its layer row allows. Hosting supplies shared startup, API key access and the HTTP
-  mirror. The generic service and private adapter hosts reuse it; the service adds the console assets.
+- A package references only what its layer row allows. Hosting supplies shared startup, machine access and the HTTP
+  mirror for the generic API and private source host.
 - Management screens ship in `fe-harvest`'s `./admin` export; `apps/web`'s console composes them and builds none itself.
-- Standalone UI work uses `pnpm dev:demo` with synthetic client data. Public builds/tests require no extension
-  checkout. `VITE_API_TARGET` selects a real host during development; extension hosts consume the compiled console.
+- Standalone UI work uses `pnpm dev:demo` with synthetic client data. `VITE_API_TARGET` selects a local API key host.
 - Source capability discovery returns declarative metadata through `ISourceConfigurationProvider`; no extension
   implementation or credential enters the UI package. See `engineering/architecture/composition.md`.
 - Package versions come from tags (`be-v*` NuGet, `fe-v*` npm) in `publish-packages.yml`; never commit a version,
@@ -42,8 +41,7 @@ engineering/             ← the HOW
 - Core is pinned (`BackendSdkVersion`, the exact `@wow-two-beta/fe`); a needed core change goes to core first, then the
   pin moves here. `core-latest.yml` tests the newest core nightly; a red run is a fix here, not a gate.
 - Schema changes are `packages/Module/Migrations/NNN-name/{Apply,Rollback}.sql` pairs; never edit an applied one.
-- The store is PostgreSQL (UTF-8, `pg_trgm`; boot refuses anything else). The database tiers (Integration, Migrations,
-  Conformance, E2E) run `postgres:18-alpine` in Testcontainers, so they need Docker; the backend build runs the
-  frontend build (`BuildSpa`), so it needs Node and pnpm.
+- The store is PostgreSQL with UTF-8 and `pg_trgm`. Integration, Migrations, Conformance and E2E run
+  `postgres:18-alpine` in Testcontainers and require Docker.
 - Repository creation, GitHub settings, rollout state and hand steps: `engineering/development/development.md`
   § Repository.

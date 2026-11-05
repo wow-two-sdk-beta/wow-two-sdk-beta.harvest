@@ -1,7 +1,5 @@
 # yaml-language-server: $schema=../../../../../conventions/deployment/descriptor/deploy.schema.json
-# What the Harvest domain deploys: one service hosting the Form 1 module, its HTTP API, the hosted pages and the admin
-# console. Format and rules: wow-two-ws/conventions/deployment/descriptor/deploy-descriptor.md. Hostnames, secrets
-# and environments live in Wheelhouse targets, never here. Paths are relative to engineering/.
+# The shared Harvest API and worker. Hostnames and credentials live in Wheelhouse targets.
 descriptor: 2
 product: harvest
 name: Harvest
@@ -33,11 +31,8 @@ verify:
       "$VERIFY_SERVICE_HARVEST/api/system/status"
       && echo "health and status answered"
   timeout: 1m
-# Two host roles: the public front door for the API and the hosted pages, and the private admin console. One app
-# serves both; Wheelhouse binds each site to its own host per environment.
 sites:
   app: { primary: true }
-  console: { exposure: private }
 shared:
   - codebase/harvest.backend-services/Directory.*.props
   - codebase/harvest.backend-services/global.json
@@ -47,28 +42,18 @@ services:
       dockerfile: deployment/Dockerfile
     paths:
       - codebase/harvest.backend-services/**
-      - codebase/harvest.frontend-services/**
     health: /health
     memory: 256m
-    # Typed keys (pipelines v0.10.0): Wheelhouse checks each saved value against its type; a required key joins
-    # settings.required. The target's settings file (/app/appsettings.Target.json) supplies the PostgreSQL connection
-    # string (UTF-8 database, pg_trgm; boot refuses anything else) and the operator key; both stay in Wheelhouse's
-    # vault. Without the operator key, no one holds the registry scopes.
     settings:
       keys:
         DatabaseSettings:ConnectionString: { required: true, secret: true }
-        Harvest:Operator:ApiKey: { secret: true }
         Harvest:Worker:Enabled: { type: boolean, default: true }
-        Harvest:Console:IsIdentityEnabled: { type: boolean, default: false }
-        Identity:Client:Authority: { type: url }
-        Identity:Client:ClientId: {}
-        Identity:Client:ClientSecret: { secret: true }
-    volumes:
-      session-keys: /data/keys
+        Harvest:ServiceAccess:Enabled: { type: boolean, default: true }
+        Harvest:ServiceAccess:Authority: { type: url, required: true }
+        Harvest:ServiceAccess:Audience: { required: true }
+        Harvest:ServiceAccess:ClientGrantsJson: { required: true }
     needs: [postgres]
     # The bundle services harvest starts after: none, since PostgreSQL is a platform service under needs.
     dependsOn: []
-    # The pages at /, the contract's HTTP mirror under the same host's /api: /api routes ahead of /, never /apiary.
     sites:
-      app: { paths: [/, /api] }
-      console: { paths: [/, /api] }
+      app: { paths: [/api] }

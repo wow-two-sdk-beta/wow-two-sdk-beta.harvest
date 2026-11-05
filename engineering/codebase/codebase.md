@@ -13,19 +13,17 @@ The code lives in `harvest.backend-services/` (.NET) and `harvest.frontend-servi
 - `Module`: `Persistence/` (the context and the registry rows), `Store/` (the boot self-test), `Registration/` (the
   broker and its rules), `ApiKeys/` (the key store core's scheme reads), and the lane folders `Capabilities/`,
   `Engine/`, `Readers/`, `Extraction/`, `Posts/`, `Delivery/`, each with its lead doc.
-- `service/Harvest.Api` hosts the module by `ProjectReference`: `AddApiDefaults()` / `UseApiDefaults()`, the store boot
-  (`MigrateHarvestOnStartupAsync`), API key access (`Registration/Access/`), the registration controllers, the
-  `SystemController`, and the console in `wwwroot/` (filled by the `BuildSpa` target; `-p:BuildSpa=false` skips it).
+- `service/Harvest.Api` hosts the module by `ProjectReference`. Hosting owns the store boot, API controllers,
+  scoped machine access and local development keys under `Registration/Access/`.
 - Tests: `Unit` (package logic, no I/O), `Integration` (the module over PostgreSQL: rows, self-test, key store,
-  partitions), `E2E` (the host in process: boot and refusal, access, the wire, pages, `/health`, the descriptor's dev
+  partitions), `E2E` (the host in process: boot and refusal, access, the wire, `/health`, the descriptor's dev
   check), `Conformance` (one suite against module, client and fake), `Migrations` (the module's SQL set). The database
   tiers run `postgres:18-alpine` in Testcontainers through `tests/Shared/PostgresServer.cs` — one server per test
   assembly, a fresh database per fixture — so they need Docker. Run them with `dotnet test Harvest.BackendServices.slnx`.
 
 ## Frontend
 
-A pnpm workspace: `packages/fe-harvest` (`@wow-two-beta/fe-harvest`, published: `./contracts`, `./kit`, `./admin`) and
-`apps/web` (the console that composes `./admin`, private). `scripts/deploy.mjs` copies `apps/web/dist/` to
-`harvest.backend-services/service/Harvest.Api/wwwroot/`.
+The pnpm workspace publishes `packages/fe-harvest` as `@wow-two-beta/fe-harvest` with `./contracts`, `./kit` and
+`./admin` exports. `apps/web` is a standalone demo.
 
 Rules: wow-two-ws/conventions/development/repo/structure/domain-structure.md

@@ -79,7 +79,7 @@ jobs:
         env:
           CONFORMANCE_BASE_URL: http://127.0.0.1:8080
         run: >-
-          dotnet test engineering/codebase/harvest.backend-services/tests/Harvest.Tests.Conformance -p:BuildSpa=false
+          dotnet test engineering/codebase/harvest.backend-services/tests/Harvest.Tests.Conformance
           --filter "FullyQualifiedName~ClientRegistrationConformanceTests"
 
       - name: Service log

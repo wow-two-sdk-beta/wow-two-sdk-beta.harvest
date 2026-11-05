@@ -3,22 +3,20 @@ using AwesomeAssertions;
 
 namespace Harvest.Tests.E2E;
 
-/// <summary>The single-host contract: the built Vue app (the console) is served at <c>/</c>, any unknown route falls back to it, and an unmatched <c>/api</c> path answers JSON — 401 without a key, 404 with one — never the app shell.</summary>
+/// <summary>Checks that the host exposes API routes and no page fallback.</summary>
 [Collection(HarvestApiCollection.Name)]
-public sealed class SpaServingTests(HarvestApiFixture fixture)
+public sealed class ApiSurfaceTests(HarvestApiFixture fixture)
 {
     [Theory]
     [InlineData("/")]
     [InlineData("/some/client/route")]
-    public async Task Get_ShouldServeTheAppShell_WhenTheRouteIsNotAnApiRoute(string path)
+    public async Task Get_ShouldReturnNotFound_ForPageRoutes(string path)
     {
         using var client = fixture.Host.CreateClient();
 
         using var response = await client.GetAsync(path);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        response.Content.Headers.ContentType?.MediaType.Should().Be("text/html");
-        (await response.Content.ReadAsStringAsync()).Should().Contain("<div id=\"root\">");
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Theory]

@@ -1,25 +1,28 @@
 using System.Security.Claims;
-using Harvest.Api.Console;
 using Microsoft.Extensions.Options;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
 using WoW.Two.Sdk.Beta.Be.Harvest.Tenants;
 using WoW.Two.Sdk.Beta.Be.Identity.ApiKeys;
-using WoW.Two.Sdk.Beta.Be.Identity.Core.Organizations;
 
 namespace Harvest.Api.Registration.Access;
 
-/// <summary>Resolves an authenticated service key or a bound organization session to its Harvest caller.</summary>
-/// <param name="broker">The registry, which knows each key's tenant.</param>
-/// <param name="options">The console's explicit organization bindings and permission namespace.</param>
-public sealed class CallerResolver(IRegistrationBroker broker, IOptions<HarvestConsoleOptions> options)
+/// <summary>Resolves service credentials to a Harvest operator or tenant.</summary>
+/// <param name="broker">The tenant and key registry.</param>
+/// <param name="options">The service issuer and explicit client grants.</param>
+public sealed class CallerResolver(IRegistrationBroker broker, IOptions<HarvestServiceAccessOptions> options)
 {
     /// <summary>Resolves the caller, or null when the principal has no live Harvest authority.</summary>
     /// <param name="user">The authenticated principal.</param>
     /// <param name="cancellationToken">The token that cancels the call.</param>
     public async Task<Caller?> ResolveAsync(ClaimsPrincipal user, CancellationToken cancellationToken)
     {
-        var keyId = user.FindFirst(ApiKeyAuthenticationDefaults.KeyIdClaim)?.Value;
+        if (options.Value.Enabled)
+            return await ResolveServiceAsync(user, cancellationToken);
+
+        var identity = user.Identities.FirstOrDefault(candidate => candidate.IsAuthenticated
+            && candidate.AuthenticationType == ApiKeyAuthenticationDefaults.Scheme);
+        var keyId = identity?.FindFirst(ApiKeyAuthenticationDefaults.KeyIdClaim)?.Value;
         if (keyId == ApiKeyConstants.OperatorKeyId)
             return new Caller(IsOperator: true, TenantId: null) { Scopes = HarvestScopeConstants.All };
         if (keyId is not null)
@@ -31,21 +34,29 @@ public sealed class CallerResolver(IRegistrationBroker broker, IOptions<HarvestC
                 : null;
         }
 
-        var console = options.Value;
-        if (!console.IsIdentityEnabled || user.Identity?.IsAuthenticated != true
-            || !Guid.TryParse(user.FindFirstValue(OrganizationClaimTypeConstants.Id), out var organizationId)
-            || user.GetOrganizationRole(organizationId) is null
-            || !console.OrganizationTenants.TryGetValue(organizationId, out var tenantId)
-            || await broker.GetTenantAsync(tenantId, cancellationToken) is not Result<TenantModel>.Success { Value.State: TenantState.Active })
+        return null;
+    }
+
+    private async Task<Caller?> ResolveServiceAsync(ClaimsPrincipal user, CancellationToken cancellationToken)
+    {
+        var identity = user.Identities.FirstOrDefault(candidate => candidate.IsAuthenticated
+            && candidate.AuthenticationType == HarvestServiceAccessOptions.Scheme);
+        var clientId = identity?.FindFirst("client_id")?.Value;
+        if (identity is null || clientId is null || clientId != identity.FindFirst("sub")?.Value
+            || identity.HasClaim(claim => claim.Type is "sid" or "act")
+            || !options.Value.ClientGrants.TryGetValue(clientId, out var grant))
             return null;
 
-        // Organization administrators remain tenant administrators; registry-wide tenant/key administration stays operator-only.
-        var scopes = HarvestScopeConstants.All.Where(scope => scope != HarvestScopeConstants.TenantsManage
-            && user.HasOrganizationPermission(organizationId, console.PermissionNamespace + ":" + scope)).ToArray();
-        return scopes.Length == 0 ? null : new Caller(IsOperator: false, TenantId: tenantId)
-        {
-            Scopes = scopes,
-            IsIdentitySession = true,
-        };
+        var tokenScopes = identity.FindAll("scope")
+            .SelectMany(claim => claim.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            .ToHashSet(StringComparer.Ordinal);
+        // Identity resource scopes use a dot. Keep the registry's existing API-key scope names.
+        var scopes = grant.Scopes.Where(scope => tokenScopes.Contains(scope.Replace(':', '.'))).ToArray();
+        if (scopes.Length == 0 || grant.TenantId is { } tenantId
+            && await broker.GetTenantAsync(tenantId, cancellationToken)
+                is not Result<TenantModel>.Success { Value.State: TenantState.Active })
+            return null;
+
+        return new Caller(grant.IsOperator, grant.TenantId) { Scopes = scopes };
     }
 }

@@ -37,7 +37,7 @@ public sealed class ContainersController(IRegistrationBroker broker, CallerResol
     /// <param name="containerId">The container's identifier.</param>
     /// <param name="ct">The token that cancels the request.</param>
     [HttpGet("{containerId:guid}")]
-    [Authorize(Policy = AccessPolicies.AnyKey)]
+    [Authorize(Policy = AccessPolicies.AnyCaller)]
     [ProducesResponseType<ApiResponse<ContainerModel>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Get(Guid containerId, CancellationToken ct)
     {
@@ -57,7 +57,7 @@ public sealed class ContainersController(IRegistrationBroker broker, CallerResol
     /// <param name="tenantId">The tenant whose private containers the operator lists.</param>
     /// <param name="ct">The token that cancels the request.</param>
     [HttpGet]
-    [Authorize(Policy = AccessPolicies.AnyKey)]
+    [Authorize(Policy = AccessPolicies.AnyCaller)]
     [ProducesResponseType<ApiResponse<IReadOnlyList<ContainerModel>>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List([FromQuery(Name = RegistrationRouteConstants.TenantIdParameter)] Guid? tenantId, CancellationToken ct)
     {

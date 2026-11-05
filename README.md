@@ -29,7 +29,7 @@ services.AddHarvestEngine();
 services.AddHarvestWorker(); // explicit opt-in to background schedules
 await app.Services.MigrateHarvestOnStartupAsync();
 
-// Forms 2 and 3 — over the running Harvest service with an API key; the product's code does not change
+// Forms 2 and 3 — over a local Harvest service with an API key
 services.AddHarvestClient(options =>
 {
     options.BaseAddress = new Uri("https://harvest.example.com/");
@@ -46,7 +46,7 @@ The registration extensions live in `Module.Capabilities`, `Module.Readers`, `Mo
 
 The generic service reads sitemaps, JSON-LD events, RSS/Atom, ICS and ordinary pages. It runs deterministic extraction,
 keeps immutable captures and field provenance, merges duplicates, checks known links and offers resumable pull delivery.
-The reusable console manages sources, pipelines, runs and subscriptions and shows posts and host health.
+The API manages sources, pipelines, runs and subscriptions and exposes posts and host health.
 
 Fetching uses the host's own network connection, a transparent Harvest user agent, robots policy, per-host pacing and
 conditional requests. Challenges, blocks and rate limits become recorded outcomes and persistent pauses. No CAPTCHA,
@@ -55,27 +55,23 @@ Private hosts can replace `IFetchTransportFactory` with explicitly configured ro
 permission, pacing, redirect and refusal policies still apply. Provider clients and named sources live in the private
 adapters repository.
 
-Runtime requirements are PostgreSQL 16+ with UTF-8 and `pg_trgm`, the database connection and an operator API key.
+Runtime requirements include PostgreSQL 16+ with UTF-8 and `pg_trgm`. Shared deployments authenticate operator and
+product backends with OAuth client credentials. Local Compose uses a development operator API key.
 The service starts the worker by default; set `Harvest:Worker:Enabled=false` for a management-only host.
 `Harvest:Fetch` binds `HarvestFetchOptions`, including its user agent, deadline and response-size limit.
 
 `WoW2.Sdk.Beta.Be.Harvest.Hosting` provides the reusable API controllers, authentication and startup composition.
 An adapter host references that package and registers its parsers and providers after `builder.Configure()`.
 
-The browser keeps its API key in memory. A disconnected console makes no authenticated registry requests.
-
-The complete console belongs to this public repository. `pnpm dev:demo` in the frontend workspace opens synthetic,
-editable pipelines without a backend, private checkout or source connections. `VITE_API_TARGET` selects a real
-runtime during development. [Composition and standalone UI development](engineering/architecture/composition.md).
+`pnpm dev:demo` in the frontend workspace opens a standalone demo with synthetic pipelines. Embedding applications
+can build their own views on the API. [Machine access and deployment](engineering/deployment/deployment.md).
 
 `GET /api/sources/{sourceId}/capabilities` describes the installed adapter, supported operations, local readiness
 and saved scope schema under the source's tenant visibility rules. Adapters optionally implement
 `ISourceConfigurationProvider`; only safe display metadata crosses this seam.
 
-The console uses a responsive sidebar with a pipeline list. Select a pipeline to edit its starting URL (including
-search filters), query parameter overrides and per-kind cadence. Interval, cron, adaptive and manual modes support
-IANA timezones and optional active-hour windows. Disabled schedules stay manual-only. Collection still requires a
-matching adapter; saving a URL does not establish that the source can be read.
+Pipelines store a starting URL with search filters, query overrides and per-kind cadence. Interval, cron, adaptive
+and manual modes support IANA timezones and optional active-hour windows. Disabled schedules stay manual-only.
 
 `IRegistrationBroker.UpdatePipelineAsync(id, update)` / `PUT api/pipelines/{id}` replaces the name, complete scope and
 schedule list. It preserves the pipeline/source identity, lifecycle, limits, step overrides, schedule IDs and run
@@ -88,7 +84,7 @@ product/                 ← the capability: spec, state, features, flows, brand
 engineering/             ← the how: architecture (contract, package registry), planning, deployment, scripts
 └── codebase/
     ├── harvest.backend-services/    ← packages/ (the NuGet family) · service/Harvest.Api · tests/
-    └── harvest.frontend-services/   ← packages/fe-harvest (npm) · apps/web (console)
+    └── harvest.frontend-services/   ← packages/fe-harvest (npm) · standalone demo
 ```
 
 ## Run it (dev)
@@ -98,15 +94,15 @@ engineering/             ← the how: architecture (contract, package registry),
 # PostgreSQL connection string (DatabaseSettings:ConnectionString) and the operator key (Harvest:Operator:ApiKey)
 cd engineering/codebase/harvest.backend-services && dotnet run --project service/Harvest.Api --launch-profile https
 
-# Pages and console, proxied to the service
-cd engineering/codebase/harvest.frontend-services && pnpm install --frozen-lockfile && pnpm dev
+# Detached local API and database
+docker compose -f engineering/deployment/docker-compose.yml up -d --build --wait
 ```
 
 ## Test it
 
 ```bash
 # Backend: unit, integration, E2E, conformance and migration tiers; the database tiers run postgres:18-alpine in
-# Testcontainers (Docker), and the build also builds the frontend workspace, so Node and pnpm are required
+# Testcontainers (Docker).
 cd engineering/codebase/harvest.backend-services && dotnet test Harvest.BackendServices.slnx
 
 # Frontend: lint, tests (builds fe-harvest first), production build, packed-consumer check

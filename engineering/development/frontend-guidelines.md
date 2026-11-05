@@ -33,6 +33,5 @@ pnpm lint && pnpm test && pnpm build && pnpm check:package
 
 ## Delivery
 
-`pnpm build` builds `fe-harvest`, then `apps/web/dist/`; `pnpm deploy` copies it into the service's `wwwroot/`, and a
-backend build runs it too (`BuildSpa`). `publish-packages.yml` publishes `fe-harvest` alone, at the version its
-`fe-v*` tags and npm give.
+`pnpm build` builds `fe-harvest` and the standalone app in `apps/web/dist/`. `publish-packages.yml` publishes
+`fe-harvest` at the version its `fe-v*` tags and npm give.

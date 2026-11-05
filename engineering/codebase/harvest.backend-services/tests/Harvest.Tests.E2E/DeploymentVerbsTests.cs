@@ -15,7 +15,7 @@ public sealed class DeploymentVerbsTests
     {
         var run = await Run(["migrate", "sets", "--json"], new Dictionary<string, string?>());
         run.Exit.Should().Be(0, run.Error);
-        run.Output.Should().Contain("\"harvest\"").And.Contain("\"distributed_cache\"").And.Contain("migrate-result ");
+        run.Output.Should().Contain("\"harvest\"").And.Contain("migrate-result ").And.NotContain("\"distributed_cache\"");
     }
 
     [Fact]
@@ -46,16 +46,16 @@ public sealed class DeploymentVerbsTests
     }
 
     [Fact]
-    public async Task Deployment_migrate_applies_both_sets_and_supports_the_rollback_check()
+    public async Task Deployment_migrate_applies_the_harvest_set_and_supports_the_rollback_check()
     {
         var settings = new Dictionary<string, string?>
         {
-            ["DB_CONNECTION"] = (await PostgresServer.SharedAsync()).NewDatabase("verbs"),
+            ["DB_CONNECTION"] = await (await PostgresServer.SharedAsync()).CreateDatabaseAsync("verbs", "UTF8"),
             ["Harvest:Worker:Enabled"] = "false",
         };
         var applied = await Run(["migrate"], settings);
         applied.Exit.Should().Be(0, applied.Error);
-        applied.Output.Should().Contain("migrate-result ").And.Contain("harvest").And.Contain("distributed_cache");
+        applied.Output.Should().Contain("migrate-result ").And.Contain("harvest");
         var checkedRun = await Run(["migrate", "check", "--json"], settings);
         checkedRun.Exit.Should().Be(0, checkedRun.Error);
         checkedRun.Output.Should().Contain("migrate-result ");

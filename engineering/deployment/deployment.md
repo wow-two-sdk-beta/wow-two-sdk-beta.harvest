@@ -1,75 +1,51 @@
-# deployment/
+# Harvest API deployment
 
-How wow-two-sdk-beta.harvest's service ships. Descriptor format: wow-two-ws/conventions/deployment/descriptor/deploy-descriptor.md.
-The packages ship separately, from `publish-packages.yml` (`engineering/scripts/scripts.md`).
+`Harvest.Api` runs the generic capture and delivery API and worker. Private source runtimes use the same Hosting
+package and deployment contract.
 
-| File | Role |
-|---|---|
-| `deploy.yml` | descriptor 2: one service, `harvest` (`/health`, 256 MB, `needs: [postgres]`, the typed required key `DatabaseSettings:ConnectionString` and the secret `Harvest:Operator:ApiKey`); sites `app` (public, primary) and `console` (private), both at `/` and `/api`; `dotnetEnvironment: true` and the `verify` dev check |
-| `Dockerfile` | three stages: build the frontend workspace (`fe-harvest`, then `apps/web`), publish `service/Harvest.Api` with its packages and the pages in `wwwroot`, run on `aspnet` with `curl` |
-| `docker-compose.yml` | local verification: the image beside `postgres:18-alpine` with local-only credentials, on `http://127.0.0.1:8397` |
+## Local Compose
 
-## Contract with Wheelhouse
-
-- Image: `ghcr.io/<owner>/<repo>/harvest`, published by `.github/workflows/publish-docker-image.yml` through the shared
-  `delivery.yml` of `wow-two-platform.pipelines` (pinned `v0.15.0`); CI builds the release bundle. Wheelhouse v0.12+
-  runs its migrations, configuration check, rollout and verification.
-- Version: `X.Y` from the newest `planning/version-track/v{X.Y}/`; the image tag and `GET /api/system/status` report the
-  same `X.Y.Z`, plus the build's commit after a `+`. Package releases (`be-v*`, `fe-v*`) never move it.
-- Settings a target provides in `/app/appsettings.Target.json`: `DatabaseSettings:ConnectionString` (the platform
-  PostgreSQL), `Harvest:Operator:ApiKey` (`hv_` + 32 letters and digits, from the vault);
-  `Deployment:TrustedProxies` or `Deployment:TrustedNetworks` names the ingress.
-- Database: the platform PostgreSQL (`needs: [postgres]`), UTF-8 with `pg_trgm`. The image's `migrate` command applies
-  both `harvest` and `distributed_cache`; `migrate sets --json` describes both without target settings, and
-  `migrate check` provides the rollback gate. A deployed boot checks levels and store capabilities without applying
-  schema changes. Local development applies migrations at boot. `GET /health` checks database readiness.
-- Configuration: `dotnet Harvest.Api.dll config check` runs the boot's validation without serving. The descriptor
-  declares this check before rollout. Worker, fetch and console settings reject unknown keys.
-- Sessions: the image defaults `DataProtection:KeysPath` to `/data/keys`; Compose and Wheelhouse persist that directory
-  in the environment's `session-keys` volume. Both Compose services use `restart: unless-stopped`.
-- Dev check: after a dev rollout, `verify` curls `$VERIFY_SERVICE_HARVEST/health` and `/api/system/status` with
-  `Host: localhost`; `HostFilteringTests` replays the descriptor's requests.
-- After each main image publish, `conformance.yml` runs the contract suite against the released image.
-
-## Local run
-
-The generic service needs only PostgreSQL and the operator key. `Harvest:Fetch` configures the honest user agent,
-two-second minimum host gap, timeout and response limit. `Harvest:Worker` configures leases and run limits;
-`Enabled=false` disables processing without disabling the API or console. No CAPTCHA, proxy/IP, renderer, model
-provider or source-specific account credentials are required. The console key is entered by the operator and held in memory.
-
-```bash
-docker build --build-arg APP_VERSION=0.1.99 --build-arg VCS_REF=$(git rev-parse HEAD) \
-  -f engineering/deployment/Dockerfile -t harvest:local engineering/codebase
+```sh
+docker compose -f engineering/deployment/docker-compose.yml up -d --build --wait
+curl --fail http://127.0.0.1:8397/health
 ```
 
-## Identity console
+Compose uses PostgreSQL 18 and a named database volume. Both containers restart unless stopped. The local operator
+key comes from the Compose environment. The API listens on loopback port 8397.
 
-API-key mode remains the default. To enable browser sign-in, register a distinct confidential OIDC client for
-Harvest in the chosen Identity instance. Keep its secret in host configuration or the vault. Register each exact
-HTTPS callback as `{console-origin}/api/identity/callback` and its sign-out return as `{console-origin}/`.
+## Shared API access
 
-| Setting | Value |
+Register one Harvest resource in the Harvest environment's Identity issuer. Its HTTPS URI, including the trailing
+slash, is the API audience. Register separate confidential `client_credentials` clients for the operator and each
+consumer. Clients request a token with that URI as `resource` and send it as `Authorization: Bearer`.
+
+| Setting | Shared target value |
 |---|---|
-| `Harvest:Console:IsIdentityEnabled` | `true` |
-| `Identity:Client:Authority` | the trusted HTTPS Identity issuer |
-| `Identity:Client:ClientId` | the dedicated Harvest client ID |
-| `Identity:Client:ClientSecret` | the confidential client secret; server-only |
-| `Identity:Client:CookieName` | a distinct cookie, such as `__Host-harvest` |
-| `Harvest:Console:PermissionNamespace` | `harvest` by default |
-| `Harvest:Console:OrganizationTenants:{organization-id}` | an existing, active Harvest tenant ID |
-| `DataProtection:KeysPath` | a durable, access-restricted directory shared by replicas |
+| `Harvest:ServiceAccess:Enabled` | `true` |
+| `Harvest:ServiceAccess:Authority` | HTTPS issuer from Identity discovery |
+| `Harvest:ServiceAccess:Audience` | Exact registered resource URI |
+| `Harvest:ServiceAccess:ClientGrantsJson` | JSON mapping client IDs to operator or tenant grants |
 
-The BFF persists server-side tickets in the same PostgreSQL instance using the SDK's `distributed_cache` migration
-set. Every image describes both sets even while Identity is disabled, so release discovery and the target agree.
-`ServiceHost` supplies the migration and configuration verbs; `MigrateHarvestHostAsync` is the local-startup helper.
-Persist and protect the data-protection key directory across restarts. HTTPS is
-required for secure cookies; trusted ingress configuration remains the host's responsibility.
+```json
+{
+  "harvest-operator": { "isOperator": true, "scopes": ["tenants:manage", "sources:manage"] },
+  "haven-supply": { "tenantId": "00000000-0000-0000-0000-000000000001", "scopes": ["events:read"] }
+}
+```
 
-Identity role grants are namespaced, such as `harvest:pipelines:read`, `harvest:pipelines:run`,
-`harvest:pipelines:manage`, `harvest:subscriptions:manage` and `harvest:posts:read`. A tenant administrator may also
-receive `harvest:containers:manage` and `harvest:sources:manage`. Never map an organization owner to Harvest's global
-operator: `tenants:manage` is excluded from browser sessions. Existing integration keys remain independent.
+Replace the sample tenant ID with an active Harvest tenant. Register `tenants.manage`, `sources.manage` and
+`events.read` in Identity for this example. Harvest intersects the dot-separated token scopes with the
+configured registry scopes and applies tenant ownership at each endpoint. Consumer credentials belong in each
+consumer's backend vault. Harvest needs only the issuer, audience and grant mapping.
 
-The console reads `/api/identity/session`, echoes its CSRF token on unsafe calls and signs out through the shared
-BFF. The browser receives no OIDC token or client secret. Unknown/unbound organizations see an access-denied state.
+## Wheelhouse
+
+- The descriptor exposes `/api` on the `app` site. The service health probe calls `/health` over the platform network.
+- The image is built through shared pipelines `v0.15.0`. CI builds the release bundle. Wheelhouse v0.12+ runs
+  migration, configuration check, rollout and verification.
+- Target settings in `/app/appsettings.Target.json` include `DatabaseSettings:ConnectionString`, the service access
+  settings above and ingress trust via `Deployment:TrustedProxies` or `Deployment:TrustedNetworks`.
+- PostgreSQL requires UTF-8 and `pg_trgm`. `dotnet Harvest.Api.dll migrate sets --json` lists the `harvest` set.
+  `migrate check` checks rollback eligibility. Local boot applies migrations. Deployed boot checks the schema level.
+- `dotnet Harvest.Api.dll config check` validates target settings. The dev probe checks `/health` and
+  `/api/system/status` with `Host: localhost`. The status response reports the image version and source revision.

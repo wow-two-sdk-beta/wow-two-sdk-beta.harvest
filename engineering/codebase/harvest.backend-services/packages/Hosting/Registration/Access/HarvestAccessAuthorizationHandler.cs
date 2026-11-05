@@ -1,9 +1,8 @@
-using Harvest.Api.Registration.Access;
 using Microsoft.AspNetCore.Authorization;
 
-namespace Harvest.Api.Console;
+namespace Harvest.Api.Registration.Access;
 
-/// <summary>Authorizes API keys or explicitly bound Identity sessions without promoting an organization member to operator.</summary>
+/// <summary>Authorizes a live Harvest caller and its granted scopes.</summary>
 public sealed class HarvestAccessAuthorizationHandler(CallerResolver callers, IHttpContextAccessor contexts)
     : AuthorizationHandler<HarvestAccessRequirement>
 {
@@ -12,7 +11,7 @@ public sealed class HarvestAccessAuthorizationHandler(CallerResolver callers, IH
     {
         var cancellationToken = contexts.HttpContext?.RequestAborted ?? CancellationToken.None;
         var caller = await callers.ResolveAsync(context.User, cancellationToken);
-        if (caller is null || (requirement.IsTenantRead && !caller.IsOperator && !caller.IsIdentitySession))
+        if (caller is null)
             return;
         if (requirement.Scope is null || caller.Scopes.Contains(requirement.Scope, StringComparer.Ordinal))
             context.Succeed(requirement);
