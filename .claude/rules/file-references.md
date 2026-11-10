@@ -43,9 +43,10 @@
 | `packages/Testing` | `FakeRegistrationBroker` and the conformance suite |
 | `service/Harvest.Api` | the deployable host: the module, API key access, the HTTP mirror, the console |
 | `tests/Harvest.Tests.{Unit,Integration,E2E,Conformance,Migrations}` | the test tiers |
+| `tests/Contract` | golden `wow2.event.v1` pull pages Events replays, written and checked by the E2E tier |
 
 ### `codebase/harvest.frontend-services/`
 | Project | What it is |
 |---|---|
-| `packages/fe-harvest` | `@wow-two-beta/fe-harvest`: `./contracts` mirror, `./kit` (`createRegistryClient`), `./admin` (`ContainersPanel`) |
-| `apps/web` | the console (`/`, composing `./admin`), served by `Harvest.Api` |
+| `packages/fe-harvest` | `@wow-two-beta/fe-harvest`: `./contracts` mirror, `./kit` (`createRegistryClient`, `createHarvestClient`), `./admin` (`HarvestConsoleProvider` and one panel per console page) |
+| `apps/web` | the console: one route per page under `AppLayout`, composing `./admin`, served by `Harvest.Api` |

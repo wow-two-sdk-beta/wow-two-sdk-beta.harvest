@@ -106,47 +106,47 @@ export function createHarvestClient(options: RegistryClientOptions = {}): Harves
   return {
     ...createRegistryClient(options),
     getSourceCapabilities: (id, signal) =>
-      api.get(`api/sources/${encodeURIComponent(id)}/capabilities`, {
+      api.get(`/api/sources/${encodeURIComponent(id)}/capabilities`, {
         ...signalOf(signal),
         decode: sourceCapabilities,
       }),
-    listTenants: (signal) => api.get('api/tenants', { ...signalOf(signal), decode: list<TenantModel> }),
+    listTenants: (signal) => api.get('/api/tenants', { ...signalOf(signal), decode: list<TenantModel> }),
     registerTenant: (body, signal) =>
-      api.post('api/tenants', { body, ...signalOf(signal), decode: object<TenantModel> }),
+      api.post('/api/tenants', { body, ...signalOf(signal), decode: object<TenantModel> }),
     createContainer: (body, signal) =>
-      api.post('api/containers', { body, ...signalOf(signal), decode: object<ContainerModel> }),
+      api.post('/api/containers', { body, ...signalOf(signal), decode: object<ContainerModel> }),
     registerSource: (body, signal) =>
-      api.post('api/sources', { body, ...signalOf(signal), decode: object<SourceModel> }),
+      api.post('/api/sources', { body, ...signalOf(signal), decode: object<SourceModel> }),
     declarePipeline: (body, signal) =>
-      api.post('api/pipelines', { body, ...signalOf(signal), decode: object<PipelineModel> }),
+      api.post('/api/pipelines', { body, ...signalOf(signal), decode: object<PipelineModel> }),
     updatePipeline: (id, body, signal) =>
-      api.put(`api/pipelines/${encodeURIComponent(id)}`, { body, ...signalOf(signal), decode: object<PipelineModel> }),
+      api.put(`/api/pipelines/${encodeURIComponent(id)}`, { body, ...signalOf(signal), decode: object<PipelineModel> }),
     setPipelinePaused: (id, paused, signal) =>
-      api.post(`api/pipelines/${encodeURIComponent(id)}/pause`, {
+      api.post(`/api/pipelines/${encodeURIComponent(id)}/pause`, {
         body: { paused },
         ...signalOf(signal),
         decode: object<PipelineModel>,
       }),
     startRun: (pipelineId, kind = 'capture', signal) =>
-      api.post('api/runs', {
+      api.post('/api/runs', {
         body: { pipelineId, kind },
         ...signalOf(signal),
         decode: object<RunModel>,
       }),
     cancelRun: (id, signal) =>
-      api.post(`api/runs/${encodeURIComponent(id)}/cancel`, { ...signalOf(signal), decode: object<RunModel> }),
+      api.post(`/api/runs/${encodeURIComponent(id)}/cancel`, { ...signalOf(signal), decode: object<RunModel> }),
     listRuns: (pipelineId, signal) =>
-      api.get('api/runs', { query: { pipelineId }, ...signalOf(signal), decode: list<RunModel> }),
+      api.get('/api/runs', { query: { pipelineId }, ...signalOf(signal), decode: list<RunModel> }),
     listHosts: (containerId, signal) =>
-      api.get('api/hosts', { query: { containerId }, ...signalOf(signal), decode: list<HostHealthModel> }),
+      api.get('/api/hosts', { query: { containerId }, ...signalOf(signal), decode: list<HostHealthModel> }),
     listPosts: (containerId, signal) =>
-      api.get('api/posts', { query: { containerId }, ...signalOf(signal), decode: list<PostModel> }),
+      api.get('/api/posts', { query: { containerId }, ...signalOf(signal), decode: list<PostModel> }),
     listSubscriptions: (signal) =>
-      api.get('api/subscriptions', { ...signalOf(signal), decode: list<SubscriptionModel> }),
+      api.get('/api/subscriptions', { ...signalOf(signal), decode: list<SubscriptionModel> }),
     subscribe: (body, signal) =>
-      api.post('api/subscriptions', { body, ...signalOf(signal), decode: object<SubscriptionModel> }),
+      api.post('/api/subscriptions', { body, ...signalOf(signal), decode: object<SubscriptionModel> }),
     pull: (id, cursor, signal) =>
-      api.get(`api/subscriptions/${encodeURIComponent(id)}/events`, {
+      api.get(`/api/subscriptions/${encodeURIComponent(id)}/events`, {
         query: cursor ? { cursor } : {},
         ...signalOf(signal),
         decode(value) {

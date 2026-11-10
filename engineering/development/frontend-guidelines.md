@@ -8,7 +8,9 @@ Defer to `wow-two-ws/conventions/development/frontend/`.
 - `packages/fe-harvest` is `@wow-two-beta/fe-harvest`, published to npm: `./contracts` (the TypeScript mirror of the
   registry contract), `./kit` (`createRegistryClient`) and `./admin` (`ContainersPanel`, the management screens). It peers `@wow-two-beta/fe` at `>=0.0.n <0.1.0`, `n` the pinned
   version; `check:package` enforces it and fails when one of the three exports is missing.
-- `apps/web` is `@harvest/web`, private: the console (`/`); hosted pages join as consumers forward to them. It takes
+- `apps/web` is `@harvest/web`, private: the console, one route per page (Home; Sources, Pipelines, one pipeline,
+  Runs; Posts; Subscriptions; Hosts, Access) under one `AppLayout` on the fe sdk shell; hosted pages join as consumers
+  forward to them. It takes
   `fe-harvest` by `workspace:*`, through its `exports` only — the way a product would; the package never imports
   `apps/`.
 - App source uses `bootstrap`, `presentation`, `application`, `domain`, and `integration` layers.

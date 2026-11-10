@@ -8,10 +8,38 @@ export function createDemoHarvestClient(): HarvestClient {
   const id = () => '00000000-0000-4000-8000-' + String(sequence++).padStart(12, '0');
   const tenantId = '00000000-0000-4000-8000-000000000001';
   const containerId = '00000000-0000-4000-8000-000000000002';
-  const tenants = [{ id: tenantId, slug: 'demo', name: 'Demo workspace', state: 'active', createdAtUtc: now() }];
+  const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
+  const tenants = [
+    { id: tenantId, slug: 'demo', name: 'Demo workspace', state: 'active', createdAtUtc: ago(60 * 24 * 30) },
+    {
+      id: '00000000-0000-4000-8000-000000000009',
+      slug: 'events',
+      name: 'Events product',
+      state: 'active',
+      createdAtUtc: ago(60 * 24 * 12),
+    },
+  ];
   const containers = [
     { id: containerId, kind: 'private', tenantId, externalRef: 'Demo · synthetic pipelines', createdAtUtc: now() },
+    {
+      id: '00000000-0000-4000-8000-000000000010',
+      kind: 'pool',
+      externalRef: 'Shared pool · demo',
+      createdAtUtc: now(),
+    },
   ];
+  /** The sections each synthetic adapter lists, as a real adapter declares them in its scope schema. */
+  const sections: Record<string, { label: string; url: string }[]> = {
+    'events.example.test': [
+      { label: 'Upcoming', url: 'https://events.example.test/upcoming' },
+      { label: 'Exhibitions', url: 'https://events.example.test/exhibitions' },
+      { label: 'Workshops', url: 'https://events.example.test/workshops' },
+    ],
+    'listings.example.test': [
+      { label: 'Latest', url: 'https://listings.example.test/upcoming' },
+      { label: 'Studios', url: 'https://listings.example.test/studios' },
+    ],
+  };
   const sources: SourceModel[] = ['events.example.test', 'listings.example.test'].map((handle, index) => ({
     id: '00000000-0000-4000-8000-00000000000' + (index + 3),
     containerId,
@@ -91,7 +119,56 @@ export function createDemoHarvestClient(): HarvestClient {
     firstSeenAtUtc: now(),
     lastChangedAtUtc: now(),
   }));
-  const runs: RunModel[] = [];
+  const run = (
+    pipeline: PipelineModel,
+    minutesAgo: number,
+    status: RunModel['status'],
+    counts: Partial<RunModel>,
+  ): RunModel => ({
+    id: id(),
+    containerId,
+    pipelineId: pipeline.id,
+    kind: 'capture',
+    status,
+    queuedAtUtc: ago(minutesAgo),
+    startedAtUtc: ago(minutesAgo - 1),
+    finishedAtUtc: ago(minutesAgo - 4),
+    captured: 0,
+    unchanged: 0,
+    discovered: 0,
+    failed: 0,
+    pages: 1,
+    requests: 1,
+    bytes: 2048,
+    ...counts,
+  });
+  const runs: RunModel[] = [
+    run(pipelines[1]!, 55, 'failed', {
+      failed: 1,
+      fetchOutcome: 'timeout',
+      message: 'The synthetic listing host did not answer within 30 seconds.',
+    }),
+    run(pipelines[0]!, 120, 'completed', { captured: 12, unchanged: 30, discovered: 4, pages: 3 }),
+    run(pipelines[0]!, 360, 'partial', {
+      captured: 3,
+      failed: 2,
+      fetchOutcome: 'challenge',
+      message: 'The synthetic host asked for a bot check after page 2.',
+    }),
+    run(pipelines[1]!, 60 * 26, 'completed', { captured: 7, unchanged: 11, pages: 2 }),
+  ];
+  const hosts = [
+    { hostKey: 'events.example.test', lane: 'fetch', consecutiveFailures: 0, queued: 2, running: 1 },
+    {
+      hostKey: 'listings.example.test',
+      lane: 'fetch',
+      pausedUntilUtc: new Date(Date.now() + 20 * 60_000).toISOString(),
+      consecutiveFailures: 3,
+      lastChallengeKind: 'captcha',
+      queued: 4,
+      running: 0,
+    },
+  ];
   const subscriptions: Record<string, unknown>[] = [
     {
       id: id(),
@@ -149,12 +226,13 @@ export function createDemoHarvestClient(): HarvestClient {
           ? reply({
               sourceId: itemId,
               adapterKey: 'demo-source',
+              supportsPathScope: true,
               workKinds: ['capture', 'discover', 'refresh', 'check'],
               configuration: {
                 displayName: 'Synthetic source adapter',
                 readiness: 'ready',
                 message: 'This in-memory demo never executes a real harvest.',
-                scopeSchema: schema,
+                scopeSchema: { ...schema, sections: sections[source.handle] ?? [] },
               },
             })
           : missing();
@@ -165,7 +243,7 @@ export function createDemoHarvestClient(): HarvestClient {
         return reply(pipelines.filter((row) => row.containerId === url.searchParams.get('containerId')));
       if (resource === 'posts')
         return reply(posts.filter((row) => row.containerId === url.searchParams.get('containerId')));
-      if (resource === 'hosts') return reply([]);
+      if (resource === 'hosts') return reply(url.searchParams.get('containerId') === containerId ? hosts : []);
       if (resource === 'runs') {
         const visible = runs.filter((run) => run.pipelineId === url.searchParams.get('pipelineId'));
         for (const run of visible) {

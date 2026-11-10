@@ -1,6 +1,7 @@
 import type { SourceCapabilitiesModel } from '../../contracts';
 
-interface SourceSection {
+/** One part of a source an adapter lists, such as a page of upcoming events. */
+export interface SourceSection {
   readonly label: string;
   readonly url: string;
   readonly locale?: string;

@@ -2,6 +2,17 @@ import { describe, expect, it, vi } from 'vitest';
 import { createHarvestClient } from '../src/kit';
 
 describe('Harvest console client', () => {
+  it('addresses the API from the origin root, so a nested console page reaches it', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => Response.json({ data: [] }));
+    const api = createHarvestClient({ fetch });
+    await api.listTenants();
+    await api.listRuns('pipeline');
+    await api.listPosts('container');
+    await api.listSubscriptions();
+    await api.getSourceCapabilities('source');
+    for (const [url] of fetch.mock.calls)
+      expect(new URL(String(url), 'https://console.example/pipelines/one').pathname).toMatch(/^\/api\//);
+  });
   it('reads safe runtime capabilities and rejects malformed discovery', async () => {
     const fetch = vi.fn<typeof globalThis.fetch>(async () =>
       Response.json({

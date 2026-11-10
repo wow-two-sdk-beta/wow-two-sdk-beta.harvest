@@ -6,7 +6,7 @@ const eslint = new ESLint();
 describe('application boundaries', () => {
   it('rejects a presentation import from application orchestration', async () => {
     const [result] = await eslint.lintText(
-      "import Page from '../../presentation/console/pages/ConsolePage.vue'; void Page;",
+      "import Page from '../../presentation/console/pages/HomePage.vue'; void Page;",
       { filePath: 'src/application/system/Invalid.ts' },
     );
     expect(result?.messages.some((message) => message.ruleId === 'no-restricted-imports')).toBe(true);
