@@ -11,9 +11,10 @@ public sealed class HarvestAccessAuthorizationHandler(CallerResolver callers, IH
     {
         var cancellationToken = contexts.HttpContext?.RequestAborted ?? CancellationToken.None;
         var caller = await callers.ResolveAsync(context.User, cancellationToken);
-        if (caller is null)
+        if (caller is null || (requirement.RequireOperator && !caller.IsOperator))
             return;
-        if (requirement.Scope is null || caller.Scopes.Contains(requirement.Scope, StringComparer.Ordinal))
+        if (requirement.Scope is null || caller.Scopes.Contains(requirement.Scope, StringComparer.Ordinal)
+            || (requirement.AllowIdentitySession && caller.IsIdentitySession))
             context.Succeed(requirement);
     }
 }

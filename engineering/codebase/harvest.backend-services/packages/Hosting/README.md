@@ -1,7 +1,7 @@
 # WoW2.Sdk.Beta.Be.Harvest.Hosting
 
-The shared Harvest HTTP host: API-key access, tenant isolation, controller routes, startup migration, health and SPA
-composition. The generic service and private source host reference this package rather than copy its API.
+The shared SCFD HTTP host provides API-key access, tenant isolation, controller routes, startup migration and
+health. The generic service and private source host both reference this package.
 
 ```csharp
 using Harvest.Api.Configurations;

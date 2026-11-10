@@ -41,7 +41,7 @@ public sealed class PostsController(IPostBroker posts, IRegistrationBroker regis
 
     /// <summary>Mirrors in-process capture ingestion for an operator client.</summary>
     [HttpPost("captures")]
-    [Authorize(Policy = HarvestScopeConstants.ContainersManage)]
+    [Authorize(Policy = AccessPolicies.ManageStorage)]
     public async Task<IActionResult> Capture([FromBody] SaveCaptureRequest request, CancellationToken ct)
     {
         return (await posts.SaveCaptureAsync(request.ContainerId, request.SourceId, request.RunId,
@@ -51,7 +51,7 @@ public sealed class PostsController(IPostBroker posts, IRegistrationBroker regis
 
     /// <summary>Mirrors a known link observation for an operator client.</summary>
     [HttpPost("observations")]
-    [Authorize(Policy = HarvestScopeConstants.ContainersManage)]
+    [Authorize(Policy = AccessPolicies.ManageStorage)]
     public async Task<IActionResult> Observe([FromBody] LinkObservationRequest request, CancellationToken ct)
     {
         return (await posts.ObserveLinkAsync(request.ContainerId, request.SourceId, request.Observation,
@@ -60,7 +60,7 @@ public sealed class PostsController(IPostBroker posts, IRegistrationBroker regis
 
     /// <summary>Merges two posts and keeps a durable undo record.</summary>
     [HttpPost("/api/post-merges")]
-    [Authorize(Policy = HarvestScopeConstants.ContainersManage)]
+    [Authorize(Policy = AccessPolicies.ManageStorage)]
     public async Task<IActionResult> Merge([FromBody] MergePostsRequest request, CancellationToken ct)
     {
         return (await posts.MergeAsync(request.ContainerId, request.SurvivorId, request.LoserId, ct)).Match<IActionResult>(
@@ -69,7 +69,7 @@ public sealed class PostsController(IPostBroker posts, IRegistrationBroker regis
 
     /// <summary>Restores merged links and keeps the separated pair apart.</summary>
     [HttpDelete("/api/post-merges/{mergeId:guid}")]
-    [Authorize(Policy = HarvestScopeConstants.ContainersManage)]
+    [Authorize(Policy = AccessPolicies.ManageStorage)]
     public async Task<IActionResult> Unmerge(Guid mergeId, [FromQuery] Guid containerId, CancellationToken ct)
     {
         return (await posts.UnmergeAsync(containerId, mergeId, ct)).Match<IActionResult>(

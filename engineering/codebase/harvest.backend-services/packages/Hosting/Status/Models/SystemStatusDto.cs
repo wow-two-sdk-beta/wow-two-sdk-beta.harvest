@@ -11,4 +11,7 @@ public sealed record SystemStatusDto
 
     /// <summary>Gets the informational version of the running build, with its commit.</summary>
     public required string Version { get; init; }
+
+    /// <summary>Gets whether this host is configured to process the queue.</summary>
+    public required bool LocalWorkerEnabled { get; init; }
 }

@@ -1,4 +1,4 @@
-# Harvest API deployment
+# SCFD API deployment
 
 `Harvest.Api` runs the generic capture and delivery API and worker. Private source runtimes use the same Hosting
 package and deployment contract.
@@ -15,7 +15,7 @@ key comes from the Compose environment. The API listens on loopback port 8397.
 
 ## Shared API access
 
-Register one Harvest resource in the Harvest environment's Identity issuer. Its HTTPS URI, including the trailing
+Register one SCFD resource in the environment's Identity issuer. Its HTTPS URI, including the trailing
 slash, is the API audience. Register separate confidential `client_credentials` clients for the operator and each
 consumer. Clients request a token with that URI as `resource` and send it as `Authorization: Bearer`.
 
@@ -33,10 +33,36 @@ consumer. Clients request a token with that URI as `resource` and send it as `Au
 }
 ```
 
-Replace the sample tenant ID with an active Harvest tenant. Register `tenants.manage`, `sources.manage` and
-`events.read` in Identity for this example. Harvest intersects the dot-separated token scopes with the
+Replace the sample tenant ID with an active SCFD tenant. Register `tenants.manage`, `sources.manage` and
+`events.read` in Identity for this example. SCFD intersects the dot-separated token scopes with the
 configured registry scopes and applies tenant ownership at each endpoint. Consumer credentials belong in each
-consumer's backend vault. Harvest needs only the issuer, audience and grant mapping.
+consumer's backend vault. SCFD needs only the issuer, audience and grant mapping.
+
+## Browser sign-in
+
+Enable `Harvest:Console:IsIdentityEnabled` and serve the console and its `/api` over the same HTTPS origin.
+Register a confidential authorization-code client with Identity. Use `{console-origin}/api/identity/callback`
+as its callback URI and `{console-origin}/` as its sign-out return URI.
+
+| Setting | Value |
+|---|---|
+| `Identity:Client:Authority` | The HTTPS Identity issuer |
+| `Identity:Client:ClientId` and `Identity:Client:ClientSecret` | The console's server-side client credentials |
+| `Identity:Client:CookieName` | A distinct cookie name, such as `__Host-scfd` |
+| `Harvest:Console:OperatorSubjectIds` | Exact subject IDs of approved SCFD platform admins |
+| `Harvest:Console:OrganizationTenants:{organization-id}` | The organization's active SCFD tenant ID |
+| `Harvest:Console:PermissionNamespace` | The Identity client's permission namespace, `harvest` by default |
+| `DataProtection:KeysPath` | A persistent, access-restricted key directory shared by replicas |
+
+Grant platform admin access by adding the person's Identity subject to `OperatorSubjectIds`. Platform admins
+manage tenants and stored captures and posts. For a client account, bind its active Identity organization to
+the SCFD tenant and grant the role the relevant permissions, such as `harvest:sources:manage` and
+`harvest:pipelines:run`. Clients can also read and subscribe to operator-managed pools with the corresponding
+permissions. Keep browser sign-in and service clients on separate Identity registrations.
+
+Local boot applies the session cache migration. For a deployed host, run `migrate` with the browser sign-in
+settings before starting the host so the SDK's `distributed_cache` set is applied. Keep the console client secret
+in host settings or the vault.
 
 ## Wheelhouse
 

@@ -5,4 +5,10 @@ public static class AccessPolicies
 {
     /// <summary>Holds the policy for an authenticated Harvest caller.</summary>
     public const string AnyCaller = "harvest:any-caller";
+
+    /// <summary>Holds the policy for operators and sessions reading their own tenant.</summary>
+    public const string TenantsRead = "harvest:tenants-read";
+
+    /// <summary>Holds the operator policy for writing captures and reconciling stored posts.</summary>
+    public const string ManageStorage = "harvest:manage-storage";
 }

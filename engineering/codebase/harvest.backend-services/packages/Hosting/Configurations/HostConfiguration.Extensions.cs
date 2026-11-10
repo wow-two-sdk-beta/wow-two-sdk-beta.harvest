@@ -1,3 +1,4 @@
+using Harvest.Api.Console;
 using Harvest.Api.Registration.Access;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -11,6 +12,7 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Module.Posts;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Readers;
 using WoW.Two.Sdk.Beta.Be.Harvest.Tenants;
 using WoW.Two.Sdk.Beta.Be.Identity.ApiKeys;
+using WoW.Two.Sdk.Beta.Be.Identity.Bff;
 using WoW.Two.Sdk.Beta.Be.Web.Json;
 using WoW.Two.Sdk.Beta.Be.Foundation.Options;
 
@@ -63,6 +65,7 @@ public static partial class HostConfiguration
                 // Key-only mode requires a key on protected /api calls, this machine included.
                 gate.IsLocalAllowedWithoutKey = false;
                 gate.OpenPaths.Add("/api/system/status");
+                gate.OpenPaths.Add("/api/console/access");
             });
         builder.Services.AddValidatedSettings<HarvestServiceAccessOptions>(builder.Configuration,
             HarvestServiceAccessOptions.SectionName, rules => rules
@@ -78,8 +81,15 @@ public static partial class HostConfiguration
             options.DefaultChallengeScheme = ApiAuthenticationScheme;
             options.DefaultForbidScheme = ApiAuthenticationScheme;
         }).AddPolicyScheme(ApiAuthenticationScheme, null, options => options.ForwardDefaultSelector = context =>
-            context.RequestServices.GetRequiredService<IOptions<HarvestServiceAccessOptions>>().Value.Enabled
-                ? HarvestServiceAccessOptions.Scheme : ApiKeyAuthenticationDefaults.Scheme)
+        {
+            var console = context.RequestServices.GetRequiredService<IOptions<HarvestConsoleOptions>>().Value;
+            if (console.IsIdentityEnabled && !context.Request.Headers.ContainsKey("Authorization")
+                && !context.Request.Headers.ContainsKey(ApiKeyAuthenticationDefaults.HeaderName))
+                return BffAuthenticationSchemeConstants.Cookie;
+
+            return context.RequestServices.GetRequiredService<IOptions<HarvestServiceAccessOptions>>().Value.Enabled
+                ? HarvestServiceAccessOptions.Scheme : ApiKeyAuthenticationDefaults.Scheme;
+        })
             .AddJwtBearer(HarvestServiceAccessOptions.Scheme, _ => { });
         builder.Services.AddOptions<JwtBearerOptions>(HarvestServiceAccessOptions.Scheme)
             .Configure<IOptions<HarvestServiceAccessOptions>>((options, access) =>
@@ -98,6 +108,12 @@ public static partial class HostConfiguration
         {
             options.AddPolicy(AccessPolicies.AnyCaller, policy => policy.AddAuthenticationSchemes(ApiAuthenticationScheme)
                 .RequireAuthenticatedUser().AddRequirements(new HarvestAccessRequirement()));
+            options.AddPolicy(AccessPolicies.TenantsRead, policy => policy.AddAuthenticationSchemes(ApiAuthenticationScheme)
+                .RequireAuthenticatedUser().AddRequirements(new HarvestAccessRequirement(
+                    HarvestScopeConstants.TenantsManage, AllowIdentitySession: true)));
+            options.AddPolicy(AccessPolicies.ManageStorage, policy => policy.AddAuthenticationSchemes(ApiAuthenticationScheme)
+                .RequireAuthenticatedUser().AddRequirements(new HarvestAccessRequirement(
+                    HarvestScopeConstants.ContainersManage, RequireOperator: true)));
             foreach (var scope in HarvestScopeConstants.All)
                 options.AddPolicy(scope, policy => policy.AddAuthenticationSchemes(ApiAuthenticationScheme)
                     .RequireAuthenticatedUser().AddRequirements(new HarvestAccessRequirement(scope)));

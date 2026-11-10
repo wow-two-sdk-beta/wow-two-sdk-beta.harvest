@@ -29,12 +29,15 @@ public sealed class SubscriptionsController(IDeliveryBroker delivery, CallerReso
 
     /// <summary>Lists subscriptions owned by the caller.</summary>
     [HttpGet]
-    [Authorize(Policy = HarvestScopeConstants.SubscriptionsManage)]
+    [Authorize(Policy = AccessPolicies.AnyCaller)]
     public async Task<IActionResult> List([FromQuery] Guid? tenantId, CancellationToken ct)
     {
         Caller? caller = await callers.ResolveAsync(User, ct);
         if (caller is null)
             return this.ToProblem(AppErrorFactory.Unauthorized());
+        if (!caller.Scopes.Contains(HarvestScopeConstants.SubscriptionsManage)
+            && !(caller.IsIdentitySession && caller.Scopes.Contains(HarvestScopeConstants.EventsRead)))
+            return this.ToProblem(AppErrorFactory.Forbidden("The caller cannot list subscriptions."));
         if (!caller.IsOperator && tenantId is not null && tenantId != caller.TenantId)
             return this.ToProblem(AppErrorFactory.NotFound("The tenant was not found."));
         return (await delivery.ListSubscriptionsAsync(caller.IsOperator ? tenantId : caller.TenantId, ct)).Match<IActionResult>(

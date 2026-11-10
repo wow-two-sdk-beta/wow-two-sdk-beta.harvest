@@ -18,7 +18,11 @@ export const systemApi = {
           'version' in value &&
           typeof value.version === 'string'
         ) {
-          return ResultExtensions.ok({ service: value.service, version: value.version });
+          const localWorkerEnabled =
+            'localWorkerEnabled' in value && typeof value.localWorkerEnabled === 'boolean'
+              ? value.localWorkerEnabled
+              : undefined;
+          return ResultExtensions.ok({ service: value.service, version: value.version, localWorkerEnabled });
         }
         return ResultExtensions.fail(ApiFailureFactory.create('protocol'));
       },

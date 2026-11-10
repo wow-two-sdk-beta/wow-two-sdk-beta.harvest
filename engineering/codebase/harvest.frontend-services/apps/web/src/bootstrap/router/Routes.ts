@@ -12,5 +12,5 @@ export const routes: RouteConfig = [
 
 /** Creates the app's router over `history`: the browser's in the app, memory in tests. */
 export function createWebRouter(history: RouterHistoryMode = RouterHistoryMode.Browser) {
-  return createAppRouter(routes, { titleSuffix: 'Harvest', routePersistence: false, history });
+  return createAppRouter(routes, { titleSuffix: 'SCFD', routePersistence: false, history });
 }

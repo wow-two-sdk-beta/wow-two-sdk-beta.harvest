@@ -10,6 +10,9 @@ public sealed record Caller(bool IsOperator, Guid? TenantId)
     /// <summary>Gets the scopes granted to this authenticated caller.</summary>
     public IReadOnlyList<string> Scopes { get; init; } = [];
 
+    /// <summary>Gets whether a validated Identity browser session supplies this caller's permissions.</summary>
+    public bool IsIdentitySession { get; init; }
+
     /// <summary>Tells whether the caller may read a container: the operator any, a tenant the pool and its own.</summary>
     /// <param name="container">The container.</param>
     public bool CanRead(ContainerModel container) =>

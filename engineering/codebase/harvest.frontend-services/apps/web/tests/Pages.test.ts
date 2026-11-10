@@ -16,6 +16,8 @@ const status = { data: { service: 'harvest', status: 'ok', version: '0.1.4+abc12
 /** Answers the status probe and requires a key for registry reads. */
 function answer(input: RequestInfo | URL) {
   const url = new URL(input instanceof Request ? input.url : String(input), 'https://harvest.example.test');
+  if (url.pathname === '/api/console/access')
+    return Response.json({ data: { identityEnabled: false, hasAccess: false, isOperator: false, scopes: [] } });
   return url.pathname === '/api/system/status'
     ? Response.json(status)
     : Response.json({ title: 'Unauthorized' }, { status: 401 });
@@ -40,10 +42,11 @@ describe('console route', () => {
     );
     const wrapper = await renderAt('/');
 
+    expect(wrapper.get('img[alt="SCFD"]').attributes('src')).toContain('scfd-logo.png');
     expect(wrapper.get('[aria-label="App version"]').text()).toBe('app test');
     expect(wrapper.get('[aria-label="API version"]').text()).toBe('api 0.1.4');
     expect(wrapper.get('[aria-label="API version"]').attributes('title')).toBe('0.1.4+abc1234');
-    expect(wrapper.text()).toContain('Connect to Harvest');
+    expect(wrapper.text()).toContain('Connect to SCFD');
     expect(wrapper.find('input[type="password"]').exists()).toBe(true);
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   });
