@@ -26,5 +26,7 @@
   provenance and `capture` (the newest captured link's id, time and URL); a subscription without that schema reads the
   complete post snapshot
 - every pulled event names its subscription's `pipelineId`; tag and keyword subscriptions leave it null
+- a stored event projection that carries the `mapping` stamp renders again through the current `EventSchemaMapper`, so
+  every revision reads with camelCase string enums; a reader's own projection, without the stamp, is sent as stored
 - `ApiDeliveryBroker` and `ApiPostBroker` share `AddHarvestDataClient()`; `PostDeliveryBrokerConformance` runs the same
   contract cases against the module, HTTP client and in-memory consumer fakes

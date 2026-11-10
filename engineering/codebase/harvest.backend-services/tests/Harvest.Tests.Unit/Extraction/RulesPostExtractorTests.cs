@@ -114,6 +114,10 @@ public sealed class RulesPostExtractorTests
         mapped.GetProperty("organizer").GetProperty("name").GetString().Should().Be("Mstar");
         mapped.GetProperty("mapping").GetProperty("rules").GetString().Should().Be("rules@4");
         mapped.GetProperty("mapping").GetProperty("parser").GetString().Should().Be("schema.org.event");
+        mapped.GetProperty("place").GetProperty("mentions").EnumerateArray()
+            .Should().Contain(mention => mention.GetProperty("kind").GetString() == "city", "enums travel as camelCase strings");
+        mapped.GetProperty("offers")[0].EnumerateObject().Where(property => property.Value.ValueKind == JsonValueKind.Number)
+            .Select(property => property.Name).Should().NotContain("role");
     }
 
     [Fact]
@@ -130,6 +134,7 @@ public sealed class RulesPostExtractorTests
 
         mapped.GetProperty("organizer").ValueKind.Should().Be(JsonValueKind.Null);
         mapped.GetProperty("postedAt").GetProperty("value").GetString().Should().StartWith("2026-09-02");
+        mapped.GetProperty("postedAt").GetProperty("precision").GetString().Should().Be("second");
     }
 
     [Fact]

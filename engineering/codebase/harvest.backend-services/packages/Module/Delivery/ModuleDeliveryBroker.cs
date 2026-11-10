@@ -178,13 +178,19 @@ internal sealed class ModuleDeliveryBroker(
     {
         if (schema != PostEnvelopeConstants.EventSchema || !payload.TryGetProperty("base", out var envelope)
             || envelope.ValueKind != JsonValueKind.Object) return payload;
-        if (!envelope.TryGetProperty("extras", out var extras) || extras.ValueKind != JsonValueKind.Object
-            || !extras.TryGetProperty("event", out var mapped) || mapped.ValueKind != JsonValueKind.Object)
-        {
-            if (envelope.Deserialize<PostEnvelope>(JsonOptionsConstants.Default) is not { } post
-                || EventSchemaMapper.Map(post) is not { } projection) return payload;
+        // A stored projection without SCFD's mapping stamp is a reader's own and wins. One with the stamp came from
+        // EventSchemaMapper, so the current mapper renders it again from the stored post, on today's wire.
+        JsonElement? stored = envelope.TryGetProperty("extras", out var extras) && extras.ValueKind == JsonValueKind.Object
+            && extras.TryGetProperty("event", out var storedEvent) && storedEvent.ValueKind == JsonValueKind.Object ? storedEvent : null;
+        JsonElement mapped;
+        if (stored is { } own && !own.TryGetProperty("mapping", out _))
+            mapped = own;
+        else if (envelope.Deserialize<PostEnvelope>(JsonOptionsConstants.Default) is { } post && EventSchemaMapper.Map(post) is { } projection)
             mapped = projection;
-        }
+        else if (stored is { } fallback)
+            mapped = fallback;
+        else
+            return payload;
         var values = mapped.EnumerateObject().ToDictionary(property => property.Name, property => property.Value.Clone());
         if (values.TryGetValue("links", out var contentLinks)) values["contentLinks"] = contentLinks;
         foreach (var (source, target) in new[] { ("id", "postId"), ("revision", "revision"), ("state", "state"), ("links", "links"), ("fieldSources", "fieldSources"), ("mergedInto", "mergedInto") })
