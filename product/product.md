@@ -37,6 +37,9 @@ until configured. The public engine exposes a leased transport seam while retain
 fetching never automatically changes routes or submits a challenge. JavaScript-only pages report the unbound rendering
 capability. AI stays off. Source-specific brokers remain in the private adapters repository.
 
+Captured records serve the subscribing products' own tracking and review. SCFD delivers only to its subscribers and
+never republishes a source. A named source's use rule lives beside its reader in the adapters repository.
+
 ## Boundaries
 
 The public repository owns the generic engine, contracts, family readers, self-hosted image and reusable console.
