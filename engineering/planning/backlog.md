@@ -1,9 +1,24 @@
 # SCFD — Backlog
 
-*Last updated: 2026-11-09*
+*Last updated: 2026-11-10*
 
 Every unbuilt item, grouped; top of each group = next. Shipped work lives in [`version-track/`](version-track/).
 Shape: wow-two-ws/conventions/planning/version-track/version-track.md
+
+## Events integration
+
+Picks for `system/sessions/events-integration` in wow-two-ws (P1 = this goal, P2 = after it).
+
+| Item | Type | Notes |
+|---|---|---|
+| Identity scope names `harvest.{noun}-{verb}` | engineering | events-integration #16, P1: resource `harvest`; 11 scopes, two segments, mapped to the registry's colon names in `CallerResolver`; docs sample fixed |
+| Client credentials in the Client package | engineering | events-integration #15, P1: `AddHarvestDataClient` takes the be sdk's `OAuth2ClientCredentials` beside API keys, as the FSS Client does |
+| Event evidence: mapping stamp, capture, pipeline | feature | events-integration #19, P1: `wow2.event.v1` gains `mapping` `{schema, norm, rules, parser}` and a top-level `capture`; `DeliveryEvent` gains `PipelineId`; content hash and capture file P2 |
+| Organizer only from a declared organizer; `postedAt` | fix | events-integration #18, P1: the author or publisher no longer stands in for the organizer |
+| Remaining `wow2.event.v1` fields | feature | events-integration #18, P2: certainty, time zone, occurrences, typed deadlines, participation, contact ownership, structured place and country, offer kinds, image `FileRef`, kind, series |
+| Issuer per environment | docs | events-integration #17, P1: dev trusts Ocharo's Identity (#4); a separate SCFD issuer comes later |
+| Operating controls past v0.1 | feature | events-integration #33, P2: request allowance reserved in transport, retention purge, freshness and consumer-lag readout, resync control, backup/restore test |
+| First NuGet and npm publish | engineering | events-integration #15, P1: Events references `Harvest.Abstractions`, `.Client`, `.Testing`; needs `PUBLISH_PACKAGES` and the nuget.org trusted-publishing policy |
 
 ## Features
 
@@ -45,16 +60,12 @@ Shape: wow-two-ws/conventions/planning/version-track/version-track.md
 | Item | Type | Notes |
 |---|---|---|
 | Webhook push | feature | waits on the core durable dispatcher |
-| Retention purge | feature | a stub in v0.1 |
 
 ## Release
 
 | Item | Type | Notes |
 |---|---|---|
-| GitHub repo, settings and `main-guard` ruleset | engineering | auto mode refused `gh repo create`; the developer creates it |
-| Core pin past `10.0.81-beta` | engineering | core `10.0.82` moved `Identity/ApiKeys` to the Identity repo; re-pin with `WoW2.Sdk.Beta.Be.Identity.Auth` (same namespace) once it publishes; `core-latest.yml` is red until then |
-| Image and Wheelhouse dev rollout | engineering | after the GitHub repo |
-| NuGet trusted-publishing policy and npm first version | engineering | after the content gate |
+| Image and Wheelhouse dev rollout | engineering | dev runs `harvestadapters` alone (events-integration #45); public `harvest` stays `deploy: none` |
 | Move the Harvest analysis into `engineering/research/` | engineering | after the private-facts strip pass |
 
 ## Brand
