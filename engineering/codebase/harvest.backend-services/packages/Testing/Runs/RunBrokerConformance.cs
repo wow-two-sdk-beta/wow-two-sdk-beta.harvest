@@ -131,6 +131,23 @@ public abstract class RunBrokerConformance
         Value(await Runs.ListAsync(context.Pipeline)).Should().BeEmpty();
     }
 
+    /// <summary>The reading pace is set on the source's host within its range and read back as the host's health.</summary>
+    [Fact]
+    public async Task SetReadingPace_ShouldStoreTheHostsGap_WhenItIsInRange()
+    {
+        var context = await ContextAsync();
+
+        var health = Value(await Runs.SetReadingPaceAsync(context.Source, 5000));
+
+        health.HostKey.Should().Be(context.Host);
+        health.MinDelayMs.Should().Be(5000);
+        health.PausedUntil.Should().BeNull();
+        Value(await Runs.SetReadingPaceAsync(context.Source, SourceConstants.MaxReadingDelayMs)).MinDelayMs.Should().Be(SourceConstants.MaxReadingDelayMs);
+        Error(await Runs.SetReadingPaceAsync(context.Source, SourceConstants.MinReadingDelayMs - 1)).Type.Should().Be(AppErrorType.Validation);
+        Error(await Runs.SetReadingPaceAsync(context.Source, SourceConstants.MaxReadingDelayMs + 1)).Type.Should().Be(AppErrorType.Validation);
+        Error(await Runs.SetReadingPaceAsync(Guid.NewGuid(), 5000)).Type.Should().Be(AppErrorType.NotFound);
+    }
+
     private async Task<Context> ContextAsync()
     {
         string unique = Guid.NewGuid().ToString("N");
@@ -143,12 +160,12 @@ public abstract class RunBrokerConformance
             Coverage = SourceCoverage.Whole, Completeness = SourceCompleteness.Complete, Posture = SourcePosture.OwnFetch,
         }));
         var pipeline = Value(await Registry.DeclarePipelineAsync(new PipelineDeclaration { ContainerId = container.Id, SourceId = source.Id }));
-        return new Context(container.Id, pipeline.Id, host);
+        return new Context(container.Id, pipeline.Id, host, source.Id);
     }
 
     private static T Value<T>(Result<T> result) where T : notnull => result is Result<T>.Success success ? success.Value
         : throw new Xunit.Sdk.XunitException(((Result<T>.Failure)result).Error.Message);
     private static AppError Error<T>(Result<T> result) where T : notnull => result is Result<T>.Failure failure ? failure.Error
         : throw new Xunit.Sdk.XunitException("Expected a failed result.");
-    private sealed record Context(Guid Container, Guid Pipeline, string Host);
+    private sealed record Context(Guid Container, Guid Pipeline, string Host, Guid Source);
 }

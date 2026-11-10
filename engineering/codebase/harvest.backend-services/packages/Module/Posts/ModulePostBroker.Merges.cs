@@ -26,6 +26,7 @@ internal sealed partial class ModulePostBroker
             return Conflict<PostMergeModel>("Undo the existing merge before changing either post's membership again.");
         var now = Now();
         var mergeId = Guid.CreateVersion7(now);
+        var loserBefore = await PostRevisionLog.ReadAsync(connection, transaction, containerId, loserId, cancellationToken);
         await PostSql.ExecuteAsync(connection, transaction, """
             INSERT INTO harvest_post_merges(id,container_id,survivor_id,loser_id,link_ids,created_at)
             SELECT @merge,@container,@survivor,@loser,array_agg(id),@now FROM harvest_post_links WHERE container_id=@container AND post_id=@loser;
@@ -33,6 +34,7 @@ internal sealed partial class ModulePostBroker
             UPDATE harvest_posts SET merged_into=@survivor,revision=revision+1,last_changed_at=@now WHERE container_id=@container AND id=@loser;
             DELETE FROM harvest_post_keep_apart WHERE container_id=@container AND left_post_id=LEAST(@survivor,@loser) AND right_post_id=GREATEST(@survivor,@loser)
             """, cancellationToken, ("merge", mergeId), ("container", containerId), ("survivor", survivorId), ("loser", loserId), ("now", now));
+        await PostRevisionLog.RecordAsync(connection, transaction, containerId, loserId, loserBefore, now, cancellationToken);
         await ResolveAsync(connection, transaction, containerId, survivorId, now, true, cancellationToken);
         var merged = (await ReadPostAsync(connection, transaction, containerId, loserId, cancellationToken))!;
         var resolved = (await ReadPostAsync(connection, transaction, containerId, survivorId, cancellationToken))!;

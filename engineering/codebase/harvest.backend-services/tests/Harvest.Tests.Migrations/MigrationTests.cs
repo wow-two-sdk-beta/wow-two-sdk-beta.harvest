@@ -9,23 +9,25 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Module;
 namespace Harvest.Tests.Migrations;
 
 /// <summary>The module's migration set over a fresh PostgreSQL database: apply, idempotency, the Apply → Rollback → Apply
-/// round trip, and the shape SQL 001 and 002 promise the lanes.</summary>
+/// round trip, and the shape SQL 001, 002 and 006 promise the lanes.</summary>
 public sealed class MigrationTests : IAsyncLifetime
 {
     /// <summary>Holds every migration of the set, in order.</summary>
-    private static readonly string[] Migrations = ["001-baseline", "002-drop-escalation", "003-fetching", "004-posts-delivery", "005-subscription-filter"];
+    private static readonly string[] Migrations =
+        ["001-baseline", "002-drop-escalation", "003-fetching", "004-posts-delivery", "005-subscription-filter", "006-source-groups"];
 
     /// <summary>Holds the escalation columns 002 drops.</summary>
     private const string EscalationColumns =
         "'rung', 'rung_since', 'probe_due_at', 'cost_per_success_usd', 'egress', 'egress_lease_id', 'session_lease_id'";
 
-    /// <summary>Holds every table 001 creates, partitions aside; 002 drops none.</summary>
+    /// <summary>Holds every table the set creates, partitions aside; 002 drops none.</summary>
     private static readonly string[] Tables =
     [
         "harvest_api_keys", "harvest_captures", "harvest_check_policies", "harvest_containers", "harvest_enumerations",
         "harvest_fetch_validators", "harvest_host_lane", "harvest_host_policies", "harvest_host_state", "harvest_link_check_log", "harvest_link_events",
         "harvest_link_readings", "harvest_link_schedule", "harvest_pipelines", "harvest_post_links", "harvest_post_texts",
-        "harvest_posts", "harvest_post_merges", "harvest_post_keep_apart", "harvest_retention_policies", "harvest_runs", "harvest_schedules", "harvest_source_scopes",
+        "harvest_posts", "harvest_post_merges", "harvest_post_keep_apart", "harvest_post_revisions", "harvest_retention_policies", "harvest_runs",
+        "harvest_schedules", "harvest_source_groups", "harvest_source_scopes",
         "harvest_sources", "harvest_subscription_event", "harvest_subscriptions", "harvest_tenants", "harvest_usage",
         "harvest_work_item",
     ];
@@ -59,7 +61,7 @@ public sealed class MigrationTests : IAsyncLifetime
 
         applied.Should().Equal(Migrations);
         (await HarvestTablesAsync()).Should().BeEquivalentTo(Tables);
-        (await ScalarAsync<long>("SELECT count(*) FROM harvest_migration_history WHERE applied_by = 'startup'")).Should().Be(5);
+        (await ScalarAsync<long>("SELECT count(*) FROM harvest_migration_history WHERE applied_by = 'startup'")).Should().Be(6);
         Unwrap(await Runner.ApplyPendingAsync("startup", CancellationToken.None)).Should().BeEmpty();
     }
 
@@ -105,6 +107,10 @@ public sealed class MigrationTests : IAsyncLifetime
     {
         Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None));
 
+        Unwrap(await Runner.RollbackAsync(targetOrdinal: 5, CancellationToken.None)).Should().Equal("006-source-groups");
+        (await ColumnCountAsync("table_name = 'harvest_sources' AND column_name IN ('group_id', 'display_name')")).Should().Be(0);
+        (await ScalarAsync<bool>("SELECT to_regclass('harvest_source_groups') IS NULL AND to_regclass('harvest_post_revisions') IS NULL")).Should().BeTrue();
+
         Unwrap(await Runner.RollbackAsync(targetOrdinal: 1, CancellationToken.None)).Should().Equal("005-subscription-filter", "004-posts-delivery", "003-fetching", "002-drop-escalation");
         (await ColumnCountAsync($"column_name IN ({EscalationColumns})")).Should().Be(11, "002's rollback restores every column 001 made");
         (await ConstraintAsync("ck_harvest_work_item_route")).Should().Contain("account");
@@ -118,9 +124,48 @@ public sealed class MigrationTests : IAsyncLifetime
         Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None)).Should().Equal(Migrations);
         (await HarvestTablesAsync()).Should().BeEquivalentTo(Tables);
         var status = Unwrap(await Runner.GetStatusAsync(CancellationToken.None));
-        status.Applied.Select(migration => migration.Ordinal).Should().Equal(1, 2, 3, 4, 5);
+        status.Applied.Select(migration => migration.Ordinal).Should().Equal(1, 2, 3, 4, 5, 6);
         status.Pending.Should().BeEmpty();
         status.Drifted.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ApplyPending_ShouldKeepGroupsInTheirContainerAndUniqueWhateverTheCase_WhenSourceGroupsExist()
+    {
+        Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None));
+        Guid pool = Guid.NewGuid(), other = Guid.NewGuid(), group = Guid.NewGuid(), source = Guid.NewGuid();
+        await ExecuteAsync($"""
+            INSERT INTO harvest_tenants(id,slug,name,created_at) VALUES('{other}','other','Other',now());
+            INSERT INTO harvest_containers(id,kind,created_at) VALUES('{pool}','pool',now());
+            INSERT INTO harvest_containers(id,kind,tenant_id,created_at) VALUES('{other}','private','{other}',now());
+            INSERT INTO harvest_source_groups(id,container_id,name,created_at) VALUES('{group}','{pool}','Afisha',now());
+            INSERT INTO harvest_sources(id,container_id,family,handle,coverage,completeness,posture,state_since,created_at,group_id,display_name)
+            VALUES('{source}','{pool}','site','www.afisha.uz','whole','complete','own_fetch',now(),now(),'{group}','Afisha.uz');
+            """);
+
+        (await ScalarAsync<string>($"SELECT display_name FROM harvest_sources WHERE id='{source}'")).Should().Be("Afisha.uz");
+        await FailsAsync($"INSERT INTO harvest_source_groups(id,container_id,name,created_at) VALUES(gen_random_uuid(),'{pool}','AFISHA',now())",
+            "ux_harvest_source_groups_name");
+        await FailsAsync($"""
+            INSERT INTO harvest_sources(id,container_id,family,handle,coverage,completeness,posture,state_since,created_at,group_id)
+            VALUES(gen_random_uuid(),'{other}','site','voyage.uz','whole','complete','own_fetch',now(),now(),'{group}')
+            """, "fk_harvest_sources_group");
+        await FailsAsync($"UPDATE harvest_sources SET display_name='' WHERE id='{source}'", "ck_harvest_sources_display_name");
+        (await ScalarAsync<string>("SELECT indexdef FROM pg_indexes WHERE indexname = 'pk_harvest_post_revisions'")).Should().Contain("(post_id, revision)");
+    }
+
+    private async Task ExecuteAsync(string sql)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(sql, connection);
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private async Task FailsAsync(string sql, string constraint)
+    {
+        var failure = await FluentActions.Awaiting(() => ExecuteAsync(sql)).Should().ThrowAsync<PostgresException>();
+        failure.Which.ConstraintName.Should().Be(constraint);
     }
 
     private async Task<List<string>> HarvestTablesAsync()

@@ -270,6 +270,96 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
     }
 
     /// <inheritdoc />
+    public async Task<Result<SourceModel>> UpdateSourceAsync(Guid sourceId, SourceUpdate update, CancellationToken cancellationToken = default)
+    {
+        if (update.ClearGroup && update.GroupId is not null)
+            return Result<SourceModel>.Fail(RegistrationErrors.Invalid("Set a group or clear it, not both."));
+        string? displayName = null;
+        if (update.Name is not null && !string.IsNullOrWhiteSpace(update.Name))
+        {
+            var (name, nameError) = RegistrationRules.NormalizeName(update.Name);
+            if (nameError is not null)
+                return Result<SourceModel>.Fail(nameError);
+            displayName = name;
+        }
+
+        var row = await db.Sources.SingleOrDefaultAsync(source => source.Id == sourceId, cancellationToken);
+        if (row is null)
+            return Result<SourceModel>.Fail(RegistrationErrors.SourceNotFound(sourceId));
+        if (update.GroupId is { } groupId)
+        {
+            var group = await db.SourceGroups.AsNoTracking().SingleOrDefaultAsync(candidate => candidate.Id == groupId, cancellationToken);
+            if (group is null)
+                return Result<SourceModel>.Fail(RegistrationErrors.SourceGroupNotFound(groupId));
+            if (group.ContainerId != row.ContainerId)
+                return Result<SourceModel>.Fail(RegistrationErrors.Invalid("A source joins a group of its own container."));
+            row.GroupId = groupId;
+        }
+        else if (update.ClearGroup)
+        {
+            row.GroupId = null;
+        }
+
+        if (update.Name is not null)
+            row.DisplayName = displayName;
+        await db.SaveChangesAsync(cancellationToken);
+
+        var checkPolicy = row.CheckPolicyId is { } id
+            ? await db.CheckPolicies.AsNoTracking().Where(policy => policy.Id == id).Select(policy => policy.Key).SingleOrDefaultAsync(cancellationToken)
+            : null;
+        return Result<SourceModel>.Ok(row.ToModel(checkPolicy));
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<SourceGroupModel>> DeclareSourceGroupAsync(SourceGroupDeclaration declaration, CancellationToken cancellationToken = default)
+    {
+        var (name, nameError) = RegistrationRules.NormalizeName(declaration.Name);
+        if (nameError is not null)
+            return Result<SourceGroupModel>.Fail(nameError);
+        var (description, descriptionError) = RegistrationRules.NormalizeDescription(declaration.Description);
+        if (descriptionError is not null)
+            return Result<SourceGroupModel>.Fail(descriptionError);
+        if (!await db.Containers.AnyAsync(row => row.Id == declaration.ContainerId, cancellationToken))
+            return Result<SourceGroupModel>.Fail(RegistrationErrors.ContainerNotFound(declaration.ContainerId));
+
+        if (await FindGroupAsync(declaration.ContainerId, name!, cancellationToken) is { } existing)
+            return Result<SourceGroupModel>.Ok(existing.ToModel());
+        var now = Now();
+        var group = new SourceGroupRow
+        {
+            Id = Guid.CreateVersion7(now),
+            ContainerId = declaration.ContainerId,
+            Name = name!,
+            Description = description,
+            CreatedAt = now,
+        };
+        db.SourceGroups.Add(group);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            return Result<SourceGroupModel>.Ok(group.ToModel());
+        }
+        catch (DbUpdateException exception) when (exception.InnerException is PostgresException { SqlState: UniqueViolation })
+        {
+            // A concurrent declaration of the same name won the insert; answer with its group.
+            db.ChangeTracker.Clear();
+            return Result<SourceGroupModel>.Ok((await FindGroupAsync(declaration.ContainerId, name!, cancellationToken))!.ToModel());
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<IReadOnlyList<SourceGroupModel>>> ListSourceGroupsAsync(Guid containerId, CancellationToken cancellationToken = default)
+    {
+        if (!await db.Containers.AnyAsync(row => row.Id == containerId, cancellationToken))
+            return Result<IReadOnlyList<SourceGroupModel>>.Fail(RegistrationErrors.ContainerNotFound(containerId));
+
+        var rows = await db.SourceGroups.AsNoTracking().Where(row => row.ContainerId == containerId).ToListAsync(cancellationToken);
+        return Result<IReadOnlyList<SourceGroupModel>>.Ok([.. rows
+            .OrderBy(row => row.Name, StringComparer.OrdinalIgnoreCase).ThenBy(row => row.Id)
+            .Select(row => row.ToModel())]);
+    }
+
+    /// <inheritdoc />
     public async Task<Result<PipelineModel>> DeclarePipelineAsync(PipelineDeclaration declaration, CancellationToken cancellationToken = default)
     {
         if (!await db.Containers.AnyAsync(row => row.Id == declaration.ContainerId, cancellationToken))
@@ -354,6 +444,9 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
         var (scopeKey, scopeError) = RegistrationRules.CanonicalScopeKey(update.Scope);
         if (scopeError is not null)
             return Result<PipelineModel>.Fail(scopeError);
+        var (limits, limitsError) = RegistrationRules.MergeLimits(StoreJson.Read(pipeline.Limits, new PipelineLimits()), update.Limits);
+        if (limitsError is not null)
+            return Result<PipelineModel>.Fail(limitsError);
         if (await db.Pipelines.AnyAsync(row => row.Id != pipelineId && row.ContainerId == pipeline.ContainerId
                 && row.SourceId == pipeline.SourceId && row.ScopeKey == scopeKey, cancellationToken))
             return Result<PipelineModel>.Fail(RegistrationErrors.PipelineExists(scopeKey!));
@@ -400,6 +493,8 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
         pipeline.Name = update.Name?.Trim();
         pipeline.Scope = StoreJson.Write(update.Scope);
         pipeline.ScopeKey = scopeKey!;
+        if (update.Limits is not null)
+            pipeline.Limits = StoreJson.Write(limits);
         var result = await SaveAsync(() => pipeline.ToModel(schedules), () => RegistrationErrors.PipelineExists(scopeKey!), cancellationToken);
         if (result is Result<PipelineModel>.Success)
             await transaction.CommitAsync(cancellationToken);
@@ -438,6 +533,12 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
 
     /// <summary>Drops the ticks below a microsecond, which timestamptz does not keep.</summary>
     private static DateTimeOffset ToMicroseconds(DateTimeOffset value) => value.AddTicks(-(value.Ticks % 10));
+
+    /// <summary>Finds a container's group by name, whatever its case, with the unique index's own <c>lower</c>.</summary>
+    private Task<SourceGroupRow?> FindGroupAsync(Guid containerId, string name, CancellationToken cancellationToken) =>
+        db.SourceGroups.FromSqlInterpolated(
+                $"SELECT * FROM harvest_source_groups WHERE container_id = {containerId} AND lower(name) = lower({name})")
+            .AsNoTracking().SingleOrDefaultAsync(cancellationToken);
 
     /// <summary>Reads the seeded check policies' keys by identifier.</summary>
     private async Task<Dictionary<Guid, string>> CheckPolicyKeysAsync(CancellationToken cancellationToken) =>

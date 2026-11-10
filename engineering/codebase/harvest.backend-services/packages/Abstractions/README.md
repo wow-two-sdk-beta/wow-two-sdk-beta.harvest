@@ -14,7 +14,8 @@ picks an implementation:
 | `Capabilities.*` | `IFetchClientFactory` (direct fetching), `IChallengeDetector` (challenge, block or rate limit), `IBrowserRenderer` |
 | `Readers` | `ICaptureReader` and its output, `Capture` |
 | `Extraction` | `IPostExtractor` and the base envelope `wow2.post.v1` (`PostEnvelope`) |
-| `Posts` · `Runs` · `Delivery` | link and post states, run vocabulary, subscriptions, events and the cursor page |
+| `Sources` | `ISourceOverviewBroker` — the console's per-source overview, a source's posts and a post's revisions — and source groups |
+| `Posts` · `Runs` · `Delivery` | link and post states, post revisions, run vocabulary, subscriptions, events and the cursor page |
 
 ```bash
 dotnet add package WoW2.Sdk.Beta.Be.Harvest.Abstractions --prerelease

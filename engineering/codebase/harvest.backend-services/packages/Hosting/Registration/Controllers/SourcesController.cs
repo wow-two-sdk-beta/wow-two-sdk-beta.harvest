@@ -12,8 +12,8 @@ using WoW.Two.Sdk.Beta.Be.Web.ExceptionHandling.Extensions;
 
 namespace Harvest.Api.Registration.Controllers;
 
-/// <summary>Exposes sources over HTTP: the operator registers them (<c>sources:manage</c>); any key reads the sources of
-/// the containers it may see.</summary>
+/// <summary>Exposes sources over HTTP: the operator registers them (<c>sources:manage</c>), names and groups them; any key
+/// reads the sources of the containers it may see, and <c>pipelines:read</c> reads their groups.</summary>
 [ApiController]
 [Route(RegistrationRouteConstants.Sources)]
 public sealed class SourcesController(IRegistrationBroker broker, CallerResolver callers, Harvest.Api.Registration.SourceCapabilitiesResolver capabilities) : ControllerBase
@@ -35,6 +35,45 @@ public sealed class SourcesController(IRegistrationBroker broker, CallerResolver
             return this.ToProblem(AppErrorFactory.Forbidden("A tenant registers sources only in its own private containers."));
         return (await broker.RegisterSourceAsync(registration, ct)).Match<IActionResult>(
             source => StatusCode(StatusCodes.Status201Created, ApiResponse<SourceModel>.Ok(source)), this.ToProblem);
+    }
+
+    /// <summary>Sets a source's display name and group (operator only).</summary>
+    /// <param name="sourceId">The source's identifier.</param>
+    /// <param name="update">The name and group to set; <c>clearGroup</c> ungroups.</param>
+    /// <param name="ct">The token that cancels the request.</param>
+    [HttpPut("{sourceId:guid}")]
+    [Authorize(Policy = AccessPolicies.ManageSources)]
+    [ProducesResponseType<ApiResponse<SourceModel>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Update(Guid sourceId, [FromBody] SourceUpdate update, CancellationToken ct) =>
+        (await broker.UpdateSourceAsync(sourceId, update, ct)).Match<IActionResult>(
+            source => Ok(ApiResponse<SourceModel>.Ok(source)), this.ToProblem);
+
+    /// <summary>Declares a group of sources, idempotent by name (operator only).</summary>
+    /// <param name="declaration">The group to declare.</param>
+    /// <param name="ct">The token that cancels the request.</param>
+    [HttpPost("groups")]
+    [Authorize(Policy = AccessPolicies.ManageSources)]
+    [ProducesResponseType<ApiResponse<SourceGroupModel>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> DeclareGroup([FromBody] SourceGroupDeclaration declaration, CancellationToken ct) =>
+        (await broker.DeclareSourceGroupAsync(declaration, ct)).Match<IActionResult>(
+            group => Ok(ApiResponse<SourceGroupModel>.Ok(group)), this.ToProblem);
+
+    /// <summary>Lists the source groups of a container the caller may see.</summary>
+    /// <param name="containerId">The container.</param>
+    /// <param name="ct">The token that cancels the request.</param>
+    [HttpGet("groups")]
+    [Authorize(Policy = HarvestScopeConstants.PipelinesRead)]
+    [ProducesResponseType<ApiResponse<IReadOnlyList<SourceGroupModel>>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListGroups([FromQuery(Name = RegistrationRouteConstants.ContainerIdParameter)] Guid containerId, CancellationToken ct)
+    {
+        if (await callers.ResolveAsync(User, ct) is not { } caller)
+            return this.ToProblem(AppErrorFactory.Unauthorized());
+        if (await broker.GetContainerAsync(containerId, ct) is not Result<ContainerModel>.Success { Value: var container }
+            || !caller.CanRead(container))
+            return this.ToProblem(RegistrationErrors.ContainerNotFound(containerId));
+
+        return (await broker.ListSourceGroupsAsync(containerId, ct)).Match<IActionResult>(
+            groups => Ok(ApiResponse<IReadOnlyList<SourceGroupModel>>.Ok(groups)), this.ToProblem);
     }
 
     /// <summary>Reads a source in a container the caller may see.</summary>

@@ -44,7 +44,7 @@ public sealed class PipelinesController(IRegistrationBroker broker, CallerResolv
 
     /// <summary>Edits the saved scope and cadence in a container the caller owns.</summary>
     /// <param name="pipelineId">The pipeline's identifier.</param>
-    /// <param name="update">The replacement name, scope and schedules.</param>
+    /// <param name="update">The replacement name, scope and schedules, and any limits to set (operator only).</param>
     /// <param name="ct">The token that cancels the request.</param>
     [HttpPut("{pipelineId:guid}")]
     [Authorize(Policy = HarvestScopeConstants.PipelinesManage)]
@@ -59,6 +59,8 @@ public sealed class PipelinesController(IRegistrationBroker broker, CallerResolv
             return this.ToProblem(RegistrationErrors.PipelineNotFound(pipelineId));
         if (!caller.CanWrite(container))
             return this.ToProblem(AppErrorFactory.Forbidden("A tenant edits pipelines in its own private containers."));
+        if (update.Limits is not null && !caller.IsOperator)
+            return this.ToProblem(AppErrorFactory.Forbidden("Only the operator sets a pipeline's limits."));
 
         return (await broker.UpdatePipelineAsync(pipelineId, update, ct)).Match<IActionResult>(
             saved => Ok(ApiResponse<PipelineModel>.Ok(saved)), this.ToProblem);

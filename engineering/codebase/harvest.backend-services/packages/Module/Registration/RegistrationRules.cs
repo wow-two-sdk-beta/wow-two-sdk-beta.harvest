@@ -196,6 +196,42 @@ internal static partial class RegistrationRules
             : null;
     }
 
+    /// <summary>Merges an update's limits into the stored ones: each stated value replaces the stored one, and a
+    /// stated maximum of pages must be 1–<see cref="PipelineConstants.MaxPagesOnUpdate"/>.</summary>
+    /// <param name="stored">The pipeline's limits.</param>
+    /// <param name="update">The limits the update states; null keeps every stored value.</param>
+    public static (PipelineLimits Limits, AppError? Error) MergeLimits(PipelineLimits stored, PipelineLimits? update)
+    {
+        if (update is null)
+            return (stored, null);
+        if (update.MaxPages is { } pages && pages is < 1 or > PipelineConstants.MaxPagesOnUpdate)
+            return (stored, RegistrationErrors.Invalid($"MaxPages must be 1–{PipelineConstants.MaxPagesOnUpdate}."));
+
+        var merged = stored with
+        {
+            MaxPages = update.MaxPages ?? stored.MaxPages,
+            MaxItems = update.MaxItems ?? stored.MaxItems,
+            MaxRequests = update.MaxRequests ?? stored.MaxRequests,
+            MaxBytes = update.MaxBytes ?? stored.MaxBytes,
+            MaxDuration = update.MaxDuration ?? stored.MaxDuration,
+            MaxProbes = update.MaxProbes ?? stored.MaxProbes,
+        };
+        return ValidateLimits(merged) is { } error ? (stored, error) : (merged, null);
+    }
+
+    /// <summary>Normalizes a source group's description: trimmed, null when blank, within
+    /// <see cref="SourceConstants.MaxGroupDescriptionLength"/>.</summary>
+    public static (string? Description, AppError? Error) NormalizeDescription(string? description)
+    {
+        var trimmed = description?.Trim();
+        if (string.IsNullOrEmpty(trimmed))
+            return (null, null);
+
+        return trimmed.Length <= SourceConstants.MaxGroupDescriptionLength
+            ? (trimmed, null)
+            : (null, RegistrationErrors.Invalid($"The description must be at most {SourceConstants.MaxGroupDescriptionLength} characters."));
+    }
+
     /// <summary>Builds the canonical scope key: <c>*</c> for the whole source, else the normalized URL and the parameters
     /// sorted by name, query-encoded.</summary>
     public static (string? ScopeKey, AppError? Error) CanonicalScopeKey(PipelineScope? scope)

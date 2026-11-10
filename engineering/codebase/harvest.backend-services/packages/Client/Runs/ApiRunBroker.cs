@@ -2,7 +2,9 @@ using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Client.Delivery;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
+using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
 using WoW.Two.Sdk.Beta.Be.Harvest.Runs;
+using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Client.Runs;
 
@@ -35,4 +37,9 @@ internal sealed class ApiRunBroker(HttpClient http) : IRunBroker
     /// <inheritdoc />
     public Task<Result<IReadOnlyList<HostHealthModel>>> HostsAsync(Guid containerId, CancellationToken cancellationToken = default) =>
         HarvestDataHttp.SendAsync<IReadOnlyList<HostHealthModel>>(http, HttpMethod.Get, $"api/hosts?containerId={containerId}", null, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<Result<SourceHealthModel>> SetReadingPaceAsync(Guid sourceId, int minDelayMs, CancellationToken cancellationToken = default) =>
+        HarvestDataHttp.SendAsync<SourceHealthModel>(http, HttpMethod.Put,
+            $"{RegistrationRouteConstants.Sources}/{sourceId}/{SourceRouteConstants.Reading}", new { MinDelayMs = minDelayMs }, cancellationToken);
 }

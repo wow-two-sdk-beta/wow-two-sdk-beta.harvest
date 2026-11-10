@@ -11,4 +11,7 @@ public static class AccessPolicies
 
     /// <summary>Holds the operator policy for writing captures and reconciling stored posts.</summary>
     public const string ManageStorage = "harvest:manage-storage";
+
+    /// <summary>Holds the operator policy for the console's source writes: groups, names and reading pace.</summary>
+    public const string ManageSources = "harvest:manage-sources";
 }

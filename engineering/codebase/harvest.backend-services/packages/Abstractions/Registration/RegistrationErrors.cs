@@ -42,6 +42,10 @@ public static class RegistrationErrors
     public static AppError SourceExists(string handle) =>
         AppErrorFactory.Conflict($"The container already has a source with the handle '{handle}' in this family.");
 
+    /// <summary>Creates the error for an unknown source group.</summary>
+    /// <param name="groupId">The identifier no group has.</param>
+    public static AppError SourceGroupNotFound(Guid groupId) => AppErrorFactory.NotFound($"No source group has the id {groupId}.");
+
     /// <summary>Creates the error for an unknown pipeline.</summary>
     /// <param name="pipelineId">The identifier no pipeline has.</param>
     public static AppError PipelineNotFound(Guid pipelineId) => AppErrorFactory.NotFound($"No pipeline has the id {pipelineId}.");

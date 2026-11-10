@@ -31,6 +31,7 @@ public sealed partial class FakeRegistrationBroker(TimeProvider? time = null) : 
     private readonly List<(ApiKeyModel Key, string Hash)> keys = [];
     private readonly List<ContainerModel> containers = [];
     private readonly List<SourceModel> sources = [];
+    private readonly List<SourceGroupModel> groups = [];
     private readonly List<PipelineModel> pipelines = [];
 
     private TimeProvider Clock => time ?? TimeProvider.System;
@@ -280,6 +281,84 @@ public sealed partial class FakeRegistrationBroker(TimeProvider? time = null) : 
     }
 
     /// <inheritdoc />
+    public Task<Result<SourceModel>> UpdateSourceAsync(Guid sourceId, SourceUpdate update, CancellationToken cancellationToken = default)
+    {
+        if (update.ClearGroup && update.GroupId is not null)
+            return Fail<SourceModel>(RegistrationErrors.Invalid("Set a group or clear it, not both."));
+        // A blank name clears the display name; any other name must fit.
+        var displayName = string.IsNullOrWhiteSpace(update.Name) ? null : Name(update.Name, RegistrationConstants.MaxNameLength);
+        if (!string.IsNullOrWhiteSpace(update.Name) && displayName is null)
+            return Fail<SourceModel>(RegistrationErrors.Invalid("The name is malformed."));
+
+        lock (gate)
+        {
+            var index = sources.FindIndex(source => source.Id == sourceId);
+            if (index < 0)
+                return Fail<SourceModel>(RegistrationErrors.SourceNotFound(sourceId));
+            var source = sources[index];
+            if (update.GroupId is { } groupId)
+            {
+                if (groups.FirstOrDefault(group => group.Id == groupId) is not { } group)
+                    return Fail<SourceModel>(RegistrationErrors.SourceGroupNotFound(groupId));
+                if (group.ContainerId != source.ContainerId)
+                    return Fail<SourceModel>(RegistrationErrors.Invalid("A source joins a group of its own container."));
+                source = source with { GroupId = groupId };
+            }
+            else if (update.ClearGroup)
+            {
+                source = source with { GroupId = null };
+            }
+
+            if (update.Name is not null)
+                source = source with { Name = displayName };
+            sources[index] = source;
+            return Ok(source);
+        }
+    }
+
+    /// <inheritdoc />
+    public Task<Result<SourceGroupModel>> DeclareSourceGroupAsync(SourceGroupDeclaration declaration, CancellationToken cancellationToken = default)
+    {
+        if (Name(declaration.Name, RegistrationConstants.MaxNameLength) is not { } name)
+            return Fail<SourceGroupModel>(RegistrationErrors.Invalid("The name is malformed."));
+        var description = Optional(declaration.Description);
+        if (description is { Length: > SourceConstants.MaxGroupDescriptionLength })
+            return Fail<SourceGroupModel>(RegistrationErrors.Invalid("The description is too long."));
+
+        lock (gate)
+        {
+            if (containers.All(container => container.Id != declaration.ContainerId))
+                return Fail<SourceGroupModel>(RegistrationErrors.ContainerNotFound(declaration.ContainerId));
+            if (groups.FirstOrDefault(group => group.ContainerId == declaration.ContainerId
+                    && string.Equals(group.Name, name, StringComparison.OrdinalIgnoreCase)) is { } existing)
+                return Ok(existing);
+
+            var group = new SourceGroupModel
+            {
+                Id = Guid.CreateVersion7(Clock.GetUtcNow()),
+                ContainerId = declaration.ContainerId,
+                Name = name,
+                Description = description,
+            };
+            groups.Add(group);
+            return Ok(group);
+        }
+    }
+
+    /// <inheritdoc />
+    public Task<Result<IReadOnlyList<SourceGroupModel>>> ListSourceGroupsAsync(Guid containerId, CancellationToken cancellationToken = default)
+    {
+        lock (gate)
+        {
+            if (containers.All(container => container.Id != containerId))
+                return Fail<IReadOnlyList<SourceGroupModel>>(RegistrationErrors.ContainerNotFound(containerId));
+            return Ok<IReadOnlyList<SourceGroupModel>>([.. groups
+                .Where(group => group.ContainerId == containerId)
+                .OrderBy(group => group.Name, StringComparer.OrdinalIgnoreCase).ThenBy(group => group.Id)]);
+        }
+    }
+
+    /// <inheritdoc />
     public Task<Result<PipelineModel>> DeclarePipelineAsync(PipelineDeclaration declaration, CancellationToken cancellationToken = default)
     {
         SourceModel? source;
@@ -352,8 +431,20 @@ public sealed partial class FakeRegistrationBroker(TimeProvider? time = null) : 
                 || source.Permission == SourcePermission.Denied
                 || (source.Coverage == SourceCoverage.Filtered && scopeKey == PipelineConstants.WholeScopeKey)
                 || (update.Name is { } name && Name(name, PipelineConstants.MaxNameLength) is null)
-                || !IsValid(update.Schedules))
+                || !IsValid(update.Schedules)
+                || update.Limits?.MaxPages is < 1 or > PipelineConstants.MaxPagesOnUpdate)
                 return Fail<PipelineModel>(RegistrationErrors.Invalid("The pipeline is malformed."));
+            var limits = update.Limits is not { } stated ? pipeline.Limits : pipeline.Limits with
+            {
+                MaxPages = stated.MaxPages ?? pipeline.Limits.MaxPages,
+                MaxItems = stated.MaxItems ?? pipeline.Limits.MaxItems,
+                MaxRequests = stated.MaxRequests ?? pipeline.Limits.MaxRequests,
+                MaxBytes = stated.MaxBytes ?? pipeline.Limits.MaxBytes,
+                MaxDuration = stated.MaxDuration ?? pipeline.Limits.MaxDuration,
+                MaxProbes = stated.MaxProbes ?? pipeline.Limits.MaxProbes,
+            };
+            if (!IsValid(limits))
+                return Fail<PipelineModel>(RegistrationErrors.Invalid("The pipeline's limits are malformed."));
             if (pipelines.Any(candidate => candidate.Id != pipelineId && candidate.ContainerId == pipeline.ContainerId
                     && candidate.SourceId == pipeline.SourceId && candidate.ScopeKey == scopeKey))
                 return Fail<PipelineModel>(RegistrationErrors.PipelineExists(scopeKey));
@@ -370,7 +461,7 @@ public sealed partial class FakeRegistrationBroker(TimeProvider? time = null) : 
                 };
             pipelines[index] = pipeline with
             {
-                Name = update.Name?.Trim(), Scope = update.Scope, ScopeKey = scopeKey,
+                Name = update.Name?.Trim(), Scope = update.Scope, ScopeKey = scopeKey, Limits = limits,
                 Schedules = [.. schedules.Values.OrderBy(row => row.Kind)],
             };
             return Ok(pipelines[index]);
@@ -394,6 +485,26 @@ public sealed partial class FakeRegistrationBroker(TimeProvider? time = null) : 
             if (containers.All(container => container.Id != containerId))
                 return Fail<IReadOnlyList<PipelineModel>>(RegistrationErrors.ContainerNotFound(containerId));
             return Ok<IReadOnlyList<PipelineModel>>([.. pipelines.Where(pipeline => pipeline.ContainerId == containerId)]);
+        }
+    }
+
+    /// <summary>Sets a pipeline's next due capture time, as the scheduler would; for a consumer's overview tests.</summary>
+    /// <param name="pipelineId">The pipeline.</param>
+    /// <param name="kind">The schedule row's work kind.</param>
+    /// <param name="nextDueAtUtc">The time the row is next due.</param>
+    /// <returns>The pipeline; <c>NotFound</c> when no pipeline or row matches.</returns>
+    public Result<PipelineModel> SetNextDue(Guid pipelineId, WorkKind kind, DateTimeOffset? nextDueAtUtc)
+    {
+        lock (gate)
+        {
+            int index = pipelines.FindIndex(pipeline => pipeline.Id == pipelineId);
+            if (index < 0 || pipelines[index].Schedules.All(row => row.Kind != kind))
+                return Result<PipelineModel>.Fail(RegistrationErrors.PipelineNotFound(pipelineId));
+            pipelines[index] = pipelines[index] with
+            {
+                Schedules = [.. pipelines[index].Schedules.Select(row => row.Kind == kind ? row with { NextDueAtUtc = nextDueAtUtc } : row)],
+            };
+            return Result<PipelineModel>.Ok(pipelines[index]);
         }
     }
 

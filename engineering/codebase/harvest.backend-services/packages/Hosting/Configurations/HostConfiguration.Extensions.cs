@@ -10,6 +10,7 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Module.Engine;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Extraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Posts;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Readers;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Sources;
 using WoW.Two.Sdk.Beta.Be.Harvest.Tenants;
 using WoW.Two.Sdk.Beta.Be.Identity.ApiKeys;
 using WoW.Two.Sdk.Beta.Be.Identity.Bff;
@@ -42,6 +43,7 @@ public static partial class HostConfiguration
         builder.Services.AddHarvestExtraction();
         builder.Services.AddHarvestPosts();
         builder.Services.AddHarvestDelivery();
+        builder.Services.AddHarvestSources();
         builder.Services.AddHarvestEngine();
         builder.Services.AddValidatedSettings<HarvestEngineOptions>(builder.Configuration, "Harvest:Worker", options => options
             .Validate(value => value.LeaseDuration > TimeSpan.Zero && value.PollInterval > TimeSpan.Zero
@@ -114,6 +116,9 @@ public static partial class HostConfiguration
             options.AddPolicy(AccessPolicies.ManageStorage, policy => policy.AddAuthenticationSchemes(ApiAuthenticationScheme)
                 .RequireAuthenticatedUser().AddRequirements(new HarvestAccessRequirement(
                     HarvestScopeConstants.ContainersManage, RequireOperator: true)));
+            options.AddPolicy(AccessPolicies.ManageSources, policy => policy.AddAuthenticationSchemes(ApiAuthenticationScheme)
+                .RequireAuthenticatedUser().AddRequirements(new HarvestAccessRequirement(
+                    HarvestScopeConstants.SourcesManage, RequireOperator: true)));
             foreach (var scope in HarvestScopeConstants.All)
                 options.AddPolicy(scope, policy => policy.AddAuthenticationSchemes(ApiAuthenticationScheme)
                     .RequireAuthenticatedUser().AddRequirements(new HarvestAccessRequirement(scope)));

@@ -26,6 +26,8 @@ internal sealed class HarvestDbContext(DbContextOptions<HarvestDbContext> option
 
     public DbSet<SourceRow> Sources => Set<SourceRow>();
 
+    public DbSet<SourceGroupRow> SourceGroups => Set<SourceGroupRow>();
+
     public DbSet<PipelineRow> Pipelines => Set<PipelineRow>();
 
     public DbSet<ScheduleRow> Schedules => Set<ScheduleRow>();
@@ -59,6 +61,9 @@ internal sealed class HarvestDbContext(DbContextOptions<HarvestDbContext> option
         source.Property(row => row.ConsentBasis).HasConversion(Text<ConsentBasis>());
         source.Property(row => row.State).HasConversion(Text<SourceState>());
         Jsonb(source.Property(row => row.CapabilityPolicy));
+
+        var group = modelBuilder.Entity<SourceGroupRow>().ToTable(SourceGroupRow.TableName);
+        group.HasKey(row => row.Id);
 
         var pipeline = modelBuilder.Entity<PipelineRow>().ToTable(PipelineRow.TableName);
         pipeline.HasKey(row => row.Id);

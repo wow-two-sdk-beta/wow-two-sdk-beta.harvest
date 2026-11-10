@@ -21,7 +21,7 @@ private adapters repo ──► Abstractions (ISourceAdapter, IStepBroker) + cor
 | Project | Responsibility |
 |---|---|
 | `packages/Abstractions` | the contract — `IRegistrationBroker`, the step-broker and capability seams, captures, `wow2.post.v1`, delivery types; no DI, options or I/O |
-| `packages/Module` | Form 1: the store (own keyed Npgsql data source), the migration set and boot self-test, the registry broker, the API key store; lane folders `Capabilities/` · `Engine/` · `Readers/` · `Extraction/` · `Posts/` · `Delivery/` |
+| `packages/Module` | Form 1: the store (own keyed Npgsql data source), the migration set and boot self-test, the registry broker, the API key store; lane folders `Capabilities/` · `Engine/` · `Readers/` · `Extraction/` · `Posts/` · `Delivery/` · `Sources/` |
 | `packages/Client` | Forms 2/3 over the service's HTTP API, authenticated by an API key |
 | `packages/Hosting` | shared ASP.NET startup, API key policies and HTTP controllers for generic and private adapter hosts |
 | `packages/Testing` | registry, run, post and delivery fakes and their shared conformance suites |

@@ -18,6 +18,7 @@ public sealed class FakeRunBroker(FakeRegistrationBroker registry, TimeProvider?
     private readonly Lock gate = new();
     private readonly Dictionary<Guid, RunModel> runs = [];
     private readonly Dictionary<Guid, string> hosts = [];
+    private readonly Dictionary<string, int> paces = new(StringComparer.Ordinal);
     private TimeProvider Clock => time ?? TimeProvider.System;
 
     /// <inheritdoc />
@@ -129,6 +130,59 @@ public sealed class FakeRunBroker(FakeRegistrationBroker registry, TimeProvider?
                     Queued = group.Count(run => run.Status == RunStatus.Queued), Running = group.Count(run => run.Status == RunStatus.Running),
                 }).ToArray());
     }
+
+    /// <inheritdoc />
+    public async Task<Result<SourceHealthModel>> SetReadingPaceAsync(Guid sourceId, int minDelayMs, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (minDelayMs is < SourceConstants.MinReadingDelayMs or > SourceConstants.MaxReadingDelayMs)
+            return Result<SourceHealthModel>.Fail(AppErrorFactory.Validation(
+                $"The reading pace must be {SourceConstants.MinReadingDelayMs}–{SourceConstants.MaxReadingDelayMs} ms."));
+        if (await registry.GetSourceAsync(sourceId, cancellationToken) is not Result<SourceModel>.Success { Value: var source })
+            return Result<SourceHealthModel>.Fail(RegistrationErrors.SourceNotFound(sourceId));
+        lock (gate)
+            paces[source.Handle] = minDelayMs;
+        return Result<SourceHealthModel>.Ok(await HealthAsync(source, cancellationToken));
+    }
+
+    /// <summary>Gets every run the fake holds.</summary>
+    internal IReadOnlyList<RunModel> Snapshot()
+    {
+        lock (gate)
+            return [.. runs.Values];
+    }
+
+    /// <summary>Builds a source's host health: the fake's hosts never pause or fail, so only the pace and the source's
+    /// refused runs show.</summary>
+    internal async Task<SourceHealthModel> HealthAsync(SourceModel source, CancellationToken cancellationToken)
+    {
+        var pipelines = await registry.ListPipelinesAsync(source.ContainerId, cancellationToken) is Result<IReadOnlyList<PipelineModel>>.Success { Value: var all }
+            ? all.Where(pipeline => pipeline.SourceId == source.Id).Select(pipeline => pipeline.Id).ToHashSet()
+            : [];
+        lock (gate)
+        {
+            var refused = runs.Values
+                .Where(run => pipelines.Contains(run.PipelineId) && run.FetchOutcome is { } outcome && Refusals.Contains(outcome))
+                .OrderByDescending(run => run.QueuedAtUtc).ThenByDescending(run => run.Id).FirstOrDefault();
+            return new SourceHealthModel
+            {
+                HostKey = source.Handle,
+                MinDelayMs = paces.GetValueOrDefault(source.Handle, SourceConstants.DefaultReadingDelayMs),
+                ConsecutiveFailures = 0,
+                LastRefusal = refused is null ? null : new SourceRefusalModel
+                {
+                    At = refused.FinishedAtUtc ?? refused.QueuedAtUtc, Outcome = refused.FetchOutcome!.Value, Message = refused.Message,
+                },
+            };
+        }
+    }
+
+    /// <summary>Gets the fetch outcomes that count as a refusal or a challenge.</summary>
+    internal static IReadOnlySet<FetchOutcome> Refusals { get; } = new HashSet<FetchOutcome>
+    {
+        FetchOutcome.Challenge, FetchOutcome.WaitingRoom, FetchOutcome.Blocked, FetchOutcome.RateLimited,
+        FetchOutcome.RobotsDisallowed, FetchOutcome.Restricted, FetchOutcome.LoginRequired,
+    };
 
     private static Result<RunModel> Missing() => Result<RunModel>.Fail(AppErrorFactory.NotFound("The run was not found."));
 }

@@ -15,6 +15,12 @@ public sealed record SourceModel
     /// <summary>Gets the source's normalized identity.</summary>
     public required string Handle { get; init; }
 
+    /// <summary>Gets the display name the console shows; null shows the handle.</summary>
+    public string? Name { get; init; }
+
+    /// <summary>Gets the source's group in its container; null when ungrouped.</summary>
+    public Guid? GroupId { get; init; }
+
     /// <summary>Gets the platform's own identifier.</summary>
     public string? ExternalRef { get; init; }
 

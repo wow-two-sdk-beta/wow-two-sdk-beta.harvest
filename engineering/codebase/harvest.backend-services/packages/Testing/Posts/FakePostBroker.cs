@@ -23,6 +23,7 @@ public sealed class FakePostBroker(IRegistrationBroker registry, TimeProvider? c
     private readonly HashSet<Guid> keptApart = [];
     private readonly HashSet<(Guid Link, Guid Run)> observed = [];
     private readonly Dictionary<Guid, (Guid Container, Guid Source, Guid Pipeline)> runs = [];
+    private readonly Dictionary<Guid, List<PostRevisionModel>> revisions = [];
     internal object Gate { get; } = new();
     internal event Action<PostModel, string, Guid?, Guid?>? Changed;
 
@@ -62,7 +63,8 @@ public sealed class FakePostBroker(IRegistrationBroker registry, TimeProvider? c
                     posts[postId] = new PostModel { Id = postId, ContainerId = containerId, State = PostState.Live, Revision = 1,
                         Base = envelope, FirstSeenAtUtc = now, LastChangedAtUtc = now };
                 entry = new LinkEntry { Id = Guid.CreateVersion7(now), ContainerId = containerId, PostId = postId, SourceId = sourceId, Key = capture.ExternalKey,
-                    Url = capture.Url, State = LinkState.Live, StateSince = now, Role = capture.Role, Envelope = envelope, Authority = source.Authority, Checkable = source.CheckPolicy != "none" };
+                    Url = capture.Url, State = LinkState.Live, StateSince = now, Role = capture.Role, Envelope = envelope, Authority = source.Authority, Checkable = source.CheckPolicy != "none",
+                    FirstSeen = now, FirstRun = runId };
                 links.Add(entry.Id, entry);
             }
             if ((entry.At is { } at && capture.CapturedAtUtc < at)
@@ -163,6 +165,7 @@ public sealed class FakePostBroker(IRegistrationBroker registry, TimeProvider? c
             var ids = links.Values.Where(link => link.PostId == loserId).Select(link => link.Id).ToArray();
             foreach (var id in ids) links[id].PostId = survivorId;
             posts[loserId] = loser with { MergedInto = survivorId, Revision = loser.Revision + 1, LastChangedAtUtc = time.GetUtcNow() };
+            Record(loserId, loser.Base);
             Resolve(survivorId, true);
             var merge = new PostMergeModel { Id = Guid.CreateVersion7(time.GetUtcNow()), SurvivorId = survivorId, LoserId = loserId, Undone = false };
             merges.Add(merge.Id, (merge, containerId, ids));
@@ -189,6 +192,16 @@ public sealed class FakePostBroker(IRegistrationBroker registry, TimeProvider? c
         }
     }
 
+    /// <summary>Gets a container's links with when each was first seen and the run of its first capture.</summary>
+    internal IReadOnlyList<LinkView> Links(Guid containerId) => [.. links.Values.Where(link => link.ContainerId == containerId)
+        .Select(link => new LinkView(link.Id, link.PostId, link.SourceId, link.Url, link.FirstSeen, link.FirstRun))];
+
+    /// <summary>Gets a post as stored, or null when the fake holds none.</summary>
+    internal PostModel? Find(Guid postId) => posts.TryGetValue(postId, out var post) ? post : null;
+
+    /// <summary>Gets a post's recorded revisions, oldest first.</summary>
+    internal IReadOnlyList<PostRevisionModel> Revisions(Guid postId) => revisions.TryGetValue(postId, out var list) ? [.. list] : [];
+
     internal IReadOnlyList<PostModel> Snapshot(Guid containerId) => posts.Values.Where(post => post.ContainerId == containerId).Select(post => Read(post.Id)).ToArray();
     internal Guid? PipelineFor(Guid? runId) => runId is { } id && runs.TryGetValue(id, out var run) ? run.Pipeline : null;
 
@@ -201,8 +214,38 @@ public sealed class FakePostBroker(IRegistrationBroker registry, TimeProvider? c
         SourceFields = link.Envelope.Extras.TryGetValue("source", out var native) ? native : null,
     }).ToArray() };
 
+    /// <summary>Records the post's current revision: <c>created</c> when <paramref name="before"/> is null, else the
+    /// top-level base fields that differ from it.</summary>
+    private void Record(Guid postId, PostEnvelope? before)
+    {
+        var post = posts[postId];
+        if (!revisions.TryGetValue(postId, out var list))
+            revisions[postId] = list = [];
+        if (list.Any(revision => revision.Revision == post.Revision))
+            return;
+        list.Add(new PostRevisionModel
+        {
+            Revision = post.Revision, At = time.GetUtcNow(),
+            Changed = before is null ? [PostRevisionConstants.Created] : ChangedFields(before, post.Base),
+        });
+    }
+
+    private static string[] ChangedFields(PostEnvelope before, PostEnvelope after)
+    {
+        var previous = JsonSerializer.SerializeToElement(before, TestWireJson.Options);
+        var next = JsonSerializer.SerializeToElement(after, TestWireJson.Options);
+        var names = previous.EnumerateObject().Select(field => field.Name).Union(next.EnumerateObject().Select(field => field.Name));
+        return [.. names.Where(name => !PostRevisionConstants.IgnoredFields.Contains(name))
+            .Where(name => !JsonElement.DeepEquals(Field(previous, name), Field(next, name)))
+            .Order(StringComparer.Ordinal)];
+    }
+
+    private static JsonElement Field(JsonElement value, string name) =>
+        value.TryGetProperty(name, out var field) ? field : JsonSerializer.SerializeToElement<object?>(null);
+
     private void Resolve(Guid postId, bool bump)
     {
+        var before = posts[postId].Base;
         var rows = links.Values.Where(link => link.PostId == postId).OrderBy(link => link.State is LinkState.Live or LinkState.Relisted ? 0 : 1)
             .ThenByDescending(link => link.Authority).ThenByDescending(link => link.At).ThenBy(link => link.Id).ToArray();
         if (rows.Length == 0) return;
@@ -226,6 +269,7 @@ public sealed class FakePostBroker(IRegistrationBroker registry, TimeProvider? c
             State = checkable.Length == 0 || checkable.Any(row => row.State is LinkState.Live or LinkState.Relisted) ? PostState.Live
                 : checkable.Any(row => row.State == LinkState.Suspect) ? PostState.Suspect : PostState.Gone,
         };
+        Record(postId, bump ? before : null);
     }
 
     private bool ValidRun(Guid? runId, Guid containerId, Guid sourceId) => runId is null || runs.TryGetValue(runId.Value, out var run) && run.Container == containerId && run.Source == sourceId;
@@ -253,5 +297,10 @@ public sealed class FakePostBroker(IRegistrationBroker registry, TimeProvider? c
         internal int? CheckHttpStatus;
         internal Guid? CheckRunId;
         internal DateTimeOffset StateSince;
+        internal DateTimeOffset FirstSeen;
+        internal Guid? FirstRun;
     }
+
+    /// <summary>Represents a link as the fake overview reads it.</summary>
+    internal sealed record LinkView(Guid Id, Guid PostId, Guid SourceId, string Url, DateTimeOffset FirstSeen, Guid? FirstRun);
 }

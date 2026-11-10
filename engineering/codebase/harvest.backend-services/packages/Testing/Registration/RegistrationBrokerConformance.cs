@@ -550,6 +550,109 @@ public abstract class RegistrationBrokerConformance
         Error(await Broker.UpdatePipelineAsync(Guid.NewGuid(), update)).Type.Should().Be(AppErrorType.NotFound);
     }
 
+    /// <summary>A stated maximum of pages replaces the stored one; omitted limits keep what is stored.</summary>
+    [Fact]
+    public async Task UpdatePipeline_ShouldSetMaxPagesAndKeepOtherLimits_WhenLimitsAreStated()
+    {
+        var (container, source) = await SourceAsync(SourceCoverage.Whole);
+        var original = Value(await Broker.DeclarePipelineAsync(Pipeline(container, source) with
+        {
+            Limits = new PipelineLimits { MaxPages = 3, MaxItems = 100 },
+        }));
+        PipelineUpdate Update(PipelineLimits? limits) => new() { Scope = original.Scope, Schedules = [], Limits = limits };
+
+        var updated = Value(await Broker.UpdatePipelineAsync(original.Id, Update(new PipelineLimits { MaxPages = PipelineConstants.MaxPagesOnUpdate })));
+        updated.Limits.MaxPages.Should().Be(PipelineConstants.MaxPagesOnUpdate);
+        updated.Limits.MaxItems.Should().Be(100);
+        Value(await Broker.UpdatePipelineAsync(original.Id, Update(null))).Limits.Should().BeEquivalentTo(updated.Limits);
+        Error(await Broker.UpdatePipelineAsync(original.Id, Update(new PipelineLimits { MaxPages = PipelineConstants.MaxPagesOnUpdate + 1 })))
+            .Type.Should().Be(AppErrorType.Validation);
+        Error(await Broker.UpdatePipelineAsync(original.Id, Update(new PipelineLimits { MaxPages = 0 }))).Type.Should().Be(AppErrorType.Validation);
+        Value(await Broker.GetPipelineAsync(original.Id)).Limits.MaxPages.Should().Be(PipelineConstants.MaxPagesOnUpdate);
+    }
+
+    // ── Source groups and names ─────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>A group's name is unique in its container whatever its case, so declaring it again returns it.</summary>
+    [Fact]
+    public async Task DeclareSourceGroup_ShouldReturnTheSameGroup_WhenTheNameRepeatsInAnyCase()
+    {
+        var container = await PrivateContainerAsync(await TenantAsync());
+        var other = await PrivateContainerAsync(await TenantAsync());
+
+        var group = Value(await Broker.DeclareSourceGroupAsync(new SourceGroupDeclaration
+        {
+            ContainerId = container.Id, Name = " Afisha ", Description = " Tashkent's listings ",
+        }));
+        var again = Value(await Broker.DeclareSourceGroupAsync(new SourceGroupDeclaration { ContainerId = container.Id, Name = "AFISHA" }));
+        var elsewhere = Value(await Broker.DeclareSourceGroupAsync(new SourceGroupDeclaration { ContainerId = other.Id, Name = "Afisha" }));
+
+        group.Should().Match<SourceGroupModel>(value => value.ContainerId == container.Id && value.Name == "Afisha"
+            && value.Description == "Tashkent's listings");
+        again.Should().BeEquivalentTo(group);
+        elsewhere.Id.Should().NotBe(group.Id);
+        Value(await Broker.ListSourceGroupsAsync(container.Id)).Should().ContainSingle().Which.Should().BeEquivalentTo(group);
+    }
+
+    /// <summary>A blank name, a long description or an unknown container is refused.</summary>
+    [Fact]
+    public async Task DeclareSourceGroup_ShouldFail_WhenTheGroupIsMalformedOrItsContainerUnknown()
+    {
+        var container = await PrivateContainerAsync(await TenantAsync());
+
+        Error(await Broker.DeclareSourceGroupAsync(new SourceGroupDeclaration { ContainerId = container.Id, Name = "  " }))
+            .Type.Should().Be(AppErrorType.Validation);
+        Error(await Broker.DeclareSourceGroupAsync(new SourceGroupDeclaration
+        {
+            ContainerId = container.Id, Name = "Long", Description = new string('d', SourceConstants.MaxGroupDescriptionLength + 1),
+        })).Type.Should().Be(AppErrorType.Validation);
+        Error(await Broker.DeclareSourceGroupAsync(new SourceGroupDeclaration { ContainerId = Guid.NewGuid(), Name = "Lost" }))
+            .Type.Should().Be(AppErrorType.NotFound);
+        Error(await Broker.ListSourceGroupsAsync(Guid.NewGuid())).Type.Should().Be(AppErrorType.NotFound);
+    }
+
+    /// <summary>A source takes a display name and a group, keeps them when the update omits them, and loses them when
+    /// cleared.</summary>
+    [Fact]
+    public async Task UpdateSource_ShouldSetKeepAndClearTheNameAndGroup()
+    {
+        var (container, source) = await SourceAsync(SourceCoverage.Whole);
+        var group = Value(await Broker.DeclareSourceGroupAsync(new SourceGroupDeclaration { ContainerId = container.Id, Name = "Publisher" }));
+
+        var named = Value(await Broker.UpdateSourceAsync(source.Id, new SourceUpdate { Name = " Afisha.uz ", GroupId = group.Id }));
+        named.Name.Should().Be("Afisha.uz");
+        named.GroupId.Should().Be(group.Id);
+        named.Handle.Should().Be(source.Handle);
+        Value(await Broker.GetSourceAsync(source.Id)).Should().BeEquivalentTo(named);
+        Value(await Broker.UpdateSourceAsync(source.Id, new SourceUpdate())).Should().BeEquivalentTo(named);
+
+        var ungrouped = Value(await Broker.UpdateSourceAsync(source.Id, new SourceUpdate { ClearGroup = true }));
+        ungrouped.GroupId.Should().BeNull();
+        ungrouped.Name.Should().Be("Afisha.uz");
+        Value(await Broker.UpdateSourceAsync(source.Id, new SourceUpdate { Name = "" })).Name.Should().BeNull();
+        Value(await Broker.ListSourcesAsync(container.Id)).Single().Should().Match<SourceModel>(value => value.Name == null && value.GroupId == null);
+    }
+
+    /// <summary>A group of another container, an unknown group or source, or a group set and cleared at once is refused.</summary>
+    [Fact]
+    public async Task UpdateSource_ShouldFail_WhenTheGroupOrSourceCannotTakeIt()
+    {
+        var (container, source) = await SourceAsync(SourceCoverage.Whole);
+        var foreign = Value(await Broker.DeclareSourceGroupAsync(new SourceGroupDeclaration
+        {
+            ContainerId = (await PrivateContainerAsync(await TenantAsync())).Id, Name = "Foreign",
+        }));
+        var own = Value(await Broker.DeclareSourceGroupAsync(new SourceGroupDeclaration { ContainerId = container.Id, Name = "Own" }));
+
+        Error(await Broker.UpdateSourceAsync(source.Id, new SourceUpdate { GroupId = foreign.Id })).Type.Should().Be(AppErrorType.Validation);
+        Error(await Broker.UpdateSourceAsync(source.Id, new SourceUpdate { GroupId = Guid.NewGuid() })).Type.Should().Be(AppErrorType.NotFound);
+        Error(await Broker.UpdateSourceAsync(source.Id, new SourceUpdate { GroupId = own.Id, ClearGroup = true })).Type.Should().Be(AppErrorType.Validation);
+        Error(await Broker.UpdateSourceAsync(source.Id, new SourceUpdate { Name = new string('n', RegistrationConstants.MaxNameLength + 1) }))
+            .Type.Should().Be(AppErrorType.Validation);
+        Error(await Broker.UpdateSourceAsync(Guid.NewGuid(), new SourceUpdate { Name = "Lost" })).Type.Should().Be(AppErrorType.NotFound);
+        Value(await Broker.GetSourceAsync(source.Id)).Should().Match<SourceModel>(value => value.Name == null && value.GroupId == null);
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>Returns twelve lowercase hex characters, unique per call.</summary>

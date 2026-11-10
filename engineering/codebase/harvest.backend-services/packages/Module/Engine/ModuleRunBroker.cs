@@ -3,6 +3,7 @@ using Npgsql;
 using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Persistence;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Sources;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
 using WoW.Two.Sdk.Beta.Be.Harvest.Runs;
@@ -121,5 +122,26 @@ internal sealed class ModuleRunBroker(
                 Queued = reader.GetInt32(5), Running = reader.GetInt32(6),
             });
         return Result<IReadOnlyList<HostHealthModel>>.Ok(hosts);
+    }
+
+    public async Task<Result<SourceHealthModel>> SetReadingPaceAsync(Guid sourceId, int minDelayMs, CancellationToken cancellationToken = default)
+    {
+        if (minDelayMs is < SourceConstants.MinReadingDelayMs or > SourceConstants.MaxReadingDelayMs)
+            return Result<SourceHealthModel>.Fail(AppErrorFactory.Validation(
+                $"The reading pace must be {SourceConstants.MinReadingDelayMs}–{SourceConstants.MaxReadingDelayMs} ms."));
+        if (await registry.GetSourceAsync(sourceId, cancellationToken) is not Result<SourceModel>.Success { Value: var source })
+            return Result<SourceHealthModel>.Fail(RegistrationErrors.SourceNotFound(sourceId));
+        await using NpgsqlConnection connection = await database.OpenConnectionAsync(cancellationToken);
+        var now = clock.GetUtcNow();
+        // The host's row is shared by every source and container on the host; the planner creates it the same way.
+        await EngineSql.ExecuteAsync(connection, null,
+            """
+            INSERT INTO harvest_host_state(host_key,min_delay_ms,next_allowed_at,updated_at) VALUES(@host,@delay,@now,@now)
+            ON CONFLICT(host_key) DO UPDATE SET min_delay_ms=EXCLUDED.min_delay_ms,updated_at=EXCLUDED.updated_at
+            """, cancellationToken, ("host", source.Handle), ("delay", minDelayMs), ("now", now));
+        var hosts = await SourceHealthSql.ReadHostsAsync(connection, [source.Handle], cancellationToken);
+        var refusals = await SourceHealthSql.ReadRefusalsAsync(connection, [source.Id], cancellationToken);
+        return Result<SourceHealthModel>.Ok(SourceOverviewRules.Health(source.Handle, hosts.GetValueOrDefault(source.Handle),
+            refusals.GetValueOrDefault(source.Id), now));
     }
 }

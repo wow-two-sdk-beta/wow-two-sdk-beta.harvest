@@ -15,6 +15,27 @@ public static class SourceConstants
     /// <summary>Holds the prefix of a Telegram handle.</summary>
     public const string TelegramHandlePrefix = "tg:";
 
+    /// <summary>Holds the longest source group description.</summary>
+    public const int MaxGroupDescriptionLength = 1000;
+
+    /// <summary>Holds the shortest gap between two requests to a host an operator may set, in milliseconds.</summary>
+    public const int MinReadingDelayMs = 1000;
+
+    /// <summary>Holds the longest gap between two requests to a host an operator may set, in milliseconds.</summary>
+    public const int MaxReadingDelayMs = 60000;
+
+    /// <summary>Holds the gap between two requests to a host that has no stored pace, in milliseconds.</summary>
+    public const int DefaultReadingDelayMs = 2000;
+
+    /// <summary>Holds the UTC days a source overview counts new posts over, today included.</summary>
+    public const int OverviewDays = 14;
+
+    /// <summary>Holds the most posts a source's post list returns unless the caller asks for fewer.</summary>
+    public const int DefaultPostsLimit = 200;
+
+    /// <summary>Holds the most posts a source's post list may return.</summary>
+    public const int MaxPostsLimit = 500;
+
     /// <summary>Gets the seeded retention classes.</summary>
     public static IReadOnlyList<string> RetentionClasses { get; } = ["standard", "youtube", "meta", "x", "telegram", "intake"];
 

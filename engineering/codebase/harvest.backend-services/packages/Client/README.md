@@ -15,6 +15,7 @@ services.AddHarvestClient(options =>
 });
 services.AddHarvestDataClient(); // Client.Delivery: IPostBroker, IDeliveryBroker
 services.AddHarvestRunClient();  // Client.Runs: IRunBroker
+services.AddHarvestSourceClient(); // Client.Sources: ISourceOverviewBroker
 ```
 
 A service that trusts the same Identity issuer as SCFD sends a client-credentials token instead of an API key:
@@ -36,7 +37,10 @@ services.AddHarvestDataClient(); // takes the same token
 
 The resource defaults to `BaseAddress` with its trailing slash. Set `ApiKey` or `Identity`, not both.
 
-- `IRegistrationBroker` — tenants, API keys, containers, sources, pipelines; sent with the key in `X-Api-Key`.
-- `IRunBroker` — pipeline executions, cancellation, pause controls and container-scoped host health.
+- `IRegistrationBroker` — tenants, API keys, containers, sources and their groups, pipelines; sent with the key in
+  `X-Api-Key`.
+- `IRunBroker` — pipeline executions, cancellation, pause controls, container-scoped host health and a source host's
+  reading pace.
+- `ISourceOverviewBroker` — the console's per-source overview, a source's posts and a post's revisions.
 - `IPostBroker` — post queries and operator-only ingestion and merge controls.
 - `IDeliveryBroker` — tenant-owned subscriptions and pull cursors; replaying a cursor replays its stable event IDs.

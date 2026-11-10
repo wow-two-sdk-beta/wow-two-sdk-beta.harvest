@@ -12,7 +12,8 @@ The code lives in `harvest.backend-services/` (.NET) and `harvest.frontend-servi
   `Directory.Packages.props` is their floor.
 - `Module`: `Persistence/` (the context and the registry rows), `Store/` (the boot self-test), `Registration/` (the
   broker and its rules), `ApiKeys/` (the key store core's scheme reads), and the lane folders `Capabilities/`,
-  `Engine/`, `Readers/`, `Extraction/`, `Posts/`, `Delivery/`, each with its lead doc.
+  `Engine/`, `Readers/`, `Extraction/`, `Posts/`, `Delivery/`, `Sources/` (the console's read side), each with its lead
+  doc.
 - `service/Harvest.Api` hosts the module by `ProjectReference`. Hosting owns the store boot, API controllers,
   scoped machine access and local development keys under `Registration/Access/`.
 - Tests: `Unit` (package logic, no I/O), `Integration` (the module over PostgreSQL: rows, self-test, key store,

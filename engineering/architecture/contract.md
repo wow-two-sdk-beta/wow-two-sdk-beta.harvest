@@ -1,6 +1,6 @@
 # wow-two-sdk-beta.harvest — Contract
 
-*Last updated: 2026-10-27*
+*Last updated: 2026-11-10*
 
 > Everything in `packages/Abstractions`: the registry broker every form implements, and the seams the engine lanes and
 > source adapters build against. Interfaces and models only — no DI, options or I/O. Rules:
@@ -10,7 +10,7 @@
 
 ## Registration
 
-`IRegistrationBroker` (`Registration`) — tenants, their API keys, containers, sources and pipelines.
+`IRegistrationBroker` (`Registration`) — tenants, their API keys, containers, sources and their groups, and pipelines.
 
 | Member | Returns | Failures |
 |---|---|---|
@@ -23,9 +23,12 @@
 | `GetContainerAsync(id)` · `ListContainersAsync(tenantId?)` | one · a tenant's or every container | `NotFound` |
 | `RegisterSourceAsync(SourceRegistration)` | `SourceModel`; handle normalized per family, permissive posture defaults | `NotFound` container · `Validation` handle, authority, retention class, check policy, capability policy · `Conflict` handle |
 | `GetSourceAsync(id)` · `ListSourcesAsync(containerId)` | one · by family and handle | `NotFound` |
+| `UpdateSourceAsync(id, SourceUpdate)` | `SourceModel` with its display `name` and `groupId`; an omitted value keeps what is stored, a blank name clears it, `clearGroup` ungroups | `NotFound` source, group · `Validation` name over 200, a group of another container, a group with `clearGroup` |
+| `DeclareSourceGroupAsync(SourceGroupDeclaration)` | `SourceGroupModel`; a name the container holds in any case returns that group unchanged | `NotFound` container · `Validation` blank or long name, description over 1000 |
+| `ListSourceGroupsAsync(containerId)` | the container's groups, by name | `NotFound` |
 | `DeclarePipelineAsync(PipelineDeclaration)` | `PipelineModel` with its schedule rows; `active` over an open or granted source, else `pendingApproval` | `NotFound` container, source · `Validation` source of another container, denied source, filtered source without scope, schedules, step overrides, limits · `Conflict` same `(container, source, scope key)` |
 | `GetPipelineAsync(id)` · `ListPipelinesAsync(containerId)` | one · oldest first | `NotFound` |
-| `UpdatePipelineAsync(id, PipelineUpdate)` | replaces name, full scope and schedules; retains IDs/history, limits, lifecycle and queued plans; omitted kinds disabled | `NotFound` pipeline · `Validation` as declaration · `Conflict` duplicate scope |
+| `UpdatePipelineAsync(id, PipelineUpdate)` | replaces name, full scope and schedules; sets each limit `Limits` states and keeps the rest; retains IDs/history, lifecycle and queued plans; omitted kinds disabled | `NotFound` pipeline · `Validation` as declaration, `maxPages` outside 1–50 · `Conflict` duplicate scope |
 
 - Normalization: web handles reduce to their IDNA host; Telegram handles become `tg:{username}`; the scope key is `*`
   for the whole source, else the normalized URL (sorted query, no fragment) and the parameters sorted by name.
@@ -58,6 +61,10 @@
 | `POST api/pipelines` | `pipelines:manage` | its own private containers; the pool is 403 |
 | `PUT api/pipelines/{id}` | `pipelines:manage` | edits its own private pipelines; the pool is 403 and foreign pipelines are 404 |
 | `GET api/pipelines` | `pipelines:read` | the pool and its own tenant's; another tenant's is 404 |
+| `PUT api/pipelines/{id}` with `limits` | `pipelines:manage`, operator | nothing (403); the same edit without `limits` follows the row above |
+| `POST api/sources/groups` · `PUT api/sources/{id}` · `PUT api/sources/{id}/reading` | `harvest:manage-sources`: `sources:manage` held by the operator | nothing (403), a browser session's `sources:manage` included |
+| `GET api/sources/overview` · `GET api/sources/groups` | `pipelines:read` (no `sources:read` exists) | the pool and its own tenant's; another tenant's is 404 |
+| `GET api/sources/{id}/posts` · `GET api/posts/{id}/revisions` | `posts:read` | sources and posts of the pool and its own tenant's; another tenant's is 404 |
 
 - Keys: Identity.Auth `Identity/ApiKeys` (`ApiKey` scheme, no local pass); `/api/system/status` stays open.
 - The operator key (`Harvest:Operator:ApiKey`, `HarvestModuleOptions.OperatorApiKey`) holds every scope and no tenant;
@@ -102,8 +109,9 @@ the private adapters repository. Every type references the BCL and the kernel on
 - A lease owns its client and account/IP reservation until disposal, including robots and allowed redirects. Private
   sessions do not share cached bodies. The direct factory remains the public default.
 - The renderer serves pages that show their content only through JavaScript, never a challenge.
-- The schema in the SQL migrations (`001` baseline, `002` without the ladder) is the shared seam between lanes: each
-  lane maps the tables its folder's lead doc names.
+- The schema in the SQL migrations is the shared seam between lanes: `001-baseline`, `002-drop-escalation` (no
+  ladder), `003-fetching`, `004-posts-delivery`, `005-subscription-filter`, `006-source-groups` (source groups, display
+  names, the post revision log). Each lane maps the tables its folder's lead doc names.
 - `Capture.ContentProjection` drives the content hash; a capture row exists only when it changes.
 - Source readers can retain their versioned native field envelope in page metadata's `sourceFields`; extraction
   preserves it under `PostEnvelope.Extras["source"]`. Original publisher labels use `SourceTags`, independently
@@ -132,8 +140,10 @@ the private adapters repository. Every type references the BCL and the kernel on
 
 ## Runs, posts and pull delivery
 
-- `IRunBroker`: `StartAsync`, `GetAsync`, `ListAsync`, `CancelAsync`, `SetPausedAsync`, `HostsAsync`.
-  Routes: `api/runs`, `api/runs/{id}/cancel`, `api/pipelines/{id}/pause`, `api/hosts?containerId`.
+- `IRunBroker`: `StartAsync`, `GetAsync`, `ListAsync`, `CancelAsync`, `SetPausedAsync`, `HostsAsync`,
+  `SetReadingPaceAsync(sourceId, minDelayMs)` (1000–60000 ms on the source's host, returns its `SourceHealthModel`).
+  Routes: `api/runs`, `api/runs/{id}/cancel`, `api/pipelines/{id}/pause`, `api/hosts?containerId`,
+  `PUT api/sources/{id}/reading`.
 - `IPostBroker`: `SaveCaptureAsync`, `ObserveLinkAsync`, `GetPostAsync`, `ListPostsAsync`, `MergeAsync`, `UnmergeAsync`.
   Routes: `api/posts`, operator-only `captures`/`observations`, `api/post-merges`.
 - `IDeliveryBroker`: `SubscribeAsync`, `GetSubscriptionAsync`, `ListSubscriptionsAsync`, `PullAsync`.
@@ -156,9 +166,41 @@ the private adapters repository. Every type references the BCL and the kernel on
 - a transaction committed late therefore cannot be skipped by an identity-only cursor; an old cursor replays stable event IDs
 - module and HTTP forms share `RunBrokerConformance` and `PostDeliveryBrokerConformance` with the consumer fakes
 
-`AddHarvestClient` registers the registry. `Client.Runs.AddHarvestRunClient` and
-`Client.Delivery.AddHarvestDataClient` explicitly add the other HTTP brokers under its configured endpoint and key.
+`AddHarvestClient` registers the registry. `Client.Runs.AddHarvestRunClient`, `Client.Delivery.AddHarvestDataClient`
+and `Client.Sources.AddHarvestSourceClient` explicitly add the other HTTP brokers under its configured endpoint and key.
 The module's `Module.*` registration extensions likewise opt each capability in separately.
+
+---
+
+## Sources overview
+
+`ISourceOverviewBroker` (`Sources`) — the console's Sources area, read-only over the registry, run, post and delivery
+stores. Groups and display names are `IRegistrationBroker`'s; the reading pace is `IRunBroker`'s.
+
+| Member | Returns | Failures |
+|---|---|---|
+| `ListOverviewAsync(containerId)` | one `SourceOverviewModel` per registered source, by name: `state`, `lastHarvest`, `nextHarvestAt`, `newPostsDaily` (14 UTC days, today last), `sections` (one per pipeline), `health` | `NotFound` container |
+| `ListSourcePostsAsync(sourceId, limit = 200)` | `SourcePostModel` newest first: title, kind, state, revision, first seen, last changed, the section that first captured it, stated start, URL, the first image's source URL (never a `fileRef`) | `NotFound` source · `Validation` limit outside 1–500 |
+| `ListPostRevisionsAsync(containerId, postId)` | `PostRevisionModel` newest first: `revision`, `at`, `changed`; empty for a post from before `006` | `NotFound` post in the container |
+
+- `state`: `harvesting` while a run is queued or running; else `needsAttention` when the host is paused, has failed 3
+  or more times in a row, or the last harvest failed; else `healthy` when a section harvests; else `idle`.
+- A section harvests when its pipeline is active and has an enabled capture schedule. Rules in full:
+  `packages/Module/Sources/sources.md`.
+- The post resolve writes `harvest_post_revisions` on create (`changed = {created}`) and on each revision rise, naming
+  the top-level `base` fields that changed (never `extraction`, `fieldSources`, `flags`).
+- Routes: `GET api/sources/overview?containerId`, `GET api/sources/{id}/posts?limit`,
+  `GET api/posts/{id}/revisions` (`containerId` optional; without it the caller's visible containers are searched),
+  and the registry's `GET`/`POST api/sources/groups`, `PUT api/sources/{id}`.
+
+| Form | Implementation | Registration |
+|---|---|---|
+| 1 | `ModuleSourceOverviewBroker` (Module, `Sources/`) | `AddHarvestSources()` |
+| 2/3 | `ApiSourceOverviewBroker` (Client) | `AddHarvestSourceClient()` after `AddHarvestClient` |
+| fake | `FakeSourceOverviewBroker` (Testing) over the registry, run, post and delivery fakes | constructed |
+
+- Conformance: `SourceOverviewBrokerConformance` runs against all three; groups, names and `maxPages` join
+  `RegistrationBrokerConformance`, the reading pace `RunBrokerConformance`.
 
 ---
 

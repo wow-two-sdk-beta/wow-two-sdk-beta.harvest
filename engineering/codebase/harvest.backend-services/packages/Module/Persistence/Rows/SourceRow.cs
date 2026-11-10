@@ -17,6 +17,12 @@ internal sealed class SourceRow
 
     public string? ExternalRef { get; set; }
 
+    /// <summary>Gets or sets the display name; null shows the handle.</summary>
+    public string? DisplayName { get; set; }
+
+    /// <summary>Gets or sets the group in the same container.</summary>
+    public Guid? GroupId { get; set; }
+
     public required SourceCoverage Coverage { get; set; }
 
     public required SourceCompleteness Completeness { get; set; }

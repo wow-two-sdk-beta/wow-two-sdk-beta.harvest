@@ -52,6 +52,8 @@ internal static class RegistrationMapper
         ContainerId = row.ContainerId,
         Family = row.Family,
         Handle = row.Handle,
+        Name = row.DisplayName,
+        GroupId = row.GroupId,
         ExternalRef = row.ExternalRef,
         Coverage = row.Coverage,
         Completeness = row.Completeness,
@@ -68,6 +70,14 @@ internal static class RegistrationMapper
         State = row.State,
         StateSinceUtc = row.StateSince,
         CreatedAtUtc = row.CreatedAt,
+    };
+
+    public static SourceGroupModel ToModel(this SourceGroupRow row) => new()
+    {
+        Id = row.Id,
+        ContainerId = row.ContainerId,
+        Name = row.Name,
+        Description = row.Description,
     };
 
     public static PipelineModel ToModel(this PipelineRow row, IEnumerable<ScheduleRow> schedules) => new()

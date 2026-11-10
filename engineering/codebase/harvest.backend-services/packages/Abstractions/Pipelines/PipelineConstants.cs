@@ -12,6 +12,9 @@ public static class PipelineConstants
     /// <summary>Holds the most listing pages a filtered run may read.</summary>
     public const int MaxPagesCap = 100;
 
+    /// <summary>Holds the most listing pages an update may set.</summary>
+    public const int MaxPagesOnUpdate = 50;
+
     /// <summary>Holds the most items a filtered run may capture.</summary>
     public const int MaxItemsCap = 2000;
 

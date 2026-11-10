@@ -9,7 +9,8 @@ container-scoped reads, merge and unmerge; `AddHarvestPosts()` registers the Pos
 
 - Owns: `harvest_posts`, `harvest_post_texts` (trigram GIN on `match_text`), `harvest_post_links`,
   `harvest_link_schedule`, `harvest_link_readings`, `harvest_link_events`, `harvest_link_check_log`, `harvest_captures`
-  writes (monthly partitions; `harvest_ensure_capture_partitions` creates months ahead).
+  writes (monthly partitions; `harvest_ensure_capture_partitions` creates months ahead), `harvest_post_revisions`
+  writes.
 - Rules: a capture row only on a content-hash change; the post is derived from readings, never patched; only a
   completed run over a complete enumeration infers `suspect`; unverifiable links abstain.
 - Emits, in the same transaction: `post.new`, `post.changed`, `link.state` rows through the Delivery lane's log.
@@ -27,3 +28,7 @@ container-scoped reads, merge and unmerge; `AddHarvestPosts()` registers the Pos
   absence observation cannot revive the post
 - merge records the exact moved link identifiers in `harvest_post_merges`; undo restores them and records the pair
   in `harvest_post_keep_apart`, preserving both post identities
+- the resolve writes a `harvest_post_revisions` row in its transaction when it creates a post (`changed = {created}`)
+  or raises its revision; `changed` names the top-level `base` fields whose jsonb differs from the previous `base`,
+  never `extraction`, `fieldSources` or `flags`, and is empty when only state or provenance moved. A merge records the
+  loser's raised revision the same way; posts from before `006-source-groups` have no rows

@@ -9,7 +9,9 @@ calls the adapter's brokers.
 | the caller side of `Steps.ISourceAdapter` · `IStepBroker` | plans from `AdapterDescriptor`, layered adapter → source → pipeline → step, frozen into `runs.frozen` |
 | `Runs.*` vocabulary | statuses, triggers, reasons, item states, priorities |
 
-- Owns: `harvest_schedules.next_due_at`, `harvest_runs`, `harvest_work_item` (the frontier), lane backoff and usage attribution.
+- Owns: `harvest_schedules.next_due_at`, `harvest_runs`, `harvest_work_item` (the frontier), lane backoff and usage
+  attribution, and the operator's reading pace (`harvest_host_state.min_delay_ms`, `IRunBroker.SetReadingPaceAsync`:
+  1000–60000 ms per host, the source's handle; it returns the source's health from `Sources/`).
 - Rules: claim by `(host_key, lane)` with `FOR UPDATE SKIP LOCKED`; leases, never boot-time interrupts; fenced result
   writes; no transaction spans network I/O; `UNIQUE (pipeline_id, kind, scheduled_for)` makes scheduling idempotent.
 - A challenge, block or rate limit stays the item's outcome: its lane backs off, and the item waits for the lane, never

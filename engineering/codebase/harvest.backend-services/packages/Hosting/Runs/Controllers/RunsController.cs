@@ -7,6 +7,7 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Containers;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
 using WoW.Two.Sdk.Beta.Be.Harvest.Runs;
+using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 using WoW.Two.Sdk.Beta.Be.Harvest.Tenants;
 using WoW.Two.Sdk.Beta.Be.Web.Contracts;
 using WoW.Two.Sdk.Beta.Be.Web.ExceptionHandling.Extensions;
@@ -85,6 +86,13 @@ public sealed class RunsController(IRunBroker runs, IRegistrationBroker registry
         return (await runs.HostsAsync(containerId, ct)).Match<IActionResult>(
             value => Ok(ApiResponse<IReadOnlyList<HostHealthModel>>.Ok(value)), this.ToProblem);
     }
+
+    /// <summary>Sets the reading pace of a source's host, which every source on that host shares (operator only).</summary>
+    [HttpPut("/" + RegistrationRouteConstants.Sources + "/{sourceId:guid}/" + SourceRouteConstants.Reading)]
+    [Authorize(Policy = AccessPolicies.ManageSources)]
+    public async Task<IActionResult> SetReadingPace(Guid sourceId, [FromBody] SetReadingPaceRequest request, CancellationToken ct) =>
+        (await runs.SetReadingPaceAsync(sourceId, request.MinDelayMs, ct)).Match<IActionResult>(
+            value => Ok(ApiResponse<SourceHealthModel>.Ok(value)), this.ToProblem);
 
     private async Task<bool> AllowedAsync(Guid pipelineId, bool write, CancellationToken ct)
     {

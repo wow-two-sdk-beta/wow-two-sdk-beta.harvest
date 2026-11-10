@@ -99,6 +99,28 @@ public interface IRegistrationBroker
     /// <returns>The sources; <c>NotFound</c> for an unknown container.</returns>
     Task<Result<IReadOnlyList<SourceModel>>> ListSourcesAsync(Guid containerId, CancellationToken cancellationToken = default);
 
+    /// <summary>Sets a source's display name and group.</summary>
+    /// <param name="sourceId">The source to change.</param>
+    /// <param name="update">The name and group to set; an omitted value keeps what is stored.</param>
+    /// <param name="cancellationToken">The token that cancels the call.</param>
+    /// <returns>The source; <c>NotFound</c> for an unknown source or group, <c>Validation</c> for a name over 200
+    /// characters, a group of another container, or a group with <see cref="SourceUpdate.ClearGroup"/>.</returns>
+    Task<Result<SourceModel>> UpdateSourceAsync(Guid sourceId, SourceUpdate update, CancellationToken cancellationToken = default);
+
+    /// <summary>Declares a group of sources in a container; a name the container already holds, in any case, returns
+    /// that group unchanged.</summary>
+    /// <param name="declaration">The group to declare.</param>
+    /// <param name="cancellationToken">The token that cancels the call.</param>
+    /// <returns>The group; <c>NotFound</c> for an unknown container, <c>Validation</c> for a blank or long name or a
+    /// long description.</returns>
+    Task<Result<SourceGroupModel>> DeclareSourceGroupAsync(SourceGroupDeclaration declaration, CancellationToken cancellationToken = default);
+
+    /// <summary>Lists a container's source groups, by name.</summary>
+    /// <param name="containerId">The container.</param>
+    /// <param name="cancellationToken">The token that cancels the call.</param>
+    /// <returns>The groups; <c>NotFound</c> for an unknown container.</returns>
+    Task<Result<IReadOnlyList<SourceGroupModel>>> ListSourceGroupsAsync(Guid containerId, CancellationToken cancellationToken = default);
+
     /// <summary>Declares a pipeline over a source of the same container; it starts <see cref="PipelineState.Active"/>
     /// when the source's permission is open or granted, else <see cref="PipelineState.PendingApproval"/>.</summary>
     /// <param name="declaration">The pipeline to declare.</param>
@@ -108,12 +130,13 @@ public interface IRegistrationBroker
     /// or limits, <c>Conflict</c> when a pipeline with the same container, source and scope key exists.</returns>
     Task<Result<PipelineModel>> DeclarePipelineAsync(PipelineDeclaration declaration, CancellationToken cancellationToken = default);
 
-    /// <summary>Replaces the saved scope and schedules without changing queued runs or the source. Missing cadence
-    /// kinds are disabled; schedule identifiers and run history are retained.</summary>
+    /// <summary>Replaces the saved scope and schedules without changing queued runs or the source, and sets the limits
+    /// the update states. Missing cadence kinds are disabled; schedule identifiers and run history are retained.</summary>
     /// <param name="pipelineId">The pipeline to edit.</param>
-    /// <param name="update">The complete name, scope and cadence configuration.</param>
+    /// <param name="update">The complete name, scope and cadence configuration, and any limits to set.</param>
     /// <param name="cancellationToken">The token that cancels the call.</param>
-    /// <returns>The pipeline; validation and identity conflicts follow declaration, or NotFound for an unknown pipeline.</returns>
+    /// <returns>The pipeline; validation and identity conflicts follow declaration, <c>Validation</c> for a maximum of
+    /// pages outside 1–<see cref="PipelineConstants.MaxPagesOnUpdate"/>, or NotFound for an unknown pipeline.</returns>
     Task<Result<PipelineModel>> UpdatePipelineAsync(Guid pipelineId, PipelineUpdate update, CancellationToken cancellationToken = default);
 
     /// <summary>Reads a pipeline with its schedule rows.</summary>

@@ -122,6 +122,8 @@ internal sealed partial class ModulePostBroker
         return candidates.Count == 1 ? candidates[0] : null;
     }
 
+    /// <summary>Resolves a post from its links' readings and records its revision: <paramref name="increment"/> raises
+    /// it, and false means the write just created the post, which records <c>created</c>.</summary>
     private static async Task ResolveAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid containerId, Guid postId, DateTimeOffset now, bool increment, CancellationToken ct)
     {
         var readings = new List<(Guid LinkId, PostEnvelope Envelope)>();
@@ -135,6 +137,7 @@ internal sealed partial class ModulePostBroker
             while (await reader.ReadAsync(ct)) readings.Add((reader.GetGuid(0), StoreJson.Read(reader.GetString(1), EmptyEnvelope())));
         if (readings.Count == 0) return;
 
+        var previous = increment ? await PostRevisionLog.ReadAsync(connection, transaction, containerId, postId, ct) : null;
         var (resolved, provenance) = ResolveFields(readings);
         await PostSql.ExecuteAsync(connection, transaction, """
             WITH rollup AS (SELECT CASE
@@ -158,6 +161,7 @@ internal sealed partial class ModulePostBroker
             ("textLocale", resolved.Language?.Code ?? "und"), ("title", resolved.Title), ("text", resolved.Text),
             ("match", NormalizeText(resolved)[..Math.Min(1000, NormalizeText(resolved).Length)]),
             ("hash", MD5.HashData(Encoding.UTF8.GetBytes(NormalizeText(resolved)))), ("signature", NumberSignature(resolved)), ("link", readings[0].LinkId));
+        await PostRevisionLog.RecordAsync(connection, transaction, containerId, postId, previous, now, ct);
     }
 
     /// <summary>Holds field sources that qualify an envelope field rather than name one, by the field they qualify: a
