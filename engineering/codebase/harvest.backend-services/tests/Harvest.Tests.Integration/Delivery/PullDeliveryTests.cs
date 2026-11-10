@@ -182,6 +182,13 @@ public sealed class PullDeliveryTests
         data.GetProperty("schema").GetString().Should().Be(PostEnvelopeConstants.EventSchema);
         data.GetProperty("postId").GetGuid().Should().Be(saved.Post.Id);
         data.GetProperty("starts").GetProperty("value").GetString().Should().Be("2026-11-17");
+        page.Data.Single().PipelineId.Should().Be(host.PipelineId);
+        data.GetProperty("mapping").GetProperty("schema").GetString().Should().Be(PostEnvelopeConstants.EventSchema);
+        data.GetProperty("mapping").GetProperty("rules").GetString().Should().NotBeNullOrEmpty();
+        var evidence = data.GetProperty("capture");
+        evidence.GetProperty("captureId").GetString().Should().NotBeNullOrEmpty();
+        evidence.GetProperty("capturedAtUtc").GetString().Should().NotBeNullOrEmpty();
+        evidence.GetProperty("url").GetString().Should().Be(capture.Url);
     }
 
     private static SubscriptionDeclaration Declaration(PostHost host) => new()

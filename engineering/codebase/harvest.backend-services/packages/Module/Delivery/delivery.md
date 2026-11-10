@@ -22,7 +22,9 @@
 - a pull cursor binds its subscription and reads `(tx, id)` below `pg_snapshot_xmin(pg_current_snapshot())`;
   transactions that commit late cannot be skipped, and long-running transactions can delay visibility
 - an empty poll preserves its cursor; an older cursor replays the same event identifiers and revision snapshots
-- `wow2.event.v1` subscriptions project the stored event mapping with post identity, revision, state, links and field
-  provenance; a subscription without that schema reads the complete post snapshot
+- `wow2.event.v1` subscriptions project the stored event mapping with post identity, revision, state, links, field
+  provenance and `capture` (the newest captured link's id, time and URL); a subscription without that schema reads the
+  complete post snapshot
+- every pulled event names its subscription's `pipelineId`; tag and keyword subscriptions leave it null
 - `ApiDeliveryBroker` and `ApiPostBroker` share `AddHarvestDataClient()`; `PostDeliveryBrokerConformance` runs the same
   contract cases against the module, HTTP client and in-memory consumer fakes

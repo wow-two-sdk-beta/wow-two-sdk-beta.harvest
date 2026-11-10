@@ -126,7 +126,7 @@ public sealed class FakeDeliveryBroker : IDeliveryBroker
         if (entry.Events.Any(item => item.ItemId == itemId && item.Type == type)) return;
         entry.Events.Add(new DeliveryEvent
         {
-            EventId = Guid.CreateVersion7(time.GetUtcNow()), ItemId = itemId, SubscriptionId = entry.Subscription.Id, Type = type, OccurredAtUtc = time.GetUtcNow(),
+            EventId = Guid.CreateVersion7(time.GetUtcNow()), ItemId = itemId, SubscriptionId = entry.Subscription.Id, PipelineId = entry.Subscription.PipelineId, Type = type, OccurredAtUtc = time.GetUtcNow(),
             PostId = post.Id, Revision = post.Revision, LinkId = linkId, RunId = runId, Reason = reason, Context = entry.Subscription.Context,
             Data = JsonSerializer.SerializeToElement(post, TestWireJson.Options),
         });

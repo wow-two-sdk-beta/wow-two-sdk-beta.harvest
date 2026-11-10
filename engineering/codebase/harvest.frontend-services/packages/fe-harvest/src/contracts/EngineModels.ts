@@ -128,6 +128,8 @@ export interface SubscriptionModel {
 export interface DeliveryEvent {
   readonly eventId: string;
   readonly subscriptionId: string;
+  /** The pipeline the subscription follows; absent for tag and keyword subscriptions. */
+  readonly pipelineId?: string;
   readonly type: string;
   readonly postId?: string;
   readonly revision?: number;

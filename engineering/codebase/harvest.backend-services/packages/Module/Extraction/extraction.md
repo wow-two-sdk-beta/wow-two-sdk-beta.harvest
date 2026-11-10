@@ -15,10 +15,12 @@ Deterministic and rule tiers implement `IPostExtractor` without model or provide
 
 `AddHarvestExtraction()` registers `RulesPostExtractor`. Structured Event fields win; text rules fill missing dates,
 prices and contacts. Every filled field records its parser or rule in `FieldSources`, and each envelope records
-`norm@1` and `rules@1`.
+`norm@1` and `rules@4`.
 
 - `Extras.schemaOrg` retains the original Event node; `Extras.event` contains the deterministic `wow2.event.v1` payload
 - `EventSchemaMapper.Map(envelope)` exposes that event mapping for a subscription's schema selection
+- the mapping fills `organizer` only from a declared organizer (`FieldSources.organizer`), never from a byline or
+  publisher; it carries `postedAt` and a `mapping` stamp `{ schema, norm, rules, parser }`
 - dates retain stated year/month/day/time precision and offset. Invalid or relative dates remain unresolved
 - prices retain stated currency and amount, range or free status; absence never becomes zero
 - local Uzbek numbers gain `+998` only for an Uzbek source and a recognized local prefix; international numbers

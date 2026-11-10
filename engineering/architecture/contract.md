@@ -115,7 +115,7 @@ the private adapters repository. Every type references the BCL and the kernel on
   An inconclusive HTTP 200 becomes `Unrecognized` with no existence signal; ordinary HTTP-only sources keep their
   existing check behavior. Direct 404/410 and conditional 304 retain their transport evidence.
 - Explicit schema.org Product nodes map to `PostKind.Listing`, listed prices, seller and place without event dates
-  or ticket semantics; the common rule version is `rules@3`.
+  or ticket semantics; the common rule version is `rules@4`.
 
 ---
 

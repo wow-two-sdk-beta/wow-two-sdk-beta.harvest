@@ -23,6 +23,9 @@ public sealed record DeliveryEvent
     /// <summary>Gets when the change happened (UTC).</summary>
     public required DateTimeOffset OccurredAtUtc { get; init; }
 
+    /// <summary>Gets the pipeline the subscription follows; null for tag and keyword subscriptions.</summary>
+    public Guid? PipelineId { get; init; }
+
     /// <summary>Gets the post the event is about.</summary>
     public Guid? PostId { get; init; }
 

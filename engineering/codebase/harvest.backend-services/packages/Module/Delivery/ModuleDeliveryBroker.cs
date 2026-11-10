@@ -126,7 +126,7 @@ internal sealed class ModuleDeliveryBroker(
             while (await reader.ReadAsync(cancellationToken))
                 rows.Add((ulong.Parse(reader.GetString(0), System.Globalization.CultureInfo.InvariantCulture), reader.GetInt64(1), new DeliveryEvent
                 {
-                    EventId = reader.GetGuid(2), ItemId = reader.GetString(3), SubscriptionId = subscriptionId, Type = reader.GetString(4),
+                    EventId = reader.GetGuid(2), ItemId = reader.GetString(3), SubscriptionId = subscriptionId, PipelineId = subscription.PipelineId, Type = reader.GetString(4),
                     OccurredAtUtc = reader.GetFieldValue<DateTimeOffset>(5), PostId = reader.IsDBNull(6) ? null : reader.GetGuid(6),
                     Revision = reader.IsDBNull(7) ? null : reader.GetInt32(7), LinkId = reader.IsDBNull(8) ? null : reader.GetGuid(8),
                     RunId = reader.IsDBNull(9) ? null : reader.GetGuid(9), Reason = reader.IsDBNull(10) ? null : reader.GetString(10),
@@ -189,7 +189,27 @@ internal sealed class ModuleDeliveryBroker(
         if (values.TryGetValue("links", out var contentLinks)) values["contentLinks"] = contentLinks;
         foreach (var (source, target) in new[] { ("id", "postId"), ("revision", "revision"), ("state", "state"), ("links", "links"), ("fieldSources", "fieldSources"), ("mergedInto", "mergedInto") })
             if (payload.TryGetProperty(source, out var value)) values[target] = value.Clone();
+        if (payload.TryGetProperty("links", out var links) && Capture(links) is { } capture) values["capture"] = capture;
         return JsonSerializer.SerializeToElement(values);
+    }
+
+    /// <summary>Names the newest capture behind the revision: its id, time and URL, from the post's captured links.</summary>
+    private static JsonElement? Capture(JsonElement links)
+    {
+        if (links.ValueKind != JsonValueKind.Array) return null;
+        var newest = links.EnumerateArray()
+            .Where(link => link.ValueKind == JsonValueKind.Object
+                && link.TryGetProperty("captureId", out var id) && id.ValueKind == JsonValueKind.String
+                && link.TryGetProperty("capturedAtUtc", out var at) && at.ValueKind == JsonValueKind.String)
+            .OrderByDescending(link => link.GetProperty("capturedAtUtc").GetDateTimeOffset())
+            .Cast<JsonElement?>()
+            .FirstOrDefault();
+        return newest is not { } link ? null : JsonSerializer.SerializeToElement(new
+        {
+            captureId = link.GetProperty("captureId").GetString(),
+            capturedAtUtc = link.GetProperty("capturedAtUtc").GetString(),
+            url = link.TryGetProperty("url", out var url) ? url.GetString() : null,
+        });
     }
 
     private static Result<T> Invalid<T>(string message) where T : notnull => Result<T>.Fail(AppErrorFactory.Validation(message));

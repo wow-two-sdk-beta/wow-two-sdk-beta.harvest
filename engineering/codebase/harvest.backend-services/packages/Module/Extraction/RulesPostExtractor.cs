@@ -62,11 +62,15 @@ public sealed class RulesPostExtractor : IPostExtractor
             if (schemaOrg.TryGetProperty("location", out var place)) location = Location(place);
             if (location is not null) fieldSources["location"] = Deterministic(parser);
             if (schemaOrg.TryGetProperty("organizer", out var organizer))
+            {
                 author = new PostAuthor
                 {
                     Name = ReaderSupport.String(organizer, "name") ?? ReaderSupport.Scalar(organizer),
                     Url = ReaderSupport.Url(new Uri(capture.Url), ReaderSupport.String(organizer, "url")),
                 };
+                // The author doubles as the organizer only when the source declares one; a byline or publisher never does.
+                fieldSources["organizer"] = Deterministic(parser);
+            }
             if (schemaOrg.TryGetProperty("offers", out var offers))
             {
                 foreach (var offer in offers.ValueKind == JsonValueKind.Array ? offers.EnumerateArray().ToArray() : [offers])
@@ -141,7 +145,7 @@ public sealed class RulesPostExtractor : IPostExtractor
             Flags = capture.Warnings.Select(warning => "source_warning:" + warning)
                 .Concat(request.Ai != AiMode.Off ? ["ai_skipped:capability_unavailable"] : Array.Empty<string>())
                 .Distinct(StringComparer.Ordinal).ToArray(),
-            Extraction = new() { NormVersion = "norm@1", RulesVersion = "rules@3", TiersRun = [ExtractionTier.Deterministic, ExtractionTier.Rules] },
+            Extraction = new() { NormVersion = "norm@1", RulesVersion = "rules@4", TiersRun = [ExtractionTier.Deterministic, ExtractionTier.Rules] },
         };
         if (EventSchemaMapper.Map(envelope) is { } mapped) extras["event"] = mapped;
         return Task.FromResult(Result<PostEnvelope>.Ok(envelope));

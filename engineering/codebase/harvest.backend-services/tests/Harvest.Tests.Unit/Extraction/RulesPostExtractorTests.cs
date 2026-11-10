@@ -68,7 +68,7 @@ public sealed class RulesPostExtractorTests
         post.Flags.Should().Contain("source_warning:fixture_warning");
         post.Extras["source"].GetProperty("fields").GetProperty("customField").GetString().Should().Be("retained");
         post.FieldSources["sourceTags"].Tier.Should().Be(ExtractionTier.Deterministic);
-        post.Extraction.RulesVersion.Should().Be("rules@3");
+        post.Extraction.RulesVersion.Should().Be("rules@4");
     }
 
     [Theory]
@@ -110,6 +110,26 @@ public sealed class RulesPostExtractorTests
         post.Extras["event"].GetProperty("starts").GetProperty("precision").GetString().Should().Be("second");
         post.FieldSources["prices"].Tier.Should().Be(ExtractionTier.Deterministic);
         post.Extraction.Ai.Should().BeNull();
+        var mapped = post.Extras["event"];
+        mapped.GetProperty("organizer").GetProperty("name").GetString().Should().Be("Mstar");
+        mapped.GetProperty("mapping").GetProperty("rules").GetString().Should().Be("rules@4");
+        mapped.GetProperty("mapping").GetProperty("parser").GetString().Should().Be("schema.org.event");
+    }
+
+    [Fact]
+    public void Map_ShouldLeaveTheOrganizerEmpty_WhenOnlyABylineOrPublisherIsKnown()
+    {
+        var envelope = new PostEnvelope
+        {
+            Kind = PostKind.Event, Title = "Fashion week", Author = new() { Name = "Staff writer" },
+            PostedAt = new() { Value = "2026-09-02T08:13:47.0000000+00:00", Precision = DatePrecision.Second, TimeZone = "UTC" },
+            Extraction = new() { NormVersion = "norm@1", RulesVersion = "rules@4" },
+        };
+
+        var mapped = EventSchemaMapper.Map(envelope)!.Value;
+
+        mapped.GetProperty("organizer").ValueKind.Should().Be(JsonValueKind.Null);
+        mapped.GetProperty("postedAt").GetProperty("value").GetString().Should().StartWith("2026-09-02");
     }
 
     [Fact]
