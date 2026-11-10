@@ -135,6 +135,33 @@ public sealed class RulesPostExtractorTests
         mapped.GetProperty("organizer").ValueKind.Should().Be(JsonValueKind.Null);
         mapped.GetProperty("postedAt").GetProperty("value").GetString().Should().StartWith("2026-09-02");
         mapped.GetProperty("postedAt").GetProperty("precision").GetString().Should().Be("second");
+        mapped.GetProperty("classification").ValueKind.Should().Be(JsonValueKind.Null);
+        mapped.GetProperty("kind").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public void Map_ShouldCarryTheClassificationAndItsKind_AsEventsPayloadClassifierReadsThem()
+    {
+        var envelope = new PostEnvelope
+        {
+            Kind = PostKind.Event, Title = "Runway show",
+            Classification = new()
+            {
+                Classifier = "model:test@1", Verdict = ClassificationVerdict.Relevant, Confidence = 0.82,
+                Reason = "a runway show open to designers", Kind = "runway",
+            },
+            Extraction = new() { NormVersion = "norm@1", RulesVersion = "rules@4" },
+        };
+
+        var mapped = EventSchemaMapper.Map(envelope)!.Value;
+
+        mapped.GetProperty("kind").GetString().Should().Be("runway");
+        JsonElement classification = mapped.GetProperty("classification");
+        classification.GetProperty("classifier").GetString().Should().Be("model:test@1");
+        classification.GetProperty("verdict").GetString().Should().Be("relevant");
+        classification.GetProperty("confidence").GetDouble().Should().Be(0.82);
+        classification.GetProperty("reason").GetString().Should().Be("a runway show open to designers");
+        classification.GetProperty("kind").GetString().Should().Be("runway");
     }
 
     [Fact]

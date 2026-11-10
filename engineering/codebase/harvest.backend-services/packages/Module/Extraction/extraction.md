@@ -21,6 +21,8 @@ prices and contacts. Every filled field records its parser or rule in `FieldSour
 - `EventSchemaMapper.Map(envelope)` exposes that event mapping for a subscription's schema selection
 - the mapping fills `organizer` only from a declared organizer (`FieldSources.organizer`), never from a byline or
   publisher; it carries `postedAt` and a `mapping` stamp `{ schema, norm, rules, parser }`
+- `classification` `{ classifier, verdict: relevant | irrelevant | uncertain, confidence, reason, kind }` and the
+  top-level `kind` come from `PostEnvelope.Classification`; both stay null until a model tier writes them (#55)
 - dates retain stated year/month/day/time precision and offset. Invalid or relative dates remain unresolved
 - prices retain stated currency and amount, range or free status; absence never becomes zero
 - local Uzbek numbers gain `+998` only for an Uzbek source and a recognized local prefix; international numbers

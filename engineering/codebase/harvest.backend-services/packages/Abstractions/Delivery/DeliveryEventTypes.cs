@@ -27,7 +27,8 @@ public static class DeliveryEventTypes
     /// <summary>Holds the type of an undone merge.</summary>
     public const string PostUnmerged = "post.unmerged";
 
-    /// <summary>Holds the type of a purged post, which a consumer must honour.</summary>
+    /// <summary>Holds the type of a purged post, which a consumer must honour. Reserved: no step emits it until the
+    /// retention purge (events-integration #33) ships.</summary>
     public const string PostPurged = "post.purged";
 
     /// <summary>Holds the type of a post that came back after it was gone.</summary>

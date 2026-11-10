@@ -11,14 +11,13 @@ Picks for `system/sessions/events-integration` in wow-two-ws (P1 = this goal, P2
 
 | Item | Type | Notes |
 |---|---|---|
-| Identity scope names `harvest.{noun}-{verb}` | engineering | events-integration #16, P1: resource `harvest`; 11 scopes, two segments, mapped to the registry's colon names in `CallerResolver`; docs sample fixed |
-| Client credentials in the Client package | engineering | events-integration #15, P1: `AddHarvestDataClient` takes the be sdk's `OAuth2ClientCredentials` beside API keys, as the FSS Client does |
-| Event evidence: mapping stamp, capture, pipeline | feature | events-integration #19, P1: `wow2.event.v1` gains `mapping` `{schema, norm, rules, parser}` and a top-level `capture`; `DeliveryEvent` gains `PipelineId`; content hash and capture file P2 |
-| Organizer only from a declared organizer; `postedAt` | fix | events-integration #18, P1: the author or publisher no longer stands in for the organizer |
-| Remaining `wow2.event.v1` fields | feature | events-integration #18, P2: certainty, time zone, occurrences, typed deadlines, participation, contact ownership, structured place and country, offer kinds, image `FileRef`, kind, series |
+| Remaining `wow2.event.v1` fields | feature | events-integration #18, P2: certainty, time zone, occurrences, typed deadlines, participation, contact ownership, structured place and country, offer kinds, image `FileRef`, series; `kind` rides on `classification` |
 | Issuer per environment | docs | events-integration #17, P1: dev trusts Ocharo's Identity (#4); a separate SCFD issuer comes later |
-| Operating controls past v0.1 | feature | events-integration #33, P2: request allowance reserved in transport, retention purge, freshness and consumer-lag readout, resync control, backup/restore test |
-| First NuGet and npm publish | engineering | events-integration #15, P1: Events references `Harvest.Abstractions`, `.Client`, `.Testing`; needs `PUBLISH_PACKAGES` and the nuget.org trusted-publishing policy |
+| Operating controls past v0.1 | feature | events-integration #33, P2: request allowance reserved in transport, retention purge that emits the reserved `post.purged`, freshness and consumer-lag readout, resync control, backup/restore test |
+| Contract pages for `wow2.event.v1` | engineering | events-integration #43, P1: golden pull pages emitted from the module's delivery tests into checked-in files, with a manifest of tag and sha256 that Events replays; file shape proposed, waits for Events' answer |
+| Classification writer | feature | events-integration #55, P2: the model tier fills `PostClassification` (`classifier`, `verdict`, `confidence`, `reason`, `kind`); the shape ships in v0.1 iteration 14, no step writes it yet |
+| Console on a target | engineering | events-integration #56, P2: `deploy.yml` routes only `/api`; serving the console needs `/`, `Harvest:Console:*`, `Identity:Client:*`, `DataProtection:KeysPath` with a keys volume and an Identity console client; follows the layout redesign |
+| First NuGet and npm publish | engineering | events-integration #15, P2: Events keeps its own wire reader (#43), so no consumer waits; needs `PUBLISH_PACKAGES` and the nuget.org trusted-publishing policy |
 
 ## Features
 

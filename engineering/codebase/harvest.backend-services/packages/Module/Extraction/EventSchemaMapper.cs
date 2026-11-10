@@ -16,8 +16,9 @@ public static class EventSchemaMapper
 
     /// <summary>Maps an event envelope into <c>wow2.event.v1</c>, or returns null for another post kind.</summary>
     /// <param name="envelope">The deterministic base-envelope reading.</param>
-    /// <returns>The event schema, title, description, dates, organizer, place, offers, source structure and the mapping
-    /// stamp that names the versions which produced it.</returns>
+    /// <returns>The event schema, title, description, dates, organizer, place, offers, source structure, the
+    /// classification with its kind when a classification step ran, and the mapping stamp that names the versions which
+    /// produced it.</returns>
     public static JsonElement? Map(PostEnvelope envelope)
     {
         if (envelope.Kind != PostKind.Event) return null;
@@ -37,6 +38,8 @@ public static class EventSchemaMapper
             links = envelope.Links,
             media = envelope.Media,
             language = envelope.Language,
+            kind = envelope.Classification?.Kind,
+            classification = envelope.Classification,
             schemaOrg = envelope.Extras.TryGetValue("schemaOrg", out var original) ? (JsonElement?)original : null,
             mapping = new
             {

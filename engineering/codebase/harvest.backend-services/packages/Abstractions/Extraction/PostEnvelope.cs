@@ -62,6 +62,9 @@ public sealed record PostEnvelope
     /// <summary>Gets where each field came from, by field name.</summary>
     public IReadOnlyDictionary<string, FieldSource> FieldSources { get; init; } = new Dictionary<string, FieldSource>();
 
+    /// <summary>Gets a classification step's verdict on the post, when one ran.</summary>
+    public PostClassification? Classification { get; init; }
+
     /// <summary>Gets the flags, such as <c>low_confidence</c> or <c>ai_skipped:{gate}</c>.</summary>
     public IReadOnlyList<string> Flags { get; init; } = [];
 
