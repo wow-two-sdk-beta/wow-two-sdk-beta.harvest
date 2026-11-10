@@ -160,6 +160,10 @@ internal sealed partial class ModulePostBroker
             ("hash", MD5.HashData(Encoding.UTF8.GetBytes(NormalizeText(resolved)))), ("signature", NumberSignature(resolved)), ("link", readings[0].LinkId));
     }
 
+    /// <summary>Holds field sources that qualify an envelope field rather than name one, by the field they qualify: a
+    /// declared <c>organizer</c> says the <c>author</c> is the event's organizer, so it travels with the chosen author.</summary>
+    private static readonly IReadOnlyDictionary<string, string> QualifiedFields = new Dictionary<string, string> { ["organizer"] = "author" };
+
     private static (PostEnvelope Envelope, IReadOnlyDictionary<string, Guid> Provenance) ResolveFields(IReadOnlyList<(Guid LinkId, PostEnvelope Envelope)> readings)
     {
         var values = new Dictionary<string, JsonElement>();
@@ -174,6 +178,9 @@ internal sealed partial class ModulePostBroker
                 values.Add(field.Name, field.Value.Clone());
                 if (field.Name is not "schema" and not "extraction" and not "fieldSources") provenance.Add(field.Name, linkId);
                 if (envelope.FieldSources.TryGetValue(field.Name, out var extractionSource)) extractionSources[field.Name] = extractionSource;
+                foreach (var (qualifier, qualified) in QualifiedFields)
+                    if (field.Name == qualified && envelope.FieldSources.TryGetValue(qualifier, out var qualifierSource))
+                        extractionSources[qualifier] = qualifierSource;
             }
         }
         values["fieldSources"] = JsonSerializer.SerializeToElement(extractionSources, WoW.Two.Sdk.Beta.Be.Foundation.Serialization.JsonOptionsConstants.Default);

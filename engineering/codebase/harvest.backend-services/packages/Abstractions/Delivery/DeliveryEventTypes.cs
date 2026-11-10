@@ -15,10 +15,12 @@ public static class DeliveryEventTypes
     /// <summary>Holds the type of a link moving between live, suspect, gone and relisted.</summary>
     public const string LinkState = "link.state";
 
-    /// <summary>Holds the type of a finished run, so a consumer tells "nothing new" from "unchecked".</summary>
+    /// <summary>Holds the type of a finished run, so a consumer tells "nothing new" from "unchecked". Reserved: no step
+    /// emits it yet.</summary>
     public const string PipelineRun = "pipeline.run";
 
-    /// <summary>Holds the type of a pipeline's health change: blocked, restricted, unavailable, over budget.</summary>
+    /// <summary>Holds the type of a pipeline's health change: blocked, restricted, unavailable, over budget. Reserved: no
+    /// step emits it yet.</summary>
     public const string PipelineHealth = "pipeline.health";
 
     /// <summary>Holds the type of a merge, carrying the loser and the survivor.</summary>
@@ -31,7 +33,8 @@ public static class DeliveryEventTypes
     /// retention purge (events-integration #33) ships.</summary>
     public const string PostPurged = "post.purged";
 
-    /// <summary>Holds the type of a post that came back after it was gone.</summary>
+    /// <summary>Holds the type of a post that came back after it was gone. Reserved: a relist reaches subscribers as
+    /// <see cref="LinkState"/> with state <c>relisted</c>.</summary>
     public const string PostRelisted = "post.relisted";
 
     /// <summary>Gets every type, in the order above.</summary>

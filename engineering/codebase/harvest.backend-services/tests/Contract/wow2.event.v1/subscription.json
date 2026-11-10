@@ -1,0 +1,1 @@
+{"data":{"id":"00000000-0000-7000-8000-000000000001","tenantId":"00000000-0000-7000-8000-000000000002","kind":"channel","pipelineId":"00000000-0000-7000-8000-000000000003","rules":[],"mode":"pull","context":{"catalog":"events"},"wantsAi":false,"schema":"wow2.event.v1","backfill":"none","state":"active","createdAtUtc":"2026-11-10T09:01:00+00:00"}}

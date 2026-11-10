@@ -1,0 +1,71 @@
+{
+  "schema": "wow2.event.v1",
+  "files": [
+    {
+      "name": "subscription.json",
+      "sha256": "0faa965f0e9b787ecc05c4167bbb2e3305faa6d4f58d5ea7df431de6e2b350ab",
+      "cases": [
+        "subscription"
+      ]
+    },
+    {
+      "name": "01-new.json",
+      "sha256": "2fd46c808cf67995b3614eafe0ee4c503eb718163e2d1f76d456d94cdb20769d",
+      "cases": [
+        "post.new"
+      ]
+    },
+    {
+      "name": "03-changed.json",
+      "sha256": "1e80a36ac33f3e5bafbfc4a42ca9cff501080f8eac840e9ec9c66079b9e8fad4",
+      "cases": [
+        "post.changed"
+      ]
+    },
+    {
+      "name": "04-empty.json",
+      "sha256": "56cff9ffc830b850d238559530f2fa8ad0f5df4c23d3702b7e84f5dde5d4608b",
+      "cases": [
+        "empty"
+      ]
+    },
+    {
+      "name": "05-lifecycle.json",
+      "sha256": "47b4fd18f90c289fc876566ad0670c32b48ce56d8afd4a6062a5fce62d8a0024",
+      "cases": [
+        "post.new",
+        "link.state:gone",
+        "link.state:relisted",
+        "post.merged",
+        "post.changed:survivor",
+        "post.unmerged:survivor",
+        "post.unmerged:loser"
+      ]
+    },
+    {
+      "name": "06-classification.json",
+      "sha256": "52df68ea4deb6e8a1756940f20e21ac581bc8b5b8b6e7074803b35a0d95c24df",
+      "cases": [
+        "relevant:runway:0.9",
+        "irrelevant",
+        "uncertain",
+        "relevant:0.3"
+      ]
+    },
+    {
+      "name": "07-afisha-place.json",
+      "sha256": "ef238f55b13c80061b770d6d3041e633faf8580eef8f2bcc33a9244ca112ad63",
+      "cases": [
+        "place:before-city-fix",
+        "place:after-city-fix"
+      ]
+    },
+    {
+      "name": "08-purged.json",
+      "sha256": "1ef1732a73edb0dc5cb2875830b4e4bfbf6cf7997c7de8961b11425ae83f0867",
+      "cases": [
+        "post.purged"
+      ]
+    }
+  ]
+}
