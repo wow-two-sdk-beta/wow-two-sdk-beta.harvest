@@ -72,25 +72,27 @@ public sealed class ServiceAccessTests
         await ExpectAsync(apiClient, "/api/tenants", HttpStatusCode.Unauthorized);
         apiClient.DefaultRequestHeaders.Remove("X-Api-Key");
 
-        SetToken("haven", "events.read tenants.manage");
+        SetToken("haven", "harvest.events-read harvest.tenants-manage");
         await ExpectAsync(apiClient, havenFeed, HttpStatusCode.OK);
         await ExpectAsync(apiClient, eventsFeed, HttpStatusCode.NotFound);
         await ExpectAsync(apiClient, "/api/tenants", HttpStatusCode.Forbidden);
-        SetToken("events", "events.read");
+        SetToken("events", "harvest.events-read");
         await ExpectAsync(apiClient, eventsFeed, HttpStatusCode.OK);
         await ExpectAsync(apiClient, havenFeed, HttpStatusCode.NotFound);
-        SetToken("operator", "tenants.manage");
+        SetToken("events", "events.read");
+        await ExpectAsync(apiClient, eventsFeed, HttpStatusCode.Forbidden);
+        SetToken("operator", "harvest.tenants-manage");
         await ExpectAsync(apiClient, "/api/tenants", HttpStatusCode.OK);
-        SetToken("operator", "events.read");
+        SetToken("operator", "harvest.events-read");
         await ExpectAsync(apiClient, "/api/tenants", HttpStatusCode.Forbidden);
 
-        SetToken("haven", "events.read", audience: Audience.TrimEnd('/'));
+        SetToken("haven", "harvest.events-read", audience: Audience.TrimEnd('/'));
         await ExpectAsync(apiClient, havenFeed, HttpStatusCode.Unauthorized);
-        SetToken("haven", "events.read", issuer: "https://other.example.test/");
+        SetToken("haven", "harvest.events-read", issuer: "https://other.example.test/");
         await ExpectAsync(apiClient, havenFeed, HttpStatusCode.Unauthorized);
-        SetToken("haven", "events.read", expired: true);
+        SetToken("haven", "harvest.events-read", expired: true);
         await ExpectAsync(apiClient, havenFeed, HttpStatusCode.Unauthorized);
-        SetToken("haven", "events.read", browserSession: true);
+        SetToken("haven", "harvest.events-read", browserSession: true);
         await ExpectAsync(apiClient, havenFeed, HttpStatusCode.Forbidden);
 
         void SetToken(string clientId, string scope, string audience = Audience, string issuer = Issuer,

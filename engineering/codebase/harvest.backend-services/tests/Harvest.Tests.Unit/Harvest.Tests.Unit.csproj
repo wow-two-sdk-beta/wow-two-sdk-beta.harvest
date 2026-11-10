@@ -10,6 +10,7 @@
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
     <PackageReference Include="AwesomeAssertions" />
+    <PackageReference Include="WoW2.Sdk.Beta.Be.Identity.Testing" />
   </ItemGroup>
 
   <ItemGroup>

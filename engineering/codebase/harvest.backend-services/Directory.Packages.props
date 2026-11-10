@@ -8,8 +8,8 @@
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <!-- The core pin; it is also each package's nuspec floor on WoW2.Sdk.Beta.Be and the kernel. -->
-    <BackendSdkVersion>10.0.105-beta</BackendSdkVersion>
-    <IdentitySdkVersion>10.0.24-beta</IdentitySdkVersion>
+    <BackendSdkVersion>10.0.111-beta</BackendSdkVersion>
+    <IdentitySdkVersion>10.0.30-beta</IdentitySdkVersion>
   </PropertyGroup>
 
   <!-- be sdk: one family, bumped together. The kernel (Result, AppError, IEvent) is the only package the contract takes. -->
@@ -20,6 +20,7 @@
     <PackageVersion Include="WoW2.Sdk.Beta.Be.Testing.Data" Version="$(BackendSdkVersion)" />
     <PackageVersion Include="WoW2.Sdk.Beta.Be.Identity.Auth" Version="$(IdentitySdkVersion)" />
     <PackageVersion Include="WoW2.Sdk.Beta.Be.Identity.Client" Version="$(IdentitySdkVersion)" />
+    <PackageVersion Include="WoW2.Sdk.Beta.Be.Identity.Testing" Version="$(IdentitySdkVersion)" />
   </ItemGroup>
 
   <!-- Tests. -->

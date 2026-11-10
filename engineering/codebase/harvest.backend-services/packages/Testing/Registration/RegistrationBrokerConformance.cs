@@ -89,7 +89,8 @@ public abstract class RegistrationBrokerConformance
             ExpiresAtUtc = expires,
         }));
 
-        issued.Secret.Should().StartWith(ApiKeyConstants.Marker).And.HaveLength(ApiKeyConstants.Marker.Length + ApiKeyConstants.RandomLength);
+        // Identity's factory may append check characters after the random part, so the shape is checked, not one length.
+        issued.Secret.Should().StartWith(ApiKeyConstants.Marker).And.MatchRegex($"^{ApiKeyConstants.Marker}[A-Za-z0-9]{{{ApiKeyConstants.RandomLength},}}$");
         issued.Secret.Should().StartWith(issued.Key.Prefix);
         issued.Key.Should().Match<ApiKeyModel>(key => key.TenantId == tenant.Id && key.Name == "events-service"
             && key.State == ApiKeyState.Active && key.RevokedAtUtc == null);

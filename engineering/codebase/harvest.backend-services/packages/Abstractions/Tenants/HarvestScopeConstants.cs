@@ -47,4 +47,12 @@ public static class HarvestScopeConstants
 
     /// <summary>Gets every scope, which the operator key holds.</summary>
     public static IReadOnlyList<string> All { get; } = [.. OperatorScopes, .. TenantScopes];
+
+    /// <summary>Holds the Identity resource name that SCFD's service scopes are registered under.</summary>
+    public const string IdentityResource = "harvest";
+
+    /// <summary>Returns a registry scope's Identity name, <c>{service}.{action}</c> with two segments:
+    /// <c>events:read</c> becomes <c>harvest.events-read</c>.</summary>
+    /// <param name="scope">A registry scope from <see cref="All"/>.</param>
+    public static string ToIdentityScope(string scope) => IdentityResource + "." + scope.Replace(':', '-');
 }

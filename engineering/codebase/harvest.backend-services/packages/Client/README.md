@@ -17,6 +17,25 @@ services.AddHarvestDataClient(); // Client.Delivery: IPostBroker, IDeliveryBroke
 services.AddHarvestRunClient();  // Client.Runs: IRunBroker
 ```
 
+A service that trusts the same Identity issuer as SCFD sends a client-credentials token instead of an API key:
+
+```csharp
+services.AddHarvestClient(options =>
+{
+    options.BaseAddress = new Uri("https://scfd.example.com/");
+    options.Identity = new()
+    {
+        TokenEndpoint = new Uri("https://identity.example.com/connect/token"),
+        ClientId = "events",
+        ClientSecret = secrets["Harvest:ClientSecret"],
+        Scope = "harvest.events-read",
+    };
+});
+services.AddHarvestDataClient(); // takes the same token
+```
+
+The resource defaults to `BaseAddress` with its trailing slash. Set `ApiKey` or `Identity`, not both.
+
 - `IRegistrationBroker` — tenants, API keys, containers, sources, pipelines; sent with the key in `X-Api-Key`.
 - `IRunBroker` — pipeline executions, cancellation, pause controls and container-scoped host health.
 - `IPostBroker` — post queries and operator-only ingestion and merge controls.

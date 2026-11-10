@@ -14,5 +14,7 @@
 | `WoW2.Sdk.Beta.Be.Harvest.Testing` | test kit | Abstractions, `WoW2.Sdk.Beta.Be.Testing` | xunit (via be Testing) | all | test projects |
 | `@wow-two-beta/fe-harvest` | fe | peers `@wow-two-beta/fe` `>=0.0.41 <0.1.0`, `vue` | none | all | `apps/web`, consoles and product admin pages |
 
-- Core pin: `BackendSdkVersion` `10.0.98-beta`; Identity `10.0.24-beta` supplies API-key auth and the BFF client.
+- Core pin: `BackendSdkVersion` `10.0.111-beta`; Identity `10.0.30-beta` supplies API-key auth and the BFF client.
+- The Client takes client-credentials tokens through the be sdk's `Http.Auth`; `Harvest.Tests.Unit` uses Identity's
+  `FakeTokenIssuer`.
 - The console uses the frontend SDK's `AuthProvider`, BFF strategy, request scope and CSRF transport.

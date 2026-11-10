@@ -15,8 +15,9 @@ key comes from the Compose environment. The API listens on loopback port 8397.
 
 ## Shared API access
 
-Register one SCFD resource in the environment's Identity issuer. Its HTTPS URI, including the trailing
-slash, is the API audience. Register separate confidential `client_credentials` clients for the operator and each
+Register one SCFD resource, named `harvest`, in the environment's Identity issuer. On dev that issuer is Ocharo's
+Identity; a separate SCFD issuer comes later. The resource's HTTPS URI, including the trailing slash, is the API
+audience. Register separate confidential `client_credentials` clients for the operator and each
 consumer. Clients request a token with that URI as `resource` and send it as `Authorization: Bearer`.
 
 | Setting | Shared target value |
@@ -33,9 +34,12 @@ consumer. Clients request a token with that URI as `resource` and send it as `Au
 }
 ```
 
-Replace the sample tenant ID with an active SCFD tenant. Register `tenants.manage`, `sources.manage` and
-`events.read` in Identity for this example. SCFD intersects the dot-separated token scopes with the
-configured registry scopes and applies tenant ownership at each endpoint. Consumer credentials belong in each
+Replace the sample tenant ID with an active SCFD tenant. Each registry scope `{noun}:{verb}` is registered in Identity
+as `harvest.{noun}-{verb}`: `harvest.tenants-manage`, `harvest.containers-manage`, `harvest.sources-manage`,
+`harvest.pipelines-read`, `harvest.pipelines-run`, `harvest.pipelines-manage`, `harvest.subscriptions-manage`,
+`harvest.events-read`, `harvest.links-submit`, `harvest.entries-write` and `harvest.posts-read`. The grant mapping keeps
+the registry names. SCFD intersects the token's scopes with the grant's and applies tenant ownership at each
+endpoint. Consumer credentials belong in each
 consumer's backend vault. SCFD needs only the issuer, audience and grant mapping.
 
 ## Browser sign-in

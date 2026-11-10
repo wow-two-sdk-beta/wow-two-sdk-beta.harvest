@@ -1,28 +1,20 @@
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using WoW.Two.Sdk.Beta.Be.Harvest.Client.Posts;
 using WoW.Two.Sdk.Beta.Be.Harvest.Delivery;
 using WoW.Two.Sdk.Beta.Be.Harvest.Posts;
-using WoW.Two.Sdk.Beta.Be.Identity.ApiKeys;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Client.Delivery;
 
 /// <summary>Registers the post and delivery HTTP forms under the Harvest client's configured endpoint.</summary>
 public static class HarvestDataClientServiceCollectionExtensions
 {
-    /// <summary>Adds post and delivery brokers using the settings registered by <c>AddHarvestClient</c>.</summary>
+    /// <summary>Adds post and delivery brokers using the settings and credential registered by <c>AddHarvestClient</c>,
+    /// which runs first.</summary>
     public static IServiceCollection AddHarvestDataClient(this IServiceCollection services)
     {
-        services.AddHttpClient<IPostBroker, ApiPostBroker>(Configure);
-        services.AddHttpClient<IDeliveryBroker, ApiDeliveryBroker>(Configure);
+        ArgumentNullException.ThrowIfNull(services);
+        services.AddHttpClient<IPostBroker, ApiPostBroker>(HarvestHttp.Configure).WithCredentials();
+        services.AddHttpClient<IDeliveryBroker, ApiDeliveryBroker>(HarvestHttp.Configure).WithCredentials();
         return services;
-    }
-
-    private static void Configure(IServiceProvider provider, HttpClient http)
-    {
-        var options = provider.GetRequiredService<IOptions<HarvestClientOptions>>().Value;
-        if (options.BaseAddress is not { IsAbsoluteUri: true }) throw new InvalidOperationException("HarvestClientOptions.BaseAddress must be an absolute URL.");
-        http.BaseAddress = new Uri(options.BaseAddress.ToString().TrimEnd('/') + "/");
-        if (!string.IsNullOrEmpty(options.ApiKey)) http.DefaultRequestHeaders.Add(ApiKeyAuthenticationDefaults.HeaderName, options.ApiKey);
     }
 }

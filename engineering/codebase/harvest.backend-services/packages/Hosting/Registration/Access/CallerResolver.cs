@@ -91,8 +91,8 @@ public sealed class CallerResolver(
         var tokenScopes = identity.FindAll("scope")
             .SelectMany(claim => claim.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries))
             .ToHashSet(StringComparer.Ordinal);
-        // Identity resource scopes use a dot. Keep the registry's existing API-key scope names.
-        var scopes = grant.Scopes.Where(scope => tokenScopes.Contains(scope.Replace(':', '.'))).ToArray();
+        // Identity scopes are harvest.{noun}-{verb}; the grant and API keys keep the registry's {noun}:{verb} names.
+        var scopes = grant.Scopes.Where(scope => tokenScopes.Contains(HarvestScopeConstants.ToIdentityScope(scope))).ToArray();
         if (scopes.Length == 0 || grant.TenantId is { } tenantId
             && await broker.GetTenantAsync(tenantId, cancellationToken)
                 is not Result<TenantModel>.Success { Value.State: TenantState.Active })
