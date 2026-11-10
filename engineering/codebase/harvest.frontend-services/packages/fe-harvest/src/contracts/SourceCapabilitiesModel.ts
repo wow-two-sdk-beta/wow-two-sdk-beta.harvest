@@ -4,6 +4,7 @@ import type { WorkKind } from './RegistrationEnums';
 export interface SourceCapabilitiesModel {
   readonly sourceId: string;
   readonly adapterKey?: string;
+  readonly supportsPathScope?: boolean;
   readonly workKinds: readonly WorkKind[];
   readonly configuration: {
     readonly displayName: string;

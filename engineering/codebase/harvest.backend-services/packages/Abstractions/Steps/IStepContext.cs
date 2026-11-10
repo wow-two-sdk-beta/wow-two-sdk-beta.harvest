@@ -29,6 +29,9 @@ public interface IStepContext
     /// <summary>Gets the clock captures are stamped with.</summary>
     TimeProvider Clock { get; }
 
+    /// <summary>Tells whether a page destination belongs to the run's selected section.</summary>
+    bool AllowsDestination(Uri destination) => true;
+
     /// <summary>Reports an observation to the host gate and the usage meters.</summary>
     /// <param name="signal">What the host answered.</param>
     void Observe(StepSignal signal);

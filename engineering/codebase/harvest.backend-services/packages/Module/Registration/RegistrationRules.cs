@@ -202,6 +202,8 @@ internal static partial class RegistrationRules
     {
         var url = scope?.Url?.Trim();
         var parameters = scope?.Parameters ?? new Dictionary<string, string>();
+        if (scope?.RestrictToPath == true && string.IsNullOrEmpty(url))
+            return (null, RegistrationErrors.Invalid("A path-restricted scope needs a starting URL."));
         if (string.IsNullOrEmpty(url) && parameters.Count == 0)
             return (PipelineConstants.WholeScopeKey, null);
 
@@ -220,7 +222,7 @@ internal static partial class RegistrationRules
             parts.Add(Uri.EscapeDataString(name.Trim()) + "=" + Uri.EscapeDataString(value?.Trim() ?? string.Empty));
         }
 
-        var key = string.Join('&', parts);
+        var key = (scope?.RestrictToPath == true ? "path:" : string.Empty) + string.Join('&', parts);
         return key.Length <= PipelineConstants.MaxScopeKeyLength
             ? (key, null)
             : (null, RegistrationErrors.Invalid($"A pipeline's scope must stay within {PipelineConstants.MaxScopeKeyLength} characters."));

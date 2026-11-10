@@ -4,6 +4,7 @@ using Npgsql;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Persistence;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Posts;
 using WoW.Two.Sdk.Beta.Be.Harvest.Posts;
+using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Delivery;
 
@@ -12,9 +13,9 @@ internal static class DeliveryEventWriter
 {
     internal static async Task AppendAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, PostModel post, string type, Guid? runId, Guid? linkId, DateTimeOffset at, DeliveryPostFilters filters, CancellationToken ct)
     {
-        var subscriptions = new List<(Guid Id, string? FilterKey, bool Seen, string? State)>();
+        var subscriptions = new List<(Guid Id, string? FilterKey, bool Seen, string? State, Guid SourceId, PipelineScope Scope)>();
         await using (var command = PostSql.Command(connection, transaction, """
-                         SELECT s.id,s.filter_key,previous.id IS NOT NULL,previous.payload->>'state'
+                         SELECT s.id,s.filter_key,previous.id IS NOT NULL,previous.payload->>'state',p.source_id,p.scope::text
                          FROM harvest_subscriptions s JOIN harvest_pipelines p ON p.id=s.pipeline_id
                          LEFT JOIN LATERAL (SELECT e.id,e.payload FROM harvest_subscription_event e
                              WHERE e.subscription_id=s.id AND e.post_id=@post ORDER BY e.id DESC LIMIT 1) previous ON true
@@ -26,11 +27,16 @@ internal static class DeliveryEventWriter
                          """, ("container", post.ContainerId), ("run", runId), ("post", post.Id), ("merged", post.MergedInto)))
         await using (var reader = await command.ExecuteReaderAsync(ct))
             while (await reader.ReadAsync(ct)) subscriptions.Add((reader.GetGuid(0), reader.IsDBNull(1) ? null : reader.GetString(1),
-                reader.GetBoolean(2), reader.IsDBNull(3) ? null : reader.GetString(3)));
+                reader.GetBoolean(2), reader.IsDBNull(3) ? null : reader.GetString(3), reader.GetGuid(4),
+                StoreJson.Read(reader.GetString(5), new PipelineScope())));
         foreach (var subscription in subscriptions)
+        {
+            bool withinSection = !subscription.Scope.RestrictToPath
+                || post.Links.Any(link => link.SourceId == subscription.SourceId && subscription.Scope.IncludesUrl(link.Url));
             if ((subscription.Seen && (DeliveryPostFilters.IsLifecycle(type) || subscription.State != post.State.ToString().ToLowerInvariant()))
-                || filters.Matches(subscription.FilterKey, post.Base))
+                || (withinSection && filters.Matches(subscription.FilterKey, post.Base)))
                 await AppendOneAsync(connection, transaction, subscription.Id, post, type, runId, linkId, "ingest", at, ct);
+        }
     }
 
     internal static Task<int> AppendOneAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid subscriptionId, PostModel post, string type, Guid? runId, Guid? linkId, string reason, DateTimeOffset at, CancellationToken ct) =>

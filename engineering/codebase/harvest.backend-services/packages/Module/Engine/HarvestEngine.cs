@@ -109,7 +109,8 @@ public sealed class HarvestEngine(
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         lifetime.CancelAfter(options.Value.LeaseDuration - TimeSpan.FromSeconds(5));
         using HttpClient http = clients.CreateClient();
-        var context = new EngineStepContext(claim.Plan, claim.Frozen.Source, http, challenges, clock, renderers.FirstOrDefault());
+        var context = new EngineStepContext(claim.Plan, claim.Frozen.Source, http, challenges, clock,
+            renderers.FirstOrDefault(), claim.Frozen.Pipeline.Scope);
         StepResult result;
         var readings = new List<(Capture Capture, PostEnvelope Envelope)>();
         try

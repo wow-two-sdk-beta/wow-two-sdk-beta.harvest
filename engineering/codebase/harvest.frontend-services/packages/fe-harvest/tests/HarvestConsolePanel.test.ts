@@ -7,6 +7,7 @@ import { createHarvestClient } from '../src/kit';
 const wrappers: ReturnType<typeof mount>[] = [];
 afterEach(() => {
   for (const wrapper of wrappers.splice(0)) wrapper.unmount();
+  window.sessionStorage.clear();
   vi.unstubAllGlobals();
 });
 
@@ -83,7 +84,7 @@ describe('HarvestConsolePanel', () => {
       props: { connectionManaged: true, signInPath: '/api/identity/sign-in?returnUrl=%2F' },
     });
     wrappers.push(wrapper);
-    expect(wrapper.text()).toContain('Sign in to Harvest');
+    expect(wrapper.text()).toContain('Sign in to SCFD');
     expect(wrapper.get('a[href="/api/identity/sign-in?returnUrl=%2F"]').text()).toBe('Sign in');
     expect(wrapper.find('input[type="password"]').exists()).toBe(false);
   });
@@ -112,8 +113,53 @@ describe('HarvestConsolePanel', () => {
     wrappers.push(wrapper);
     await flushPromises();
     expect(fetch).not.toHaveBeenCalled();
-    expect(wrapper.text()).toContain('Connect to Harvest');
+    expect(wrapper.text()).toContain('Connect to SCFD');
     expect(wrapper.find('input[type="password"]').exists()).toBe(true);
+  });
+
+  it('restores an opted-in tab after reload and forgets it on disconnect', async () => {
+    vi.stubGlobal('fetch', fixtureFetch());
+    const props = { connectionStorage: window.sessionStorage };
+    const first = mount(HarvestConsolePanel, { props });
+    wrappers.push(first);
+    await first.get('input[type="password"]').setValue('hv_fixture');
+    await first.get('form').trigger('submit');
+    await flushPromises();
+    expect(first.text()).toContain('Upcoming events');
+    wrappers.pop()?.unmount();
+
+    const restored = mount(HarvestConsolePanel, { props });
+    wrappers.push(restored);
+    await flushPromises();
+    expect(restored.text()).toContain('Upcoming events');
+    await restored
+      .findAll('button')
+      .find((button) => button.text() === 'Disconnect')!
+      .trigger('click');
+
+    const disconnected = mount(HarvestConsolePanel, { props });
+    wrappers.push(disconnected);
+    await flushPromises();
+    expect(disconnected.text()).toContain('Connect to SCFD');
+  });
+
+  it('offers source registration without waiting for capabilities in an empty container', async () => {
+    const api = createHarvestClient({ fetch: fixtureFetch() });
+    api.listSources = async () => ResultExtensions.ok([]);
+    api.listPipelines = async () => ResultExtensions.ok([]);
+    const loadCapabilities = vi.spyOn(api, 'getSourceCapabilities');
+    const wrapper = mount(HarvestConsolePanel, { props: { client: api } });
+    wrappers.push(wrapper);
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('No sources registered in this container.');
+    expect(wrapper.find('[aria-label="Source capabilities"]').exists()).toBe(false);
+    expect(loadCapabilities).not.toHaveBeenCalled();
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Register a source')!
+      .trigger('click');
+    expect(wrapper.find('input[placeholder="example.org"]').exists()).toBe(true);
   });
 
   it('queues a run and shows a challenge outcome through reusable panels', async () => {
@@ -145,7 +191,7 @@ describe('HarvestConsolePanel', () => {
       .findAll('button')
       .find((button) => button.text() === 'Disconnect')!
       .trigger('click');
-    expect(wrapper.text()).toContain('Connect to Harvest');
+    expect(wrapper.text()).toContain('Connect to SCFD');
     expect(wrapper.text()).not.toContain('Upcoming events');
   });
 
@@ -165,7 +211,7 @@ describe('HarvestConsolePanel', () => {
       .trigger('click');
     reply(ResultExtensions.ok([]));
     await flushPromises();
-    expect(wrapper.text()).toContain('Connect to Harvest');
+    expect(wrapper.text()).toContain('Connect to SCFD');
     expect(wrapper.find('[aria-label="Pipelines"]').exists()).toBe(false);
   });
 

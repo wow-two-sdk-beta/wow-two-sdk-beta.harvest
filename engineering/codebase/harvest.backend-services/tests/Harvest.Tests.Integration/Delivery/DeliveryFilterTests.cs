@@ -94,6 +94,27 @@ public sealed class DeliveryFilterTests
     }
 
     [Fact]
+    public async Task Subscribe_ShouldApplyPostTagToBackfillAndNewPosts()
+    {
+        await using var host = await PostHost.StartAsync();
+        var prior = PostStoreTests.Capture(host, "concert-before", "Concert before subscribing.");
+        var matched = PostHost.Value(await host.Posts.SaveCaptureAsync(host.ContainerId, host.SourceId, null, prior,
+            PostStoreTests.Envelope("Concert before subscribing", prior.ContentProjection) with { SourceTags = ["Concert"] }));
+        var unrelated = PostStoreTests.Capture(host, "unrelated", "Unrelated article.");
+        PostHost.Value(await host.Posts.SaveCaptureAsync(host.ContainerId, host.SourceId, null, unrelated,
+            PostStoreTests.Envelope("Unrelated article", unrelated.ContentProjection) with { SourceTags = ["concerts"] }));
+        var subscription = PostHost.Value(await host.Delivery.SubscribeAsync(Declaration(host) with { FilterKey = "tag:concert" }));
+
+        var current = PostStoreTests.Capture(host, "concert-after", "Concert after subscribing.");
+        var live = PostHost.Value(await host.Posts.SaveCaptureAsync(host.ContainerId, host.SourceId, null, current,
+            PostStoreTests.Envelope("Concert after subscribing", current.ContentProjection) with { SourceTags = ["concert"] }));
+        var page = await host.PullUntilAsync(subscription.Id, page => page.Data.Count >= 2);
+
+        page.Data.Select(item => item.PostId).Should().Equal(matched.Post.Id, live.Post.Id);
+        page.Data[0].Reason.Should().Be("backfill");
+    }
+
+    [Fact]
     public async Task Capture_ShouldFailClosedAndStillDeliverLifecycle_WhenTheConfiguredFilterDisappearsAfterRestart()
     {
         await using var host = await PostHost.StartAsync();

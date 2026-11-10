@@ -43,7 +43,8 @@ public sealed class FakeDeliveryBroker : IDeliveryBroker
             || declaration.BackfillSinceUtc > time.GetUtcNow() || declaration.Schema is { Length: > 200 }
             || declaration.Context.Count > 64 || declaration.Context.Any(pair => string.IsNullOrWhiteSpace(pair.Key) || pair.Key.Length > 256 || pair.Value is null || pair.Value.Length > 4096))
             return Invalid<SubscriptionModel>("The subscription is malformed.");
-        if (declaration.FilterKey is { } filterKey && (string.IsNullOrWhiteSpace(filterKey) || filterKey.Length > 200 || !postFilters.ContainsKey(filterKey)))
+        if (declaration.FilterKey is { } filterKey && (string.IsNullOrWhiteSpace(filterKey) || filterKey.Length > 200
+            || !(postFilters.ContainsKey(filterKey) || DeliveryTagFilter.IsValid(filterKey))))
             return Invalid<SubscriptionModel>("The requested post filter is not registered or its key is invalid.");
         if (await registry.GetTenantAsync(declaration.TenantId, cancellationToken) is not Result<TenantModel>.Success { Value.State: TenantState.Active })
             return Missing<SubscriptionModel>("Active tenant not found.");
@@ -65,7 +66,7 @@ public sealed class FakeDeliveryBroker : IDeliveryBroker
             subscriptions.Add(subscription.Id, entry);
             if (declaration.Backfill != BackfillMode.None)
                 foreach (var post in posts.Snapshot(declaration.ContainerId).Where(post => post.State == PostState.Live && post.MergedInto is null
-                             && post.Links.Any(link => link.SourceId == pipeline.SourceId)
+                             && post.Links.Any(link => link.SourceId == pipeline.SourceId && pipeline.Scope.IncludesUrl(link.Url))
                              && (declaration.BackfillSinceUtc is null || post.FirstSeenAtUtc >= declaration.BackfillSinceUtc)))
                     Append(entry, post, "post.new", null, null, "backfill");
             return Result<SubscriptionModel>.Ok(subscription);
@@ -134,7 +135,7 @@ public sealed class FakeDeliveryBroker : IDeliveryBroker
     private bool Matches(string? key, PostEnvelope envelope)
     {
         if (key is null) return true;
-        if (!postFilters.TryGetValue(key, out var filter)) return false;
+        if (!postFilters.TryGetValue(key, out var filter)) return DeliveryTagFilter.Matches(key, envelope);
         try { return filter.Matches(envelope); }
         catch (Exception) { return false; }
     }

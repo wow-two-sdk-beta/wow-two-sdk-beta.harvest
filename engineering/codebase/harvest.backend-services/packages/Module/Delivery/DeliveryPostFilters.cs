@@ -8,12 +8,12 @@ internal sealed class DeliveryPostFilters(IEnumerable<IDeliveryPostFilter> filte
 {
     private readonly Dictionary<string, IDeliveryPostFilter> byKey = filters.ToDictionary(filter => filter.Key, StringComparer.Ordinal);
 
-    internal bool Contains(string key) => byKey.ContainsKey(key);
+    internal bool Contains(string key) => byKey.ContainsKey(key) || DeliveryTagFilter.IsValid(key);
 
     internal bool Matches(string? key, PostEnvelope envelope)
     {
         if (key is null) return true;
-        if (!byKey.TryGetValue(key, out var filter)) return false;
+        if (!byKey.TryGetValue(key, out var filter)) return DeliveryTagFilter.Matches(key, envelope);
         try { return filter.Matches(envelope); }
         catch (Exception) { return false; }
     }

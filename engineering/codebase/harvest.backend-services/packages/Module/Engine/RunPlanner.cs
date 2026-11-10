@@ -135,8 +135,8 @@ internal static class RunPlanner
             || !string.IsNullOrEmpty(uri.UserInfo) || !string.Equals(uri.IdnHost, source.Handle, StringComparison.OrdinalIgnoreCase))
             return false;
         if (Uri.TryCreate(scope.Url, UriKind.Absolute, out Uri? root))
-            return uri.Scheme == root.Scheme && uri.Port == root.Port;
-        return uri.IsDefaultPort;
+            return uri.Scheme == root.Scheme && uri.Port == root.Port && scope.IncludesUrl(target);
+        return !scope.RestrictToPath && uri.IsDefaultPort;
     }
 
     internal static async Task<int> EnqueueAsync(

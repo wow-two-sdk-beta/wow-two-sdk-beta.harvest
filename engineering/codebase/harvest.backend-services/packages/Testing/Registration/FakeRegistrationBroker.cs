@@ -465,6 +465,8 @@ public sealed partial class FakeRegistrationBroker(TimeProvider? time = null) : 
     {
         var url = scope?.Url?.Trim();
         var parameters = scope?.Parameters ?? new Dictionary<string, string>();
+        if (scope?.RestrictToPath == true && string.IsNullOrEmpty(url))
+            return null;
         if (string.IsNullOrEmpty(url) && parameters.Count == 0)
             return PipelineConstants.WholeScopeKey;
 
@@ -487,7 +489,7 @@ public sealed partial class FakeRegistrationBroker(TimeProvider? time = null) : 
             parts.Add(Uri.EscapeDataString(name.Trim()) + "=" + Uri.EscapeDataString(value?.Trim() ?? string.Empty));
         }
 
-        var key = string.Join('&', parts);
+        var key = (scope?.RestrictToPath == true ? "path:" : string.Empty) + string.Join('&', parts);
         return key.Length <= PipelineConstants.MaxScopeKeyLength ? key : null;
     }
 

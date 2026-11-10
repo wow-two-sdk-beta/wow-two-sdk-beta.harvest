@@ -4,6 +4,7 @@ using Npgsql;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Containers;
 using WoW.Two.Sdk.Beta.Be.Harvest.Delivery;
+using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Tenants;
 
 namespace Harvest.Tests.Integration.Delivery;
@@ -154,6 +155,33 @@ public sealed class PullDeliveryTests
         page.Data[0].Data!.Value.GetProperty("links")[0].GetProperty("url").GetString().Should().Be(capture.Url);
         page.Data[0].Data!.Value.GetProperty("contentLinks")[0].GetProperty("url").GetString().Should().Be("https://organizer.example/register");
         page.Data[0].Data!.Value.GetProperty("contentLinks")[0].GetProperty("rel").GetString().Should().Be("registration");
+    }
+
+    [Fact]
+    public async Task Pull_ShouldProjectManuallyEnteredEvent_WhenNoStoredProjectionExists()
+    {
+        await using var host = await PostHost.StartAsync();
+        var subscription = PostHost.Value(await host.Delivery.SubscribeAsync(Declaration(host) with
+        {
+            Schema = PostEnvelopeConstants.EventSchema,
+        }));
+        var capture = PostStoreTests.Capture(host, "manual-event", "Fashion week, 17 November") with
+        {
+            Body = ReadOnlyMemory<byte>.Empty,
+        };
+        var envelope = PostStoreTests.Envelope("Fashion week", capture.ContentProjection) with
+        {
+            Kind = PostKind.Event, Text = null,
+            Dates = [new() { Role = DateRole.Start, Value = "2026-11-17", Precision = DatePrecision.Day }],
+        };
+        var saved = PostHost.Value(await host.Posts.SaveCaptureAsync(host.ContainerId, host.SourceId, null, capture, envelope));
+
+        var page = await host.PullUntilAsync(subscription.Id, page => page.Data.Count == 1);
+
+        var data = page.Data.Single().Data!.Value;
+        data.GetProperty("schema").GetString().Should().Be(PostEnvelopeConstants.EventSchema);
+        data.GetProperty("postId").GetGuid().Should().Be(saved.Post.Id);
+        data.GetProperty("starts").GetProperty("value").GetString().Should().Be("2026-11-17");
     }
 
     private static SubscriptionDeclaration Declaration(PostHost host) => new()

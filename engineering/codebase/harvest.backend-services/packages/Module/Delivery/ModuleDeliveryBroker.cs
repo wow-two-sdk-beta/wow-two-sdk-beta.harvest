@@ -4,9 +4,13 @@ using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
+using WoW.Two.Sdk.Beta.Be.Foundation.Serialization;
 using WoW.Two.Sdk.Beta.Be.Harvest.Delivery;
+using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Extraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Persistence;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Posts;
+using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Delivery;
 
@@ -38,9 +42,9 @@ internal sealed class ModuleDeliveryBroker(
                 "SELECT 1 FROM harvest_tenants WHERE id=@id AND state='active'", cancellationToken, ("id", declaration.TenantId)) is null)
             return Missing<SubscriptionModel>("Active tenant not found.");
         if (await PostSql.ScalarAsync(connection, transaction, """
-                SELECT 1 FROM harvest_containers c JOIN harvest_pipelines p ON p.container_id=c.id
+                SELECT p.scope::text FROM harvest_containers c JOIN harvest_pipelines p ON p.container_id=c.id
                 WHERE c.id=@container AND p.id=@pipeline AND (c.kind='pool' OR c.tenant_id=@tenant)
-                """, cancellationToken, ("container", declaration.ContainerId), ("pipeline", declaration.PipelineId), ("tenant", declaration.TenantId)) is null)
+                """, cancellationToken, ("container", declaration.ContainerId), ("pipeline", declaration.PipelineId), ("tenant", declaration.TenantId)) is not string scopeJson)
             return Missing<SubscriptionModel>("Pipeline not found in a container accessible to the tenant.");
         var now = time.GetUtcNow();
         now = now.AddTicks(-(now.Ticks % 10));
@@ -54,16 +58,19 @@ internal sealed class ModuleDeliveryBroker(
             ("backfill", declaration.Backfill.ToString().ToLowerInvariant()), ("since", declaration.BackfillSinceUtc?.ToUniversalTime()), ("now", now));
         if (declaration.Backfill != BackfillMode.None)
         {
-            var posts = new List<Guid>();
+            var scope = StoreJson.Read(scopeJson, new PipelineScope());
+            var posts = new SortedSet<Guid>();
             await using (var command = PostSql.Command(connection, transaction, """
-                             SELECT DISTINCT p.id FROM harvest_posts p JOIN harvest_post_links l ON l.post_id=p.id
+                             SELECT DISTINCT p.id,l.url FROM harvest_posts p JOIN harvest_post_links l ON l.post_id=p.id
                              JOIN harvest_pipelines q ON q.source_id=l.source_id
                              WHERE q.id=@pipeline AND p.container_id=@container AND p.merged_into IS NULL AND p.state='live'
                                AND l.retired_at IS NULL AND (CAST(@since AS timestamptz) IS NULL OR p.first_seen_at>=@since)
                              ORDER BY p.id
                              """, ("pipeline", declaration.PipelineId), ("container", declaration.ContainerId), ("since", declaration.BackfillSinceUtc?.ToUniversalTime())))
             await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
-                while (await reader.ReadAsync(cancellationToken)) posts.Add(reader.GetGuid(0));
+                while (await reader.ReadAsync(cancellationToken))
+                    if (scope.IncludesUrl(reader.GetString(1)))
+                        posts.Add(reader.GetGuid(0));
             foreach (var postId in posts)
             {
                 var post = (await ModulePostBroker.ReadPostAsync(connection, transaction, declaration.ContainerId, postId, cancellationToken))!;
@@ -169,9 +176,15 @@ internal sealed class ModuleDeliveryBroker(
 
     private static JsonElement RenderPayload(JsonElement payload, string? schema)
     {
-        if (schema != "wow2.event.v1" || !payload.TryGetProperty("base", out var envelope)
-            || !envelope.TryGetProperty("extras", out var extras) || !extras.TryGetProperty("event", out var mapped)
-            || mapped.ValueKind != JsonValueKind.Object) return payload;
+        if (schema != PostEnvelopeConstants.EventSchema || !payload.TryGetProperty("base", out var envelope)
+            || envelope.ValueKind != JsonValueKind.Object) return payload;
+        if (!envelope.TryGetProperty("extras", out var extras) || extras.ValueKind != JsonValueKind.Object
+            || !extras.TryGetProperty("event", out var mapped) || mapped.ValueKind != JsonValueKind.Object)
+        {
+            if (envelope.Deserialize<PostEnvelope>(JsonOptionsConstants.Default) is not { } post
+                || EventSchemaMapper.Map(post) is not { } projection) return payload;
+            mapped = projection;
+        }
         var values = mapped.EnumerateObject().ToDictionary(property => property.Name, property => property.Value.Clone());
         if (values.TryGetValue("links", out var contentLinks)) values["contentLinks"] = contentLinks;
         foreach (var (source, target) in new[] { ("id", "postId"), ("revision", "revision"), ("state", "state"), ("links", "links"), ("fieldSources", "fieldSources"), ("mergedInto", "mergedInto") })

@@ -9,6 +9,20 @@ public sealed record PipelineScope
     /// <summary>Gets the listing or search URL the pipeline starts from.</summary>
     public string? Url { get; init; }
 
+    /// <summary>Gets whether work targets must stay under the starting URL's path.</summary>
+    public bool RestrictToPath { get; init; }
+
     /// <summary>Gets the filter parameters, such as a category or a city.</summary>
     public IReadOnlyDictionary<string, string> Parameters { get; init; } = new Dictionary<string, string>();
+
+    /// <summary>Checks the destination against an explicit section boundary.</summary>
+    public bool IncludesUrl(string target)
+    {
+        if (!RestrictToPath) return true;
+        if (!Uri.TryCreate(Url, UriKind.Absolute, out var root) || !Uri.TryCreate(target, UriKind.Absolute, out var url)
+            || root.Scheme != url.Scheme || root.Port != url.Port || root.IdnHost != url.IdnHost)
+            return false;
+        string path = root.AbsolutePath.TrimEnd('/');
+        return url.AbsolutePath.TrimEnd('/') == path || url.AbsolutePath.StartsWith(path + "/", StringComparison.Ordinal);
+    }
 }

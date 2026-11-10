@@ -28,7 +28,11 @@ export interface PipelineModel {
   readonly sourceId: string;
   /** `*` for the whole source. */
   readonly scopeKey: string;
-  readonly scope: { readonly url?: string; readonly parameters: Readonly<Record<string, string>> };
+  readonly scope: {
+    readonly url?: string;
+    readonly restrictToPath?: boolean;
+    readonly parameters: Readonly<Record<string, string>>;
+  };
   readonly name?: string;
   readonly state: PipelineState;
   readonly pauseReason?: PipelinePauseReason;

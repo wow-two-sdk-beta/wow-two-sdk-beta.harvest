@@ -9,6 +9,8 @@ public sealed record SourceCapabilitiesModel
     public required Guid SourceId { get; init; }
     /// <summary>Gets the selected adapter key, or null when none serves the source.</summary>
     public string? AdapterKey { get; init; }
+    /// <summary>Gets whether the runtime enforces section paths on collection targets.</summary>
+    public bool SupportsPathScope => true;
     /// <summary>Gets the work kinds declared by the selected adapter.</summary>
     public required IReadOnlyList<WorkKind> WorkKinds { get; init; }
     /// <summary>Gets the adapter's safe configuration metadata.</summary>

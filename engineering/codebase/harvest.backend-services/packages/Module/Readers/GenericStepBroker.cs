@@ -35,8 +35,8 @@ public sealed class GenericStepBroker : IStepBroker
     {
         if (!Uri.TryCreate(item.Target, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
             return new() { Outcome = FetchOutcome.UnexpectedContent, Message = "The target is not an absolute HTTP URL." };
-        IFetchDestinationPolicy? destinations = readers.OfType<IFetchDestinationPolicy>().FirstOrDefault();
-        if (destinations is not null && !destinations.Allows(uri))
+        var destinations = new StepDestinationPolicy(context, readers.OfType<IFetchDestinationPolicy>().FirstOrDefault());
+        if (!destinations.Allows(uri))
             return new() { Outcome = FetchOutcome.NotApproved, Message = "The target is outside the source's supported public routes." };
         var response = await fetcher.FetchAsync(new FetchRequest
         {
@@ -115,5 +115,10 @@ public sealed class GenericStepBroker : IStepBroker
                 ExternalKey = capture.ExternalKey, Signal = LinkSignal.Present, Reason = "seen_again", HttpStatus = document.StatusCode,
             }).ToList(),
         };
+    }
+
+    private sealed record StepDestinationPolicy(IStepContext Context, IFetchDestinationPolicy? Adapter) : IFetchDestinationPolicy
+    {
+        public bool Allows(Uri destination) => Context.AllowsDestination(destination) && (Adapter?.Allows(destination) ?? true);
     }
 }

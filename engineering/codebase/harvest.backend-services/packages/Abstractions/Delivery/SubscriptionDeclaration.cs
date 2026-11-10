@@ -11,7 +11,7 @@ public sealed record SubscriptionDeclaration
     public required Guid PipelineId { get; init; }
     /// <summary>Gets the opaque routing context echoed on delivery.</summary>
     public IReadOnlyDictionary<string, string> Context { get; init; } = new Dictionary<string, string>();
-    /// <summary>Gets the host-registered post filter to apply, or null to accept all posts.</summary>
+    /// <summary>Gets a host filter key or <c>tag:&lt;value&gt;</c>, or null to accept all posts.</summary>
     public string? FilterKey { get; init; }
     /// <summary>Gets the schema requested by the consumer.</summary>
     public string? Schema { get; init; }

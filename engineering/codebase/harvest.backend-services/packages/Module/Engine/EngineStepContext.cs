@@ -1,5 +1,6 @@
 using WoW.Two.Sdk.Beta.Be.Harvest.Capabilities.Challenges;
 using WoW.Two.Sdk.Beta.Be.Harvest.Capabilities.Rendering;
+using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 
@@ -12,7 +13,8 @@ internal sealed class EngineStepContext(
     HttpClient http,
     IChallengeDetector challenges,
     TimeProvider clock,
-    IBrowserRenderer? browser) : IStepContext
+    IBrowserRenderer? browser,
+    PipelineScope scope) : IStepContext
 {
     public ResolvedPlan Plan { get; } = plan;
     public SourceModel Source { get; } = source;
@@ -21,6 +23,9 @@ internal sealed class EngineStepContext(
     public TimeProvider Clock { get; } = clock;
     public IBrowserRenderer? Browser { get; } = browser;
     internal List<StepSignal> Signals { get; } = [];
+
+    public bool AllowsDestination(Uri destination) =>
+        !scope.RestrictToPath || RunPlanner.InScope(destination.AbsoluteUri, Source, scope);
 
     public void Observe(StepSignal signal)
     {

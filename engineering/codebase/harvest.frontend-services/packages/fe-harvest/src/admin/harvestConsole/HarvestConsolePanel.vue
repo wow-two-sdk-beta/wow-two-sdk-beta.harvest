@@ -40,18 +40,26 @@ import { createHarvestClient, type HarvestClient } from '../../kit';
 import PipelineSettings from './PipelineSettings.vue';
 import PostDetailsPanel from './PostDetailsPanel.vue';
 import SourceCapabilitiesPanel from './SourceCapabilitiesPanel.vue';
+import SourceSectionPicker from './SourceSectionPicker.vue';
+import { sameSection, sourceSections } from './SourceSections';
 
 /** Reusable pipeline, run, source, post and delivery management for every Harvest capability form. */
 defineOptions({ name: 'HarvestConsolePanel' });
-const props = defineProps<{
-  client?: HarvestClient;
-  appVersion?: string;
-  apiVersion?: string;
-  connectionManaged?: boolean;
-  signInPath?: string;
-  connectionMessage?: string;
-  permissions?: readonly string[];
-}>();
+const props = withDefaults(
+  defineProps<{
+    client?: HarvestClient;
+    appVersion?: string;
+    apiVersion?: string;
+    localWorkerEnabled?: boolean;
+    connectionManaged?: boolean;
+    connectionStorage?: Storage;
+    signInPath?: string;
+    connectionMessage?: string;
+    permissions?: readonly string[];
+    isOperator?: boolean;
+  }>(),
+  { localWorkerEnabled: undefined, isOperator: undefined },
+);
 const can = (scope: string) => props.permissions === undefined || props.permissions.includes(scope);
 const tabs = ['Pipelines', 'Sources', 'Runs', 'Posts', 'Delivery', 'Hosts'] as const;
 const activeTab = ref<(typeof tabs)[number]>('Pipelines');
@@ -60,12 +68,14 @@ const sidebarCollapsed = ref(false);
 const creatingPipeline = ref(false);
 const key = ref('');
 const client = shallowRef<HarvestClient | null>(props.client ?? null);
-const connected = computed(() => client.value !== null);
+const connecting = ref(client.value !== null);
+const connected = computed(() => client.value !== null && !connecting.value);
 const pending = ref(false);
 const failure = ref<string | null>(null);
 const notice = ref<string | null>(null);
 const containers = shallowRef<readonly ContainerModel[]>([]);
 const sources = shallowRef<readonly SourceModel[]>([]);
+const sourceListState = ref<'loading' | 'ready' | 'unavailable'>('loading');
 const pipelines = shallowRef<readonly PipelineModel[]>([]);
 const runs = shallowRef<readonly RunModel[]>([]);
 const posts = shallowRef<readonly PostModel[]>([]);
@@ -74,6 +84,10 @@ const subscriptions = shallowRef<readonly SubscriptionModel[]>([]);
 const tenants = shallowRef<readonly TenantModel[]>([]);
 const events = shallowRef<readonly DeliveryEvent[]>([]);
 const containerId = ref('');
+const canWrite = (scope: string) =>
+  can(scope) &&
+  (props.isOperator !== false ||
+    containers.value.some((item) => item.id === containerId.value && item.kind === 'private'));
 const pipelineId = ref('');
 const sourceId = ref('');
 const selectedPost = shallowRef<PostModel | null>(null);
@@ -85,8 +99,11 @@ const everyMinutes = ref(60);
 const newScheduleEnabled = ref(false);
 const tenantId = ref('');
 const tenantSlug = ref('');
+const subscriptionTag = ref('');
 const subscriptionId = ref('');
 const cursor = ref('');
+const connectionKey = 'scfd.console.connection';
+let connectedApiKey = '';
 let read: AbortController | null = null;
 let action: AbortController | null = null;
 let refreshing = false;
@@ -227,6 +244,7 @@ async function refresh() {
     ]);
     if (current.signal.aborted || disposed || client.value !== currentClient || containerId.value !== currentContainer)
       return;
+    sourceListState.value = sourceResult.ok ? 'ready' : 'unavailable';
     if (sourceResult.ok) sources.value = sourceResult.value;
     if (pipelineResult.ok) {
       pipelines.value = pipelineResult.value;
@@ -247,7 +265,10 @@ async function refresh() {
     await loadRuns(current.signal);
     await loadCapabilities();
   } catch {
-    if (!current.signal.aborted) failure.value = 'The console could not refresh. Try again.';
+    if (!current.signal.aborted) {
+      if (sourceListState.value === 'loading') sourceListState.value = 'unavailable';
+      failure.value = 'The console could not refresh. Try again.';
+    }
   } finally {
     refreshing = false;
     if (!disposed && client.value && containerId.value !== currentContainer) void refresh();
@@ -267,13 +288,14 @@ async function loadRuns(signal?: AbortSignal) {
     runs.value = result.ok ? result.value : [];
 }
 
-/** Loads the visible registry before selecting a container. */
-async function initialize() {
+/** Loads the visible registry before showing the workspace. */
+async function initialize(preferredContainerId?: string) {
   const currentClient = client.value;
   if (!currentClient) return;
   const current = new AbortController();
   action?.abort();
   action = current;
+  connecting.value = true;
   pending.value = true;
   try {
     const result = await currentClient.listContainers(current.signal);
@@ -281,6 +303,7 @@ async function initialize() {
     if (!result.ok) {
       failure.value = message(result.failure);
       client.value = null;
+      if (result.failure.status === 401 || result.failure.status === 403) clearConnection();
       return;
     }
     containers.value = result.value;
@@ -288,25 +311,74 @@ async function initialize() {
     const tenantResult = await currentClient.listTenants(current.signal);
     if (disposed || current.signal.aborted || client.value !== currentClient) return;
     tenants.value = tenantResult.ok ? tenantResult.value : [];
-    containerId.value = result.value[0]?.id ?? '';
-    tenantId.value = result.value[0]?.tenantId ?? tenants.value[0]?.id ?? '';
+    const container = result.value.find((item) => item.id === preferredContainerId) ?? result.value[0];
+    containerId.value = container?.id ?? '';
+    tenantId.value = container?.tenantId ?? tenants.value[0]?.id ?? '';
     await refresh();
   } finally {
-    if (!disposed && !current.signal.aborted) pending.value = false;
+    if (!disposed && !current.signal.aborted) {
+      connecting.value = false;
+      pending.value = false;
+    }
   }
 }
 
-/** Connects with a key held in memory for this page only. */
+function saveConnection() {
+  if (!connectedApiKey) return;
+  try {
+    props.connectionStorage?.setItem(
+      connectionKey,
+      JSON.stringify({ apiKey: connectedApiKey, containerId: containerId.value }),
+    );
+  } catch {
+    // A browser can block storage while allowing the current connection.
+  }
+}
+
+function clearConnection() {
+  connectedApiKey = '';
+  try {
+    props.connectionStorage?.removeItem(connectionKey);
+  } catch {
+    // A blocked store cannot restore a connection.
+  }
+}
+
+async function connectWithKey(apiKey: string, preferredContainerId?: string) {
+  const current = createHarvestClient({ apiKey });
+  client.value = current;
+  await initialize(preferredContainerId);
+  if (disposed || client.value !== current) return;
+  connectedApiKey = apiKey;
+  saveConnection();
+}
+
+function restoreConnection() {
+  if (props.connectionManaged || !props.connectionStorage) return;
+  try {
+    const stored = props.connectionStorage.getItem(connectionKey);
+    if (!stored) return;
+    const session = JSON.parse(stored) as { apiKey?: unknown; containerId?: unknown } | null;
+    if (typeof session?.apiKey === 'string' && session.apiKey.trim()) {
+      const preferred = typeof session.containerId === 'string' ? session.containerId : undefined;
+      void connectWithKey(session.apiKey, preferred);
+    }
+  } catch {
+    clearConnection();
+  }
+}
+
 async function connect() {
   if (props.connectionManaged) return;
+  const apiKey = key.value.trim();
   disconnect();
-  client.value = createHarvestClient({ apiKey: key.value.trim() });
   key.value = '';
-  await initialize();
+  await connectWithKey(apiKey);
 }
 
 /** Cancels requests and removes the current connection and its data. */
 function disconnect() {
+  clearConnection();
   capabilityRead?.abort();
   capabilities.value = {};
   capabilityErrors.value = {};
@@ -330,6 +402,7 @@ function disconnect() {
   cursor.value = '';
   notice.value = null;
   failure.value = null;
+  connecting.value = false;
   pending.value = false;
 }
 
@@ -410,7 +483,16 @@ async function declarePipeline() {
         containerId: containerId.value,
         sourceId: sourceId.value,
         name: pipelineName.value || undefined,
-        scope: startUrl.value.trim() ? { url: startUrl.value.trim() } : {},
+        scope: startUrl.value.trim()
+          ? {
+              url: startUrl.value.trim(),
+              ...(sourceSections(newSourceCapabilities.value).some((section) =>
+                sameSection(startUrl.value, section.url),
+              )
+                ? { restrictToPath: true }
+                : {}),
+            }
+          : {},
         pinned: true,
         ai: 'off',
         schedules: [
@@ -456,6 +538,7 @@ async function subscribe() {
           containerId: containerId.value,
           pipelineId: pipelineId.value,
           schema: 'wow2.event.v1',
+          ...(subscriptionTag.value.trim() ? { filterKey: `tag:${subscriptionTag.value.trim()}` } : {}),
         },
         signal,
       ),
@@ -483,9 +566,11 @@ function date(value?: string) {
 watch(
   containerId,
   () => {
+    saveConnection();
     read?.abort();
     selectedPost.value = null;
     sources.value = [];
+    sourceListState.value = 'loading';
     pipelines.value = [];
     runs.value = [];
     posts.value = [];
@@ -512,6 +597,7 @@ watch([() => selectedPipeline.value?.sourceId, sourceId], () => {
 });
 onMounted(() => {
   if (client.value) void initialize();
+  else restoreConnection();
   timer = setInterval(() => {
     if (document.visibilityState !== 'hidden') void refresh();
   }, 5000);
@@ -545,8 +631,7 @@ onScopeDispose(() => {
           ☰
         </Button>
         <a href="/" class="flex items-center gap-3 text-lg font-semibold tracking-tight md:w-[204px] md:shrink-0">
-          <span class="grid size-8 place-items-center rounded-xl bg-primary/10 text-primary" aria-hidden="true">H</span>
-          Harvest
+          <slot name="brand">SCFD</slot>
         </a>
         <span v-if="connected" class="hidden min-w-0 flex-1 truncate text-sm text-muted-foreground sm:block">
           {{ activeTab }}
@@ -591,7 +676,7 @@ onScopeDispose(() => {
             </SelectPicker>
           </Field>
         </div>
-        <nav aria-label="Harvest sections" class="min-h-0 flex-1 overflow-y-auto">
+        <nav aria-label="SCFD sections" class="min-h-0 flex-1 overflow-y-auto">
           <SidebarMenu :is-collapsed="sidebarCollapsed" class="p-3">
             <SidebarMenuItem v-for="tab in tabs" :key="tab" as-child :is-active="activeTab === tab">
               <template #icon>
@@ -635,7 +720,7 @@ onScopeDispose(() => {
                 </button>
               </SidebarMenuItem>
               <Button
-                v-if="can('pipelines:manage')"
+                v-if="canWrite('pipelines:manage')"
                 size="sm"
                 variant="ghost"
                 class="mt-2 w-full justify-start text-muted-foreground"
@@ -670,10 +755,13 @@ onScopeDispose(() => {
     <AppShellMain>
       <AppShellContent gutter="lg" max-width="2xl">
         <div class="space-y-6 py-3">
-          <Card v-if="!connected" variant="glass" class="mx-auto max-w-xl p-7 sm:p-9">
+          <Card v-if="connecting" variant="glass" class="mx-auto max-w-xl p-7 sm:p-9">
+            <p role="status">Connecting to SCFD…</p>
+          </Card>
+          <Card v-else-if="!connected" variant="glass" class="mx-auto max-w-xl p-7 sm:p-9">
             <p class="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Your sources, on schedule</p>
             <h2 class="mt-3 text-2xl font-semibold">
-              {{ props.signInPath ? 'Sign in to Harvest' : 'Connect to Harvest' }}
+              {{ props.signInPath ? 'Sign in to SCFD' : 'Connect to SCFD' }}
             </h2>
             <p class="mt-2 text-sm leading-relaxed text-muted-foreground">
               Bring your pipelines, captures and deliveries into one place.
@@ -705,7 +793,11 @@ onScopeDispose(() => {
               <Button type="submit" class="w-full" :is-loading="pending">Connect</Button>
             </form>
             <p v-if="!props.connectionManaged" class="mt-4 text-xs text-muted-foreground">
-              The key stays in memory until you disconnect or close this page.
+              {{
+                props.connectionStorage
+                  ? 'This local tab reconnects on refresh. Disconnect clears the key.'
+                  : 'The key stays in memory until you disconnect or leave this page.'
+              }}
             </p>
           </Card>
           <p
@@ -734,12 +826,12 @@ onScopeDispose(() => {
                   {{
                     activeTab === 'Pipelines'
                       ? 'Choose a saved target. Set its cadence. Follow each run.'
-                      : 'Manage your harvest workspace.'
+                      : 'Manage your SCFD workspace.'
                   }}
                 </p>
               </div>
               <Button
-                v-if="activeTab === 'Pipelines' && !creatingPipeline && can('pipelines:manage')"
+                v-if="activeTab === 'Pipelines' && !creatingPipeline && canWrite('pipelines:manage')"
                 variant="outline"
                 @click="creatingPipeline = true"
               >
@@ -779,6 +871,16 @@ onScopeDispose(() => {
                   <p class="mt-2 text-3xl font-semibold">{{ hosts.reduce((total, host) => total + host.queued, 0) }}</p>
                 </Card>
               </div>
+              <Card
+                v-if="localWorkerEnabled === false && (activeTab === 'Pipelines' || activeTab === 'Runs')"
+                variant="glass"
+                class="p-4 text-sm"
+              >
+                <div role="status">
+                  <strong>Capture worker is off on this server.</strong>
+                  Queued runs need an active worker to start.
+                </div>
+              </Card>
               <div v-if="activeTab === 'Pipelines'" class="grid gap-6">
                 <Card v-if="!creatingPipeline" variant="glass" class="p-6">
                   <h2 class="text-lg font-semibold">Pipeline configuration</h2>
@@ -814,15 +916,15 @@ onScopeDispose(() => {
                       </p>
                       <div class="flex gap-2">
                         <Button
-                          v-if="can('pipelines:run')"
+                          v-if="canWrite('pipelines:run')"
                           size="sm"
                           :is-disabled="pending || pipeline.state !== 'active' || !canCapture(pipeline.sourceId)"
                           @click="mutate((api, signal) => api.startRun(pipeline.id, 'capture', signal), 'Run queued.')"
                         >
-                          Run now
+                          {{ localWorkerEnabled === false ? 'Queue capture' : 'Run now' }}
                         </Button>
                         <Button
-                          v-if="can('pipelines:manage')"
+                          v-if="canWrite('pipelines:manage')"
                           size="sm"
                           variant="outline"
                           :is-disabled="pending"
@@ -845,7 +947,7 @@ onScopeDispose(() => {
                     :error="capabilityErrors[selectedPipeline.sourceId]"
                   />
                   <PipelineSettings
-                    v-if="selectedPipeline && can('pipelines:manage')"
+                    v-if="selectedPipeline && canWrite('pipelines:manage')"
                     :key="selectedPipeline.id"
                     class="mt-6 border-t border-border pt-6"
                     :pipeline="selectedPipeline"
@@ -858,13 +960,13 @@ onScopeDispose(() => {
                   </p>
                 </Card>
                 <Card
-                  v-if="can('pipelines:manage') && (creatingPipeline || !pipelines.length)"
+                  v-if="canWrite('pipelines:manage') && (creatingPipeline || !pipelines.length)"
                   variant="glass"
                   class="max-w-2xl self-start p-6"
                 >
                   <h3 class="font-semibold">Create a pipeline</h3>
                   <form class="mt-5 space-y-4" @submit.prevent="declarePipeline">
-                    <div class="space-y-2">
+                    <div v-if="sourceOptions.length" class="space-y-2">
                       <Field label="Pipeline source">
                         <SelectPicker v-model="sourceId" :options="sourceOptions">
                           <SelectPickerTrigger><SelectPickerValue placeholder="Choose a source" /></SelectPickerTrigger>
@@ -874,6 +976,28 @@ onScopeDispose(() => {
                         </SelectPicker>
                       </Field>
                     </div>
+                    <div v-else class="space-y-2 text-sm">
+                      <p class="font-medium">Pipeline source</p>
+                      <p v-if="sourceListState === 'loading'" class="text-muted-foreground" role="status">
+                        Loading registered sources…
+                      </p>
+                      <p v-else-if="sourceListState === 'unavailable'" class="text-muted-foreground" role="status">
+                        Could not load sources. Use Refresh to try again.
+                      </p>
+                      <template v-else>
+                        <p class="text-muted-foreground">No sources registered in this container.</p>
+                        <Button
+                          v-if="canWrite('sources:manage')"
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          @click="openSection('Sources')"
+                        >
+                          Register a source
+                        </Button>
+                        <p v-else class="text-muted-foreground">Ask an operator to register a source.</p>
+                      </template>
+                    </div>
                     <label class="block space-y-2 text-sm">
                       <span>Name</span>
                       <TextInput v-model="pipelineName" placeholder="Upcoming events" />
@@ -882,6 +1006,7 @@ onScopeDispose(() => {
                       <span>Starting URL / saved filter</span>
                       <TextInput v-model="startUrl" placeholder="Paste the full filtered URL or account URL" />
                     </label>
+                    <SourceSectionPicker v-model="startUrl" :capabilities="newSourceCapabilities" />
                     <label class="block space-y-2 text-sm">
                       <span>Run every (minutes)</span>
                       <NumberInput v-model="everyMinutes" :min="5" :max="525600" />
@@ -896,6 +1021,7 @@ onScopeDispose(() => {
                       {{ newScheduleEnabled ? 'Scheduled capture enabled' : 'Manual capture only' }}
                     </Button>
                     <SourceCapabilitiesPanel
+                      v-if="sourceId"
                       :capabilities="newSourceCapabilities"
                       :error="capabilityErrors[sourceId]"
                     />
@@ -923,7 +1049,7 @@ onScopeDispose(() => {
                   </ul>
                   <p v-if="!sources.length" class="mt-6 text-sm text-muted-foreground">No sources registered.</p>
                 </Card>
-                <Card v-if="can('sources:manage')" variant="glass" class="self-start p-6">
+                <Card v-if="canWrite('sources:manage')" variant="glass" class="self-start p-6">
                   <h3 class="font-semibold">Register a source</h3>
                   <form class="mt-5 space-y-4" @submit.prevent="registerSource">
                     <label class="block space-y-2 text-sm">
@@ -980,7 +1106,7 @@ onScopeDispose(() => {
                         <p class="mt-2 text-xs text-muted-foreground">{{ date(run.queuedAtUtc) }}</p>
                       </div>
                       <Button
-                        v-if="can('pipelines:run') && (run.status === 'queued' || run.status === 'running')"
+                        v-if="canWrite('pipelines:run') && (run.status === 'queued' || run.status === 'running')"
                         size="sm"
                         variant="outline"
                         :is-disabled="pending"
@@ -1102,6 +1228,10 @@ onScopeDispose(() => {
                           </SelectPicker>
                         </Field>
                       </div>
+                      <label class="block space-y-2 text-sm">
+                        <span>Post tag (optional)</span>
+                        <TextInput v-model="subscriptionTag" placeholder="Exact tag to receive" maxlength="196" />
+                      </label>
                       <Button type="submit" :is-disabled="!pipelineId || !tenantId" :is-loading="pending">
                         Subscribe
                       </Button>

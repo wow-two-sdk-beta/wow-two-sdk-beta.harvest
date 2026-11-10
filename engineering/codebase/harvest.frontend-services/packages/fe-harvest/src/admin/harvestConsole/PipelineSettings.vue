@@ -11,6 +11,8 @@ import {
   SelectPickerItem,
 } from '@wow-two-beta/fe/presentation/forms';
 import type { PipelineModel, PipelineUpdate, ScheduleMode, WorkKind, SourceCapabilitiesModel } from '../../contracts';
+import SourceSectionPicker from './SourceSectionPicker.vue';
+import { sameSection, sourceSections } from './SourceSections';
 
 /** Edits a complete saved target and cadence without resetting drafts during background refresh. */
 defineOptions({ name: 'PipelineSettings' });
@@ -112,6 +114,11 @@ function save() {
     ...(name.value.trim() ? { name: name.value.trim() } : {}),
     scope: {
       ...(url.value.trim() ? { url: url.value.trim() } : {}),
+      ...(url.value.trim() &&
+      (props.pipeline.scope.restrictToPath ||
+        sourceSections(props.capabilities).some((section) => sameSection(url.value, section.url)))
+        ? { restrictToPath: true }
+        : {}),
       parameters: Object.fromEntries(entries.map((entry) => [entry.key.trim(), entry.value])),
     },
     schedules: rows.value
@@ -155,6 +162,7 @@ function save() {
       <p class="-mt-2 text-xs leading-relaxed text-muted-foreground">
         {{ urlGuidance }}
       </p>
+      <SourceSectionPicker v-model="url" :capabilities="capabilities" />
       <details class="rounded-xl border border-border p-4">
         <summary class="cursor-pointer text-sm font-medium">
           Query parameter overrides ({{ parameters.length }})
