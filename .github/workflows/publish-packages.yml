@@ -112,7 +112,7 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: >-
-          dotnet build Harvest.BackendServices.slnx -c Release -p:Version="$VERSION"
+          dotnet build SCFD.BackendServices.slnx -c Release -p:Version="$VERSION"
           -p:ContinuousIntegrationBuild=true -p:RepositoryCommit="$GITHUB_SHA"
 
       - name: Test the package gate (unit, integration, migrations, in-process conformance)

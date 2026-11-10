@@ -16,7 +16,7 @@ wow-two-ws/conventions/development/repo/structure/domain-structure.md. Repo delt
   The EF context maps over the SQL and never creates it.
 - A lane works in its `packages/Module/{Lane}/` folder and maps the tables its lead doc names; a schema change another
   lane needs is a new migration, agreed in the contract first.
-- `dotnet test Harvest.BackendServices.slnx` runs every tier; the database tiers need Docker, and the backend build
+- `dotnet test SCFD.BackendServices.slnx` runs every tier; the database tiers need Docker, and the backend build
   needs Node and pnpm for the pages.
 - A local run sets its connection string and the operator key (`Harvest:Operator:ApiKey`, `hv_` + 32 letters and
   digits) in `service/Harvest.Api/appsettings.Local.json`, which never leaves the machine.

@@ -1,6 +1,10 @@
-# wow-two-sdk-beta.harvest
+# WoW2 SCFD
 
-Harvest: one 24/7 harvester that captures posts from web, feed and social sources, merges duplicates, checks deletions and delivers them to subscribing products.
+SCFD (Source Collection and Feed Delivery) captures and deduplicates posts from web, feed and social sources,
+checks for deletions and delivers updates to subscribing products.
+
+This public repository owns the engine, contracts, clients and generic API. SCFD Adapters supplies private
+source integrations. [Brand and integration names](product/brand/brand.md)
 
 ## Artifacts
 
@@ -29,7 +33,7 @@ services.AddHarvestEngine();
 services.AddHarvestWorker(); // explicit opt-in to background schedules
 await app.Services.MigrateHarvestOnStartupAsync();
 
-// Forms 2 and 3 — over a local Harvest service with an API key
+// Forms 2 and 3 use a local SCFD service with an API key.
 services.AddHarvestClient(options =>
 {
     options.BaseAddress = new Uri("https://harvest.example.com/");
@@ -103,7 +107,7 @@ docker compose -f engineering/deployment/docker-compose.yml up -d --build --wait
 ```bash
 # Backend: unit, integration, E2E, conformance and migration tiers; the database tiers run postgres:18-alpine in
 # Testcontainers (Docker).
-cd engineering/codebase/harvest.backend-services && dotnet test Harvest.BackendServices.slnx
+cd engineering/codebase/harvest.backend-services && dotnet test SCFD.BackendServices.slnx
 
 # Frontend: lint, tests (builds fe-harvest first), production build, packed-consumer check
 cd engineering/codebase/harvest.frontend-services && pnpm lint && pnpm test && pnpm build && pnpm check:package

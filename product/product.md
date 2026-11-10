@@ -1,11 +1,11 @@
-# Harvest — capability
+# SCFD
 
 *Last updated: 2026-10-27*
 
 ## Problem
 
 Products need the same source collection, scheduling, capture history, duplicate resolution, deletion checks and
-delivery. Harvest owns that state once; a consumer subscribes to a pipeline and applies its highest post revision.
+delivery. SCFD owns that state once. A consumer subscribes to a pipeline and applies its highest post revision.
 Events is the first intended consumer. A consumer can select the deterministic `wow2.event.v1` projection rather
 than own a second harvesting engine.
 
@@ -30,7 +30,7 @@ state; refusals never count as deletion evidence. Reviewed merges can be undone 
 
 ## Source posture
 
-Harvest fetches directly and politely: an honest user agent, robots policy, one paced host connection, conditional
+SCFD fetches directly using an identified user agent, robots policy, one paced host connection, conditional
 requests and `Retry-After`. A challenge, block or rate limit becomes an outcome and a persistent pause. Configurable
 CAPTCHA, proxy/IP and operator-supplied account-session providers belong to the private adapters host and are disabled
 until configured. The public engine exposes a leased transport seam while retaining its request policies. Generic
@@ -41,7 +41,7 @@ capability. AI stays off. Source-specific brokers remain in the private adapters
 
 The public repository owns the generic engine, contracts, family readers, self-hosted image and reusable console.
 The private adapters repository references these packages and builds WoW2's source-specific service images.
-Social owns official platform integrations and never depends on Harvest. Secrets remain in the platform vault.
+Social owns official platform integrations and runs independently of SCFD. Secrets live in the platform vault.
 
 Runtime requirements are PostgreSQL 16+ with UTF-8 and `pg_trgm`, a connection string and an operator API key. No
 additional external service account is required. The version track records the build; the backlog records later work.

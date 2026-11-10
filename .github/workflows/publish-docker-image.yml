@@ -38,7 +38,7 @@ jobs:
       # Database test tiers use PostgreSQL in Testcontainers and require Docker.
       backends: |
         [{"name": "Backend", "dotnet": "engineering/codebase/harvest.backend-services/global.json",
-          "run": "dotnet test engineering/codebase/harvest.backend-services/Harvest.BackendServices.slnx",
+          "run": "dotnet test engineering/codebase/harvest.backend-services/SCFD.BackendServices.slnx",
           "paths": ["engineering/codebase/harvest.backend-services/**",
                     "engineering/deployment/deploy.yml"]},
          {"name": "Release scripts", "timeout": 10,

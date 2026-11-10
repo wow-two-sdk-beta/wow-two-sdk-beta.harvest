@@ -1,4 +1,4 @@
-# wow-two-sdk-beta.harvest — Architecture
+# SCFD architecture
 
 *Last updated: 2026-10-27*
 
@@ -7,7 +7,7 @@ One contract, two registrations, one service that hosts the first, and the engin
 ```
 product Domain / Application ──► Abstractions (contract: registry broker, step and capability seams, envelope)
 product composition root ──► Module (Form 1)  or  Client (Forms 2/3)
-service/Harvest.Api ──► Hosting ──► Module; adds the console assets (apps/web)
+service/Harvest.Api ──► Hosting ──► Module
 Client ──HTTP + X-Api-Key──► service/Harvest.Api ──► Module ──► PostgreSQL (harvest_ tables, migration set harvest)
 private adapters repo ──► Abstractions (ISourceAdapter, IStepBroker) + core; registered in code by the host
 ```
@@ -25,9 +25,9 @@ private adapters repo ──► Abstractions (ISourceAdapter, IStepBroker) + cor
 | `packages/Client` | Forms 2/3 over the service's HTTP API, authenticated by an API key |
 | `packages/Hosting` | shared ASP.NET startup, API key policies and HTTP controllers for generic and private adapter hosts |
 | `packages/Testing` | registry, run, post and delivery fakes and their shared conformance suites |
-| `service/Harvest.Api` | hosting, API key access (operator key, tenant scopes, container isolation), the HTTP mirror, the console |
+| `service/Harvest.Api` | API host with scoped service tokens, local operator key access and container isolation |
 | `fe-harvest` | the TypeScript contract mirror, registry and console clients (`./kit`), reusable management screens (`./admin`) |
-| `apps/web` | the console (`/`, composing `fe-harvest/admin`), on `fe-harvest` through its exports |
+| `apps/web` | standalone demo using the `fe-harvest/admin` export |
 
 - Lanes run in parallel on disjoint folders; the schema in the SQL migrations is their shared seam, and each lane's lead
   doc names the contract seam it implements and the tables it owns.

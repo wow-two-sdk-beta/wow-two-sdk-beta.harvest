@@ -1,6 +1,7 @@
 # wow-two-sdk-beta.harvest
 
-Harvest: one 24/7 harvester that captures posts from web, feed and social sources, merges duplicates, checks deletions and delivers them to subscribing products.
+WoW2 SCFD (Source Collection and Feed Delivery) captures and deduplicates posts, checks for deletions and delivers
+updates to subscribing products.
 
 ## Lazy loading
 
@@ -19,7 +20,7 @@ engineering/             ← the HOW
 ├── deployment/          ← deploy.yml · Dockerfile · docker-compose.yml · deployment.md
 ├── research/ · scripts/ ← analyses · release helpers publish-packages.yml calls
 └── codebase/            ← THE CODE — only place code lives
-    ├── harvest.backend-services/    ← Harvest.BackendServices.slnx: packages/{Abstractions,Module,Client,Testing,Hosting} · service/Harvest.Api · tests/Harvest.Tests.*
+    ├── harvest.backend-services/    ← SCFD.BackendServices.slnx: packages/{Abstractions,Module,Client,Testing,Hosting} · service/Harvest.Api · tests/Harvest.Tests.*
     └── harvest.frontend-services/   ← pnpm workspace: packages/fe-harvest (npm: contracts · kit · admin) · standalone demo
 ```
 

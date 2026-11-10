@@ -1,9 +1,9 @@
 # yaml-language-server: $schema=../../../../../conventions/deployment/descriptor/deploy.schema.json
-# The shared Harvest API and worker. Hostnames and credentials live in Wheelhouse targets.
+# The shared SCFD API and worker. Hostnames and credentials live in Wheelhouse targets.
 descriptor: 2
 product: harvest
-name: Harvest
-description: Scheduled source capture and delivery for connected products.
+name: SCFD
+description: Source Collection and Feed Delivery for connected products.
 platform: linux/amd64
 # Dev runs as .NET Development, prod as Production; appsettings.Development.json holds defaults only, and an IDE
 # run's own values live in appsettings.Local.json.

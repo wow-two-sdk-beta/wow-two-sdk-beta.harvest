@@ -1,7 +1,7 @@
 {
   "name": "@wow-two-beta/fe-harvest",
   "version": "0.0.0",
-  "description": "Harvest domain UI: the TypeScript mirror of the registry contract, a registry client and the console's management screens.",
+  "description": "SCFD TypeScript contracts, registry client and reusable management components.",
   "type": "module",
   "license": "MIT",
   "repository": {

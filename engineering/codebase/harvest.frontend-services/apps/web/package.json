@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Harvest hosted pages and admin console, served by Harvest.Api.",
+  "description": "The standalone SCFD console demo.",
   "scripts": {
     "dev": "vite",
     "dev:http": "vite --mode http",

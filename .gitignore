@@ -30,7 +30,13 @@ engineering/codebase/harvest.backend-services/service/Harvest.Api/wwwroot/*
 !engineering/codebase/harvest.backend-services/service/Harvest.Api/wwwroot/.gitkeep
 
 # IDE / OS
-.idea/
+**/.idea/*
+!**/.idea/.idea.SCFD.BackendServices/
+**/.idea/.idea.SCFD.BackendServices/*
+!**/.idea/.idea.SCFD.BackendServices/.idea/
+!**/.idea/dictionaries/
+**/.idea/dictionaries/*
+!**/.idea/dictionaries/scfd.xml
 .vs/
 .vscode/*
 .DS_Store

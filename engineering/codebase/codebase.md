@@ -4,7 +4,7 @@ The code lives in `harvest.backend-services/` (.NET) and `harvest.frontend-servi
 
 ## Backend
 
-- `Harvest.BackendServices.slnx` groups `Packages/`, `Services/` and `Tests/`.
+- `SCFD.BackendServices.slnx` groups `Packages/`, `Services/` and `Tests/`.
 - `packages/` holds the NuGet family `WoW2.Sdk.Beta.Be.Harvest.*`: `Abstractions` (the contract, by concept:
   `Registration`, `Tenants`, `Containers`, `Sources`, `Pipelines`, `Steps`, `Capabilities.*`, `Readers`, `Extraction`,
   `Posts`, `Runs`, `Delivery`), `Module` (Form 1, with `Migrations/NNN-name/{Apply,Rollback}.sql`), `Client` (Forms
@@ -19,7 +19,7 @@ The code lives in `harvest.backend-services/` (.NET) and `harvest.frontend-servi
   partitions), `E2E` (the host in process: boot and refusal, access, the wire, `/health`, the descriptor's dev
   check), `Conformance` (one suite against module, client and fake), `Migrations` (the module's SQL set). The database
   tiers run `postgres:18-alpine` in Testcontainers through `tests/Shared/PostgresServer.cs` — one server per test
-  assembly, a fresh database per fixture — so they need Docker. Run them with `dotnet test Harvest.BackendServices.slnx`.
+  assembly, a fresh database per fixture — so they need Docker. Run them with `dotnet test SCFD.BackendServices.slnx`.
 
 ## Frontend
 

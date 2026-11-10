@@ -1,4 +1,4 @@
-# Harvest — product context
+# SCFD product context
 
 *Last updated: 2026-11-03*
 

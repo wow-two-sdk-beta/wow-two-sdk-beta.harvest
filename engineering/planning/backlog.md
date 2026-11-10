@@ -1,6 +1,6 @@
-# wow-two-sdk-beta.harvest — Backlog
+# SCFD — Backlog
 
-*Last updated: 2026-10-27*
+*Last updated: 2026-11-09*
 
 Every unbuilt item, grouped; top of each group = next. Shipped work lives in [`version-track/`](version-track/).
 Shape: wow-two-ws/conventions/planning/version-track/version-track.md
@@ -56,3 +56,9 @@ Shape: wow-two-ws/conventions/planning/version-track/version-track.md
 | Image and Wheelhouse dev rollout | engineering | after the GitHub repo |
 | NuGet trusted-publishing policy and npm first version | engineering | after the content gate |
 | Move the Harvest analysis into `engineering/research/` | engineering | after the private-facts strip pass |
+
+## Brand
+
+| Item | Type | Notes |
+|---|---|---|
+| Redesign the SCFD logo | product | Deferred. The user rejected the draft on 2026-11-09. Review new concepts before replacing the logo and its icon exports. |
