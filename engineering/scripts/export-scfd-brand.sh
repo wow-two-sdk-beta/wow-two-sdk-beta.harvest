@@ -30,7 +30,7 @@ ffmpeg -loglevel error -y -i "$output_dir/short-colored-dark.png" \
 ffmpeg -loglevel error -y -i "$output_dir/scfd-logo.png" -i "$output_dir/favicon.png" \
   -filter_complex "
     [0:v]scale=-1:28:flags=lanczos,split[navy][header];
-    [header]$white[white];
+    [header]${white}[white];
     [1:v]split=4[a][b][c][d];
     [a]scale=16:16:flags=lanczos[m16];
     [b]scale=20:20:flags=lanczos[m20];
@@ -41,7 +41,7 @@ ffmpeg -loglevel error -y -i "$output_dir/scfd-logo.png" -i "$output_dir/favicon
     [s1][m20]overlay=75:20:format=rgb[s2];
     [s2][m24]overlay=130:18:format=rgb[s3];
     [s3][m32]overlay=187:14:format=rgb,split[marks][ink];
-    [ink]$white[marksDark];
+    [ink]${white}[marksDark];
     color=white:s=460x60,format=rgba[light];
     color=0x171d28:s=460x60,format=rgba[dark];
     [light][navy]overlay=20:16:format=rgb[l1];
