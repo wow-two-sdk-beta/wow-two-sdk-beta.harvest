@@ -12,37 +12,59 @@ import {
   type Ref,
   type ShallowRef,
 } from 'vue';
-import type { ApiFailure } from '@wow-two-beta/fe/foundation/http';
-import type { Result } from '@wow-two-beta/fe/foundation/results';
+import { ApiFailureFactory, type ApiFailure } from '@wow-two-beta/fe/foundation/http';
+import { ResultExtensions, type Result } from '@wow-two-beta/fe/foundation/results';
 import type {
   ContainerModel,
   CursorPage,
   DeliveryEvent,
-  HostHealthModel,
   PipelineModel,
   PipelineUpdate,
   PostModel,
+  PostRevisionModel,
   RunModel,
+  ScheduleModel,
   SourceCapabilitiesModel,
+  SourceGroupModel,
   SourceModel,
+  SourceOverviewModel,
+  SourcePostModel,
+  SourceUpdate,
   SubscriptionModel,
   TenantModel,
   WorkKind,
 } from '../../contracts';
 import { createHarvestClient, type HarvestClient } from '../../kit';
-import { sourceSections } from './SourceSections';
+import { sameSection, sourceSections, type SourceSection } from './SourceSections';
+
+/** The tabs of a source's page, each its own place. */
+export type SourceTab = 'overview' | 'posts' | 'activity' | 'settings';
 
 /** Names a place in the console, so a panel can link to it without knowing the host app's routes. */
 export type ConsolePlace =
   | { readonly kind: 'home' }
-  | { readonly kind: 'sources' }
-  | { readonly kind: 'pipelines'; readonly source?: string }
-  | { readonly kind: 'pipeline'; readonly id: string }
-  | { readonly kind: 'runs'; readonly pipeline?: string }
-  | { readonly kind: 'posts' }
-  | { readonly kind: 'subscriptions' }
-  | { readonly kind: 'hosts' }
+  | { readonly kind: 'sources'; readonly group?: string }
+  | { readonly kind: 'source'; readonly id: string; readonly tab?: SourceTab }
+  | { readonly kind: 'subscribers' }
   | { readonly kind: 'access' };
+
+/** How often a section is checked for changes. */
+export type SectionCheck = 'off' | 'daily' | 'weekly';
+
+/** A change to one section's harvest: how often, how often it is checked, and its page limit. */
+export interface SectionScheduleChange {
+  /** Harvest every this many hours. */
+  readonly everyHours?: number;
+  readonly check?: SectionCheck;
+  /** Stop after this many pages, 1 to 20. */
+  readonly maxPages?: number;
+}
+
+/** A post opened in full: its facts and its revisions, newest first. */
+export interface PostDetails {
+  readonly post: PostModel;
+  readonly revisions: readonly PostRevisionModel[];
+}
 
 /** Lets panels link to places: the host app resolves each place to its own route. */
 export interface ConsoleNavigation {
@@ -91,12 +113,24 @@ export interface SubscriptionDraft {
 
 type ListState = 'loading' | 'ready' | 'unavailable';
 
+/** The time zone a new schedule keeps when the console creates it. @internal */
+const DefaultTimeZone = 'Asia/Tashkent';
+/** A section turned on harvests every six hours until an operator changes it. @internal */
+const DefaultCaptureEvery = 'PT6H';
+/** The intervals a check for changes runs at. @internal */
+const CheckEvery: Record<Exclude<SectionCheck, 'off'>, string> = { daily: 'P1D', weekly: 'P7D' };
+
 const ConnectionKey = 'scfd.console.connection';
 const DefaultRefreshMs = 5000;
 
 /** Presents access failures without losing the server's actionable message. @internal */
 function message(error: ApiFailure) {
   return error.status === 401 ? 'Sign in or reconnect to continue.' : error.message;
+}
+
+/** The failure a read gets with no connection. @internal */
+function offline() {
+  return ApiFailureFactory.create('transport');
 }
 
 /** Orders runs newest first. @internal */
@@ -124,8 +158,9 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
   const sourceListState = ref<ListState>('loading');
   const pipelines = shallowRef<readonly PipelineModel[]>([]);
   const runsByPipeline = shallowRef<Readonly<Record<string, readonly RunModel[]>>>({});
-  const posts = shallowRef<readonly PostModel[]>([]);
-  const hosts = shallowRef<readonly HostHealthModel[]>([]);
+  const overviews = shallowRef<readonly SourceOverviewModel[]>([]);
+  const overviewState = ref<ListState>('loading');
+  const groups = shallowRef<readonly SourceGroupModel[]>([]);
   const subscriptions = shallowRef<readonly SubscriptionModel[]>([]);
   const capabilities = shallowRef<Readonly<Record<string, SourceCapabilitiesModel>>>({});
   const capabilityErrors = shallowRef<Readonly<Record<string, string>>>({});
@@ -154,6 +189,8 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
   const isOperator = computed(() => options.isOperator);
   const localWorkerEnabled = computed(() => options.localWorkerEnabled);
   const connectionManaged = computed(() => options.connectionManaged === true);
+  /** Whether the session operates SCFD; without the account's role the server decides. */
+  const canOperate = computed(() => options.isOperator !== false);
 
   /** Whether the session holds a scope; without a permission list the server decides. */
   function can(scope: string) {
@@ -188,17 +225,42 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
     return metadata?.configuration.readiness === 'ready' && metadata.workKinds.includes('capture');
   }
 
-  /** Names a pipeline, adding its section's last path segment when two pipelines share a name. */
+  /** The source as the Sources area shows it: sections, last harvest and health. */
+  function overviewOf(sourceId: string) {
+    return overviews.value.find((item) => item.sourceId === sourceId);
+  }
+
+  function groupOf(groupId?: string) {
+    return groupId ? groups.value.find((item) => item.id === groupId) : undefined;
+  }
+
+  /** A source's display name: the overview's, else the registry's name or handle. */
+  function sourceName(sourceId: string) {
+    const source = sourceOf(sourceId);
+    return overviewOf(sourceId)?.name ?? source?.name ?? source?.handle ?? 'Source';
+  }
+
+  /** The adapter section a URL belongs to, if any. */
+  function adapterSectionOf(sourceId: string, url?: string): SourceSection | undefined {
+    return url ? sectionsOf(sourceId).find((section) => sameSection(url, section.url)) : undefined;
+  }
+
+  /** Names a section as the adapter does (`Fashion`), else by the name its harvest was given. */
+  function sectionLabel(pipelineId: string) {
+    const pipeline = pipelineOf(pipelineId);
+    const owner = overviews.value.find((item) => item.sections.some((row) => row.pipelineId === pipelineId));
+    const section = owner?.sections.find((item) => item.pipelineId === pipelineId);
+    const sourceId = pipeline?.sourceId ?? owner?.sourceId;
+    const url = pipeline?.scope.url ?? section?.url;
+    const adapter = sourceId ? adapterSectionOf(sourceId, url) : undefined;
+    if (adapter) return adapter.label;
+    if (pipeline && !url) return 'Whole source';
+    return section?.name ?? pipeline?.name ?? 'Section';
+  }
+
+  /** Names a pipeline as the section it follows. */
   function pipelineLabel(pipeline: PipelineModel) {
-    const name = pipeline.name ?? sourceOf(pipeline.sourceId)?.handle ?? pipeline.id.slice(0, 8);
-    if (pipeline.scope.url && pipelines.value.filter((item) => item.name === pipeline.name).length > 1) {
-      try {
-        return name + ' / ' + (new URL(pipeline.scope.url).pathname.split('/').filter(Boolean).pop() ?? 'root');
-      } catch {
-        return name;
-      }
-    }
-    return name;
+    return sectionLabel(pipeline.id);
   }
 
   function clearMessages() {
@@ -259,19 +321,21 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
     const controller = new AbortController();
     read = controller;
     try {
-      const [sourceResult, pipelineResult, postResult, hostResult, subscriptionResult] = await Promise.all([
+      const [sourceResult, pipelineResult, overviewResult, groupResult, subscriptionResult] = await Promise.all([
         api.listSources(current, controller.signal),
         api.listPipelines(current, controller.signal),
-        api.listPosts(current, controller.signal),
-        api.listHosts(current, controller.signal),
+        api.listSourceOverview(current, controller.signal),
+        api.listSourceGroups(current, controller.signal),
         api.listSubscriptions(controller.signal),
       ]);
       if (controller.signal.aborted || disposed || client.value !== api || containerId.value !== current) return;
       sourceListState.value = sourceResult.ok ? 'ready' : 'unavailable';
       if (sourceResult.ok) sources.value = sourceResult.value;
       if (pipelineResult.ok) pipelines.value = pipelineResult.value;
-      if (postResult.ok) posts.value = postResult.value;
-      if (hostResult.ok) hosts.value = hostResult.value;
+      if (overviewResult.ok) overviews.value = overviewResult.value;
+      if (overviewResult.ok || overviewState.value === 'loading')
+        overviewState.value = overviewResult.ok ? 'ready' : 'unavailable';
+      if (groupResult.ok) groups.value = groupResult.value;
       if (subscriptionResult.ok) subscriptions.value = subscriptionResult.value;
       if (!sourceResult.ok) failure.value = message(sourceResult.failure);
       else if (!pipelineResult.ok) failure.value = message(pipelineResult.failure);
@@ -282,6 +346,7 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
     } catch {
       if (!controller.signal.aborted) {
         if (sourceListState.value === 'loading') sourceListState.value = 'unavailable';
+        if (overviewState.value === 'loading') overviewState.value = 'unavailable';
         failure.value = 'The console could not refresh. Try again.';
       }
     }
@@ -409,8 +474,8 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
     sources.value = [];
     pipelines.value = [];
     runsByPipeline.value = {};
-    posts.value = [];
-    hosts.value = [];
+    overviews.value = [];
+    groups.value = [];
     subscriptions.value = [];
     tenants.value = [];
     containerId.value = '';
@@ -458,7 +523,7 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
         containerId.value = result.value.id;
       }
       return result;
-    }, 'Container created.');
+    }, 'Shared pool created.');
   }
 
   function registerTenant(name: string) {
@@ -466,7 +531,7 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
       const result = await api.registerTenant({ slug: name, name }, signal);
       if (result.ok && !signal.aborted) tenants.value = [...tenants.value, result.value];
       return result;
-    }, 'Tenant registered.');
+    }, 'Subscriber registered.');
   }
 
   /** Declares a pipeline from a source and one of its sections; resolves the new pipeline, or nothing on failure. */
@@ -488,7 +553,7 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
               mode: 'interval',
               every: `PT${draft.everyMinutes}M`,
               enabled: draft.scheduleEnabled,
-              timeZone: 'Asia/Tashkent',
+              timeZone: DefaultTimeZone,
             },
           ],
         },
@@ -496,24 +561,218 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
       );
       if (result.ok && !signal.aborted) created = result.value;
       return result;
-    }, 'Pipeline created.');
+    }, 'Section turned on.');
     return created;
   }
 
   function savePipeline(id: string, update: PipelineUpdate) {
-    return mutate((api, signal) => api.updatePipeline(id, update, signal), 'Pipeline settings saved.');
+    return mutate((api, signal) => api.updatePipeline(id, update, signal), 'Section saved.');
   }
 
   function startRun(pipelineId: string, kind: WorkKind = 'capture') {
-    return mutate((api, signal) => api.startRun(pipelineId, kind, signal), 'Run queued.');
+    return mutate((api, signal) => api.startRun(pipelineId, kind, signal), 'Harvest queued.');
   }
 
   function cancelRun(id: string) {
-    return mutate((api, signal) => api.cancelRun(id, signal), 'Run cancelled.');
+    return mutate((api, signal) => api.cancelRun(id, signal), 'Harvest cancelled.');
   }
 
   function setPipelinePaused(id: string, paused: boolean) {
-    return mutate((api, signal) => api.setPipelinePaused(id, paused, signal), 'Pipeline updated.');
+    return mutate((api, signal) => api.setPipelinePaused(id, paused, signal), 'Section updated.');
+  }
+
+  /** A pipeline's saved schedules as an update writes them back. @internal */
+  function scheduleRows(pipeline: PipelineModel): Omit<ScheduleModel, 'id' | 'nextDueAtUtc'>[] {
+    return pipeline.schedules.map(({ kind, mode, every, maxEvery, cron, timeZone, window, enabled }) => ({
+      kind,
+      mode,
+      timeZone,
+      enabled,
+      ...(every ? { every } : {}),
+      ...(maxEvery ? { maxEvery } : {}),
+      ...(cron ? { cron } : {}),
+      ...(window ? { window } : {}),
+    }));
+  }
+
+  /** Sets one kind's schedule in a row list: an interval at `every`, on or off. @internal */
+  function withSchedule(
+    rows: Omit<ScheduleModel, 'id' | 'nextDueAtUtc'>[],
+    kind: WorkKind,
+    every: string | undefined,
+    enabled: boolean,
+  ) {
+    const index = rows.findIndex((row) => row.kind === kind);
+    if (index < 0) {
+      if (enabled && every) rows.push({ kind, mode: 'interval', every, enabled, timeZone: DefaultTimeZone });
+      return rows;
+    }
+    const current = rows[index]!;
+    rows[index] = {
+      ...current,
+      enabled,
+      ...(every ? { mode: 'interval' as const, every } : {}),
+    };
+    return rows;
+  }
+
+  /** The update that keeps a pipeline as saved; a change edits its rows. @internal */
+  function updateOf(pipeline: PipelineModel, schedules = scheduleRows(pipeline)): PipelineUpdate {
+    return {
+      ...(pipeline.name ? { name: pipeline.name } : {}),
+      scope: pipeline.scope,
+      schedules,
+    };
+  }
+
+  /**
+   * Turns a section's harvest on or off. On, a section nobody harvests yet gets its own pipeline from the section's
+   * URL, never a typed one; an existing one enables its capture and resumes. Off disables its capture schedule.
+   */
+  async function setSectionHarvest(sourceId: string, section: SourceSection, on: boolean): Promise<boolean> {
+    const existing = pipelines.value.find(
+      (pipeline) =>
+        pipeline.sourceId === sourceId && !!pipeline.scope.url && sameSection(pipeline.scope.url, section.url),
+    );
+    if (!existing) {
+      if (!on) return true;
+      const created = await declarePipeline({
+        sourceId,
+        name: `${sourceName(sourceId)} · ${section.label}`,
+        sectionUrl: section.url,
+        everyMinutes: 360,
+        scheduleEnabled: true,
+      });
+      return created !== undefined;
+    }
+    return setPipelineHarvest(existing.id, on, section.label);
+  }
+
+  /** Turns an existing section's harvest on — its capture enabled, the section resumed — or off. */
+  function setPipelineHarvest(pipelineId: string, on: boolean, label = sectionLabel(pipelineId)) {
+    const existing = pipelineOf(pipelineId);
+    if (!existing) return Promise.resolve(false);
+    const capture = existing.schedules.find((row) => row.kind === 'capture');
+    const rows = withSchedule(scheduleRows(existing), 'capture', capture?.every ?? DefaultCaptureEvery, on);
+    return mutate(
+      async (api, signal) => {
+        const saved = await api.updatePipeline(existing.id, updateOf(existing, rows), signal);
+        if (!saved.ok || !on || existing.state !== 'paused') return saved;
+        return api.setPipelinePaused(existing.id, false, signal);
+      },
+      on ? `${label} is harvested.` : `${label} is no longer harvested.`,
+    );
+  }
+
+  /** Changes how often a section is harvested and checked, and where it stops. */
+  function saveSectionSchedule(pipelineId: string, change: SectionScheduleChange) {
+    const pipeline = pipelineOf(pipelineId);
+    if (!pipeline) return Promise.resolve(false);
+    let rows = scheduleRows(pipeline);
+    if (change.everyHours !== undefined) {
+      const capture = rows.find((row) => row.kind === 'capture');
+      rows = withSchedule(rows, 'capture', `PT${change.everyHours}H`, capture?.enabled ?? true);
+    }
+    if (change.check !== undefined)
+      rows = withSchedule(
+        rows,
+        'check',
+        change.check === 'off' ? undefined : CheckEvery[change.check],
+        change.check !== 'off',
+      );
+    const update: PipelineUpdate = {
+      ...updateOf(pipeline, rows),
+      ...(change.maxPages !== undefined ? { limits: { maxPages: change.maxPages } } : {}),
+    };
+    return mutate(
+      (api, signal) => api.updatePipeline(pipelineId, update, signal),
+      `${sectionLabel(pipelineId)} saved.`,
+    );
+  }
+
+  /** Queues one capture run for every section of a source that is being harvested. */
+  function harvestNow(sourceId: string) {
+    const ids = overviewOf(sourceId)
+      ?.sections.filter((section) => section.harvesting)
+      .map((item) => item.pipelineId);
+    if (!ids?.length) return Promise.resolve(false);
+    return mutate(
+      async (api, signal) => {
+        let last: Result<RunModel, ApiFailure> | undefined;
+        for (const id of ids) {
+          last = await api.startRun(id, 'capture', signal);
+          if (!last.ok) return last;
+        }
+        return last!;
+      },
+      ids.length === 1 ? 'Harvest queued.' : `${ids.length} harvests queued.`,
+    );
+  }
+
+  /** Pauses or resumes every section of a source. */
+  function setSourcePaused(sourceId: string, paused: boolean) {
+    const ids = pipelines.value.filter((item) => item.sourceId === sourceId).map((item) => item.id);
+    if (!ids.length) return Promise.resolve(false);
+    return mutate(
+      async (api, signal) => {
+        let last: Result<PipelineModel, ApiFailure> | undefined;
+        for (const id of ids) {
+          last = await api.setPipelinePaused(id, paused, signal);
+          if (!last.ok) return last;
+        }
+        return last!;
+      },
+      paused ? `${sourceName(sourceId)} is paused.` : `${sourceName(sourceId)} is read again.`,
+    );
+  }
+
+  /** Sets the gap between two page reads of a source. */
+  function setReadingPace(sourceId: string, minDelayMs: number) {
+    return mutate(
+      (api, signal) => api.setSourceReading(sourceId, { minDelayMs }, signal),
+      `Reading pace saved: a page every ${minDelayMs / 1000} s.`,
+    );
+  }
+
+  /** Sets a source's display name or group. */
+  function updateSource(sourceId: string, update: SourceUpdate) {
+    return mutate((api, signal) => api.updateSource(sourceId, update, signal), `${sourceName(sourceId)} saved.`);
+  }
+
+  /** Declares a group in the open container; resolves the group, or nothing on failure. */
+  async function createGroup(name: string, description?: string): Promise<SourceGroupModel | undefined> {
+    let created: SourceGroupModel | undefined;
+    const trimmed = description?.trim();
+    await mutate(async (api, signal) => {
+      const result = await api.createSourceGroup(
+        { containerId: containerId.value, name: name.trim(), ...(trimmed ? { description: trimmed } : {}) },
+        signal,
+      );
+      if (result.ok && !signal.aborted) created = result.value;
+      return result;
+    }, `Group ${name.trim()} created.`);
+    return created;
+  }
+
+  /** Reads a source's posts, newest first; the caller holds them. */
+  function readSourcePosts(
+    sourceId: string,
+    signal?: AbortSignal,
+  ): Promise<Result<readonly SourcePostModel[], ApiFailure>> {
+    const api = client.value;
+    return api ? api.listSourcePosts(sourceId, 200, signal) : Promise.resolve(ResultExtensions.fail(offline()));
+  }
+
+  /** Reads a post's facts and revisions together. */
+  async function readPost(postId: string, signal?: AbortSignal): Promise<Result<PostDetails, ApiFailure>> {
+    const api = client.value;
+    if (!api) return ResultExtensions.fail(offline());
+    const [post, revisions] = await Promise.all([
+      api.getPost(postId, containerId.value, signal),
+      api.listPostRevisions(postId, signal),
+    ]);
+    if (!post.ok) return post;
+    return ResultExtensions.ok({ post: post.value, revisions: revisions.ok ? revisions.value : [] });
   }
 
   function subscribe(draft: SubscriptionDraft) {
@@ -558,8 +817,9 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
       sourceListState.value = 'loading';
       pipelines.value = [];
       runsByPipeline.value = {};
-      posts.value = [];
-      hosts.value = [];
+      overviews.value = [];
+      overviewState.value = 'loading';
+      groups.value = [];
       capabilities.value = {};
       capabilityErrors.value = {};
       void refresh();
@@ -601,14 +861,16 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
     sourceListState: sourceListState as Readonly<Ref<ListState>>,
     pipelines: pipelines as Readonly<ShallowRef<readonly PipelineModel[]>>,
     runs,
-    posts: posts as Readonly<ShallowRef<readonly PostModel[]>>,
-    hosts: hosts as Readonly<ShallowRef<readonly HostHealthModel[]>>,
+    overviews: overviews as Readonly<ShallowRef<readonly SourceOverviewModel[]>>,
+    overviewState: overviewState as Readonly<Ref<ListState>>,
+    groups: groups as Readonly<ShallowRef<readonly SourceGroupModel[]>>,
     subscriptions: visibleSubscriptions,
     capabilities: capabilities as Readonly<ShallowRef<Readonly<Record<string, SourceCapabilitiesModel>>>>,
     capabilityErrors: capabilityErrors as Readonly<ShallowRef<Readonly<Record<string, string>>>>,
     isOperator: isOperator as ComputedRef<boolean | undefined>,
     localWorkerEnabled: localWorkerEnabled as ComputedRef<boolean | undefined>,
     navigation: computed(() => options.navigation),
+    canOperate,
     can,
     canWrite,
     canCapture,
@@ -616,6 +878,11 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
     pipelineOf,
     runsOf,
     sectionsOf,
+    overviewOf,
+    groupOf,
+    sourceName,
+    adapterSectionOf,
+    sectionLabel,
     pipelineLabel,
     clearMessages,
     refresh,
@@ -630,6 +897,16 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
     setPipelinePaused,
     subscribe,
     pull,
+    setSectionHarvest,
+    setPipelineHarvest,
+    saveSectionSchedule,
+    harvestNow,
+    setSourcePaused,
+    setReadingPace,
+    updateSource,
+    createGroup,
+    readSourcePosts,
+    readPost,
   };
 }
 

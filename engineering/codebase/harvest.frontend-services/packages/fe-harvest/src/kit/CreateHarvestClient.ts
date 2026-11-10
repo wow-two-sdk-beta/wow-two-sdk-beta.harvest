@@ -14,6 +14,14 @@ import type {
   DeliveryEvent,
   WorkKind,
   SourceCapabilitiesModel,
+  SourceOverviewModel,
+  SourceGroupModel,
+  SourceGroupDraft,
+  SourceUpdate,
+  SourceReadingUpdate,
+  SourceHealthModel,
+  SourcePostModel,
+  PostRevisionModel,
 } from '../contracts';
 import { createRegistryClient, type RegistryClient, type RegistryClientOptions } from './CreateRegistryClient';
 
@@ -54,6 +62,33 @@ export interface HarvestClient extends RegistryClient {
     signal?: AbortSignal,
   ): Promise<Result<SubscriptionModel, ApiFailure>>;
   pull(id: string, cursor?: string, signal?: AbortSignal): Promise<Result<CursorPage<DeliveryEvent>, ApiFailure>>;
+  /** Reads every source of a container with its sections, last harvest, 14-day trend and health. */
+  listSourceOverview(
+    containerId: string,
+    signal?: AbortSignal,
+  ): Promise<Result<readonly SourceOverviewModel[], ApiFailure>>;
+  /** Reads the groups a container's sources are filed under. */
+  listSourceGroups(containerId: string, signal?: AbortSignal): Promise<Result<readonly SourceGroupModel[], ApiFailure>>;
+  /** Declares a group, idempotent by name. */
+  createSourceGroup(body: SourceGroupDraft, signal?: AbortSignal): Promise<Result<SourceGroupModel, ApiFailure>>;
+  /** Sets a source's display name and group. */
+  updateSource(sourceId: string, body: SourceUpdate, signal?: AbortSignal): Promise<Result<SourceModel, ApiFailure>>;
+  /** Sets the gap between two page reads of a source's host; answers with the source's health. */
+  setSourceReading(
+    sourceId: string,
+    body: SourceReadingUpdate,
+    signal?: AbortSignal,
+  ): Promise<Result<SourceHealthModel, ApiFailure>>;
+  /** Reads a source's posts, newest first. */
+  listSourcePosts(
+    sourceId: string,
+    limit?: number,
+    signal?: AbortSignal,
+  ): Promise<Result<readonly SourcePostModel[], ApiFailure>>;
+  /** Reads one post with its links, inside the container that holds it. */
+  getPost(postId: string, containerId: string, signal?: AbortSignal): Promise<Result<PostModel, ApiFailure>>;
+  /** Reads a post's revisions, newest first; empty for a post older than revision tracking. */
+  listPostRevisions(postId: string, signal?: AbortSignal): Promise<Result<readonly PostRevisionModel[], ApiFailure>>;
 }
 
 /** Rejects a malformed object at the transport boundary. */
@@ -67,6 +102,40 @@ function object<T>(value: unknown): Result<T, ApiFailure> {
 function list<T>(value: unknown): Result<readonly T[], ApiFailure> {
   return Array.isArray(value) && value.every((item) => item !== null && typeof item === 'object')
     ? ResultExtensions.ok(value as readonly T[])
+    : ResultExtensions.fail(ApiFailureFactory.create('protocol'));
+}
+
+/** Accepts a list whose items carry the string field `key`. */
+function keyed<T>(key: string) {
+  return (value: unknown): Result<readonly T[], ApiFailure> =>
+    Array.isArray(value) &&
+    value.every(
+      (item) => item !== null && typeof item === 'object' && typeof (item as Record<string, unknown>)[key] === 'string',
+    )
+      ? ResultExtensions.ok(value as readonly T[])
+      : ResultExtensions.fail(ApiFailureFactory.create('protocol'));
+}
+
+/** Validates the overview's fields the Sources area reads before it draws a card. */
+function sourceOverviews(value: unknown): Result<readonly SourceOverviewModel[], ApiFailure> {
+  const ok =
+    Array.isArray(value) &&
+    value.every((item) => {
+      const row = item as Partial<SourceOverviewModel> | null;
+      return (
+        row !== null &&
+        typeof row === 'object' &&
+        typeof row.sourceId === 'string' &&
+        typeof row.name === 'string' &&
+        typeof row.state === 'string' &&
+        Array.isArray(row.newPostsDaily) &&
+        Array.isArray(row.sections) &&
+        row.health !== null &&
+        typeof row.health === 'object'
+      );
+    });
+  return ok
+    ? ResultExtensions.ok(value as readonly SourceOverviewModel[])
     : ResultExtensions.fail(ApiFailureFactory.create('protocol'));
 }
 
@@ -163,6 +232,41 @@ export function createHarvestClient(options: RegistryClientOptions = {}): Harves
             return ResultExtensions.fail(ApiFailureFactory.create('protocol'));
           return ResultExtensions.ok(value as unknown as CursorPage<DeliveryEvent>);
         },
+      }),
+    listSourceOverview: (containerId, signal) =>
+      api.get('/api/sources/overview', { query: { containerId }, ...signalOf(signal), decode: sourceOverviews }),
+    listSourceGroups: (containerId, signal) =>
+      api.get('/api/sources/groups', { query: { containerId }, ...signalOf(signal), decode: list<SourceGroupModel> }),
+    createSourceGroup: (body, signal) =>
+      api.post('/api/sources/groups', { body, ...signalOf(signal), decode: object<SourceGroupModel> }),
+    updateSource: (sourceId, body, signal) =>
+      api.put(`/api/sources/${encodeURIComponent(sourceId)}`, {
+        body,
+        ...signalOf(signal),
+        decode: object<SourceModel>,
+      }),
+    setSourceReading: (sourceId, body, signal) =>
+      api.put(`/api/sources/${encodeURIComponent(sourceId)}/reading`, {
+        body,
+        ...signalOf(signal),
+        decode: object<SourceHealthModel>,
+      }),
+    listSourcePosts: (sourceId, limit = 200, signal) =>
+      api.get(`/api/sources/${encodeURIComponent(sourceId)}/posts`, {
+        query: { limit: String(limit) },
+        ...signalOf(signal),
+        decode: keyed<SourcePostModel>('postId'),
+      }),
+    getPost: (postId, containerId, signal) =>
+      api.get(`/api/posts/${encodeURIComponent(postId)}`, {
+        query: { containerId },
+        ...signalOf(signal),
+        decode: object<PostModel>,
+      }),
+    listPostRevisions: (postId, signal) =>
+      api.get(`/api/posts/${encodeURIComponent(postId)}/revisions`, {
+        ...signalOf(signal),
+        decode: list<PostRevisionModel>,
       }),
   };
 }

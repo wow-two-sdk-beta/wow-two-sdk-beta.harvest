@@ -33,7 +33,7 @@ async function submit() {
       <p class="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Your sources, on schedule</p>
       <h1 class="mt-3 text-2xl font-semibold">{{ props.signInPath ? 'Sign in to SCFD' : 'Connect to SCFD' }}</h1>
       <p class="mt-2 text-sm leading-relaxed text-muted-foreground">
-        Bring your pipelines, captures and deliveries into one place.
+        Bring your sources, harvests and deliveries into one place.
       </p>
       <p
         v-if="failure"

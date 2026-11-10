@@ -5,11 +5,10 @@ import { defineComponent, h, type VNodeChild } from 'vue';
 import HarvestConnectPanel from '../src/admin/harvestConsole/HarvestConnectPanel.vue';
 import HarvestConsoleProvider from '../src/admin/harvestConsole/HarvestConsoleProvider.vue';
 import HomePanel from '../src/admin/harvestConsole/HomePanel.vue';
-import PipelinePanel from '../src/admin/harvestConsole/PipelinePanel.vue';
-import PipelinesPanel from '../src/admin/harvestConsole/PipelinesPanel.vue';
-import PostsPanel from '../src/admin/harvestConsole/PostsPanel.vue';
-import SourcesPanel from '../src/admin/harvestConsole/SourcesPanel.vue';
-import type { ConsoleNavigation, HarvestConsoleOptions } from '../src/admin';
+import SourcePanel from '../src/admin/harvestConsole/SourcePanel.vue';
+import SourcesGallery from '../src/admin/harvestConsole/SourcesGallery.vue';
+import AccessPanel from '../src/admin/harvestConsole/AccessPanel.vue';
+import type { HarvestConsoleOptions } from '../src/admin';
 import { createHarvestClient } from '../src/kit';
 
 const wrappers: ReturnType<typeof mount>[] = [];
@@ -19,84 +18,220 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/** The adapter's sections of the fixture source: Fashion is harvested, Theatre and Concerts are not. */
 const sections = [
-  { label: 'Concerts', url: 'https://mstar.uz/concerts' },
-  { label: 'Theatre', url: 'https://mstar.uz/theatre' },
+  { label: 'Fashion', url: 'https://www.afisha.uz/ru/fashion' },
+  { label: 'Theatre', url: 'https://www.afisha.uz/ru/theatre' },
+  { label: 'Concerts', url: 'https://www.afisha.uz/ru/concerts' },
 ];
 
-/** Replies as a small complete service, with no real network. */
-function fixtureFetch({ withSections = false } = {}) {
+/** Afisha.uz, harvested: its last harvest found 4 new of 23 and stopped at its page limit. */
+const harvested = {
+  sourceId: 'source-1',
+  name: 'Afisha.uz',
+  family: 'site',
+  handle: 'www.afisha.uz',
+  groupId: 'group-1',
+  state: 'healthy',
+  lastHarvest: {
+    runId: 'run-1',
+    pipelineId: 'pipeline-1',
+    at: '2026-11-10T08:12:00Z',
+    status: 'partial',
+    reason: 'page_limit',
+    newPosts: 4,
+    found: 23,
+  },
+  nextHarvestAt: '2026-11-10T14:12:00Z',
+  newPostsDaily: [0, 1, 0, 2, 0, 0, 3, 1, 0, 0, 1, 0, 2, 4],
+  sections: [
+    {
+      pipelineId: 'pipeline-1',
+      name: 'Afisha · Ocharo',
+      url: 'https://www.afisha.uz/ru/fashion',
+      harvesting: true,
+      paused: false,
+      captureEvery: 'PT6H',
+      checkEvery: 'P1D',
+      maxPages: 5,
+      lastRun: {
+        runId: 'run-1',
+        pipelineId: 'pipeline-1',
+        kind: 'capture',
+        at: '2026-11-10T08:12:00Z',
+        status: 'partial',
+        reason: 'page_limit',
+        newPosts: 4,
+        found: 23,
+      },
+      nextDueAt: '2026-11-10T14:12:00Z',
+      posts: 4,
+      subscribers: 1,
+    },
+  ],
+  health: { hostKey: 'www.afisha.uz', minDelayMs: 5000, consecutiveFailures: 0 },
+};
+
+/** Afisha Telegram, never harvested. */
+const idle = {
+  sourceId: 'source-2',
+  name: 'Afisha Telegram',
+  family: 'telegram',
+  handle: 'afisha_uz',
+  groupId: 'group-1',
+  state: 'idle',
+  newPostsDaily: Array.from({ length: 14 }, () => 0),
+  sections: [],
+  health: { hostKey: 't.me', minDelayMs: 5000, consecutiveFailures: 0 },
+};
+
+/** Replies as a small complete service, with no real network; `calls` records every write. */
+function fixtureFetch() {
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input), 'https://harvest.example.test');
     const method = input instanceof Request ? input.method : (init?.method ?? 'GET');
-    if (url.pathname.endsWith('/capabilities'))
+    const path = url.pathname;
+    if (path.endsWith('/capabilities'))
       return Response.json({
         data: {
           sourceId: 'source-1',
-          adapterKey: 'fixture',
+          adapterKey: 'afisha-uz',
+          supportsPathScope: true,
           workKinds: ['capture', 'check'],
-          ...(withSections ? { supportsPathScope: true } : {}),
-          configuration: {
-            displayName: 'Fixture source',
-            readiness: 'ready',
-            scopeSchema: withSections ? { sections } : {},
-          },
+          configuration: { displayName: 'Afisha', readiness: 'ready', scopeSchema: { sections } },
         },
       });
-    if (url.pathname === '/api/pipelines' && method === 'POST')
+    if (path === '/api/pipelines' && method === 'POST')
       return Response.json({
-        data: { id: 'pipeline-2', name: 'New', state: 'active', sourceId: 'source-1', scope: {}, schedules: [] },
+        data: {
+          id: 'pipeline-2',
+          name: 'Afisha.uz · Theatre',
+          state: 'active',
+          sourceId: 'source-1',
+          scope: {},
+          schedules: [],
+        },
       });
+    if (path === '/api/runs' && method === 'POST') return Response.json({ data: { id: 'run-9', status: 'queued' } });
     const body =
-      url.pathname === '/api/containers'
+      path === '/api/containers'
         ? [{ id: 'container-1', kind: 'pool' }]
-        : url.pathname === '/api/sources'
-          ? [{ id: 'source-1', handle: 'mstar.uz', family: 'site', state: 'active', coverage: 'whole' }]
-          : url.pathname === '/api/pipelines'
-            ? [
-                {
-                  id: 'pipeline-1',
-                  name: 'Upcoming events',
-                  state: 'active',
-                  sourceId: 'source-1',
-                  scope: {},
-                  schedules: [],
-                },
-              ]
-            : url.pathname === '/api/runs' && method === 'POST'
-              ? { id: 'run-1', status: 'queued' }
-              : url.pathname === '/api/posts'
+        : path === '/api/sources'
+          ? [{ id: 'source-1', handle: 'www.afisha.uz', family: 'site', state: 'active', coverage: 'filtered' }]
+          : path === '/api/sources/overview'
+            ? [harvested, idle]
+            : path === '/api/sources/groups'
+              ? [{ id: 'group-1', containerId: 'container-1', name: 'Afisha', description: 'Event listings.' }]
+              : path === '/api/pipelines'
                 ? [
                     {
-                      id: 'post-1',
-                      containerId: 'container-1',
-                      state: 'live',
-                      revision: 1,
-                      base: {
-                        schema: 'wow2.post.v1',
-                        kind: 'event',
-                        title: 'Fixture festival',
-                        text: 'Meet the makers in Samarqand.',
-                      },
-                      links: [{ id: 'link-1', sourceId: 'source-1', url: 'https://mstar.uz/festival', state: 'live' }],
-                      fieldSources: { text: 'link-1' },
+                      id: 'pipeline-1',
+                      name: 'Afisha · Ocharo',
+                      state: 'active',
+                      sourceId: 'source-1',
+                      scope: { url: 'https://www.afisha.uz/ru/fashion', restrictToPath: true, parameters: {} },
+                      limits: { maxPages: 5 },
+                      steps: {},
+                      schedules: [
+                        {
+                          id: 's-1',
+                          kind: 'capture',
+                          mode: 'interval',
+                          every: 'PT6H',
+                          enabled: true,
+                          timeZone: 'Asia/Tashkent',
+                        },
+                      ],
                     },
                   ]
-                : url.pathname === '/api/runs'
+                : path === '/api/runs'
                   ? [
                       {
                         id: 'run-1',
+                        pipelineId: 'pipeline-1',
                         kind: 'capture',
-                        status: 'partial',
+                        status: 'failed',
                         captured: 0,
                         unchanged: 0,
                         discovered: 0,
                         failed: 1,
-                        fetchOutcome: 'challenge',
-                        queuedAtUtc: '2026-10-27T09:00:00Z',
+                        fetchOutcome: 'timeout',
+                        message: 'the host did not answer within 30 seconds',
+                        queuedAtUtc: '2026-11-10T08:00:00Z',
                       },
                     ]
-                  : [];
+                  : path === '/api/sources/source-1/posts'
+                    ? [
+                        {
+                          postId: 'post-1',
+                          title: 'Fashion Show Line 2026',
+                          kind: 'event',
+                          state: 'live',
+                          revision: 2,
+                          firstSeenAt: '2026-11-10T08:11:00Z',
+                          lastChangedAt: '2026-11-10T08:11:00Z',
+                          pipelineId: 'pipeline-1',
+                          startsAt: '2099-11-21T12:00:00Z',
+                          url: 'https://www.afisha.uz/ru/fashion/show',
+                          imageUrl: 'https://www.afisha.uz/media/show-1.jpg',
+                        },
+                        {
+                          postId: 'post-2',
+                          title: 'A guide to the season’s fabrics',
+                          kind: 'article',
+                          state: 'live',
+                          revision: 1,
+                          firstSeenAt: '2026-11-10T08:12:00Z',
+                          lastChangedAt: '2026-11-10T08:12:00Z',
+                          pipelineId: 'pipeline-1',
+                        },
+                      ]
+                    : path === '/api/posts/post-1'
+                      ? {
+                          id: 'post-1',
+                          containerId: 'container-1',
+                          state: 'live',
+                          revision: 2,
+                          base: {
+                            schema: 'wow2.post.v1',
+                            kind: 'event',
+                            title: 'Fashion Show Line 2026',
+                            media: [
+                              { kind: 'image', url: 'https://www.afisha.uz/media/show-1.jpg' },
+                              { kind: 'video', url: 'https://www.afisha.uz/media/teaser.mp4' },
+                              { kind: 'image', url: 'https://www.afisha.uz/media/show-2.jpg' },
+                              { kind: 'image', url: 'javascript:alert(1)' },
+                              { kind: 'image', url: 'https://www.afisha.uz/media/show-3.jpg' },
+                            ],
+                          },
+                          links: [],
+                          fieldSources: {},
+                          firstSeenAtUtc: '2026-11-10T08:11:00Z',
+                          lastChangedAtUtc: '2026-11-10T08:11:00Z',
+                        }
+                      : path === '/api/posts/post-2'
+                        ? {
+                            id: 'post-2',
+                            containerId: 'container-1',
+                            state: 'live',
+                            revision: 1,
+                            base: {
+                              schema: 'wow2.post.v1',
+                              kind: 'article',
+                              title: 'A guide to the season’s fabrics',
+                              media: [],
+                            },
+                            links: [],
+                            fieldSources: {},
+                            firstSeenAtUtc: '2026-11-10T08:12:00Z',
+                            lastChangedAtUtc: '2026-11-10T08:12:00Z',
+                          }
+                        : path === '/api/posts/post-1/revisions'
+                          ? [
+                              { revision: 2, at: '2026-11-10T08:11:00Z', changed: ['location'] },
+                              { revision: 1, at: '2026-11-10T00:20:00Z', changed: ['created'] },
+                            ]
+                          : [];
     return Response.json({ data: body });
   });
 }
@@ -114,22 +249,14 @@ function mountConsole({ options = {}, signInPath, panels }: Harness) {
     setup() {
       return () =>
         h(HarvestConsoleProvider, options, {
-          default: ({
-            session,
-          }: {
-            session: { connected: { value: boolean }; disconnect(): void; refresh(): void };
-          }) =>
+          default: ({ session }: { session: { connected: { value: boolean }; disconnect(): void } }) =>
             session.connected.value
-              ? [
-                  h('button', { type: 'button', onClick: () => session.disconnect() }, 'Disconnect'),
-                  h('button', { type: 'button', onClick: () => session.refresh() }, 'Refresh'),
-                  panels(),
-                ]
+              ? [h('button', { type: 'button', onClick: () => session.disconnect() }, 'Disconnect'), panels()]
               : h(HarvestConnectPanel, signInPath ? { signInPath } : {}),
         });
     },
   });
-  const wrapper = mount(Console);
+  const wrapper = mount(Console, { attachTo: document.body });
   wrappers.push(wrapper);
   return wrapper;
 }
@@ -150,25 +277,6 @@ describe('SCFD console session', () => {
     expect(wrapper.find('input[type="password"]').exists()).toBe(false);
   });
 
-  it('keeps pipeline changes and manual runs out of a read-only session', async () => {
-    const wrapper = mountConsole({
-      options: {
-        client: createHarvestClient({ fetch: fixtureFetch() }),
-        connectionManaged: true,
-        permissions: ['pipelines:read', 'posts:read'],
-      },
-      panels: () => [h(PipelinesPanel), h(PipelinePanel, { pipelineId: 'pipeline-1' })],
-    });
-    await flushPromises();
-    expect(wrapper.get('[aria-label="Pipelines"]').text()).toContain('Upcoming events');
-    expect(wrapper.get('[aria-label="Pipeline overview"]').text()).toContain('mstar.uz');
-    expect(wrapper.findAll('button').some((item) => ['New pipeline', 'Run now', 'Pause'].includes(item.text()))).toBe(
-      false,
-    );
-    expect(wrapper.find('form[aria-label="Pipeline settings"]').exists()).toBe(false);
-    expect(wrapper.find('form[aria-label="New pipeline"]').exists()).toBe(false);
-  });
-
   it('stays disconnected until a key is submitted', async () => {
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);
@@ -176,22 +284,21 @@ describe('SCFD console session', () => {
     await flushPromises();
     expect(fetch).not.toHaveBeenCalled();
     expect(wrapper.text()).toContain('Connect to SCFD');
-    expect(wrapper.find('input[type="password"]').exists()).toBe(true);
   });
 
   it('restores an opted-in tab after reload and forgets it on disconnect', async () => {
     vi.stubGlobal('fetch', fixtureFetch());
-    const harness = { options: { connectionStorage: window.sessionStorage }, panels: () => h(PipelinesPanel) };
+    const harness = { options: { connectionStorage: window.sessionStorage }, panels: () => h(SourcesGallery) };
     const first = mountConsole(harness);
     await first.get('input[type="password"]').setValue('hv_fixture');
     await first.get('form').trigger('submit');
     await flushPromises();
-    expect(first.text()).toContain('Upcoming events');
+    expect(first.text()).toContain('Afisha.uz');
     wrappers.pop()?.unmount();
 
     const restored = mountConsole(harness);
     await flushPromises();
-    expect(restored.text()).toContain('Upcoming events');
+    expect(restored.text()).toContain('Afisha.uz');
     await button(restored, 'Disconnect')!.trigger('click');
 
     const disconnected = mountConsole(harness);
@@ -199,151 +306,244 @@ describe('SCFD console session', () => {
     expect(disconnected.text()).toContain('Connect to SCFD');
   });
 
-  it('explains an empty source catalog without waiting for capabilities', async () => {
-    const api = createHarvestClient({ fetch: fixtureFetch() });
-    api.listSources = async () => ResultExtensions.ok([]);
-    api.listPipelines = async () => ResultExtensions.ok([]);
-    const loadCapabilities = vi.spyOn(api, 'getSourceCapabilities');
-    const wrapper = mountConsole({ options: { client: api }, panels: () => [h(PipelinesPanel), h(SourcesPanel)] });
-    await flushPromises();
-
-    expect(wrapper.text()).toContain('No sources registered in this container.');
-    expect(wrapper.text()).toContain('No sources in this container');
-    expect(wrapper.find('[aria-label="Source capabilities"]').exists()).toBe(false);
-    expect(loadCapabilities).not.toHaveBeenCalled();
-  });
-
-  it('shows the source catalog read-only, with each adapter and its sections', async () => {
-    const wrapper = mountConsole({
-      options: { client: createHarvestClient({ fetch: fixtureFetch({ withSections: true }) }) },
-      panels: () => h(SourcesPanel),
-    });
-    await flushPromises();
-    const catalog = wrapper.get('[aria-label="Sources"]');
-    expect(catalog.text()).toContain('mstar.uz');
-    expect(catalog.text()).toContain('Fixture source');
-    expect(catalog.get('[aria-label="Sections"]').text()).toContain('Theatre');
-    expect(catalog.find('form').exists()).toBe(false);
-    expect(catalog.find('input').exists()).toBe(false);
-  });
-
-  it('creates a pipeline from a chosen source and section, never a typed URL', async () => {
-    const fetch = fixtureFetch({ withSections: true });
-    const navigation: ConsoleNavigation = { href: () => '/pipelines', go: vi.fn() };
-    const wrapper = mountConsole({
-      options: { client: createHarvestClient({ fetch }), navigation },
-      panels: () => h(PipelinesPanel, { newSource: 'source-1' }),
-    });
-    await flushPromises();
-    const form = wrapper.get('form[aria-label="New pipeline"]');
-    expect(form.findAll('input').some((input) => /url/i.test(input.attributes('placeholder') ?? ''))).toBe(false);
-    await form
-      .findAll('button')
-      .find((item) => item.text() === 'Theatre')!
-      .trigger('click');
-    await form.trigger('submit');
-    await flushPromises();
-
-    const call = fetch.mock.calls.find(
-      ([input, init]) =>
-        new URL(String(input), 'https://harvest.example.test').pathname === '/api/pipelines' && init?.method === 'POST',
-    )!;
-    const body = JSON.parse(String(call[1]?.body)) as Record<string, unknown>;
-    expect(body).toMatchObject({
-      sourceId: 'source-1',
-      name: 'mstar.uz · Theatre',
-      scope: { url: 'https://mstar.uz/theatre', restrictToPath: true },
-    });
-    expect(navigation.go).toHaveBeenCalledWith({ kind: 'pipeline', id: 'pipeline-2' });
-  });
-
-  it('queues a run and shows a challenge outcome on the pipeline page', async () => {
-    const fetch = fixtureFetch();
-    const wrapper = mountConsole({
-      options: { client: createHarvestClient({ apiKey: 'hv_fixture', fetch }) },
-      panels: () => h(PipelinePanel, { pipelineId: 'pipeline-1' }),
-    });
-    await flushPromises();
-    expect(wrapper.get('[aria-label="Pipeline overview"]').text()).toContain('mstar.uz');
-    expect(wrapper.find('section[aria-label="Configuration"]').exists()).toBe(true);
-    expect(wrapper.find('section[aria-label="Schedule"]').exists()).toBe(true);
-    await button(wrapper, 'Run now')!.trigger('click');
-    await flushPromises();
-    expect(
-      fetch.mock.calls.some(
-        ([input, init]) =>
-          new URL(input instanceof Request ? input.url : String(input), 'https://harvest.example.test').pathname ===
-            '/api/runs' && (input instanceof Request ? input.method : init?.method) === 'POST',
-      ),
-    ).toBe(true);
-    expect(wrapper.get('[aria-label="Runs"]').text()).toContain('challenge');
-    await button(wrapper, 'Disconnect')!.trigger('click');
-    expect(wrapper.text()).toContain('Connect to SCFD');
-    expect(wrapper.find('[aria-label="Pipeline overview"]').exists()).toBe(false);
-  });
-
-  it('ignores an old connection response after disconnect', async () => {
+  it('ignores an old overview response after disconnect', async () => {
     let reply!: (value: ReturnType<typeof ResultExtensions.ok<readonly never[]>>) => void;
     const api = createHarvestClient({ fetch: fixtureFetch() });
-    api.listPosts = () =>
+    api.listSourceOverview = () =>
       new Promise((resolve) => {
         reply = resolve;
       });
-    const wrapper = mountConsole({ options: { client: api }, panels: () => h(PipelinesPanel) });
+    const wrapper = mountConsole({ options: { client: api }, panels: () => h(SourcesGallery) });
     await flushPromises();
     await button(wrapper, 'Disconnect')!.trigger('click');
     reply(ResultExtensions.ok([]));
     await flushPromises();
     expect(wrapper.text()).toContain('Connect to SCFD');
-    expect(wrapper.find('[aria-label="Pipelines"]').exists()).toBe(false);
+    expect(wrapper.find('[aria-label="Sources"]').exists()).toBe(false);
   });
+});
 
-  it('refreshes the selected post when new content or availability evidence arrives', async () => {
-    const api = createHarvestClient({ fetch: fixtureFetch() });
-    const loadPosts = api.listPosts;
-    let changed = false;
-    api.listPosts = async (containerId, signal) => {
-      const result = await loadPosts(containerId, signal);
-      if (!result.ok || !changed) return result;
-      return ResultExtensions.ok(
-        result.value.map((post) => ({
-          ...post,
-          base: { ...post.base, text: 'Updated source body.' },
-          links: post.links.map((link) => ({ ...link, lastCheckOutcome: 'Present', lastCheckHttpStatus: 304 })),
-        })),
-      );
-    };
-    const wrapper = mountConsole({ options: { client: api }, panels: () => h(PostsPanel) });
-    await flushPromises();
-    await wrapper.get('[aria-label="Posts"] button').trigger('click');
-    changed = true;
-    await button(wrapper, 'Refresh')!.trigger('click');
-    await flushPromises();
-
-    expect(wrapper.text()).toContain('Updated source body.');
-    expect(wrapper.text()).toContain('Present · HTTP 304');
-  });
-
-  it('renders the backend post text with its supporting link', async () => {
+describe('Sources gallery', () => {
+  it('shows what the last harvest found on a harvested card, and no harvest yet on a never-harvested one', async () => {
     const wrapper = mountConsole({
       options: { client: createHarvestClient({ fetch: fixtureFetch() }) },
-      panels: () => h(PostsPanel),
+      panels: () => h(SourcesGallery, { view: 'cards' }),
     });
     await flushPromises();
-    await wrapper.get('[aria-label="Posts"] button').trigger('click');
-    expect(wrapper.text()).toContain('Meet the makers in Samarqand.');
-    expect(wrapper.get('a[href="https://mstar.uz/festival"]').attributes('rel')).toBe('noopener noreferrer');
+    const card = wrapper.get('article[aria-label="Afisha.uz"]');
+    expect(card.get('[data-pill="last-harvest"]').text()).toBe('last harvest · 4 new of 23 found · partial');
+    expect(card.get('[data-pill="last-harvest"]').attributes('data-tone')).toBe('warning');
+    expect(card.text()).toMatch(/last harvest \d{2}:\d{2} · next/);
+    expect(card.text()).toContain('healthy');
+
+    const never = wrapper.get('article[aria-label="Afisha Telegram"]');
+    expect(never.get('[data-pill="last-harvest"]').text()).toBe('no harvest yet');
+    expect(never.get('[data-pill="last-harvest"]').attributes('data-tone')).toBe('dashed');
+    expect(never.text()).toContain('never harvested');
+    expect(never.get('[data-read-method]').attributes('data-read-method')).toBe('telegram');
+
+    const tile = wrapper.get('article[aria-label="Afisha"]');
+    expect(tile.text()).toContain('2 sources');
+    expect(tile.get('[data-pill="group-harvest"]').text()).toBe('4 new in the last harvest');
   });
 
-  it('reports the container health on the home page', async () => {
+  it('filters by state with counts and searches by name', async () => {
+    const wrapper = mountConsole({
+      options: { client: createHarvestClient({ fetch: fixtureFetch() }) },
+      panels: () => h(SourcesGallery, { view: 'rows' }),
+    });
+    await flushPromises();
+    const chips = wrapper
+      .get('[aria-label="Filter by state"]')
+      .findAll('button')
+      .map((chip) => chip.text());
+    expect(chips).toEqual(['All 2', 'Harvesting 1', 'Needs attention 0', 'Idle 1']);
+    await wrapper.findAll('[aria-label="Filter by state"] button')[3]!.trigger('click');
+    expect(wrapper.find('li[aria-label="Afisha.uz"]').exists()).toBe(false);
+    expect(wrapper.find('li[aria-label="Afisha Telegram"]').exists()).toBe(true);
+  });
+});
+
+describe('a source', () => {
+  it('folds the sections nobody harvests into one closed line', async () => {
+    const wrapper = mountConsole({
+      options: { client: createHarvestClient({ fetch: fixtureFetch() }) },
+      panels: () => h(SourcePanel, { sourceId: 'source-1' }),
+    });
+    await flushPromises();
+    const harvestedTable = wrapper.get('[aria-label="Sections being harvested"]');
+    expect(harvestedTable.text()).toContain('Fashion');
+    expect(harvestedTable.text()).toContain('every 6 hours');
+    expect(harvestedTable.text()).toContain('checks daily');
+    expect(harvestedTable.text()).toContain('5-page limit');
+    expect(harvestedTable.text()).toContain('1 subscriber');
+    const fold = wrapper.get('details[data-folded-sections]');
+    expect(fold.attributes('open')).toBeUndefined();
+    expect(fold.get('summary').text()).toBe('2 more sections nobody follows');
+    expect(fold.text()).toContain('Theatre');
+    expect(fold.text()).toContain('Concerts');
+    expect(wrapper.get('[aria-label="Health"]').text()).toContain('a page every 5 s');
+  });
+
+  it('splits a failed run into its kind as a label and its message as a sentence', async () => {
+    const wrapper = mountConsole({
+      options: { client: createHarvestClient({ fetch: fixtureFetch() }) },
+      panels: () => h(SourcePanel, { sourceId: 'source-1', tab: 'activity' }),
+    });
+    await flushPromises();
+    const problem = wrapper.get('[data-run-problem]');
+    expect(problem.get('[data-problem-label]').text()).toBe('timed out');
+    expect(problem.get('[data-problem-sentence]').text()).toBe('The host did not answer within 30 seconds.');
+    expect(wrapper.get('table[aria-label="Runs"]').text()).toContain('Fashion');
+  });
+
+  it('turns a section on by creating its harvest from the section URL, never a typed one', async () => {
+    const fetch = fixtureFetch();
+    const wrapper = mountConsole({
+      options: { client: createHarvestClient({ fetch }), isOperator: true },
+      panels: () => h(SourcePanel, { sourceId: 'source-1', tab: 'settings' }),
+    });
+    await flushPromises();
+    const settings = wrapper.get('[aria-label="Sections"]');
+    expect(settings.findAll('input[type="url"], input[placeholder*="URL" i]')).toHaveLength(0);
+    await settings
+      .get('[data-section="Theatre"] input[type="checkbox"], [data-section="Theatre"] [role="switch"]')
+      .trigger('click');
+    await flushPromises();
+    const call = fetch.mock.calls.find(
+      ([input, init]) =>
+        new URL(String(input), 'https://harvest.example.test').pathname === '/api/pipelines' && init?.method === 'POST',
+    );
+    expect(call).toBeDefined();
+    expect(JSON.parse(String(call![1]?.body))).toMatchObject({
+      sourceId: 'source-1',
+      name: 'Afisha.uz · Theatre',
+      scope: { url: 'https://www.afisha.uz/ru/theatre', restrictToPath: true },
+      schedules: [{ kind: 'capture', mode: 'interval', every: 'PT360M', enabled: true }],
+    });
+  });
+
+  it('keeps Settings and Harvest now away from a session that does not operate SCFD', async () => {
+    const wrapper = mountConsole({
+      options: { client: createHarvestClient({ fetch: fixtureFetch() }), isOperator: false },
+      panels: () => h(SourcePanel, { sourceId: 'source-1' }),
+    });
+    await flushPromises();
+    expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toEqual(['Overview', 'Posts 4', 'Activity 1']);
+    expect(button(wrapper, 'Harvest now')).toBeUndefined();
+  });
+
+  it('queues one harvest for every harvested section', async () => {
+    const fetch = fixtureFetch();
+    const wrapper = mountConsole({
+      options: { client: createHarvestClient({ fetch }), isOperator: true },
+      panels: () => h(SourcePanel, { sourceId: 'source-1' }),
+    });
+    await flushPromises();
+    await button(wrapper, 'Harvest now')!.trigger('click');
+    await flushPromises();
+    const runs = fetch.mock.calls.filter(
+      ([input, init]) =>
+        new URL(String(input), 'https://harvest.example.test').pathname === '/api/runs' && init?.method === 'POST',
+    );
+    expect(runs.map(([, init]) => JSON.parse(String(init?.body)))).toEqual([
+      { pipelineId: 'pipeline-1', kind: 'capture' },
+    ]);
+  });
+
+  it('opens a post with its revisions in words', async () => {
+    const wrapper = mountConsole({
+      options: { client: createHarvestClient({ fetch: fixtureFetch() }) },
+      panels: () => h(SourcePanel, { sourceId: 'source-1', tab: 'posts', view: 'rows' }),
+    });
+    await flushPromises();
+    await wrapper.get('[aria-label="Posts"] [role="row"] button').trigger('click');
+    await flushPromises();
+    const modal = document.body.querySelector('[data-post-modal]');
+    expect(modal?.textContent).toContain('Starts');
+    expect(modal?.textContent).toContain('Revision 2');
+    expect(modal?.textContent).toContain('the place changed');
+    expect(modal?.textContent).toContain('first harvest');
+    expect(modal?.querySelector('a[href="https://www.afisha.uz/ru/fashion/show"]')?.textContent).toContain(
+      'Open the original',
+    );
+  });
+});
+
+describe('post images', () => {
+  /** Opens the Posts tab in `view` and the post whose title is `title`. */
+  async function openPost(title: string) {
+    const wrapper = mountConsole({
+      options: { client: createHarvestClient({ fetch: fixtureFetch() }) },
+      panels: () => h(SourcePanel, { sourceId: 'source-1', tab: 'posts', view: 'rows' }),
+    });
+    await flushPromises();
+    await wrapper
+      .findAll('[aria-label="Posts"] [role="row"] button')
+      .find((item) => item.text() === title)!
+      .trigger('click');
+    await flushPromises();
+    return document.body.querySelector('[data-post-modal]')!;
+  }
+
+  it('shows a post’s harvested images in the modal, one large and the rest beside it', async () => {
+    const modal = await openPost('Fashion Show Line 2026');
+    const images = [...modal.querySelectorAll('[data-post-images] img')].map((image) => image.getAttribute('src'));
+    expect(images).toEqual([
+      'https://www.afisha.uz/media/show-1.jpg',
+      'https://www.afisha.uz/media/show-2.jpg',
+      'https://www.afisha.uz/media/show-3.jpg',
+    ]);
+    expect(modal.querySelector('[data-post-images] img')?.getAttribute('referrerpolicy')).toBe('no-referrer');
+    expect(modal.querySelector('[data-post-images] a')).toBeNull();
+  });
+
+  it('shows no image block for a post without images', async () => {
+    const modal = await openPost('A guide to the season’s fabrics');
+    expect(modal.textContent).toContain('Revision 1');
+    expect(modal.querySelector('[data-post-images]')).toBeNull();
+    expect(modal.querySelector('img')).toBeNull();
+  });
+
+  it('tops a post card with its first image, and leaves a card without one bare', async () => {
+    const wrapper = mountConsole({
+      options: { client: createHarvestClient({ fetch: fixtureFetch() }) },
+      panels: () => h(SourcePanel, { sourceId: 'source-1', tab: 'posts', view: 'cards' }),
+    });
+    await flushPromises();
+    const cards = wrapper.findAll('ul[aria-label="Posts"] > li');
+    expect(cards).toHaveLength(2);
+    expect(cards[0]!.get('[data-post-image]').attributes('src')).toBe('https://www.afisha.uz/media/show-1.jpg');
+    expect(cards[1]!.find('img').exists()).toBe(false);
+  });
+});
+
+describe('access and home', () => {
+  it('names the session’s permissions in words, never scope names', async () => {
+    const wrapper = mountConsole({
+      options: {
+        client: createHarvestClient({ fetch: fixtureFetch() }),
+        permissions: ['pipelines:read', 'posts:read'],
+      },
+      panels: () => h(AccessPanel),
+    });
+    await flushPromises();
+    expect(wrapper.get('[aria-label="Allowed"]').text()).toContain('Read harvested posts');
+    expect(wrapper.get('[aria-label="Not allowed"]').text()).toContain('Start and cancel harvests');
+    expect(wrapper.text()).not.toMatch(/\w+:(read|run|manage)/);
+    expect(wrapper.text().toLowerCase()).not.toContain('container');
+    expect(wrapper.text().toLowerCase()).not.toContain('tenant');
+  });
+
+  it('reports the workspace health on the home page', async () => {
     const wrapper = mountConsole({
       options: { client: createHarvestClient({ fetch: fixtureFetch() }) },
       panels: () => h(HomePanel),
     });
     await flushPromises();
     const health = wrapper.get('[aria-label="Health"]');
-    expect(health.text()).toContain('Failed runs');
+    expect(health.text()).toContain('Failed harvests');
     expect(health.text()).toContain('Delivery lag');
-    expect(wrapper.get('[aria-label="Runs"]').text()).toContain('Upcoming events');
+    expect(wrapper.get('[aria-label="Latest harvests"]').text()).toContain('Afisha.uz · Fashion');
   });
 });

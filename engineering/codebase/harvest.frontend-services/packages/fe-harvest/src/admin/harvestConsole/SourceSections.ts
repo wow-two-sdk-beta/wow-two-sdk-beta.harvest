@@ -19,10 +19,29 @@ function isSourceSection(value: unknown): value is SourceSection {
   );
 }
 
-/** Uses section metadata only on a runtime that enforces its path. */
-export function sourceSections(capabilities?: SourceCapabilitiesModel) {
-  const sections = capabilities?.configuration.scopeSchema.sections;
-  return capabilities?.supportsPathScope === true && Array.isArray(sections) ? sections.filter(isSourceSection) : [];
+/** Names a locale in English, such as `ru` → `Russian`; an unknown code reads as itself. @internal */
+function languageName(locale: string) {
+  try {
+    return new Intl.DisplayNames(['en'], { type: 'language' }).of(locale) ?? locale;
+  } catch {
+    return locale;
+  }
+}
+
+/**
+ * Uses section metadata only on a runtime that enforces its path. A label the adapter lists more than once, such as
+ * the same page in two languages, reads with its language (`Fashion · Russian`), so no two sections look alike.
+ */
+export function sourceSections(capabilities?: SourceCapabilitiesModel): readonly SourceSection[] {
+  const listed = capabilities?.configuration.scopeSchema.sections;
+  const sections =
+    capabilities?.supportsPathScope === true && Array.isArray(listed) ? listed.filter(isSourceSection) : [];
+  const repeated = new Set(
+    sections.map((item) => item.label).filter((label, index, all) => all.indexOf(label) !== index),
+  );
+  return sections.map((item) =>
+    repeated.has(item.label) && item.locale ? { ...item, label: `${item.label} · ${languageName(item.locale)}` } : item,
+  );
 }
 
 export function sameSection(url: string, sectionUrl: string) {

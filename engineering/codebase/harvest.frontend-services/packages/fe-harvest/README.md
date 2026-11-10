@@ -7,10 +7,12 @@ screens a console composes.
   default same-origin client) or the running Harvest service (Forms 2 and 3, `createRegistryClient({ baseUrl, apiKey })`).
 - **Admin** — `ContainersPanel` lists the containers a key may see. The service's own console composes it; a central
   console or a product's admin page imports the same export.
-- **Console** — `HarvestConsoleProvider` opens one console session (the connection, the open container and its data)
-  and shares it with page panels that follow SCFD's flow: `HomePanel`; `SourcesPanel` (the read-only adapter catalog),
-  `PipelinesPanel` (a new pipeline is a chosen source and section, never a typed URL), `PipelinePanel`
-  (configuration, schedule, runs), `RunsPanel`; `PostsPanel`; `SubscriptionsPanel`; `HostsPanel`, `AccessPanel`.
+- **Console** — `HarvestConsoleProvider` opens one console session (the connection, the open workspace and its data)
+  and shares it with page panels in the operator's words — source, group, section, harvest, subscriber: `HomePanel`;
+  `SourcesGallery` (groups as tiles, then each group's sources as cards or rows, with search and state filters,
+  `SourceGroupsDialog` behind its Groups button); `SourcePanel` (a source's header card over its Overview, Posts,
+  Activity and, for operators, Settings tabs; a post opens in `PostModal` with its images, facts and revisions);
+  `SubscribersPanel`; `AccessPanel`. A section is turned on from the adapter's own section list, never a typed URL.
   `ContainerSwitch`, `ConsoleNotices` and `HarvestConnectPanel` fill the host's frame and signed-out screen. The
   provider's optional `HarvestClient` works in every form. Without a client it offers an API-key connection held only
   in memory, and makes no authenticated requests until the user connects. The host app owns routes and the frame; its
@@ -25,8 +27,8 @@ pnpm add @wow-two-beta/fe-harvest @wow-two-beta/fe vue
 
 ```ts
 import { createRegistryClient, createHarvestClient } from '@wow-two-beta/fe-harvest/kit';
-import { RegistrationRouteConstants, type PipelineModel } from '@wow-two-beta/fe-harvest/contracts';
-import { ContainersPanel, HarvestConsoleProvider, PipelinesPanel } from '@wow-two-beta/fe-harvest/admin';
+import { RegistrationRouteConstants, type SourceOverviewModel } from '@wow-two-beta/fe-harvest/contracts';
+import { HarvestConsoleProvider, SourcePanel, SourcesGallery } from '@wow-two-beta/fe-harvest/admin';
 ```
 
 The panels are styled with Tailwind utilities on the fe sdk theme; add the package to the consumer's Tailwind sources:
@@ -37,11 +39,11 @@ The panels are styled with Tailwind utilities on the fe sdk theme; add the packa
 
 | Export | Holds |
 |---|---|
-| `./contracts` | `TenantModel`, `ApiKeyModel`, `ContainerModel`, `SourceModel`, `PipelineModel`, `ScheduleModel`, the enum labels, `RegistrationRouteConstants`, `HarvestScopeConstants`, `ApiKeyConstants` |
+| `./contracts` | `TenantModel`, `ApiKeyModel`, `ContainerModel`, `SourceModel`, `PipelineModel`, `ScheduleModel`, the Sources area's `SourceOverviewModel`, `SourceGroupModel`, `SourcePostModel` and `PostRevisionModel`, the enum labels, `RegistrationRouteConstants`, `HarvestScopeConstants`, `ApiKeyConstants` |
 | `./kit` | `createRegistryClient`, `createHarvestClient` |
 | `./admin` | `ContainersPanel` (an optional client); `HarvestConsoleProvider`, `useHarvestConsole` and the page panels it serves |
 
 The contracts export run, host-health, post/link, subscription, delivery-event and cursor-page models too.
-The console session cancels stale reads on container changes and disconnect, polls every five seconds while visible,
-and the panels use the shared fe SDK controls and theme; page actions go to the host's `PageHeader` through
-`PageHeaderActions`. The service applies the `platform` chalk/forest ambient-glass theme.
+The console session cancels stale reads on workspace changes and disconnect, polls every five seconds while visible,
+and the panels use the shared fe SDK controls and theme. The service applies the `platform` chalk/forest ambient-glass
+theme.

@@ -21,7 +21,7 @@ const appVersion = __APP_VERSION__;
 const router = useRouter();
 const { demo, session: demoSession, client: demoClient, reset: resetDemo } = useDemoConsole();
 const identity = useHarvestIdentity();
-const { status } = useSystemStatus(!demo);
+const { status, runningVersion } = useSystemStatus(!demo);
 
 /** Lets the shared panels link to this app's routes. */
 const navigation: ConsoleNavigation = {
@@ -49,7 +49,7 @@ function account(session: HarvestConsole): ConsoleAccount {
   if (identity.identityEnabled.value)
     return {
       name: identity.accountName.value,
-      description: identity.isOperator.value ? 'SCFD admin' : 'Tenant member',
+      description: identity.isOperator.value ? 'SCFD operator' : 'Subscriber member',
       onSignOut: identity.signOut,
       isBusy: identity.pending.value,
     };
@@ -84,6 +84,7 @@ function account(session: HarvestConsole): ConsoleAccount {
     <AppLayout
       v-if="session.connected.value"
       :app-version="appVersion"
+      :running-version="runningVersion"
       :api-version="status?.version"
       :account="account(session)"
     >

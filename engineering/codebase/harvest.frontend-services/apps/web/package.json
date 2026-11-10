@@ -18,7 +18,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "@wow-two-beta/fe": "0.0.41",
+    "@wow-two-beta/fe": "0.0.45",
     "@wow-two-beta/fe-harvest": "workspace:*",
     "vue": "^3.5.13",
     "vue-router": "^4.6.4"

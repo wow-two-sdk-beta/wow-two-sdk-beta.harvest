@@ -13,6 +13,54 @@ describe('Harvest console client', () => {
     for (const [url] of fetch.mock.calls)
       expect(new URL(String(url), 'https://console.example/pipelines/one').pathname).toMatch(/^\/api\//);
   });
+  it('reads and writes the Sources area on the contract routes, from the origin root', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
+      const path = new URL(String(input), 'https://console.example/sources/one/posts').pathname;
+      return Response.json({
+        data:
+          path === '/api/sources/overview'
+            ? [{ sourceId: 's', name: 'Afisha.uz', state: 'idle', newPostsDaily: [], sections: [], health: {} }]
+            : path === '/api/sources/s/posts'
+              ? [{ postId: 'p', kind: 'event' }]
+              : path.endsWith('/revisions') || path === '/api/sources/groups'
+                ? []
+                : { id: 'x' },
+      });
+    });
+    const api = createHarvestClient({ fetch });
+    expect((await api.listSourceOverview('c')).ok).toBe(true);
+    expect((await api.listSourceGroups('c')).ok).toBe(true);
+    expect((await api.listSourcePosts('s')).ok).toBe(true);
+    expect((await api.listPostRevisions('p')).ok).toBe(true);
+    expect((await api.getPost('p', 'c')).ok).toBe(true);
+    await api.createSourceGroup({ containerId: 'c', name: 'Afisha' });
+    await api.updateSource('s', { groupId: null, clearGroup: true });
+    await api.setSourceReading('s', { minDelayMs: 5000 });
+    const calls = fetch.mock.calls.map(([url, init]) => {
+      const address = new URL(String(url), 'https://console.example/sources/one/posts');
+      return `${init?.method ?? 'GET'} ${address.pathname}${address.search}`;
+    });
+    expect(calls).toEqual([
+      'GET /api/sources/overview?containerId=c',
+      'GET /api/sources/groups?containerId=c',
+      'GET /api/sources/s/posts?limit=200',
+      'GET /api/posts/p/revisions',
+      'GET /api/posts/p?containerId=c',
+      'POST /api/sources/groups',
+      'PUT /api/sources/s',
+      'PUT /api/sources/s/reading',
+    ]);
+    expect(JSON.parse(String(fetch.mock.calls[6]?.[1]?.body))).toEqual({ groupId: null, clearGroup: true });
+  });
+
+  it('rejects an overview row without its health', async () => {
+    const api = createHarvestClient({
+      fetch: async () =>
+        Response.json({ data: [{ sourceId: 's', name: 'n', state: 'idle', newPostsDaily: [], sections: [] }] }),
+    });
+    expect((await api.listSourceOverview('c')).ok).toBe(false);
+  });
+
   it('reads safe runtime capabilities and rejects malformed discovery', async () => {
     const fetch = vi.fn<typeof globalThis.fetch>(async () =>
       Response.json({

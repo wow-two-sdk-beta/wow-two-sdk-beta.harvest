@@ -15,6 +15,10 @@ export interface SourceModel {
   readonly containerId: string;
   readonly family: SourceFamily;
   readonly handle: string;
+  /** The display name the console shows; omitted, it shows the handle. */
+  readonly name?: string;
+  /** The group the source belongs to; omitted when it has none. */
+  readonly groupId?: string;
   readonly externalRef?: string;
   readonly coverage: SourceCoverage;
   readonly completeness: SourceCompleteness;

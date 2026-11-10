@@ -14,11 +14,13 @@ export interface ScheduleModel {
   readonly nextDueAtUtc?: string;
 }
 
-/** Replaces the saved target and cadence; run history, limits and source identity remain intact. */
+/** Replaces the saved target and cadence; run history and source identity remain intact. */
 export interface PipelineUpdate {
   readonly name?: string;
   readonly scope: PipelineModel['scope'];
   readonly schedules: readonly Omit<ScheduleModel, 'id' | 'nextDueAtUtc'>[];
+  /** The page limit, 1 to 50; omitted, the saved limits stay. */
+  readonly limits?: { readonly maxPages: number };
 }
 
 /** Mirrors `PipelineModel`: a standing harvest of a source, identified by container, source and scope key. */

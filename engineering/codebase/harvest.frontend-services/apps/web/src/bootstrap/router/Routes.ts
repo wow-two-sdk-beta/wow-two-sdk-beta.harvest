@@ -1,17 +1,34 @@
 import type { RouteLocationNormalizedLoaded } from 'vue-router';
 import { createAppRouter, lazyPage, lazyRoute, RouterHistoryMode, type RouteConfig } from '@wow-two-beta/fe/router';
+import type { SourceTab } from '@wow-two-beta/fe-harvest/admin';
 import ConsoleSession from '../ConsoleSession.vue';
 
-/** Reads one query value, or nothing. @internal */
-function query(route: RouteLocationNormalizedLoaded, key: string) {
-  const value = route.query[key];
-  const item = Array.isArray(value) ? value[0] : value;
-  return typeof item === 'string' && item ? item : undefined;
+/** The group a `#group-{id}` hash names, or nothing. @internal */
+function groupOfHash(route: RouteLocationNormalizedLoaded) {
+  const match = /^#group-(.+)$/.exec(route.hash);
+  return match ? decodeURIComponent(match[1]!) : undefined;
 }
 
+/** One source's page on a tab: its own path, its props from the route. @internal */
+function sourceTab(path: string, id: string, title: string, tab: SourceTab) {
+  return {
+    path,
+    id,
+    handle: { title },
+    lazy: lazyPage(
+      () => import('../../presentation/console/pages/SourcePage.vue'),
+      (route) => ({ sourceId: String(route.params['id'] ?? ''), tab }),
+    ),
+  };
+}
+
+/** The pages iteration 1 removed; their old addresses open Sources. @internal */
+const RemovedPages = ['pipelines', 'pipelines/:id', 'runs', 'posts', 'subscriptions', 'hosts'];
+
 /**
- * Holds the route table: one console layout route, and a page per place in SCFD's flow — Home; Sources, Pipelines (and
- * one pipeline), Runs; Posts; Subscriptions; Hosts, Access. Each title matches its sidebar label.
+ * Holds the route table: one console layout route, and a page per place in the operator's flow — Home; Sources and one
+ * source with its tabs (`/sources/:id`, `/posts`, `/activity`, `/settings`); Subscribers; Access. Each title matches its
+ * sidebar label. The Pipelines, Runs, Hosts, Posts and Subscriptions pages are gone; their paths redirect to Sources.
  */
 export const routes: RouteConfig = [
   {
@@ -22,10 +39,7 @@ export const routes: RouteConfig = [
       {
         index: true,
         id: 'home',
-        handle: {
-          title: 'Home',
-          description: 'How the open container is doing: runs, failures, queued work and delivery.',
-        },
+        handle: { title: 'Home', description: 'How the open workspace is doing: harvests, failures and delivery.' },
         lazy: lazyRoute(() => import('../../presentation/console/pages/HomePage.vue')),
       },
       {
@@ -33,67 +47,33 @@ export const routes: RouteConfig = [
         id: 'sources',
         handle: {
           title: 'Sources',
-          description: 'What the installed source adapters registered, and the sections each one can follow.',
+          description: 'The sources we can read, by publisher. Open one for its sections and posts.',
         },
-        lazy: lazyRoute(() => import('../../presentation/console/pages/SourcesPage.vue')),
+        lazy: lazyPage(
+          () => import('../../presentation/console/pages/SourcesPage.vue'),
+          (route) => ({ focusGroup: groupOfHash(route) }),
+        ),
       },
+      sourceTab('sources/:id', 'source', 'Source', 'overview'),
+      sourceTab('sources/:id/posts', 'source-posts', 'Posts', 'posts'),
+      sourceTab('sources/:id/activity', 'source-activity', 'Activity', 'activity'),
+      sourceTab('sources/:id/settings', 'source-settings', 'Settings', 'settings'),
       {
-        path: 'pipelines',
-        id: 'pipelines',
+        path: 'subscribers',
+        id: 'subscribers',
         handle: {
-          title: 'Pipelines',
-          description: 'Standing harvests, each following one section of a source on its own schedule.',
+          title: 'Subscribers',
+          description: 'The products that receive posts, and the source and section each one follows.',
         },
-        lazy: lazyPage(
-          () => import('../../presentation/console/pages/PipelinesPage.vue'),
-          (route) => ({ newSource: query(route, 'source') }),
-        ),
-      },
-      {
-        path: 'pipelines/:id',
-        id: 'pipeline',
-        handle: { title: 'Pipeline', description: 'Its configuration, its schedule and its runs.' },
-        lazy: lazyPage(
-          () => import('../../presentation/console/pages/PipelinePage.vue'),
-          (route) => ({ pipelineId: String(route.params['id'] ?? '') }),
-        ),
-      },
-      {
-        path: 'runs',
-        id: 'runs',
-        handle: { title: 'Runs', description: 'Every pipeline’s latest executions and their outcomes.' },
-        lazy: lazyPage(
-          () => import('../../presentation/console/pages/RunsPage.vue'),
-          (route) => ({ pipeline: query(route, 'pipeline') }),
-        ),
-      },
-      {
-        path: 'posts',
-        id: 'posts',
-        handle: { title: 'Posts', description: 'What the pipelines captured, with source links and field evidence.' },
-        lazy: lazyRoute(() => import('../../presentation/console/pages/PostsPage.vue')),
-      },
-      {
-        path: 'subscriptions',
-        id: 'subscriptions',
-        handle: {
-          title: 'Subscriptions',
-          description: 'Which tenants receive which pipelines, and each subscription’s next delivery page.',
-        },
-        lazy: lazyRoute(() => import('../../presentation/console/pages/SubscriptionsPage.vue')),
-      },
-      {
-        path: 'hosts',
-        id: 'hosts',
-        handle: { title: 'Hosts', description: 'Each source host lane: queued work, failures and pauses.' },
-        lazy: lazyRoute(() => import('../../presentation/console/pages/HostsPage.vue')),
+        lazy: lazyRoute(() => import('../../presentation/console/pages/SubscribersPage.vue')),
       },
       {
         path: 'access',
         id: 'access',
-        handle: { title: 'Access', description: 'This session’s scopes, the tenants and the containers they see.' },
+        handle: { title: 'Access', description: 'What this session may do, and the workspaces it sees.' },
         lazy: lazyRoute(() => import('../../presentation/console/pages/AccessPage.vue')),
       },
+      ...RemovedPages.map((path) => ({ path, redirect: { name: 'sources' } })),
     ],
   },
 ];

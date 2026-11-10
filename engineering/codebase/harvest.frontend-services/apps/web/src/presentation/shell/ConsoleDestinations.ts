@@ -6,7 +6,7 @@ export interface ConsoleDestination {
   /** The route the destination opens, by its id. */
   readonly route: string;
   readonly icon: ConsoleIconName;
-  /** Other routes that belong to this destination, such as one pipeline under Pipelines. */
+  /** Other routes that belong to this destination, such as one source under Sources. */
   readonly within?: readonly string[];
 }
 
@@ -16,26 +16,15 @@ export interface ConsoleSection {
   readonly destinations: readonly ConsoleDestination[];
 }
 
-/** The sidebar, in order: Overview, Collect, Content, Deliver, System. */
+/** The routes of one source's page: Overview, then its tabs. */
+export const SourceRoutes = ['source', 'source-posts', 'source-activity', 'source-settings'] as const;
+
+/** The operator's sidebar, in order: Overview, Collect, Deliver, System. */
 export const ConsoleSections: readonly ConsoleSection[] = [
   { label: 'Overview', destinations: [{ label: 'Home', route: 'home', icon: 'home' }] },
-  {
-    label: 'Collect',
-    destinations: [
-      { label: 'Sources', route: 'sources', icon: 'sources' },
-      { label: 'Pipelines', route: 'pipelines', icon: 'pipelines', within: ['pipeline'] },
-      { label: 'Runs', route: 'runs', icon: 'runs' },
-    ],
-  },
-  { label: 'Content', destinations: [{ label: 'Posts', route: 'posts', icon: 'posts' }] },
-  { label: 'Deliver', destinations: [{ label: 'Subscriptions', route: 'subscriptions', icon: 'subscriptions' }] },
-  {
-    label: 'System',
-    destinations: [
-      { label: 'Hosts', route: 'hosts', icon: 'hosts' },
-      { label: 'Access', route: 'access', icon: 'access' },
-    ],
-  },
+  { label: 'Collect', destinations: [{ label: 'Sources', route: 'sources', icon: 'sources', within: SourceRoutes }] },
+  { label: 'Deliver', destinations: [{ label: 'Subscribers', route: 'subscribers', icon: 'subscribers' }] },
+  { label: 'System', destinations: [{ label: 'Access', route: 'access', icon: 'access' }] },
 ];
 
 /** Finds the section and destination a route belongs to. */
@@ -45,4 +34,9 @@ export function destinationOf(route: string) {
     if (destination) return { section, destination };
   }
   return undefined;
+}
+
+/** Whether a route is one source's page or one of its tabs. */
+export function isSourceRoute(route: string) {
+  return (SourceRoutes as readonly string[]).includes(route);
 }
