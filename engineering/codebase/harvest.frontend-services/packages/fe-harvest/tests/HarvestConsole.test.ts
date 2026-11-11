@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { ResultExtensions } from '@wow-two-beta/fe/foundation/results';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, type VNodeChild } from 'vue';
 import HarvestConnectPanel from '../src/admin/harvestConsole/HarvestConnectPanel.vue';
 import HarvestConsoleProvider from '../src/admin/harvestConsole/HarvestConsoleProvider.vue';
@@ -12,10 +12,16 @@ import type { HarvestConsoleOptions } from '../src/admin';
 import { createHarvestClient } from '../src/kit';
 
 const wrappers: ReturnType<typeof mount>[] = [];
+/** The fixture's harvests are dated 2026-11-10, so the clock is pinned there: "today" labels stay the same any day. */
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-11-10T12:00:00Z'));
+});
 afterEach(() => {
   for (const wrapper of wrappers.splice(0)) wrapper.unmount();
   window.sessionStorage.clear();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 /** The adapter's sections of the fixture source: Fashion is harvested, Theatre and Concerts are not. */
@@ -331,7 +337,7 @@ describe('Sources gallery', () => {
     });
     await flushPromises();
     const card = wrapper.get('article[aria-label="Afisha.uz"]');
-    expect(card.get('[data-pill="last-harvest"]').text()).toBe('last harvest · 4 new of 23 found · partial');
+    expect(card.get('[data-pill="last-harvest"]').text()).toBe('last harvest · +4 new of 23 found · partial');
     expect(card.get('[data-pill="last-harvest"]').attributes('data-tone')).toBe('warning');
     expect(card.text()).toMatch(/last harvest \d{2}:\d{2} · next/);
     expect(card.text()).toContain('healthy');
@@ -344,7 +350,7 @@ describe('Sources gallery', () => {
 
     const tile = wrapper.get('article[aria-label="Afisha"]');
     expect(tile.text()).toContain('2 sources');
-    expect(tile.get('[data-pill="group-harvest"]').text()).toBe('4 new in the last harvest');
+    expect(tile.get('[data-pill="group-harvest"]').text()).toBe('+4 new');
   });
 
   it('filters by state with counts and searches by name', async () => {

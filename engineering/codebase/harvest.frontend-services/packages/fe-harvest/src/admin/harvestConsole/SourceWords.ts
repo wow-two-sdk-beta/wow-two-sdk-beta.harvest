@@ -188,12 +188,12 @@ export function statusWords(status: SourceHarvestStatus | RunModel['status']) {
   return status === 'running' ? 'running' : codeWords(status);
 }
 
-/** What the last harvest found, as one pill reads: `last harvest · 4 new of 23 found · partial`. */
+/** What the last harvest found, as one pill reads: `last harvest · +4 new of 23 found · partial`. */
 export function lastHarvestText(harvest?: SourceHarvestModel) {
   if (!harvest) return 'no harvest yet';
   if (harvest.status === 'running') return 'harvesting now';
   if (harvest.status === 'queued') return 'harvest queued';
-  const found = `last harvest · ${harvest.newPosts} new of ${harvest.found} found`;
+  const found = `last harvest · ${harvest.newPosts ? `+${harvest.newPosts}` : '0'} new of ${harvest.found} found`;
   return harvest.status === 'completed' ? found : `${found} · ${statusWords(harvest.status)}`;
 }
 

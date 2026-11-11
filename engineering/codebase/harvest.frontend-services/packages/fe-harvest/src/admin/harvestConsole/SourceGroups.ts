@@ -64,7 +64,7 @@ export function groupFamiliesOf(sources: readonly SourceOverviewModel[]) {
 /** Tones from calm to loud, so a group's pill takes its loudest source's. @internal */
 const Loudness: readonly PillTone[] = ['neutral', 'info', 'success', 'warning', 'danger'];
 
-/** A group's one pill: `4 new in the last harvest`, or `no harvest yet`. */
+/** A group's one pill: `+4 new`, `nothing new`, or `no harvest yet`. */
 export function groupHarvestPill(sources: readonly SourceOverviewModel[]): { text: string; tone: PillTone } {
   const harvested = sources.filter((source) => source.lastHarvest);
   if (!harvested.length) return { text: 'no harvest yet', tone: 'dashed' };
@@ -72,5 +72,5 @@ export function groupHarvestPill(sources: readonly SourceOverviewModel[]): { tex
   const tone = harvested
     .map((source) => statusTone(source.lastHarvest!.status))
     .reduce((loudest, tone) => (Loudness.indexOf(tone) > Loudness.indexOf(loudest) ? tone : loudest), 'neutral');
-  return { text: fresh ? `${fresh} new in the last harvest` : 'nothing new in the last harvest', tone };
+  return { text: fresh ? `+${fresh} new` : 'nothing new', tone };
 }
