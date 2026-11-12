@@ -245,17 +245,29 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
     return url ? sectionsOf(sourceId).find((section) => sameSection(url, section.url)) : undefined;
   }
 
-  /** Names a section as the adapter does (`Fashion`), else by the name its harvest was given. */
-  function sectionLabel(pipelineId: string) {
+  /** The adapter section a pipeline follows, if its address matches one. */
+  function adapterOf(pipelineId: string) {
     const pipeline = pipelineOf(pipelineId);
     const owner = overviews.value.find((item) => item.sections.some((row) => row.pipelineId === pipelineId));
     const section = owner?.sections.find((item) => item.pipelineId === pipelineId);
     const sourceId = pipeline?.sourceId ?? owner?.sourceId;
     const url = pipeline?.scope.url ?? section?.url;
-    const adapter = sourceId ? adapterSectionOf(sourceId, url) : undefined;
+    return { pipeline, section, url, adapter: sourceId ? adapterSectionOf(sourceId, url) : undefined };
+  }
+
+  /** Names a section as the adapter does (`Fashion`), else by the name its harvest was given. */
+  function sectionLabel(pipelineId: string) {
+    const { pipeline, section, url, adapter } = adapterOf(pipelineId);
     if (adapter) return adapter.label;
     if (pipeline && !url) return 'Whole source';
     return section?.name ?? pipeline?.name ?? 'Section';
+  }
+
+  /** A section's name and its language apart, as the adapter lists them: `Fashion` and `ru`. */
+  function sectionParts(pipelineId: string): { name: string; locale?: string } {
+    const adapter = adapterOf(pipelineId).adapter;
+    if (!adapter) return { name: sectionLabel(pipelineId) };
+    return { name: adapter.name ?? adapter.label, ...(adapter.locale ? { locale: adapter.locale } : {}) };
   }
 
   /** Names a pipeline as the section it follows. */
@@ -883,6 +895,7 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
     sourceName,
     adapterSectionOf,
     sectionLabel,
+    sectionParts,
     pipelineLabel,
     clearMessages,
     refresh,

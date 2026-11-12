@@ -3,7 +3,7 @@ import { computed, shallowRef, watch } from 'vue';
 import { Button } from '@wow-two-beta/fe/presentation/actions';
 import { EmptyState } from '@wow-two-beta/fe/presentation/display';
 import ConsoleLink from './ConsoleLink.vue';
-import HarvestPill from './HarvestPill.vue';
+import PostPills from './PostPills.vue';
 import { useHarvestConsole, type PostDetails } from './HarvestConsole';
 import type { SourcePostModel } from '../../contracts';
 import { changedWords, dateOf, dateTimeOf, imageSrcOf, timingOf, webUrlOf, whenOf } from './SourceWords';
@@ -118,14 +118,13 @@ const kind = computed(() => base.value?.kind ?? 'post');
       <header class="flex flex-wrap items-start justify-between gap-4">
         <div class="flex min-w-0 flex-1 flex-col gap-3">
           <h1 class="text-2xl font-semibold tracking-tight">{{ base?.title ?? 'Untitled post' }}</h1>
-          <div class="flex flex-wrap gap-2">
-            <HarvestPill :tone="kind === 'event' ? 'success' : 'outline'">{{ kind }}</HarvestPill>
-            <HarvestPill v-if="source" tone="outline">{{ source.name.toLowerCase() }}</HarvestPill>
-            <HarvestPill v-if="listed?.pipelineId" tone="outline">
-              {{ session.sectionLabel(listed.pipelineId).toLowerCase() }}
-            </HarvestPill>
-            <HarvestPill v-if="gone" tone="danger">removed</HarvestPill>
-          </div>
+          <PostPills
+            :kind="kind"
+            :pipeline-id="listed?.pipelineId"
+            :source-name="source?.name"
+            :family="source?.family"
+            :removed="gone"
+          />
         </div>
         <Button v-if="original && !gone" as-child variant="outline">
           <a :href="original" target="_blank" rel="noopener noreferrer">

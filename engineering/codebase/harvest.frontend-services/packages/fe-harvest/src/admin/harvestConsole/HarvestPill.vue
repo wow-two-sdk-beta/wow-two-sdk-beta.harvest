@@ -7,7 +7,11 @@ import type { PillTone } from './SourceWords';
  * absence, such as `no harvest yet`.
  */
 defineOptions({ name: 'HarvestPill' });
-const props = withDefaults(defineProps<{ tone?: PillTone; size?: 'sm' | 'md' }>(), { tone: 'neutral', size: 'sm' });
+const props = withDefaults(defineProps<{ tone?: PillTone; size?: 'sm' | 'md'; shrinkable?: boolean }>(), {
+  tone: 'neutral',
+  size: 'sm',
+  shrinkable: false,
+});
 defineSlots<{ default(): unknown }>();
 
 /** Each tone's border, fill and text. @internal */
@@ -27,8 +31,8 @@ const sizeClass = computed(() => (props.size === 'md' ? 'h-7 px-3 text-[13px]' :
 
 <template>
   <span
-    class="inline-flex max-w-full shrink-0 items-center gap-1 truncate rounded-full border font-semibold whitespace-nowrap"
-    :class="[ToneClass[props.tone], sizeClass]"
+    class="inline-flex max-w-full items-center gap-1 truncate rounded-full border font-semibold whitespace-nowrap"
+    :class="[ToneClass[props.tone], sizeClass, props.shrinkable ? 'min-w-0 shrink' : 'shrink-0']"
     v-bind="{ 'data-tone': props.tone }"
   >
     <slot></slot>

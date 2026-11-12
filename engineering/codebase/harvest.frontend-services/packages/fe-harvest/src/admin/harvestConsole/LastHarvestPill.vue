@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import type { SourceHarvestModel } from '../../contracts';
 import HarvestPill from './HarvestPill.vue';
+import PillIcon from './PillIcon.vue';
 import { clockOf, lastHarvestNote, lastHarvestText, lastHarvestTone } from './SourceWords';
 
 /**
@@ -26,20 +27,7 @@ const title = computed(() =>
     :size="props.size"
     v-bind="{ 'data-pill': 'last-harvest', title }"
   >
-    <svg
-      width="13"
-      height="13"
-      viewBox="0 0 24 24"
-      class="shrink-0"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2.2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5M12 7.5V12l3 2" />
-    </svg>
+    <PillIcon name="history" />
     {{ lastHarvestText(props.harvest) }}
     <span v-if="props.harvest?.status === 'partial'" class="sr-only">, partial</span>
   </HarvestPill>

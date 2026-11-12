@@ -2,7 +2,10 @@ import type { SourceCapabilitiesModel } from '../../contracts';
 
 /** One part of a source an adapter lists, such as a page of upcoming events. */
 export interface SourceSection {
+  /** How the console names it; with the language added when the adapter lists the same page in several. */
   readonly label: string;
+  /** The section's name as the adapter lists it, with no language: `Fashion`. */
+  readonly name?: string;
   readonly url: string;
   readonly locale?: string;
 }
@@ -20,7 +23,7 @@ function isSourceSection(value: unknown): value is SourceSection {
 }
 
 /** Names a locale in English, such as `ru` → `Russian`; an unknown code reads as itself. @internal */
-function languageName(locale: string) {
+export function languageName(locale: string) {
   try {
     return new Intl.DisplayNames(['en'], { type: 'language' }).of(locale) ?? locale;
   } catch {
@@ -40,7 +43,9 @@ export function sourceSections(capabilities?: SourceCapabilitiesModel): readonly
     sections.map((item) => item.label).filter((label, index, all) => all.indexOf(label) !== index),
   );
   return sections.map((item) =>
-    repeated.has(item.label) && item.locale ? { ...item, label: `${item.label} · ${languageName(item.locale)}` } : item,
+    repeated.has(item.label) && item.locale
+      ? { ...item, name: item.label, label: `${item.label} · ${languageName(item.locale)}` }
+      : { ...item, name: item.label },
   );
 }
 

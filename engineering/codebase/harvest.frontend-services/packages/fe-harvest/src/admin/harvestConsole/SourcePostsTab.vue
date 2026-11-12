@@ -5,6 +5,9 @@ import type { SourceOverviewModel, SourcePostModel } from '../../contracts';
 import ConsoleLink from './ConsoleLink.vue';
 import FilterChip from './FilterChip.vue';
 import HarvestPill from './HarvestPill.vue';
+import PillIcon from './PillIcon.vue';
+import PostPills from './PostPills.vue';
+import { kindGlyphOf } from './PostGlyphs';
 import SourceIcon from './SourceIcon.vue';
 import { useHarvestConsole } from './HarvestConsole';
 import { dateOf, imageSrcOf, kindPlural, timingOf, webUrlOf, type GalleryView } from './SourceWords';
@@ -173,7 +176,10 @@ function sectionOf(post: SourcePostModel) {
           <span v-if="startOf(post)" class="block text-[13px] text-muted-foreground">{{ startOf(post) }}</span>
         </span>
         <span role="cell">
-          <HarvestPill :tone="post.kind === 'event' ? 'success' : 'outline'">{{ post.kind }}</HarvestPill>
+          <HarvestPill :tone="post.kind === 'event' ? 'success' : 'outline'">
+            <PillIcon :name="kindGlyphOf(post.kind)" />
+            {{ post.kind }}
+          </HarvestPill>
         </span>
         <span role="cell" class="truncate max-md:hidden">{{ sectionOf(post) }}</span>
         <span role="cell" class="max-md:hidden">{{ post.postedAt ? dateOf(post.postedAt) : '—' }}</span>
@@ -256,11 +262,13 @@ function sectionOf(post: SourcePostModel) {
           aria-hidden="true"
         ></div>
         <div class="z-10 flex h-[8.5rem] min-w-0 flex-col gap-2 p-4 text-white">
-          <div class="flex flex-wrap gap-1.5">
-            <HarvestPill :tone="post.kind === 'event' ? 'glassSuccess' : 'glass'">{{ post.kind }}</HarvestPill>
-            <HarvestPill v-if="post.pipelineId" tone="glass">{{ sectionOf(post).toLowerCase() }}</HarvestPill>
-            <HarvestPill v-if="post.state === 'gone'" tone="glass">removed</HarvestPill>
-          </div>
+          <PostPills
+            :kind="post.kind"
+            :pipeline-id="post.pipelineId"
+            :removed="post.state === 'gone'"
+            on-image
+            compact
+          />
           <ConsoleLink
             :to="placeOf(post)"
             class="line-clamp-2 min-h-[2lh] text-start text-[15px] leading-snug font-semibold outline-none after:absolute after:inset-0 after:content-['']"
