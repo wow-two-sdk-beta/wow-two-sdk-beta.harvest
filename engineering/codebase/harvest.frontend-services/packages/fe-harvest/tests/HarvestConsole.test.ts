@@ -185,6 +185,10 @@ function fixtureFetch({ groups = 1 }: { groups?: 1 | 2 } = {}) {
                           startsAt: '2099-11-21T12:00:00Z',
                           url: 'https://www.afisha.uz/ru/fashion/show',
                           imageUrl: 'https://www.afisha.uz/media/show-1.jpg',
+                          imageUrls: [
+                            'https://www.afisha.uz/media/show-1.jpg',
+                            'https://www.afisha.uz/media/show-2.jpg',
+                          ],
                         },
                         {
                           postId: 'post-2',
@@ -553,6 +557,26 @@ describe('post page and cards', () => {
     expect(cards).toHaveLength(2);
     expect(cards[0]!.get('[data-post-image]').attributes('src')).toBe('https://www.afisha.uz/media/show-1.jpg');
     expect(cards[1]!.find('img').exists()).toBe(false);
+  });
+
+  it('gives a card with several images a two-arrow carousel, and leaves a card without them plain', async () => {
+    const wrapper = mountConsole({
+      options: { client: createHarvestClient({ fetch: fixtureFetch() }) },
+      panels: () => h(SourcePanel, { sourceId: 'source-1', tab: 'posts', view: 'cards' }),
+    });
+    await flushPromises();
+    const [several, none] = wrapper.findAll('ul[aria-label="Posts"] > li');
+    expect(several!.findAll('[data-post-image]').map((image) => image.attributes('src'))).toEqual([
+      'https://www.afisha.uz/media/show-1.jpg',
+      'https://www.afisha.uz/media/show-2.jpg',
+    ]);
+    const track = several!.get('[aria-live]');
+    expect(track.attributes('style')).toContain('translateX(-0%)');
+    await several!.get('button[aria-label="Next slide"]').trigger('click');
+    expect(track.attributes('style')).toContain('translateX(-100%)');
+    await several!.get('button[aria-label="Previous slide"]').trigger('click');
+    expect(track.attributes('style')).toContain('translateX(-0%)');
+    expect(none!.find('button[aria-label="Next slide"]').exists()).toBe(false);
   });
 
   it('writes a card’s pills in lower case, and never says when SCFD saw the post', async () => {

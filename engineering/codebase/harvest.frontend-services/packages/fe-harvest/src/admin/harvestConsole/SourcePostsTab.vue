@@ -1,5 +1,13 @@
 <script setup lang="ts">
 import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue';
+import {
+  Carousel,
+  CarouselNext,
+  CarouselPrev,
+  CarouselSlide,
+  CarouselSlides,
+  CarouselViewport,
+} from '@wow-two-beta/fe/presentation/display';
 import { SearchInput } from '@wow-two-beta/fe/presentation/forms';
 import type { SourceOverviewModel, SourcePostModel } from '../../contracts';
 import ConsoleLink from './ConsoleLink.vue';
@@ -89,6 +97,14 @@ function unavailableWords(post: SourcePostModel) {
   return post.state === 'gone' ? 'Removed from the source' : 'No link to the original';
 }
 /** The page a post opens, `/sources/{id}/posts/{postId}`. */
+/** The two arrows of a card's carousel: glass buttons shown only while the card is hovered or focused. */
+const ArrowClass =
+  'top-[34%] z-20 size-8 border border-white/20 bg-black/35 text-white ring-0 backdrop-blur-md opacity-0 transition-opacity hover:bg-black/55 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100';
+/** A post's usable images in order: the list's `imageUrls`, else its first image alone. */
+function imagesOf(post: SourcePostModel) {
+  const urls = post.imageUrls?.length ? post.imageUrls : post.imageUrl ? [post.imageUrl] : [];
+  return urls.map((url) => imageSrcOf(url)).filter((src): src is string => !!src);
+}
 function placeOf(post: SourcePostModel) {
   return { kind: 'source', id: props.source.sourceId, tab: 'posts', post: post.postId } as const;
 }
@@ -191,9 +207,32 @@ function sectionOf(post: SourcePostModel) {
         :key="post.postId"
         class="group relative isolate flex aspect-[4/5] min-w-0 flex-col justify-end overflow-hidden rounded-2xl border border-border bg-muted hover:border-primary/40 has-[a[data-post-link]:focus-visible]:outline-2 has-[a[data-post-link]:focus-visible]:outline-offset-2 has-[a[data-post-link]:focus-visible]:outline-ring"
       >
+        <Carousel v-if="imagesOf(post).length > 1" can-loop class="absolute inset-0 size-full">
+          <CarouselViewport
+            class="size-full rounded-none"
+            v-bind="{ tabindex: -1, 'aria-label': 'Photos of this post' }"
+          >
+            <CarouselSlides class="size-full">
+              <CarouselSlide v-for="src in imagesOf(post)" :key="src">
+                <img
+                  :src="src"
+                  alt=""
+                  class="size-full object-cover"
+                  :class="post.state === 'gone' ? 'grayscale' : ''"
+                  loading="lazy"
+                  decoding="async"
+                  referrerpolicy="no-referrer"
+                  v-bind="{ 'data-post-image': '' }"
+                />
+              </CarouselSlide>
+            </CarouselSlides>
+          </CarouselViewport>
+          <CarouselPrev :class="ArrowClass" class="left-2" />
+          <CarouselNext :class="ArrowClass" class="right-2" />
+        </Carousel>
         <img
-          v-if="imageSrcOf(post.imageUrl)"
-          :src="imageSrcOf(post.imageUrl)"
+          v-else-if="imagesOf(post).length === 1"
+          :src="imagesOf(post)[0]"
           alt=""
           class="absolute inset-0 -z-10 size-full object-cover transition-transform duration-300 group-hover:scale-105 motion-reduce:transition-none motion-reduce:group-hover:scale-100"
           :class="post.state === 'gone' ? 'grayscale' : ''"

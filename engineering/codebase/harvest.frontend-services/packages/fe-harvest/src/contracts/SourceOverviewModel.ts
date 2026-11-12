@@ -131,6 +131,8 @@ export interface SourcePostModel {
   readonly url?: string;
   /** The post's first image, as the source published it; omitted when it has none. */
   readonly imageUrl?: string;
+  /** The post's images in order, as the source published them, at most 12; omitted by an older host. */
+  readonly imageUrls?: readonly string[];
 }
 
 /** Mirrors `PostRevisionModel`: one revision of a post and the top-level fields that changed. */
