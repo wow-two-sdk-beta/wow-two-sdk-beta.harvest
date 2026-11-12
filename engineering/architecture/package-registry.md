@@ -10,7 +10,7 @@
 | `WoW2.Sdk.Beta.Be.Harvest.Abstractions` | contract | the kernel `WoW2.Sdk.Beta.Be.Abstractions` only; no framework reference | none | all | product Domain/Application projects; `sources/*` |
 | `WoW2.Sdk.Beta.Be.Harvest.Module` | forms | Abstractions, core (Npgsql, EF Core, SQL migrator), Identity.Auth, AngleSharp, Cronos | HTML parser; no browser engine | 1 | products (Form 1), `sources/Module`, both hosts |
 | `WoW2.Sdk.Beta.Be.Harvest.Client` | forms | Abstractions, core, Identity.Auth | none | 2, 3 | Events, Haven, the ListingShelf view |
-| `WoW2.Sdk.Beta.Be.Harvest.Hosting` | hosting | Module, core, Identity.Client, ASP.NET shared framework | optional durable BFF session cache; no source or provider dependency | 2, 3 | `service/HarvestSources.Api`, `service/Harvest.Api` |
+| `WoW2.Sdk.Beta.Be.Harvest.Hosting` | hosting | Module, core, Identity.Client, ASP.NET shared framework | optional durable BFF session cache; no source or provider dependency | 2, 3 | `service/HarvestSources.Api` |
 | `WoW2.Sdk.Beta.Be.Harvest.Testing` | test kit | Abstractions, `WoW2.Sdk.Beta.Be.Testing` | xunit (via be Testing) | all | test projects |
 | `@wow-two-beta/fe-harvest` | fe | peers `@wow-two-beta/fe` `>=0.0.41 <0.1.0`, `vue` | none | all | `apps/web`, consoles and product admin pages |
 
