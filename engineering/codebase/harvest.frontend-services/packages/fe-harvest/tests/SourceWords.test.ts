@@ -9,6 +9,7 @@ import {
   paceWords,
   runFoundWords,
   runProblem,
+  timingOf,
 } from '../src/admin/harvestConsole/SourceWords';
 import type { RunModel, SourceHarvestModel } from '../src/contracts';
 
@@ -78,6 +79,15 @@ describe('source words', () => {
     expect(ago('2026-11-10T08:00:00Z')).toBe('2 days ago');
     expect(ago('2026-09-01T08:00:00Z')).toBe('1 Sept 2026');
     expect(agoOf(undefined, now)).toBe('—');
+  });
+
+  it('marks an event ongoing or finished only from its stated end, a day-only end running to the close of that day', () => {
+    const now = new Date('2026-11-12T12:00:00Z');
+    expect(timingOf('2026-10-01', '2026-11-30', now)).toBe('ongoing');
+    expect(timingOf('2026-11-01', '2026-11-12', now)).toBe('ongoing');
+    expect(timingOf('2026-11-01', '2026-11-11', now)).toBe('finished');
+    expect(timingOf('2026-11-20', '2026-11-22', now)).toBeUndefined();
+    expect(timingOf('2026-10-01', undefined, now)).toBeUndefined();
   });
 
   it('writes the last-harvest pill as one short line, the icon standing for "last harvest"', () => {

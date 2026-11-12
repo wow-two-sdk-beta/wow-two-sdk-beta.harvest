@@ -6,7 +6,7 @@ import FilterChip from './FilterChip.vue';
 import HarvestPill from './HarvestPill.vue';
 import PostModal from './PostModal.vue';
 import { useHarvestConsole } from './HarvestConsole';
-import { agoOf, dateOf, imageSrcOf, kindPlural, whenOf, type GalleryView } from './SourceWords';
+import { agoOf, dateOf, imageSrcOf, kindPlural, timingOf, whenOf, type GalleryView } from './SourceWords';
 
 /**
  * A source's posts, newest first: a search, filter chips by section and by kind with their counts, and the posts as
@@ -67,9 +67,13 @@ const shown = computed(() =>
 );
 const opened = computed(() => posts.value.find((post) => post.postId === openId.value));
 
-/** A post's own date when it has one — `21 Nov 2026`; the list never judges it `past`, as no end date comes with it. */
+/** A post's own date when it has one, with `ongoing` or `finished` once its stated end allows — `1 Oct 2026 · ongoing`. */
 function startOf(post: SourcePostModel) {
-  return post.startsAt ? dateOf(post.startsAt) : undefined;
+  return (
+    [post.startsAt ? dateOf(post.startsAt) : undefined, timingOf(post.startsAt, post.endsAt)]
+      .filter(Boolean)
+      .join(' · ') || undefined
+  );
 }
 /** The line under a card's title: its date if any, and when SCFD first saw it — `21 Nov 2026 · seen 3 days ago`. */
 function cardLine(post: SourcePostModel) {

@@ -123,6 +123,8 @@ export interface SourcePostModel {
   readonly pipelineId?: string;
   /** The event start as stated. */
   readonly startsAt?: string;
+  /** The event end as stated; omitted when the post states none. */
+  readonly endsAt?: string;
   /** The link's URL. */
   readonly url?: string;
   /** The post's first image, as the source published it; omitted when it has none. */

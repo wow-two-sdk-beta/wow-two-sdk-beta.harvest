@@ -256,7 +256,7 @@ export function createDemoHarvestClient(): HarvestClient {
       lastChangedAtUtc: ago(minutesAgo),
     };
   };
-  const posts: { post: PostModel; pipelineId: string; startsAt?: string }[] = [
+  const posts: { post: PostModel; pipelineId: string; startsAt?: string; endsAt?: string }[] = [
     {
       post: post(
         fashion,
@@ -301,6 +301,7 @@ export function createDemoHarvestClient(): HarvestClient {
       ),
       pipelineId: exhibitions.id,
       startsAt: ago(60 * 24 * 3),
+      endsAt: ago(-60 * 24 * 10),
     },
     ...[
       'Inside the new photography hall',
@@ -454,7 +455,7 @@ export function createDemoHarvestClient(): HarvestClient {
             .filter((row) =>
               pipelines.some((pipeline) => pipeline.id === row.pipelineId && pipeline.sourceId === itemId),
             )
-            .map(({ post: row, pipelineId, startsAt }) => ({
+            .map(({ post: row, pipelineId, startsAt, endsAt }) => ({
               postId: row.id,
               title: row.base.title,
               kind: row.base.kind ?? 'post',
@@ -464,6 +465,7 @@ export function createDemoHarvestClient(): HarvestClient {
               lastChangedAt: row.lastChangedAtUtc,
               pipelineId,
               ...(startsAt ? { startsAt } : {}),
+              ...(endsAt ? { endsAt } : {}),
               url: row.links[0]?.url,
               ...(row.base.media?.some((item) => item.kind === 'image')
                 ? { imageUrl: row.base.media.find((item) => item.kind === 'image')!.url }

@@ -33,6 +33,9 @@ public sealed record SourcePostModel
     /// <summary>Gets the event's start as the post states it, a partial ISO 8601 value.</summary>
     public string? StartsAt { get; init; }
 
+    /// <summary>Gets the event's end as the post states it, a partial ISO 8601 value; null when it states none.</summary>
+    public string? EndsAt { get; init; }
+
     /// <summary>Gets the URL of the source's first link to the post.</summary>
     public string? Url { get; init; }
 

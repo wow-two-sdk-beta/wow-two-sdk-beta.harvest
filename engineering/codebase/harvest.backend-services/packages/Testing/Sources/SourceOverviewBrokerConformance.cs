@@ -133,7 +133,8 @@ public abstract class SourceOverviewBrokerConformance
         var run = await CancelledRunAsync(context, pipeline);
         var withRun = Value(await Posts.SaveCaptureAsync(context.Container, context.Source.Id, run.Id, Capture(context, "concert"), Envelope("Concert") with
         {
-            Dates = [new PostDate { Role = DateRole.Start, Value = "2026-11-20T19:00", Precision = DatePrecision.Minute }],
+            Dates = [new PostDate { Role = DateRole.Start, Value = "2026-11-20T19:00", Precision = DatePrecision.Minute },
+                new PostDate { Role = DateRole.End, Value = "2026-11-22", Precision = DatePrecision.Day }],
             Media =
             [
                 new PostMedia { Kind = MediaKind.Thumbnail, Url = $"https://{context.Source.Handle}/thumb.jpg" },
@@ -149,10 +150,10 @@ public abstract class SourceOverviewBrokerConformance
         posts.Should().HaveCount(2).And.BeInDescendingOrder(post => post.FirstSeenAt);
         posts.Single(post => post.PostId == withRun.Post.Id).Should().Match<SourcePostModel>(post => post.Title == "Concert"
             && post.Kind == PostKind.Event && post.State == PostState.Live && post.Revision == 1 && post.PipelineId == pipeline.Id
-            && post.StartsAt == "2026-11-20T19:00" && post.Url == $"https://{context.Source.Handle}/concert"
+            && post.StartsAt == "2026-11-20T19:00" && post.EndsAt == "2026-11-22" && post.Url == $"https://{context.Source.Handle}/concert"
             && post.ImageUrl == $"https://{context.Source.Handle}/poster.jpg");
         posts.Single(post => post.PostId == untitled.Post.Id).Should().Match<SourcePostModel>(post =>
-            post.Title == $"https://{context.Source.Handle}/untitled" && post.Kind == PostKind.Other && post.PipelineId == null && post.StartsAt == null && post.ImageUrl == null);
+            post.Title == $"https://{context.Source.Handle}/untitled" && post.Kind == PostKind.Other && post.PipelineId == null && post.StartsAt == null && post.EndsAt == null && post.ImageUrl == null);
         Value(await Overview.ListSourcePostsAsync(context.Source.Id, limit: 1)).Should().ContainSingle();
     }
 

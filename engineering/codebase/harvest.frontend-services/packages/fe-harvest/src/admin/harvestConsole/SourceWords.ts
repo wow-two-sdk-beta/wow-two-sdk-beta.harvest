@@ -60,6 +60,25 @@ export function whenOf(value?: string, now = new Date()) {
   return `${(date.getFullYear() === now.getFullYear() ? dayMonth : fullDate).format(date)} ${time.format(date)}`;
 }
 
+/** The instant a stated end covers: a day-only value (`2026-11-21`) runs to that day's end. @internal */
+function endInstant(value?: string) {
+  const date = instant(value);
+  if (!date || !value) return undefined;
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(date.getTime() + 86_400_000) : date;
+}
+
+/**
+ * Whether an event the post states is still on: `ongoing` from its start to its end, `finished` after its end. With
+ * no stated end it says nothing, since a start alone cannot tell a one-evening show from a month-long exhibition.
+ */
+export function timingOf(startsAt?: string, endsAt?: string, now = new Date()): 'ongoing' | 'finished' | undefined {
+  const end = endInstant(endsAt);
+  if (!end) return undefined;
+  if (end.getTime() <= now.getTime()) return 'finished';
+  const start = instant(startsAt);
+  return start && start.getTime() <= now.getTime() ? 'ongoing' : undefined;
+}
+
 /**
  * How long ago something happened, as a count: `just now`, `5 min ago`, `1 hour ago`, `3 hours ago`, `1 day ago`,
  * `12 days ago`; a month or more back, the date. Counts round down, so `3 hours ago` holds until the fourth hour.

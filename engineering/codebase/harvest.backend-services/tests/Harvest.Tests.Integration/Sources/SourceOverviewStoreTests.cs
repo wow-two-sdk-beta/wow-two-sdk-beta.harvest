@@ -135,7 +135,7 @@ public sealed class SourceOverviewStoreTests
         posts[1].Should().BeEquivalentTo(new SourcePostModel
         {
             PostId = concert.Post.Id, Title = "Concert", Kind = PostKind.Event, State = PostState.Live, Revision = 1,
-            FirstSeenAt = DayOne, LastChangedAt = DayOne, PipelineId = fashion.Id, StartsAt = "2026-11-20T19:00", Url = $"https://{Handle}/concert",
+            FirstSeenAt = DayOne, LastChangedAt = DayOne, PipelineId = fashion.Id, StartsAt = "2026-11-20T19:00", EndsAt = "2026-11-21", Url = $"https://{Handle}/concert",
             ImageUrl = $"https://{Handle}/poster.jpg",
         });
         SourceHost.Value(await host.Overview.ListSourcePostsAsync(source, 1)).Should().ContainSingle().Which.PostId.Should().Be(lecture.Post.Id);
