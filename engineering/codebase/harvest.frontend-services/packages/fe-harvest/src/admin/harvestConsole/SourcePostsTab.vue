@@ -179,7 +179,7 @@ function sectionOf(post: SourcePostModel) {
           v-if="imageSrcOf(post.imageUrl)"
           :src="imageSrcOf(post.imageUrl)"
           alt=""
-          class="h-28 w-full rounded-xl bg-muted object-cover"
+          class="aspect-[12/5] w-full rounded-xl bg-muted object-cover"
           loading="lazy"
           decoding="async"
           referrerpolicy="no-referrer"
