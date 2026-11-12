@@ -88,7 +88,8 @@ internal sealed class ModuleSourceOverviewBroker(
                     THEN p.base->'media' ELSE '[]'::jsonb END) WITH ORDINALITY m(value,position)
                     WHERE m.value->>'kind'='image' ORDER BY m.position LIMIT 1),
                 (SELECT d->>'value' FROM jsonb_array_elements(CASE WHEN jsonb_typeof(p.base->'dates')='array'
-                    THEN p.base->'dates' ELSE '[]'::jsonb END) d WHERE d->>'role'='end' LIMIT 1)
+                    THEN p.base->'dates' ELSE '[]'::jsonb END) d WHERE d->>'role'='end' LIMIT 1),
+                p.base->'postedAt'->>'value'
             FROM harvest_posts p
             JOIN LATERAL (
                 SELECT l.url FROM harvest_post_links l WHERE l.container_id=p.container_id AND l.post_id=p.id AND l.source_id=@source
@@ -123,6 +124,7 @@ internal sealed class ModuleSourceOverviewBroker(
                 Url = url,
                 ImageUrl = reader.IsDBNull(10) ? null : reader.GetString(10),
                 EndsAt = reader.IsDBNull(11) ? null : reader.GetString(11),
+                PostedAt = reader.IsDBNull(12) ? null : reader.GetString(12),
             });
         }
 

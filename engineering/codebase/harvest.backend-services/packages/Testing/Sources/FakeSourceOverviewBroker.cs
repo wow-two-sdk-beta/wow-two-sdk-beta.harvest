@@ -117,6 +117,7 @@ public sealed class FakeSourceOverviewBroker(
                     PipelineId = firstPipelines.GetValueOrDefault((post.Id, sourceId)),
                     StartsAt = post.Base.Dates.FirstOrDefault(date => date.Role == DateRole.Start)?.Value,
                     EndsAt = post.Base.Dates.FirstOrDefault(date => date.Role == DateRole.End)?.Value,
+                    PostedAt = post.Base.PostedAt?.Value,
                     Url = first.Url,
                     ImageUrl = post.Base.Media.FirstOrDefault(media => media.Kind == MediaKind.Image)?.Url,
                 });

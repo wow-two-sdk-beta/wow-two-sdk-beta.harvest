@@ -114,6 +114,7 @@ public sealed class SourceOverviewStoreTests
             {
                 Dates = [new PostDate { Role = DateRole.End, Value = "2026-11-21", Precision = DatePrecision.Day },
                     new PostDate { Role = DateRole.Start, Value = "2026-11-20T19:00", Precision = DatePrecision.Minute }],
+                PostedAt = new PostTimestamp { Value = "2026-11-12", Precision = DatePrecision.Day },
                 Media = [new PostMedia { Kind = MediaKind.Video, Url = $"https://{Handle}/clip.mp4" },
                     new PostMedia { Kind = MediaKind.Image, Url = $"https://{Handle}/poster.jpg", FileRef = "files://stored/poster" }],
             }));
@@ -135,7 +136,7 @@ public sealed class SourceOverviewStoreTests
         posts[1].Should().BeEquivalentTo(new SourcePostModel
         {
             PostId = concert.Post.Id, Title = "Concert", Kind = PostKind.Event, State = PostState.Live, Revision = 1,
-            FirstSeenAt = DayOne, LastChangedAt = DayOne, PipelineId = fashion.Id, StartsAt = "2026-11-20T19:00", EndsAt = "2026-11-21", Url = $"https://{Handle}/concert",
+            FirstSeenAt = DayOne, LastChangedAt = DayOne, PipelineId = fashion.Id, StartsAt = "2026-11-20T19:00", EndsAt = "2026-11-21", PostedAt = "2026-11-12", Url = $"https://{Handle}/concert",
             ImageUrl = $"https://{Handle}/poster.jpg",
         });
         SourceHost.Value(await host.Overview.ListSourcePostsAsync(source, 1)).Should().ContainSingle().Which.PostId.Should().Be(lecture.Post.Id);
