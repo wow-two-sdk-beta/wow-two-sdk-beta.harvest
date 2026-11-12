@@ -92,7 +92,8 @@ const idle = {
 };
 
 /** Replies as a small complete service, with no real network; `calls` records every write. */
-function fixtureFetch() {
+/** `groups: 2` files the idle Telegram source under a second group, so the page shows group tiles. */
+function fixtureFetch({ groups = 1 }: { groups?: 1 | 2 } = {}) {
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input), 'https://harvest.example.test');
     const method = input instanceof Request ? input.method : (init?.method ?? 'GET');
@@ -125,9 +126,12 @@ function fixtureFetch() {
         : path === '/api/sources'
           ? [{ id: 'source-1', handle: 'www.afisha.uz', family: 'site', state: 'active', coverage: 'filtered' }]
           : path === '/api/sources/overview'
-            ? [harvested, idle]
+            ? [harvested, groups === 2 ? { ...idle, groupId: 'group-2' } : idle]
             : path === '/api/sources/groups'
-              ? [{ id: 'group-1', containerId: 'container-1', name: 'Afisha', description: 'Event listings.' }]
+              ? [
+                  { id: 'group-1', containerId: 'container-1', name: 'Afisha', description: 'Event listings.' },
+                  ...(groups === 2 ? [{ id: 'group-2', containerId: 'container-1', name: 'Telegram channels' }] : []),
+                ]
               : path === '/api/pipelines'
                 ? [
                     {
@@ -347,10 +351,30 @@ describe('Sources gallery', () => {
     expect(never.get('[data-pill="last-harvest"]').attributes('data-tone')).toBe('dashed');
     expect(never.text()).toContain('never harvested');
     expect(never.get('[data-read-method]').attributes('data-read-method')).toBe('telegram');
+  });
 
+  it('shows the sources alone while one group holds them all: no group tile, no separator', async () => {
+    const wrapper = mountConsole({
+      options: { client: createHarvestClient({ fetch: fixtureFetch() }) },
+      panels: () => h(SourcesGallery, { view: 'cards' }),
+    });
+    await flushPromises();
+    expect(wrapper.find('article[aria-label="Afisha"]').exists()).toBe(false);
+    expect(wrapper.find('section header').exists()).toBe(false);
+    expect(wrapper.find('article[aria-label="Afisha.uz"]').exists()).toBe(true);
+    expect(wrapper.find('article[aria-label="Afisha Telegram"]').exists()).toBe(true);
+  });
+
+  it('draws a tile and a separator per group once there are two', async () => {
+    const wrapper = mountConsole({
+      options: { client: createHarvestClient({ fetch: fixtureFetch({ groups: 2 }) }) },
+      panels: () => h(SourcesGallery, { view: 'cards' }),
+    });
+    await flushPromises();
     const tile = wrapper.get('article[aria-label="Afisha"]');
-    expect(tile.text()).toContain('2 sources');
+    expect(tile.text()).toContain('1 source');
     expect(tile.get('[data-pill="group-harvest"]').text()).toBe('+4 new');
+    expect(wrapper.findAll('section header')).toHaveLength(2);
   });
 
   it('filters by state with counts and searches by name', async () => {

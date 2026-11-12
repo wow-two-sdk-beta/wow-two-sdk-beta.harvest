@@ -7,7 +7,8 @@ import { plural, type GalleryView } from './SourceWords';
 
 /**
  * A group's sources under a minimal separator — its name, how many it shows and a fold control, then a rule — as a
- * three-column grid of cards or one bordered list of rows. The group's figures live on its tile above, not here.
+ * three-column grid of cards or one bordered list of rows. The group's figures live on its tile above, not here. With
+ * a single group on the page the separator goes too (`isBare`): the sources stand alone, never folded.
  */
 defineOptions({ name: 'SourceGroupSection' });
 const props = defineProps<{
@@ -16,6 +17,8 @@ const props = defineProps<{
   sources: readonly SourceOverviewModel[];
   view: GalleryView;
   isExpanded: boolean;
+  /** Draws the sources with no separator and no fold, for a page with only one group. */
+  isBare?: boolean;
   trendMax?: number;
 }>();
 const emit = defineEmits<{ toggle: [] }>();
@@ -23,7 +26,7 @@ const emit = defineEmits<{ toggle: [] }>();
 
 <template>
   <section :id="props.group.elementId" :aria-labelledby="`${props.group.elementId}-title`" class="min-w-0 scroll-mt-4">
-    <header class="mb-3 flex min-w-0 items-center gap-2">
+    <header v-if="!props.isBare" class="mb-3 flex min-w-0 items-center gap-2">
       <button
         type="button"
         class="-ms-1.5 inline-flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-start hover:bg-muted/60 focus-visible:outline-2 focus-visible:outline-ring"
@@ -48,7 +51,7 @@ const emit = defineEmits<{ toggle: [] }>();
       </button>
       <span class="h-px min-w-6 flex-1 bg-border" aria-hidden="true"></span>
     </header>
-    <div v-show="props.isExpanded" :id="`${props.group.elementId}-list`">
+    <div v-show="props.isBare || props.isExpanded" :id="`${props.group.elementId}-list`">
       <p
         v-if="!props.sources.length"
         class="rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground"

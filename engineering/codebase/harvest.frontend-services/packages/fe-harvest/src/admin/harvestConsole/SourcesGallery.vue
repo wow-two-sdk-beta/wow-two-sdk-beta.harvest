@@ -33,7 +33,8 @@ type FilterKey = (typeof Filters)[number]['key'];
  * The Sources page, built as Wheelhouse's Products page: the groups first — each a tile with its source count,
  * description, read methods, one pill and a 14-day chart, a click scrolling to its sources — then a collapsible section
  * per group, as a three-column grid of cards or a bordered list of rows. Search and the state filters narrow both;
- * a narrowed page keeps only the groups with a match. Sources in no group come last, under `Other`.
+ * a narrowed page keeps only the groups with a match. Sources in no group come last, under `Other`. A page with a single
+ * group shows its sources alone: the tile and the separator would only repeat them.
  */
 defineOptions({ name: 'SourcesGallery' });
 const props = withDefaults(
@@ -51,6 +52,8 @@ const collapsed = ref(new Set<string>());
 const groupsOpen = ref(false);
 
 const all = computed(() => galleryGroupsOf(groups.value, overviews.value));
+/** Whether one group holds every source, so its tile and separator would only repeat the sources. */
+const single = computed(() => all.value.length <= 1);
 const query = computed(() => search.value.trim().toLowerCase());
 /** Whether search or a state filter narrows the page. */
 const narrowed = computed(() => query.value !== '' || filter.value !== 'all');
@@ -137,7 +140,7 @@ watch(
       />
     </div>
     <template v-else>
-      <section aria-labelledby="source-groups-heading" class="flex min-w-0 flex-col gap-3">
+      <section v-if="!single" aria-labelledby="source-groups-heading" class="flex min-w-0 flex-col gap-3">
         <h2 id="source-groups-heading" class="sr-only">Groups</h2>
         <ul class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4" aria-labelledby="source-groups-heading">
           <li v-for="entry in shown" :key="entry.group.key" class="flex min-w-0">
@@ -159,6 +162,7 @@ watch(
           :view="props.view"
           :trend-max="trendMax"
           :is-expanded="narrowed || !collapsed.has(entry.group.key)"
+          :is-bare="single"
           @toggle="toggle(entry.group.key)"
         />
       </div>
