@@ -60,6 +60,22 @@ export function whenOf(value?: string, now = new Date()) {
   return `${(date.getFullYear() === now.getFullYear() ? dayMonth : fullDate).format(date)} ${time.format(date)}`;
 }
 
+/**
+ * How long ago something happened, as a count: `just now`, `5 min ago`, `1 hour ago`, `3 hours ago`, `1 day ago`,
+ * `12 days ago`; a month or more back, the date. Counts round down, so `3 hours ago` holds until the fourth hour.
+ */
+export function agoOf(value?: string, now = new Date()) {
+  const date = instant(value);
+  if (!date) return '—';
+  const minutes = Math.floor((now.getTime() - date.getTime()) / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${plural(hours, 'hour')} ago`;
+  const days = Math.floor(hours / 24);
+  return days < 30 ? `${plural(days, 'day')} ago` : fullDate.format(date);
+}
+
 /** A calendar date: `21 Nov 2026`. */
 export function dateOf(value?: string) {
   const date = instant(value);
@@ -188,12 +204,15 @@ export function statusWords(status: SourceHarvestStatus | RunModel['status']) {
   return status === 'running' ? 'running' : codeWords(status);
 }
 
-/** What the last harvest found, as one pill reads: `last harvest · +4 new of 23 found · partial`. */
-export function lastHarvestText(harvest?: SourceHarvestModel) {
+/**
+ * What the last harvest found, as one pill reads: `3 hours ago · +4 new of 23 · partial`. The pill's icon says
+ * `last harvest`, so the words stay out of the text.
+ */
+export function lastHarvestText(harvest?: SourceHarvestModel, now = new Date()) {
   if (!harvest) return 'no harvest yet';
   if (harvest.status === 'running') return 'harvesting now';
   if (harvest.status === 'queued') return 'harvest queued';
-  const found = `last harvest · ${harvest.newPosts ? `+${harvest.newPosts}` : '0'} new of ${harvest.found} found`;
+  const found = `${agoOf(harvest.at, now)} · ${harvest.newPosts ? `+${harvest.newPosts}` : '0'} new of ${harvest.found}`;
   return harvest.status === 'completed' ? found : `${found} · ${statusWords(harvest.status)}`;
 }
 

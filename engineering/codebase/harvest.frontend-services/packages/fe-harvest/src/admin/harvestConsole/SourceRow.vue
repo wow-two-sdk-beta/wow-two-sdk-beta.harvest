@@ -2,11 +2,12 @@
 import type { SourceOverviewModel } from '../../contracts';
 import ConsoleLink from './ConsoleLink.vue';
 import HarvestPill from './HarvestPill.vue';
+import LastHarvestPill from './LastHarvestPill.vue';
 import NewPostsBars from './NewPostsBars.vue';
 import SourceIcon from './SourceIcon.vue';
-import { harvestTimesText, lastHarvestText, lastHarvestTone, StateWords, stateTone } from './SourceWords';
+import { StateWords, stateTone } from './SourceWords';
 
-/** A source in one line of its group's list: icon, name, harvest times, the last-harvest pill, its state and trend. */
+/** A source in one line of its group's list: icon, name, the last-harvest pill, its state and trend. */
 defineOptions({ name: 'SourceRow' });
 const props = defineProps<{ source: SourceOverviewModel; trendMax?: number }>();
 </script>
@@ -23,17 +24,8 @@ const props = defineProps<{ source: SourceOverviewModel; trendMax?: number }>();
     >
       {{ props.source.name }}
     </ConsoleLink>
-    <span class="min-w-0 truncate text-sm text-muted-foreground max-md:hidden">
-      {{ harvestTimesText(props.source) }}
-    </span>
     <span class="ms-auto flex shrink-0 items-center gap-2">
-      <HarvestPill
-        :tone="lastHarvestTone(props.source.lastHarvest)"
-        v-bind="{ 'data-pill': 'last-harvest' }"
-        class="max-md:hidden"
-      >
-        {{ lastHarvestText(props.source.lastHarvest) }}
-      </HarvestPill>
+      <LastHarvestPill :harvest="props.source.lastHarvest" class="max-md:hidden" />
       <HarvestPill :tone="stateTone(props.source.state)">{{ StateWords[props.source.state] }}</HarvestPill>
       <span class="flex w-28 justify-end max-sm:hidden">
         <NewPostsBars :values="props.source.newPostsDaily" :max="props.trendMax" fill />

@@ -341,15 +341,14 @@ describe('Sources gallery', () => {
     });
     await flushPromises();
     const card = wrapper.get('article[aria-label="Afisha.uz"]');
-    expect(card.get('[data-pill="last-harvest"]').text()).toBe('last harvest · +4 new of 23 found · partial');
+    expect(card.get('[data-pill="last-harvest"]').text()).toBe('3 hours ago · +4 new of 23 · partial');
     expect(card.get('[data-pill="last-harvest"]').attributes('data-tone')).toBe('warning');
-    expect(card.text()).toMatch(/last harvest \d{2}:\d{2} · next/);
+    expect(card.text()).not.toContain('next');
     expect(card.text()).toContain('healthy');
 
     const never = wrapper.get('article[aria-label="Afisha Telegram"]');
     expect(never.get('[data-pill="last-harvest"]').text()).toBe('no harvest yet');
     expect(never.get('[data-pill="last-harvest"]').attributes('data-tone')).toBe('dashed');
-    expect(never.text()).toContain('never harvested');
     expect(never.get('[data-read-method]').attributes('data-read-method')).toBe('telegram');
   });
 

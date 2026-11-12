@@ -6,7 +6,7 @@ import FilterChip from './FilterChip.vue';
 import HarvestPill from './HarvestPill.vue';
 import PostModal from './PostModal.vue';
 import { useHarvestConsole } from './HarvestConsole';
-import { dateOf, imageSrcOf, kindPlural, whenOf, type GalleryView } from './SourceWords';
+import { agoOf, dateOf, imageSrcOf, kindPlural, whenOf, type GalleryView } from './SourceWords';
 
 /**
  * A source's posts, newest first: a search, filter chips by section and by kind with their counts, and the posts as
@@ -67,12 +67,13 @@ const shown = computed(() =>
 );
 const opened = computed(() => posts.value.find((post) => post.postId === openId.value));
 
-/** The line under a post's title: its start date, `past` once it has gone by, or `no date`. */
-function dateLine(post: SourcePostModel) {
-  if (!post.startsAt) return undefined;
-  const start = new Date(post.startsAt);
-  if (!Number.isNaN(start.getTime()) && start.getTime() < Date.now()) return 'past';
-  return dateOf(post.startsAt);
+/** A post's own date when it has one — `21 Nov 2026`; the list never judges it `past`, as no end date comes with it. */
+function startOf(post: SourcePostModel) {
+  return post.startsAt ? dateOf(post.startsAt) : undefined;
+}
+/** The line under a card's title: its date if any, and when SCFD first saw it — `21 Nov 2026 · seen 3 days ago`. */
+function cardLine(post: SourcePostModel) {
+  return [startOf(post), `seen ${agoOf(post.firstSeenAt)}`].filter(Boolean).join(' · ');
 }
 function sectionOf(post: SourcePostModel) {
   return post.pipelineId ? session.sectionLabel(post.pipelineId) : '—';
@@ -155,7 +156,7 @@ function sectionOf(post: SourcePostModel) {
           >
             {{ post.title ?? 'Untitled post' }}
           </button>
-          <span v-if="dateLine(post)" class="block text-[13px] text-muted-foreground">{{ dateLine(post) }}</span>
+          <span v-if="startOf(post)" class="block text-[13px] text-muted-foreground">{{ startOf(post) }}</span>
         </span>
         <span role="cell">
           <HarvestPill :tone="post.kind === 'event' ? 'success' : 'outline'">{{ post.kind }}</HarvestPill>
@@ -191,7 +192,7 @@ function sectionOf(post: SourcePostModel) {
         >
           {{ post.title ?? 'Untitled post' }}
         </button>
-        <p class="mt-auto text-sm text-muted-foreground">{{ dateLine(post) ?? 'no date' }}</p>
+        <p class="mt-auto text-sm text-muted-foreground">{{ cardLine(post) }}</p>
       </li>
     </ul>
 

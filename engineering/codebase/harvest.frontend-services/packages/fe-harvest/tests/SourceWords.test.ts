@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  agoOf,
   changedWords,
   checkChoiceOf,
   harvestTimesText,
@@ -9,7 +10,7 @@ import {
   runFoundWords,
   runProblem,
 } from '../src/admin/harvestConsole/SourceWords';
-import type { RunModel } from '../src/contracts';
+import type { RunModel, SourceHarvestModel } from '../src/contracts';
 
 const run = (change: Partial<RunModel>): RunModel => ({
   id: 'r',
@@ -64,5 +65,36 @@ describe('source words', () => {
   it('writes the harvest line and pill of a never-harvested source', () => {
     expect(harvestTimesText({})).toBe('never harvested');
     expect(lastHarvestText(undefined)).toBe('no harvest yet');
+  });
+
+  it('counts how long ago something happened, rounding down', () => {
+    const now = new Date('2026-11-12T12:00:00Z');
+    const ago = (value: string) => agoOf(value, now);
+    expect(ago('2026-11-12T11:59:40Z')).toBe('just now');
+    expect(ago('2026-11-12T11:55:00Z')).toBe('5 min ago');
+    expect(ago('2026-11-12T11:00:00Z')).toBe('1 hour ago');
+    expect(ago('2026-11-12T08:12:00Z')).toBe('3 hours ago');
+    expect(ago('2026-11-11T11:00:00Z')).toBe('1 day ago');
+    expect(ago('2026-11-10T08:00:00Z')).toBe('2 days ago');
+    expect(ago('2026-09-01T08:00:00Z')).toBe('1 Sept 2026');
+    expect(agoOf(undefined, now)).toBe('—');
+  });
+
+  it('writes the last-harvest pill as one short line, the icon standing for "last harvest"', () => {
+    const now = new Date('2026-11-12T12:00:00Z');
+    const harvest = (change: Partial<SourceHarvestModel>): SourceHarvestModel => ({
+      runId: 'r',
+      pipelineId: 'p',
+      at: '2026-11-12T08:12:00Z',
+      status: 'completed',
+      newPosts: 4,
+      found: 23,
+      ...change,
+    });
+    expect(lastHarvestText(harvest({}), now)).toBe('3 hours ago · +4 new of 23');
+    expect(lastHarvestText(harvest({ status: 'partial', newPosts: 0 }), now)).toBe(
+      '3 hours ago · 0 new of 23 · partial',
+    );
+    expect(lastHarvestText(harvest({ status: 'running' }), now)).toBe('harvesting now');
   });
 });

@@ -5,17 +5,10 @@ import { Popover, PopoverContent, PopoverTrigger } from '@wow-two-beta/fe/presen
 import type { SourceOverviewModel } from '../../contracts';
 import ConsoleLink from './ConsoleLink.vue';
 import HarvestPill from './HarvestPill.vue';
+import LastHarvestPill from './LastHarvestPill.vue';
 import SourceIcon from './SourceIcon.vue';
 import { useHarvestConsole } from './HarvestConsole';
-import {
-  harvestTimesText,
-  lastHarvestText,
-  lastHarvestTone,
-  shortUrl,
-  siteUrlOf,
-  StateWords,
-  stateTone,
-} from './SourceWords';
+import { harvestTimesText, shortUrl, siteUrlOf, StateWords, stateTone } from './SourceWords';
 
 /**
  * Names the source above its tabs, as Wheelhouse's product header does: how it is read, its name and state, the last
@@ -66,13 +59,7 @@ const canHarvest = computed(() => canOperate.value && canWrite('pipelines:run'))
             </svg>
             {{ group.name }}
           </ConsoleLink>
-          <HarvestPill
-            :tone="lastHarvestTone(props.source.lastHarvest)"
-            size="md"
-            v-bind="{ 'data-pill': 'last-harvest' }"
-          >
-            {{ lastHarvestText(props.source.lastHarvest) }}
-          </HarvestPill>
+          <LastHarvestPill :harvest="props.source.lastHarvest" size="md" />
         </div>
       </div>
       <div class="flex shrink-0 flex-wrap items-center gap-2.5" role="group" aria-label="Source actions">
