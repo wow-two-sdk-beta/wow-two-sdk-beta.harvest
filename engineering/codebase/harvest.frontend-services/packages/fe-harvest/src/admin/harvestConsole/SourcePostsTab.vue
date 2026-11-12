@@ -11,11 +11,11 @@ import { agoOf, dateOf, imageSrcOf, kindPlural, timingOf, whenOf, type GalleryVi
 
 /**
  * A source's posts, newest first: a search, filter chips by section and by kind with their counts, and the posts as
- * rows or cards. A card is filled edge to edge by the post's first image, with its text on a blurred panel at the
- * bottom; a post with no image gets a soft tile with its source's icon. Cards fill the width in as many columns of
- * 16rem or more as fit, so the grid steps 4, 3, 2 as the page narrows. The pool keeps posts of every kind; a
- * subscriber receives only its matches. A post opens over the page in a modal with its facts and revisions —
- * revisions never show in the list.
+ * rows or cards. A card is filled edge to edge by the post's first image, its text on a fixed-height area at the
+ * bottom where the blur fades into the image; a post with no image gets a soft tile with its source's icon. Cards
+ * fill the width in as many columns of 16rem or more as fit, so the grid steps 4, 3, 2 as the page narrows. The pool
+ * keeps posts of every kind; a subscriber receives only its matches. A post opens over the page in a modal with its
+ * facts and revisions — revisions never show in the list.
  */
 defineOptions({ name: 'SourcePostsTab' });
 const props = withDefaults(defineProps<{ source: SourceOverviewModel; view?: GalleryView }>(), { view: 'rows' });
@@ -196,19 +196,23 @@ function sectionOf(post: SourcePostModel) {
         >
           <SourceIcon :family="props.source.family" size="lg" bare />
         </div>
-        <div class="flex min-w-0 flex-col gap-2 border-t border-white/10 bg-black/45 p-4 text-white backdrop-blur-xl">
+        <div
+          class="pointer-events-none absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-black/80 via-black/45 to-transparent backdrop-blur-xl [-webkit-mask-image:linear-gradient(to_top,black_50%,transparent)] [mask-image:linear-gradient(to_top,black_50%,transparent)]"
+          aria-hidden="true"
+        ></div>
+        <div class="relative flex h-[8.5rem] min-w-0 flex-col gap-2 p-4 text-white">
           <div class="flex flex-wrap gap-1.5">
             <HarvestPill :tone="post.kind === 'event' ? 'glassSuccess' : 'glass'">{{ post.kind }}</HarvestPill>
             <HarvestPill v-if="post.pipelineId" tone="glass">{{ sectionOf(post) }}</HarvestPill>
           </div>
           <button
             type="button"
-            class="line-clamp-3 text-start text-[15px] leading-snug font-semibold outline-none after:absolute after:inset-0 after:content-['']"
+            class="line-clamp-2 min-h-[2lh] text-start text-[15px] leading-snug font-semibold outline-none after:absolute after:inset-0 after:content-['']"
             @click="openId = post.postId"
           >
             {{ post.title ?? 'Untitled post' }}
           </button>
-          <p class="text-[13px] text-white/70">{{ cardLine(post) }}</p>
+          <p class="mt-auto truncate text-[13px] text-white/75">{{ cardLine(post) }}</p>
         </div>
       </li>
     </ul>
