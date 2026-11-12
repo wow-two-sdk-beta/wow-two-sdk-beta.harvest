@@ -35,7 +35,7 @@ engineering/             ← the HOW
 - A package references only what its layer row allows. Hosting supplies shared startup, machine access and the HTTP
   mirror for both hosts.
 - `service/HarvestSources.Api` is the one deployed host: Hosting, `sources/Module`, the Ocharo routes and the `ocharo`
-  host verb. `service/Harvest.Api` is the generic host the E2E and Conformance tiers boot; it is never deployed.
+  host verb; the E2E and Conformance tiers boot it too.
 - `sources/*` are not packable and ship only inside the image. Each reader references `packages/Abstractions` and its
   parser and performs no network I/O; `sources/Module` composes them over `packages/Module`.
 - Source posture: read directly, identified, inside `robots.txt` and paced; a challenge, block or rate limit pauses

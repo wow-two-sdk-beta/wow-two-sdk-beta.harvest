@@ -1,7 +1,7 @@
 # Contract/
 
 Golden pages of SCFD's pull wire. `wow2.event.v1/` holds `GET api/subscriptions/{id}/events` answers exactly as
-`Harvest.Api` serves them, one case per file, plus `subscription.json` (the subscription's own `GET`) and
+`HarvestSources.Api` serves them, one case per file, plus `subscription.json` (the subscription's own `GET`) and
 `manifest.json` (`sha256` and case names per file). Events replays them to pin the wire it reads.
 
 - Writer and check: `Harvest.Tests.E2E/Contract/EventContractPagesTests` runs the real host over a fresh database;

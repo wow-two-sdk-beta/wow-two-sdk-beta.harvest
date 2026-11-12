@@ -28,7 +28,7 @@ Run from the frontend root; `dev`, `typecheck` and `test` build `fe-harvest` fir
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm dev            # https on 8398, /api proxied to the service's https profile on 8396
+pnpm dev            # https on 8398, /api proxied to VITE_API_TARGET (the source host's https profile is 8400)
 pnpm lint && pnpm test && pnpm build && pnpm check:package
 ```
 

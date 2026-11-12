@@ -27,7 +27,7 @@ harvest.backend-services/tests/
 **/*.key
 
 # Locally-deployed SPA — the spa stage rebuilds it from source
-harvest.backend-services/service/Harvest.Api/wwwroot/
+harvest.backend-services/service/HarvestSources.Api/wwwroot/
 
 # IDE / VCS / OS cruft
 **/.vs/

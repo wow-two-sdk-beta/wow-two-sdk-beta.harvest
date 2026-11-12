@@ -19,8 +19,8 @@ The code lives in `harvest.backend-services/` (.NET) and `harvest.frontend-servi
   provisioner and filter; `Marketplace/` for OLX). Not packable: `Directory.Build.props` gives them XML docs and
   warnings as errors, and they ship only inside the image. Each folder's lead doc holds the source's reading rules.
 - `service/HarvestSources.Api` is the deployed host: Hosting's startup and controllers, the sources, the Ocharo
-  controller and the `ocharo` host verb; it serves no console. `service/Harvest.Api` is the generic host the E2E and
-  Conformance tiers boot; Hosting owns the store boot, API controllers, scoped machine access and local development
+  controller and the `ocharo` host verb; it serves no console. It is the only host, and the E2E and Conformance tiers
+  boot it; Hosting owns the store boot, API controllers, scoped machine access and local development
   keys under `Registration/Access/`.
 - Tests: `Harvest.Tests.Unit` (package logic, no I/O), `Integration` (the module over PostgreSQL: rows, self-test, key
   store, partitions), `E2E` (the generic host in process: boot and refusal, access, the wire, `/health`, the

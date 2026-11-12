@@ -18,7 +18,6 @@
     <Project Path="sources/Uzexpocentre/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Uzexpocentre.csproj" />
   </Folder>
   <Folder Name="/Services/">
-    <Project Path="service/Harvest.Api/Harvest.Api.csproj" />
     <Project Path="service/HarvestSources.Api/HarvestSources.Api.csproj" />
   </Folder>
   <Folder Name="/Tests/">

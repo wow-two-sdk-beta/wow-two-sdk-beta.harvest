@@ -20,7 +20,7 @@
     <ProjectReference Include="..\..\packages\Module\WoW.Two.Sdk.Beta.Be.Harvest.Module.csproj" />
     <ProjectReference Include="..\..\packages\Client\WoW.Two.Sdk.Beta.Be.Harvest.Client.csproj" />
     <ProjectReference Include="..\..\packages\Testing\WoW.Two.Sdk.Beta.Be.Harvest.Testing.csproj" />
-    <ProjectReference Include="..\..\service\Harvest.Api\Harvest.Api.csproj" />
+    <ProjectReference Include="..\..\service\HarvestSources.Api\HarvestSources.Api.csproj" />
   </ItemGroup>
 
   <ItemGroup>

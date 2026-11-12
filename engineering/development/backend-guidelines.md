@@ -27,5 +27,4 @@ wow-two-ws/conventions/development/repo/structure/domain-structure.md. Repo delt
   and the backend build needs Node and pnpm for the pages. Fixtures and fake providers make no live request.
 - A local run sets its connection string and the operator key (`Harvest:Operator:ApiKey`, `hv_` + 32 letters and
   digits) in `service/HarvestSources.Api/appsettings.Local.json` (https `8400`, http `8401`), which never leaves the
-  machine. The generic `service/Harvest.Api` takes the same file beside it (https `8396`, http `8397`), the target of
-  `pnpm dev`'s proxy; `VITE_API_TARGET=https://localhost:8400` points the console at the source host.
+  machine. `VITE_API_TARGET=https://localhost:8400` points `pnpm dev`'s proxy at it.

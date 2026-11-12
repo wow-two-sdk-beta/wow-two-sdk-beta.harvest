@@ -85,8 +85,7 @@ Decisions of the merge (v0.2 iteration 1) and what they leave.
 
 | Item | Type | Notes |
 |---|---|---|
-| Names of the source projects | engineering | the readers keep `WoW.Two.Sdk.Beta.Be.HarvestAdapters.*` and the host `HarvestSources.Api`, so the merge renamed nothing; one rename to `Harvest.Sources.*` / `Harvest.Api` is a later, mechanical pass |
+| Names of the source projects | engineering | the readers keep `WoW.Two.Sdk.Beta.Be.HarvestAdapters.*` and the host `HarvestSources.Api`, so the merge renamed nothing; one rename to `Harvest.Sources.*`, with the host and Hosting's `Harvest.Api.*` namespaces, is a later, mechanical pass |
 | One test project per tier | engineering | `HarvestAdapters.Tests.{Unit,Integration}` and `HarvestSources.Tests.E2E` sit beside `Harvest.Tests.*`; folding them into one project per tier needs no behaviour change |
-| The generic host `Harvest.Api` | engineering | the image ships `HarvestSources.Api`; `Harvest.Api` stays as the host the E2E and conformance tiers run, with no readers registered; retire it once those tiers run against the source host |
 | `HarvestSources:Audience` | question | `public` existed for an image without the readers; one image now always carries them, so the switch only hides the Ocharo routes; keep or drop is a behaviour question for the developer |
 | Security pin on SignalR Redis | engineering | `Microsoft.AspNetCore.SignalR.StackExchangeRedis` 10.0.15 is pinned transitively (GHSA-wr8v-9x5q-ggcm on 10.0.3, from be sdk `10.0.111-beta`); drop the pin once the be sdk ships the patched version |

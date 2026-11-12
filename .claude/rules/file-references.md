@@ -50,7 +50,6 @@
 | `sources/Integrations` | opt-in proxy/IP lease, supplied-session and CAPTCHA clients, disabled by default |
 | `sources/Module` | source composition: the Ocharo registry, preset, provisioner and `ocharo-fashion-v1` filter; the marketplace (OLX) |
 | `service/HarvestSources.Api` | the deployed host: Hosting, the source readers, the Ocharo routes and the `ocharo` host verb; serves no console |
-| `service/Harvest.Api` | the generic host the E2E and Conformance tiers boot: the module, API key access, the HTTP mirror, the console |
 | `tests/Harvest.Tests.{Unit,Integration,E2E,Conformance,Migrations}` | the engine test tiers |
 | `tests/HarvestAdapters.Tests.{Unit,Integration}` · `tests/HarvestSources.Tests.E2E` | the source tiers: reader fixtures, pipelines over PostgreSQL, the source host and its verbs |
 | `tests/Contract` | golden `wow2.event.v1` pull pages Events replays, written and checked by the E2E tier |
@@ -60,4 +59,4 @@
 | Project | What it is |
 |---|---|
 | `packages/fe-harvest` | `@wow-two-beta/fe-harvest`: `./contracts` mirror, `./kit` (`createRegistryClient`, `createHarvestClient`), `./admin` (`HarvestConsoleProvider` and one panel per console page) |
-| `apps/web` | the console: one route per page under `AppLayout`, composing `./admin`, served by `Harvest.Api` |
+| `apps/web` | the console: one route per page under `AppLayout`, composing `./admin`; locally it proxies `/api` to `HarvestSources.Api` |

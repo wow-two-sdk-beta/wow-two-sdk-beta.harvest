@@ -172,10 +172,11 @@ public sealed class RegistrationEndpointTests(HarvestApiFixture fixture)
     [Fact]
     public async Task Capabilities_ShouldReportUnavailable_WhenTheRuntimeHasNoImplementation()
     {
+        // The host registers a reader for every source family it ships (Instagram included, disabled); no reader covers YouTube.
         using var admin = fixture.CreateClient(HarvestApiFixture.OperatorKey);
         var container = await ContainerAsync(admin, await TenantAsync(admin));
         using var registered = await PostAsync(admin, "/api/sources", $$"""
-            {"containerId":"{{container}}","family":"instagram","handle":"instagram.com","coverage":"filtered",
+            {"containerId":"{{container}}","family":"youtube","handle":"youtube.com","coverage":"filtered",
              "completeness":"window","posture":"official"}
             """);
         var source = (await DataAsync(registered)).GetProperty("id").GetString();

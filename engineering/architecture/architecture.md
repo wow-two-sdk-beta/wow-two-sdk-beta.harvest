@@ -12,7 +12,6 @@ service/HarvestSources.Api ──► Hosting ──► Module ──► PostgreS
                            ──► sources/Module ──► Ocharo: Afisha, Anons, Caex, Craftfair, Uzexpocentre
                                               ──► Marketplace: Olx
                            ──► sources/Instagram (opt-in) · sources/Integrations (opt-in: leased routes, supplied sessions, solver client)
-service/Harvest.Api ──► Hosting ──► Module      (generic host; the E2E and Conformance tiers only)
 Client ──HTTP + token or X-Api-Key──► service/HarvestSources.Api
 ```
 
@@ -32,8 +31,7 @@ Client ──HTTP + token or X-Api-Key──► service/HarvestSources.Api
 | `sources/{Afisha,Anons,Caex,Craftfair,Olx,Uzexpocentre}` | one adapter and capture reader per named source over `Abstractions` and AngleSharp; no network I/O |
 | `sources/Instagram` · `sources/Integrations` | opt-in Business Discovery client; proxy/IP lease, supplied-session and 2Captcha clients; disabled by default |
 | `sources/Module` | composition over `packages/Module`: the Ocharo registry, provisioner and `ocharo-fashion-v1` filter; the marketplace (OLX) |
-| `service/HarvestSources.Api` | the deployed host: Hosting, the source composition, the Ocharo routes and the `ocharo` host verb |
-| `service/Harvest.Api` | the generic host with scoped service tokens, local operator key access and the console; tests only |
+| `service/HarvestSources.Api` | the one host, deployed and booted by the E2E and Conformance tiers: Hosting, the source composition, the Ocharo routes and the `ocharo` host verb |
 | `fe-harvest` | the TypeScript contract mirror, registry and console clients (`./kit`), reusable management screens (`./admin`) |
 | `apps/web` | standalone demo using the `fe-harvest/admin` export |
 
