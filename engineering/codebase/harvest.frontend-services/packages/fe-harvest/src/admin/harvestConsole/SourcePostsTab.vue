@@ -5,14 +5,17 @@ import type { SourceOverviewModel, SourcePostModel } from '../../contracts';
 import FilterChip from './FilterChip.vue';
 import HarvestPill from './HarvestPill.vue';
 import PostModal from './PostModal.vue';
+import SourceIcon from './SourceIcon.vue';
 import { useHarvestConsole } from './HarvestConsole';
 import { agoOf, dateOf, imageSrcOf, kindPlural, timingOf, whenOf, type GalleryView } from './SourceWords';
 
 /**
  * A source's posts, newest first: a search, filter chips by section and by kind with their counts, and the posts as
- * rows or cards, a card topped by the post's first image. Cards fill the width in as many columns of 16rem or more as
- * fit, so the grid steps 4, 3, 2 as the page narrows. The pool keeps posts of every kind; a subscriber receives only
- * its matches. A post opens over the page in a modal with its facts and revisions — revisions never show in the list.
+ * rows or cards. A card is filled edge to edge by the post's first image, with its text on a blurred panel at the
+ * bottom; a post with no image gets a soft tile with its source's icon. Cards fill the width in as many columns of
+ * 16rem or more as fit, so the grid steps 4, 3, 2 as the page narrows. The pool keeps posts of every kind; a
+ * subscriber receives only its matches. A post opens over the page in a modal with its facts and revisions —
+ * revisions never show in the list.
  */
 defineOptions({ name: 'SourcePostsTab' });
 const props = withDefaults(defineProps<{ source: SourceOverviewModel; view?: GalleryView }>(), { view: 'rows' });
@@ -174,30 +177,39 @@ function sectionOf(post: SourcePostModel) {
       <li
         v-for="post in shown"
         :key="post.postId"
-        class="relative flex min-w-0 flex-col gap-2.5 rounded-2xl border border-border bg-card p-4 hover:border-primary/40 has-[button:focus-visible]:outline-2 has-[button:focus-visible]:outline-offset-2 has-[button:focus-visible]:outline-ring"
+        class="group relative isolate flex aspect-[4/5] min-w-0 flex-col justify-end overflow-hidden rounded-2xl border border-border bg-muted hover:border-primary/40 has-[button:focus-visible]:outline-2 has-[button:focus-visible]:outline-offset-2 has-[button:focus-visible]:outline-ring"
       >
         <img
           v-if="imageSrcOf(post.imageUrl)"
           :src="imageSrcOf(post.imageUrl)"
           alt=""
-          class="aspect-[12/5] w-full rounded-xl bg-muted object-cover"
+          class="absolute inset-0 -z-10 size-full object-cover transition-transform duration-300 group-hover:scale-105 motion-reduce:transition-none motion-reduce:group-hover:scale-100"
           loading="lazy"
           decoding="async"
           referrerpolicy="no-referrer"
           v-bind="{ 'data-post-image': '' }"
         />
-        <div class="flex flex-wrap gap-1.5">
-          <HarvestPill :tone="post.kind === 'event' ? 'success' : 'outline'">{{ post.kind }}</HarvestPill>
-          <HarvestPill v-if="post.pipelineId" tone="outline">{{ sectionOf(post) }}</HarvestPill>
-        </div>
-        <button
-          type="button"
-          class="line-clamp-2 text-start text-[15px] font-semibold outline-none after:absolute after:inset-0 after:rounded-2xl after:content-['']"
-          @click="openId = post.postId"
+        <div
+          v-else
+          class="absolute inset-0 -z-10 flex items-start justify-center bg-gradient-to-br from-primary-soft to-muted pt-[18%]"
+          aria-hidden="true"
         >
-          {{ post.title ?? 'Untitled post' }}
-        </button>
-        <p class="mt-auto text-sm text-muted-foreground">{{ cardLine(post) }}</p>
+          <SourceIcon :family="props.source.family" size="lg" bare />
+        </div>
+        <div class="flex min-w-0 flex-col gap-2 border-t border-white/10 bg-black/45 p-4 text-white backdrop-blur-xl">
+          <div class="flex flex-wrap gap-1.5">
+            <HarvestPill :tone="post.kind === 'event' ? 'glassSuccess' : 'glass'">{{ post.kind }}</HarvestPill>
+            <HarvestPill v-if="post.pipelineId" tone="glass">{{ sectionOf(post) }}</HarvestPill>
+          </div>
+          <button
+            type="button"
+            class="line-clamp-3 text-start text-[15px] leading-snug font-semibold outline-none after:absolute after:inset-0 after:content-['']"
+            @click="openId = post.postId"
+          >
+            {{ post.title ?? 'Untitled post' }}
+          </button>
+          <p class="text-[13px] text-white/70">{{ cardLine(post) }}</p>
+        </div>
       </li>
     </ul>
 

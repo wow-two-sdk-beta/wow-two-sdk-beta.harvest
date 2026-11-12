@@ -19,6 +19,8 @@ const ToneClass: Record<PillTone, string> = {
   neutral: 'border-transparent bg-muted text-muted-foreground',
   dashed: 'border-dashed border-border-strong bg-transparent text-muted-foreground',
   outline: 'border-border bg-card text-foreground',
+  glass: 'border-white/20 bg-white/15 text-white',
+  glassSuccess: 'border-emerald-300/30 bg-emerald-400/25 text-emerald-50',
 };
 const sizeClass = computed(() => (props.size === 'md' ? 'h-7 px-3 text-[13px]' : 'h-6 px-2.5 text-xs'));
 </script>

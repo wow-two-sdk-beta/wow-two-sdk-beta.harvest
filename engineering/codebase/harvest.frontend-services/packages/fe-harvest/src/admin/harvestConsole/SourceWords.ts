@@ -11,8 +11,9 @@ import type {
  * lane, tenant, container, scope names — is turned into one of these before it reaches the screen.
  */
 
-/** The tint of a pill or badge. */
-export type PillTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral' | 'dashed' | 'outline';
+/** The tint of a pill or badge; `glass` and `glassSuccess` sit on a blurred panel over an image. */
+export type PillTone =
+  'success' | 'warning' | 'danger' | 'info' | 'neutral' | 'dashed' | 'outline' | 'glass' | 'glassSuccess';
 
 /** How a source is read, as its icon shows it. */
 export type ReadMethod = 'site' | 'telegram' | 'instagram' | 'social' | 'branch';
