@@ -81,8 +81,9 @@ export function timingOf(startsAt?: string, endsAt?: string, now = new Date()): 
 }
 
 /**
- * How long ago something happened, as a count: `just now`, `5 min ago`, `1 hour ago`, `3 hours ago`, `1 day ago`,
- * `12 days ago`; a month or more back, the date. Counts round down, so `3 hours ago` holds until the fourth hour.
+ * How long ago something happened, as one count of minutes, hours, days or years: `just now`, `5 min ago`, `1 hour ago`,
+ * `3 hours ago`, `1 day ago`, `200 days ago`, `1 year ago`. Never a month or a date. Counts round down, so
+ * `3 hours ago` holds until the fourth hour.
  */
 export function agoOf(value?: string, now = new Date()) {
   const date = instant(value);
@@ -93,7 +94,7 @@ export function agoOf(value?: string, now = new Date()) {
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${plural(hours, 'hour')} ago`;
   const days = Math.floor(hours / 24);
-  return days < 30 ? `${plural(days, 'day')} ago` : fullDate.format(date);
+  return days < 365 ? `${plural(days, 'day')} ago` : `${plural(Math.floor(days / 365), 'year')} ago`;
 }
 
 /** A public web address to link out to — `http` or `https`, with no credentials — or nothing. */

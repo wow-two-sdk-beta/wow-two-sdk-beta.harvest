@@ -3,8 +3,9 @@ import type { ReadMethod } from './SourceWords';
 /** The line glyphs of the post pills, drawn on a 24-unit grid with a 2-unit stroke. */
 export const Glyphs = {
   event: 'M4 6h16v14H4z M4 10h16 M8 3v4 M16 3v4',
-  article: 'M6 3h9l4 4v14H6z M14 3v5h5 M9 13h7 M9 17h7',
-  other: 'M5 12h.01 M12 12h.01 M19 12h.01',
+  article: 'M5 4h11v16H7a2 2 0 0 1-2-2z M16 8h3v10a2 2 0 0 1-2 2 M8 8h5 M8 12h5 M8 16h3',
+  other: 'M6 3h9l4 4v14H6z M14 3v5h5 M9 13h7 M9 17h5',
+  unlink: 'M7 17 17 7M8 7h9v9M4 4l16 16',
   offer: 'M3 12 12 3h8v8l-9 9z M16 8h.01',
   exhibition: 'M4 5h16v14H4z M9 10a1.5 1.5 0 1 0 0 .01 M20 16l-5-5-8 8',
   fashion: 'M12 8V6.5a2 2 0 1 0-2-2 M12 8 3.5 14.5A1.5 1.5 0 0 0 4.5 17h15a1.5 1.5 0 0 0 1-2.5z',

@@ -10,7 +10,7 @@ import PostPills from './PostPills.vue';
 import { kindGlyphOf } from './PostGlyphs';
 import SourceIcon from './SourceIcon.vue';
 import { useHarvestConsole } from './HarvestConsole';
-import { dateOf, imageSrcOf, kindPlural, timingOf, webUrlOf, type GalleryView } from './SourceWords';
+import { agoOf, dateOf, imageSrcOf, kindPlural, timingOf, webUrlOf, type GalleryView } from './SourceWords';
 
 /**
  * A source's posts, newest first: a search, filter chips by section and by kind with their counts, and the posts as
@@ -80,9 +80,9 @@ function startOf(post: SourcePostModel) {
       .join(' · ') || undefined
   );
 }
-/** The line under a card's title: when the post itself was published, else its event date — `posted 12 Nov 2026`. */
+/** The line under a card's title: how long ago the post itself was published, else its event date — `posted 3 days ago`. */
 function cardLine(post: SourcePostModel) {
-  return post.postedAt ? `posted ${dateOf(post.postedAt)}` : startOf(post);
+  return post.postedAt ? `posted ${agoOf(post.postedAt)}` : startOf(post);
 }
 /** Why a post has no working link out: it is gone from its source, or it never had a link. */
 function unavailableWords(post: SourcePostModel) {
@@ -182,7 +182,7 @@ function sectionOf(post: SourcePostModel) {
           </HarvestPill>
         </span>
         <span role="cell" class="truncate max-md:hidden">{{ sectionOf(post) }}</span>
-        <span role="cell" class="max-md:hidden">{{ post.postedAt ? dateOf(post.postedAt) : '—' }}</span>
+        <span role="cell" class="max-md:hidden">{{ post.postedAt ? agoOf(post.postedAt) : '—' }}</span>
       </div>
     </div>
     <ul v-else class="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-3" aria-label="Posts">

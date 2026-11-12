@@ -54,7 +54,7 @@ const quietTone = computed(() => (props.onImage ? 'glass' : 'outline'));
       <span class="truncate">{{ props.sourceName.toLowerCase() }}</span>
     </HarvestPill>
     <HarvestPill v-if="props.removed" :tone="props.onImage ? 'glass' : 'danger'">
-      <PillIcon name="other" />
+      <PillIcon name="unlink" />
       removed
     </HarvestPill>
   </div>

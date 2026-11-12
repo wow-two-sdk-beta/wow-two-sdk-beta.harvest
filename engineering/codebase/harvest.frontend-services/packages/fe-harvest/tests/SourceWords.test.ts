@@ -78,7 +78,10 @@ describe('source words', () => {
     expect(ago('2026-11-12T08:12:00Z')).toBe('3 hours ago');
     expect(ago('2026-11-11T11:00:00Z')).toBe('1 day ago');
     expect(ago('2026-11-10T08:00:00Z')).toBe('2 days ago');
-    expect(ago('2026-09-01T08:00:00Z')).toBe('1 Sept 2026');
+    expect(ago('2026-09-01T08:00:00Z')).toBe('72 days ago');
+    expect(ago('2025-11-13T08:00:00Z')).toBe('364 days ago');
+    expect(ago('2025-11-12T08:00:00Z')).toBe('1 year ago');
+    expect(ago('2023-11-01T08:00:00Z')).toBe('3 years ago');
     expect(agoOf(undefined, now)).toBe('—');
   });
 
