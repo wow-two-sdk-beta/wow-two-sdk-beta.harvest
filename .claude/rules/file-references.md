@@ -16,6 +16,7 @@
 | System design — forms map, package graph, service role | `engineering/architecture/architecture.md` |
 | The broker contract, every form | `engineering/architecture/contract.md` |
 | Packages, layers, consumers | `engineering/architecture/package-registry.md` |
+| Runtime composition — standalone UI, capability discovery, artifact boundary | `engineering/architecture/composition.md` |
 | Architecture decisions | `engineering/architecture/decisions/decisions.md` |
 | What lives where in the code | `engineering/codebase/codebase.md` |
 | Backend dev guidelines | `engineering/development/backend-guidelines.md` |
@@ -25,10 +26,12 @@
 | Active version | newest `engineering/planning/version-track/v{X.Y}/v{X.Y}.md` |
 | Working rules for agents | `engineering/development/rules.md` |
 | Repository — how it was created, GitHub settings, rollout state | `engineering/development/development.md` § Repository |
-| Deploy / ops | `engineering/deployment/deployment.md` |
+| Deploy / ops — local Compose, service access, Ocharo provisioning, integrations | `engineering/deployment/deployment.md` |
+| Local Compose variables | `engineering/deployment/.env.example` |
 | What deploys — service, sites, settings, dev check | `engineering/deployment/deploy.yml` |
 | Releases — versions, tags, verification | `engineering/scripts/scripts.md` |
-| Research and analysis batches | `engineering/research/research.md` |
+| Source and provider reviews, research batches | `engineering/research/research.md` |
+| Ocharo publisher and channel inventory | `engineering/research/ocharo-source-registry.md` |
 
 ## Source projects (`engineering/codebase/`)
 
@@ -41,9 +44,17 @@
 | `packages/Module` | Form 1: the store on PostgreSQL, `AddHarvest()`, the SQL migration set and boot self-test, the lane folders |
 | `packages/Client` | Forms 2/3: the broker over the service's HTTP API, `AddHarvestClient()` |
 | `packages/Testing` | `FakeRegistrationBroker` and the conformance suite |
-| `service/Harvest.Api` | the deployable host: the module, API key access, the HTTP mirror, the console |
-| `tests/Harvest.Tests.{Unit,Integration,E2E,Conformance,Migrations}` | the test tiers |
+| `packages/Hosting` | shared startup, access policies and HTTP controllers both hosts compose |
+| `sources/{Afisha,Anons,Caex,Craftfair,Olx,Uzexpocentre}` | named source readers: adapter, capture reader, no network I/O |
+| `sources/Instagram` | opt-in Business Discovery client and source broker, disabled by default |
+| `sources/Integrations` | opt-in proxy/IP lease, supplied-session and CAPTCHA clients, disabled by default |
+| `sources/Module` | source composition: the Ocharo registry, preset, provisioner and `ocharo-fashion-v1` filter; the marketplace (OLX) |
+| `service/HarvestSources.Api` | the deployed host: Hosting, the source readers, the Ocharo routes and the `ocharo` host verb; serves no console |
+| `service/Harvest.Api` | the generic host the E2E and Conformance tiers boot: the module, API key access, the HTTP mirror, the console |
+| `tests/Harvest.Tests.{Unit,Integration,E2E,Conformance,Migrations}` | the engine test tiers |
+| `tests/HarvestAdapters.Tests.{Unit,Integration}` · `tests/HarvestSources.Tests.E2E` | the source tiers: reader fixtures, pipelines over PostgreSQL, the source host and its verbs |
 | `tests/Contract` | golden `wow2.event.v1` pull pages Events replays, written and checked by the E2E tier |
+| `tools/verify-olx-live.py` | a separately requested, bounded OLX capture against a local source host |
 
 ### `codebase/harvest.frontend-services/`
 | Project | What it is |

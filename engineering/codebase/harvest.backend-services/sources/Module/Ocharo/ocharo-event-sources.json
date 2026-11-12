@@ -1,0 +1,3541 @@
+{
+  "format": "ocharo.event-sources.v1",
+  "reviewedOn": "2026-11-09",
+  "groups": [
+    {
+      "id": "hunarmand",
+      "name": "Hunarmand and Craftfair",
+      "rank": 1,
+      "tier": "P1",
+      "sourceType": "Organizer",
+      "coverage": "Uzbekistan",
+      "rationale": "National artisan festivals and application deadlines, including Atlas Bayrami and Gilamlar Jilosi.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://craftfair.uz/festivals?lang=uz",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Festival subset of the shared event index; keep for browsing and corroboration, with no duplicate scheduled feed.",
+          "checkState": "readable"
+        },
+        {
+          "id": "exhibitions",
+          "url": "https://craftfair.uz/exhibitions?lang=uz",
+          "role": "exhibitions",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Exhibition subset of the shared event index; check separately if the all-events index ever omits these calls.",
+          "checkState": "unavailable",
+          "note": "National exhibitions and call pages."
+        },
+        {
+          "id": "association-calls",
+          "url": "https://www.hunarmandlar.uz/elonlar",
+          "role": "association calls",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Read each association call and its application instructions; distinguish publication and close dates.",
+          "note": "Additional calls and regional selection news. Inspect the event date in each notice."
+        },
+        {
+          "id": "telegram-announcements",
+          "url": "https://t.me/s/handicraftman",
+          "role": "Telegram announcements",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "manual",
+          "method": "manual-social",
+          "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
+          "checkState": "limited",
+          "note": "Original association announcements and changes."
+        },
+        {
+          "id": "legacy-news",
+          "url": "https://handicraftman.uz/en/home-page/",
+          "role": "legacy news",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Historical article archive."
+        },
+        {
+          "id": "membership-portal",
+          "url": "https://hunar.uz/",
+          "role": "membership portal",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Eligibility background and contact details."
+        },
+        {
+          "id": "tourism-register-lookup",
+          "url": "https://hunarmandlar.uz/hunarmandchilik-turizm-reyestri",
+          "role": "tourism register lookup",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Status lookup. No event discovery or personal identifier entry."
+        },
+        {
+          "id": "craftfair-all",
+          "url": "https://craftfair.uz/events?lang=en",
+          "role": "All Craftfair events",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "harvest",
+          "method": "index-detail",
+          "plan": "Read event detail and labelled dates, deadline and call status separately. Match locale aliases by event slug.",
+          "checkState": "readable",
+          "adapterKey": "craftfair-uz",
+          "setup": "default"
+        }
+      ]
+    },
+    {
+      "id": "teplo",
+      "name": "Teplo",
+      "rank": 2,
+      "tier": "P1",
+      "sourceType": "Organizer",
+      "coverage": "Tashkent, Samarqand",
+      "rationale": "Direct reach to local brands. The site establishes ownership and the Market and Fest channels announce their own editions.",
+      "eventFamilies": [
+        "teplo-market",
+        "teplo-fest"
+      ],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://teplo.world/spaces.html",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Programme and ownership evidence. Check Market and Fest announcements separately for each edition.",
+          "checkState": "readable"
+        },
+        {
+          "id": "brand-and-channel-ownership",
+          "url": "https://teplo.world/",
+          "role": "brand and channel ownership",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Official homepage names and links the Market, Fest and Store accounts."
+        },
+        {
+          "id": "market",
+          "url": "https://instagram.com/teplomarket_",
+          "role": "market announcements",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "provider",
+          "method": "official-instagram",
+          "plan": "Use the allowlisted official Business Discovery provider after credential and publisher eligibility checks. Preserve the media permalink; post time is not event time.",
+          "note": "Watch dated pop-up editions and vendor calls.",
+          "eventFamily": "teplo-market",
+          "adapterKey": "instagram-business-discovery",
+          "setup": "selected",
+          "seed": "https://www.instagram.com/teplomarket_/"
+        },
+        {
+          "id": "fest",
+          "url": "https://instagram.com/teplofest",
+          "role": "festival announcements",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "provider",
+          "method": "official-instagram",
+          "plan": "Use the allowlisted official Business Discovery provider after credential and publisher eligibility checks. Preserve the media permalink; post time is not event time.",
+          "note": "Watch festival edition dates, participation terms and programmes.",
+          "eventFamily": "teplo-fest",
+          "adapterKey": "instagram-business-discovery",
+          "setup": "default",
+          "seed": "https://www.instagram.com/teplofest/"
+        },
+        {
+          "id": "store-pop-ups-and-reposts",
+          "url": "https://instagram.com/teplostore_2022",
+          "role": "store pop-ups and reposts",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "manual",
+          "method": "manual-social",
+          "plan": "Review store-hosted pop-ups and use reposts as corroboration. Do not merge these with Market and Fest editions.",
+          "note": "Capture a dated store event if it adds something new. Treat Market and Fest reposts as corroboration."
+        },
+        {
+          "id": "retail-site-and-venues",
+          "url": "https://teplo.store/contacts?lang=uz",
+          "role": "retail site and venues",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Confirms Tashkent and Samarqand store locations. The shop catalogue is outside event ingestion."
+        }
+      ]
+    },
+    {
+      "id": "uz-tourism",
+      "name": "Tourism Committee and national tourism portal",
+      "rank": 3,
+      "tier": "P1",
+      "sourceType": "Authority",
+      "coverage": "Uzbekistan",
+      "rationale": "Official festival dates, Uzbek Gift announcements and national heritage programmes. Match the individual call to the authority that issued it.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://gov.uz/en/uzbektourism/news/events",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "manual",
+          "method": "news-index",
+          "plan": "The calendar view showed filters but no event rows. Use the committee news index and the National PR Centre announcements as separate streams; verify each dated issuer notice.",
+          "checkState": "empty-index"
+        },
+        {
+          "id": "committee-news",
+          "url": "https://gov.uz/en/uzbektourism/news",
+          "role": "committee news",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "manual",
+          "method": "manual-review",
+          "plan": "Verify readable public event evidence and confirm this route before enabling any reader.",
+          "checkState": "limited",
+          "note": "Uzbek Gift and nationwide tourism calls. The news index can require page rendering."
+        },
+        {
+          "id": "committee-telegram",
+          "url": "https://t.me/s/uzbektourismofficial",
+          "role": "committee Telegram",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "manual",
+          "method": "manual-social",
+          "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
+          "note": "Original notices and dated festival updates."
+        },
+        {
+          "id": "national-pr-centre-announcements",
+          "url": "https://uzbekistan.travel/en/c/announcements/",
+          "role": "National PR-centre announcements",
+          "relationship": "related",
+          "primary": false,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Collect National PR Centre announcements as a separate publisher stream. Match each date to its issuing notice.",
+          "note": "Official tourism editorial stream. Read the authority issuing each notice."
+        },
+        {
+          "id": "agency-ownership-proof",
+          "url": "https://gov.uz/ru/uzbektourism/departments/subordinate?active=3281",
+          "role": "agency ownership proof",
+          "relationship": "related",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Committee lists the National PR-centre as a subordinate institution."
+        }
+      ]
+    },
+    {
+      "id": "afisha",
+      "name": "Afisha Uzbekistan",
+      "rank": 4,
+      "tier": "P1",
+      "sourceType": "Media",
+      "coverage": "Tashkent, Uzbekistan",
+      "rationale": "Strong dated coverage of runway shows, Art Bazaar, Teplo and ceramics. Confirm application terms with organizers.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://www.afisha.uz/uz/exhibitions",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Uzbek counterpart of the supported Russian exhibitions scope; avoid a second poll of the same locale-neutral event identities.",
+          "checkState": "readable"
+        },
+        {
+          "id": "fashion",
+          "url": "https://www.afisha.uz/ru/fashion",
+          "role": "fashion desk",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "harvest",
+          "method": "index-detail",
+          "plan": "Discover localized event permalinks and read embedded Event data; keep editorial articles and visitor routes distinct.",
+          "checkState": "readable",
+          "note": "Runway programmes and local designer announcements.",
+          "adapterKey": "afisha-uz",
+          "setup": "default"
+        },
+        {
+          "id": "calendar",
+          "url": "https://www.afisha.uz/ru/calendar",
+          "role": "calendar",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "planned",
+          "method": "index-detail",
+          "plan": "Broad calendar for discovery; review incremental coverage against the narrower fashion and exhibitions feeds before enabling.",
+          "note": "Date-based discovery. Locale and category pages share the same publisher."
+        },
+        {
+          "id": "exhibitions-ru",
+          "url": "https://www.afisha.uz/ru/exhibitions",
+          "role": "Exhibitions in Russian",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "harvest",
+          "method": "index-detail",
+          "plan": "Discover localized event permalinks and read embedded Event data; keep editorial articles and visitor routes distinct.",
+          "adapterKey": "afisha-uz",
+          "setup": "default"
+        }
+      ]
+    },
+    {
+      "id": "anons",
+      "name": "ANONS Uzbekistan",
+      "rank": 5,
+      "tier": "P1",
+      "sourceType": "Directory",
+      "coverage": "Tashkent, Uzbekistan",
+      "rationale": "Short notice fairs, mall markets and workshops. Dated leads can overlap Afisha and organizers.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "events-ru",
+          "url": "https://anons.uz/ru/events",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "harvest",
+          "method": "index-detail",
+          "plan": "Read event-card permalinks and Event JSON-LD; distinguish article publication, event dates and visitor wording.",
+          "checkState": "readable",
+          "adapterKey": "anons-uz",
+          "setup": "default"
+        },
+        {
+          "id": "uzbek-listing",
+          "url": "https://anons.uz/uz/events",
+          "role": "Uzbek listing",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Uzbek counterpart of the supported Russian events scope; avoid a duplicate scheduled locale feed.",
+          "checkState": "readable",
+          "note": "Alternative locale for the same event list."
+        }
+      ]
+    },
+    {
+      "id": "caex",
+      "name": "CAEx Uzbekistan",
+      "rank": 6,
+      "tier": "P1",
+      "sourceType": "Venue and organizer",
+      "coverage": "Tashkent",
+      "rationale": "Venue dates and CAEx's own consumer fairs. Retain the apparel component of mixed events.",
+      "eventFamilies": [
+        "caex-baraka"
+      ],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "calendar",
+          "url": "https://caexuzbekistan.com/events-calendar/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "harvest",
+          "method": "calendar-rows",
+          "plan": "Read the venue calendar rows, each with a date label and a first-party detail link. Keep organizer links as evidence; venue listings do not establish booth access.",
+          "checkState": "readable",
+          "adapterKey": "caex-uz",
+          "setup": "selected"
+        },
+        {
+          "id": "venue-telegram",
+          "url": "https://t.me/caexuzbekistan",
+          "role": "venue Telegram",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "manual",
+          "method": "manual-social",
+          "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
+          "note": "Venue updates and attendance notices."
+        },
+        {
+          "id": "baraka-retail-fair",
+          "url": "https://caex-barakafriday.com/",
+          "role": "Baraka retail fair",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "manual",
+          "method": "manual-review",
+          "plan": "Verify readable public event evidence and confirm this route before enabling any reader.",
+          "checkState": "unavailable",
+          "note": "Consumer-fair programme and seller contact for apparel.",
+          "eventFamily": "caex-baraka"
+        },
+        {
+          "id": "baraka-venue-subdomain",
+          "url": "https://barakafriday.caexuzbekistan.com/",
+          "role": "Baraka venue subdomain",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Alternate event brand route. Same family.",
+          "eventFamily": "caex-baraka"
+        },
+        {
+          "id": "baraka-instagram",
+          "url": "https://www.instagram.com/caex_baraka_friday/",
+          "role": "Baraka Instagram",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "manual",
+          "method": "manual-social",
+          "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
+          "note": "Edition marketing and updates.",
+          "eventFamily": "caex-baraka"
+        }
+      ]
+    },
+    {
+      "id": "uzexpocentre",
+      "name": "Uzexpocentre",
+      "rank": 7,
+      "tier": "P1",
+      "sourceType": "Venue",
+      "coverage": "Tashkent",
+      "rationale": "Exhibition dates and pavilions, including runway and apparel trade shows.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "exhibitions",
+          "url": "https://www.uzexpocentre.uz/en/menu/krgazmalar-rezhasi",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "harvest",
+          "method": "calendar-rows",
+          "plan": "Read the explicit calendar year and table rows, including merged cells and pavilions. Row position is not an event identity.",
+          "checkState": "readable",
+          "adapterKey": "uzexpocentre-uz",
+          "setup": "default"
+        }
+      ]
+    },
+    {
+      "id": "iteca-uz",
+      "name": "Iteca Uzbekistan",
+      "rank": 8,
+      "tier": "P1",
+      "sourceType": "Organizer",
+      "coverage": "Uzbekistan",
+      "rationale": "Organizer calendar for TITF, TextileExpo and CAITME. Read event-specific commercial and visitor terms separately.",
+      "eventFamilies": [
+        "titf-handicraft-programme",
+        "textileexpo-uzbekistan",
+        "caitme",
+        "ttme"
+      ],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://iteca.uz/en/calendar-of-events",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "manual",
+          "method": "calendar-rows",
+          "plan": "Review organizer calendar cards and official edition microsites. Direct calendar fetch encountered a browser challenge; do not bypass it. Distinguish E-badge, stand enquiry and exhibitor acceptance.",
+          "checkState": "indexed"
+        },
+        {
+          "id": "organizer-telegram",
+          "url": "https://t.me/s/iteca",
+          "role": "organizer Telegram",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "manual",
+          "method": "manual-social",
+          "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
+          "note": "Cross-show confirmations and date changes."
+        },
+        {
+          "id": "organizer-enquiry-account",
+          "url": "https://t.me/iteca_uzbekistan",
+          "role": "organizer enquiry account",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Business contact. Do not treat the direct-message profile as a publication feed."
+        },
+        {
+          "id": "titf-programme",
+          "url": "https://titf.uz/en/main",
+          "role": "TITF programme",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "planned",
+          "method": "edition-page",
+          "plan": "Read the official TITF edition, artisan programme and separate visitor and stand routes.",
+          "note": "Tourism show and cultural industries programme.",
+          "eventFamily": "titf-handicraft-programme"
+        },
+        {
+          "id": "titf-stand-enquiry",
+          "url": "https://titf.uz/en/stand-reservation",
+          "role": "TITF stand enquiry",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Contact and exhibit path. A live form does not establish acceptance.",
+          "eventFamily": "titf-handicraft-programme"
+        },
+        {
+          "id": "textileexpo-programme",
+          "url": "https://textileexpo.uz/",
+          "role": "TextileExpo programme",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "planned",
+          "method": "edition-page",
+          "plan": "Read TextileExpo edition details and record official booth and buyer routes separately.",
+          "note": "Garment, fabric and wholesale sourcing.",
+          "eventFamily": "textileexpo-uzbekistan"
+        },
+        {
+          "id": "caitme-programme",
+          "url": "https://caitme.uz/",
+          "role": "CAITME programme",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "planned",
+          "method": "edition-page",
+          "plan": "Read CAITME edition dates and supplier/visitor information; not a consumer market.",
+          "note": "Textile equipment, industry programmes and event access.",
+          "eventFamily": "caitme"
+        },
+        {
+          "id": "ttme-programme",
+          "url": "https://ttme.uz/",
+          "role": "TTME programme",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "manual",
+          "method": "manual-review",
+          "plan": "Verify readable public event evidence and confirm this route before enabling any reader.",
+          "checkState": "limited",
+          "note": "Textile machinery expo. Verify editions against organizer calendar.",
+          "eventFamily": "ttme"
+        }
+      ]
+    },
+    {
+      "id": "art-time",
+      "name": "Art Time and Art Bazaar",
+      "rank": 9,
+      "tier": "P1",
+      "sourceType": "Organizer",
+      "coverage": "Tashkent",
+      "rationale": "Recurring designer and craft markets. Use Afisha or ANONS to corroborate editions when the social feed is inaccessible.",
+      "eventFamilies": [
+        "art-bazaar"
+      ],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://www.instagram.com/art_time_uz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "manual",
+          "method": "manual-social",
+          "plan": "Review the organizer posts or dated Afisha and ANONS coverage for each Art Bazaar edition; seller acceptance needs organizer evidence.",
+          "checkState": "unavailable"
+        },
+        {
+          "id": "facebook-account",
+          "url": "https://www.facebook.com/arttimeuz",
+          "role": "Facebook account",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "manual",
+          "method": "manual-social",
+          "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
+          "note": "Same organizer's edition watch.",
+          "eventFamily": "art-bazaar"
+        },
+        {
+          "id": "dated-listing",
+          "url": "https://www.afisha.uz/uz/exhibitions/2026/10/30/art-bazaar-uz",
+          "role": "dated listing",
+          "relationship": "cross-check",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Useful fallback evidence from Afisha.",
+          "eventFamily": "art-bazaar"
+        }
+      ]
+    },
+    {
+      "id": "vfw-tashkent",
+      "name": "Visa Fashion Week Tashkent",
+      "rank": 10,
+      "tier": "P1",
+      "sourceType": "Organizer",
+      "coverage": "Tashkent",
+      "rationale": "First-hand runway notices. Venue and official media partner provide public cross-checks.",
+      "eventFamilies": [
+        "visa-fw-tashkent"
+      ],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "runway",
+          "url": "https://www.instagram.com/fwtashkent/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "provider",
+          "method": "official-instagram",
+          "plan": "Use the allowlisted official Business Discovery provider after credential and publisher eligibility checks. Preserve the media permalink; post time is not event time.",
+          "checkState": "unavailable",
+          "eventFamily": "visa-fw-tashkent",
+          "adapterKey": "instagram-business-discovery",
+          "setup": "default",
+          "seed": "https://www.instagram.com/fwtashkent/"
+        },
+        {
+          "id": "november-programme",
+          "url": "https://www.afisha.uz/ru/fashion/2026/11/03/visafw",
+          "role": "November programme",
+          "relationship": "cross-check",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Dated official media partner coverage. Keep visitor and designer access separate.",
+          "eventFamily": "visa-fw-tashkent"
+        },
+        {
+          "id": "venue-calendar",
+          "url": "https://www.uzexpocentre.uz/en/menu/krgazmalar-rezhasi",
+          "role": "venue calendar",
+          "relationship": "cross-check",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "checkState": "readable",
+          "note": "Uzexpocentre remains a separate venue publisher.",
+          "eventFamily": "visa-fw-tashkent",
+          "relatedGroupId": "uzexpocentre"
+        },
+        {
+          "id": "november-venue-listing",
+          "url": "https://www.uzexpocentre.uz/ru/plan/viza-fashion-week-nedelja-mody-v-uzbekistane",
+          "role": "November venue listing",
+          "relationship": "cross-check",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Edition-specific venue evidence.",
+          "eventFamily": "visa-fw-tashkent"
+        }
+      ]
+    },
+    {
+      "id": "human-house",
+      "name": "Human House",
+      "rank": 11,
+      "tier": "P1",
+      "sourceType": "Organizer",
+      "coverage": "Tashkent",
+      "rationale": "Original gallery programme with textile shows, workshops and designer calls.",
+      "eventFamilies": [
+        "zero-waste-fashion-festival"
+      ],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://human-house.com/events/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "index-detail",
+          "plan": "Read dated gallery programme entries; record workshop bookings and designer calls separately.",
+          "checkState": "readable"
+        },
+        {
+          "id": "instagram",
+          "url": "https://www.instagram.com/humanhousegallery/",
+          "role": "gallery Instagram",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "provider",
+          "method": "official-instagram",
+          "plan": "Use the allowlisted official Business Discovery provider after credential and publisher eligibility checks. Preserve the media permalink; post time is not event time.",
+          "note": "Exhibition and workshop announcements.",
+          "adapterKey": "instagram-business-discovery",
+          "setup": "default",
+          "seed": "https://www.instagram.com/humanhousegallery/"
+        },
+        {
+          "id": "gallery-telegram",
+          "url": "https://t.me/humanhouseuz",
+          "role": "gallery Telegram",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "manual",
+          "method": "manual-social",
+          "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
+          "note": "Same gallery programme."
+        },
+        {
+          "id": "textile-festival",
+          "url": "https://human-house.com/zero-waste-fashion-festival/",
+          "role": "textile festival",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Example of an edition and a source for its programme.",
+          "eventFamily": "zero-waste-fashion-festival"
+        }
+      ]
+    },
+    {
+      "id": "bmca-uz",
+      "name": "BMCA Uzbekistan apparel cluster",
+      "rank": 12,
+      "tier": "P1",
+      "sourceType": "Organizer",
+      "coverage": "Tashkent",
+      "rationale": "Texworld and Apparel Sourcing, with distinct buyer, exhibitor and competition routes.",
+      "eventFamilies": [
+        "apparel-sourcing-tashkent",
+        "texworld-tashkent"
+      ],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://texworld-apparel.uz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "edition-page",
+          "plan": "Read each fair microsite by explicit edition; keep visitor, buyer and exhibitor routes separate and do not merge co-located fairs.",
+          "checkState": "readable"
+        },
+        {
+          "id": "portfolio",
+          "url": "https://bmca.uz/eng",
+          "role": "portfolio",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "planned",
+          "method": "index-detail",
+          "plan": "Review dated listing entries and verify event facts on each original announcement.",
+          "note": "Organizer portfolio. Keep relevant apparel and sourcing fairs."
+        },
+        {
+          "id": "apparel-sourcing",
+          "url": "https://apparel-sourcing.uz/",
+          "role": "apparel sourcing",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "planned",
+          "method": "index-detail",
+          "plan": "Review dated listing entries and verify event facts on each original announcement.",
+          "note": "Primary show material and exhibitor routes.",
+          "eventFamily": "apparel-sourcing-tashkent"
+        },
+        {
+          "id": "texworld-stand-route",
+          "url": "https://texworld.uz/participateng",
+          "role": "Texworld stand route",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Contact and participation evidence.",
+          "eventFamily": "texworld-tashkent"
+        },
+        {
+          "id": "buyer-programme",
+          "url": "https://texworld-apparel.uz/uz/buyer",
+          "role": "buyer programme",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "A separate access route for buyers."
+        },
+        {
+          "id": "cluster-overlap-evidence",
+          "url": "https://heimtextil.uz/",
+          "role": "cluster overlap evidence",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Keep only shared apparel sourcing programme evidence. Home/interior shows are out of the Ocharo scope."
+        }
+      ]
+    },
+    {
+      "id": "tft-expo",
+      "name": "Tashkent Fashion and Textile Expo",
+      "rank": 13,
+      "tier": "P1",
+      "sourceType": "Organizer",
+      "coverage": "Tashkent",
+      "rationale": "Apparel exhibitors, sourcing and brand participation. Verify runway inclusion separately.",
+      "eventFamilies": [
+        "tft-expo"
+      ],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://tftexpo.com/en",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "edition-page",
+          "plan": "Read the edition dates and venue on the organizer site; store booking links separately from acceptance and runway access.",
+          "checkState": "readable"
+        },
+        {
+          "id": "exhibitor-booking",
+          "url": "https://tftexpo.com/booking-en",
+          "role": "exhibitor booking",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Stand enquiry, separate from buyer badges.",
+          "eventFamily": "tft-expo"
+        }
+      ]
+    },
+    {
+      "id": "catexpo",
+      "name": "CatExpo and Central Asia Fashion",
+      "rank": 14,
+      "tier": "P1",
+      "sourceType": "Organizer",
+      "coverage": "Almaty, Kazakhstan",
+      "rationale": "Direct garment wholesale exhibition and vendor opportunities within Central Asia.",
+      "eventFamilies": [
+        "central-asia-fashion"
+      ],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://fashionexpo.kz/en",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "edition-page",
+          "plan": "Read the edition programme and separate exhibitor, buyer and visitor terms. Keep city and edition evidence.",
+          "checkState": "readable"
+        },
+        {
+          "id": "organizer-portfolio",
+          "url": "https://www.catexpo.kz/index.php/en/",
+          "role": "organizer portfolio",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "planned",
+          "method": "index-detail",
+          "plan": "Review dated listing entries and verify event facts on each original announcement.",
+          "note": "CatExpo's organizer context."
+        },
+        {
+          "id": "caf-exhibitor-application",
+          "url": "https://fashionexpo.kz/en/participants/become-a-participant",
+          "role": "CAF exhibitor application",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Company and stand enquiry.",
+          "eventFamily": "central-asia-fashion"
+        },
+        {
+          "id": "caf-buyer-programme",
+          "url": "https://fashionexpo.kz/en/visitors/buyers-program",
+          "role": "CAF buyer programme",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Separate eligibility and hosted buyer terms.",
+          "eventFamily": "central-asia-fashion"
+        },
+        {
+          "id": "caf-visitor-form",
+          "url": "https://expodat.com/onlinereg/central-asia-fashion-spring-2027",
+          "role": "CAF visitor form",
+          "relationship": "route",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "ExpoDAT hosts the edition form. Other ExpoDAT pages do not belong to CatExpo.",
+          "eventFamily": "central-asia-fashion"
+        },
+        {
+          "id": "atakent-venue-calendar",
+          "url": "https://www.atakentexpo.kz/calendar",
+          "role": "Atakent venue calendar",
+          "relationship": "cross-check",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "checkState": "readable",
+          "note": "Separate venue source. Check CAF details with CatExpo.",
+          "eventFamily": "central-asia-fashion",
+          "relatedGroupId": "atakent"
+        }
+      ]
+    },
+    {
+      "id": "acdf",
+      "name": "ACDF cultural programme network",
+      "rank": 15,
+      "tier": "P1",
+      "sourceType": "Institution",
+      "coverage": "Uzbekistan",
+      "rationale": "The fund's programmes, CCA exhibitions and Bukhara Biennial form linked but distinct editorial streams.",
+      "eventFamilies": [
+        "cca-fashion-programme",
+        "bukhara-biennial"
+      ],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://www.acdf.uz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Use dated foundation announcements and follow the separate CCA and Biennial calendars. Keep the issuing programme on each observation.",
+          "checkState": "readable"
+        },
+        {
+          "id": "institutional-network-proof",
+          "url": "https://nova.acdf.uz/en/pages/about",
+          "role": "institutional network proof",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "ACDF identifies CCA and Bukhara Biennial as major projects."
+        },
+        {
+          "id": "cca-public-programme",
+          "url": "https://ccat.uz/en/programme",
+          "role": "CCA public programme",
+          "relationship": "related",
+          "primary": false,
+          "mode": "planned",
+          "method": "index-detail",
+          "plan": "Review dated listing entries and verify event facts on each original announcement.",
+          "note": "Continuously updated editorial stream for exhibitions and residencies.",
+          "eventFamily": "cca-fashion-programme"
+        },
+        {
+          "id": "bukhara-biennial-programme",
+          "url": "https://www.bukharabiennial.uz/en",
+          "role": "Bukhara Biennial programme",
+          "relationship": "related",
+          "primary": false,
+          "mode": "planned",
+          "method": "index-detail",
+          "plan": "Review dated listing entries and verify event facts on each original announcement.",
+          "note": "Distinct edition, call and location stream within the ACDF network.",
+          "eventFamily": "bukhara-biennial"
+        }
+      ]
+    },
+    {
+      "id": "art-station",
+      "name": "Art Station",
+      "rank": 16,
+      "tier": "P1",
+      "sourceType": "Organizer",
+      "coverage": "Samarqand, Fergana, Bukhara",
+      "rationale": "Regional artisan labs and open calls. The site is indexed, but its homepage returned no readable text in this check.",
+      "eventFamilies": [
+        "art-station-lab"
+      ],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://artstation.uz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "manual",
+          "method": "manual-review",
+          "plan": "Check dated lab and residency calls manually; verify a public listing before commissioning a reader.",
+          "checkState": "indexed"
+        },
+        {
+          "id": "organizer-instagram",
+          "url": "https://www.instagram.com/artstationuz/",
+          "role": "organizer Instagram",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "manual",
+          "method": "manual-social",
+          "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
+          "note": "Monitor dated residency and lab announcements when available.",
+          "eventFamily": "art-station-lab"
+        }
+      ]
+    },
+    {
+      "id": "arts-academy",
+      "name": "Academy of Arts of Uzbekistan",
+      "rank": 17,
+      "tier": "P1",
+      "sourceType": "Institution",
+      "coverage": "Uzbekistan",
+      "rationale": "Exhibitions, applied art calls and Art Vernissage. Retain age and student restrictions.",
+      "eventFamilies": [
+        "art-vernissage-youth-auction"
+      ],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://art-academy.uz/en/blog/news",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Read dated Academy call and exhibition articles; record age, student eligibility and deadlines only when stated.",
+          "checkState": "readable"
+        },
+        {
+          "id": "academy-telegram",
+          "url": "https://t.me/s/artacademyuz",
+          "role": "academy Telegram",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "manual",
+          "method": "manual-social",
+          "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
+          "checkState": "readable",
+          "note": "Calls and exhibition programmes."
+        },
+        {
+          "id": "art-vernissage-platform",
+          "url": "https://www.artvernissage.art",
+          "role": "Art Vernissage platform",
+          "relationship": "route",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Application support where an organizer announcement confirms the route.",
+          "eventFamily": "art-vernissage-youth-auction"
+        }
+      ]
+    },
+    {
+      "id": "idem",
+      "name": "Idem",
+      "rank": 18,
+      "tier": "P1",
+      "sourceType": "Aggregator",
+      "coverage": "Tashkent",
+      "rationale": "Public exhibition and festival lists. Its named upstream feeds include CAEx, iTicket and other sellers.",
+      "eventFamilies": [],
+      "aggregates": [
+        "caex",
+        "uzexpocentre",
+        "gtickets",
+        "showgo",
+        "ticketon",
+        "iticket",
+        "olbilet",
+        "ticketgo",
+        "sxodim"
+      ],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://idem.uz/c/exhibition/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "aggregator-index",
+          "plan": "Read exhibition and festival permalinks as discovery. Resolve named upstreams and route comparisons to the original publisher; do not duplicate their schedules.",
+          "checkState": "readable"
+        },
+        {
+          "id": "festival-listings",
+          "url": "https://idem.uz/c/festival/",
+          "role": "festival listings",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "planned",
+          "method": "index-detail",
+          "plan": "Review dated listing entries and verify event facts on each original announcement.",
+          "note": "Same aggregator and different filter."
+        },
+        {
+          "id": "upstream-source-list",
+          "url": "https://idem.uz/about/",
+          "role": "upstream source list",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Names CAEx, Uzexpocentre and ticket providers. Their original pages remain independent sources."
+        }
+      ]
+    },
+    {
+      "id": "iticket",
+      "name": "iTicket Uzbekistan",
+      "rank": 19,
+      "tier": "P1",
+      "sourceType": "Ticketing",
+      "coverage": "Tashkent, Samarqand",
+      "rationale": "Cultural tickets and regional inventory. Use for admission and prices.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://iticket.uz/ru/events/cultural-events",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "ticket-index",
+          "plan": "Read stable event/offer pages for dates, admission and price only. Preserve the organizer as a separate source.",
+          "checkState": "readable"
+        },
+        {
+          "id": "all-events",
+          "url": "https://iticket.uz/ru/events",
+          "role": "all events",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "planned",
+          "method": "index-detail",
+          "plan": "Review dated listing entries and verify event facts on each original announcement.",
+          "note": "Broader catalogue. Prefer culture category for a smaller feed."
+        },
+        {
+          "id": "samarqand",
+          "url": "https://iticket.uz/ru/events/samarkand",
+          "role": "Samarqand",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "planned",
+          "method": "index-detail",
+          "plan": "Review dated listing entries and verify event facts on each original announcement.",
+          "note": "City-specific slice within the same vendor."
+        }
+      ]
+    },
+    {
+      "id": "showgo",
+      "name": "ShowGo",
+      "rank": 20,
+      "tier": "P1",
+      "sourceType": "Ticketing",
+      "coverage": "Uzbekistan",
+      "rationale": "Demonstrated runway ticket coverage for Fashion Show Line. General listings need a relevance filter.",
+      "eventFamilies": [
+        "fashion-show-line"
+      ],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://www.showgo.uz/en/category/razvitie",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "ticket-index",
+          "plan": "Use dated category cards and offer pages for visitor availability, price and venue; keep seller and runway access unknown.",
+          "checkState": "readable"
+        },
+        {
+          "id": "historical-runway-ticket",
+          "url": "https://showgo.uz/en/session/945-ezhegodnyi-pokaz-mody-the-fashion-show-line-2026-9-sezon",
+          "role": "historical runway ticket",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Edition evidence.",
+          "eventFamily": "fashion-show-line"
+        }
+      ]
+    },
+    {
+      "id": "fergana-region",
+      "name": "Fergana regional government and tourism",
+      "rank": 21,
+      "tier": "P1",
+      "sourceType": "Authority",
+      "coverage": "Fergana Valley",
+      "rationale": "Regional festivals, atlas and adras notices, artisan and textile events. City-level original feeds remain separate.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://gov.uz/oz/ferghana",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Discover dated official news or event entries on this institution section; use the individual announcement for dates and deadlines.",
+          "checkState": "readable"
+        },
+        {
+          "id": "regional-tourism-updates",
+          "url": "https://t.me/s/ferghanatourism",
+          "role": "regional tourism updates",
+          "relationship": "related",
+          "primary": false,
+          "mode": "manual",
+          "method": "manual-social",
+          "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
+          "note": "Fergana Valley and Margilan tourism event coverage."
+        }
+      ]
+    },
+    {
+      "id": "khorezm-region",
+      "name": "Khorezm regional government and tourism",
+      "rank": 22,
+      "tier": "P1",
+      "sourceType": "Authority",
+      "coverage": "Khiva, Urgench",
+      "rationale": "Official Khiva festival calendar and craft programme announcements.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://gov.uz/oz/xorazm",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Discover dated official news or event entries on this institution section; use the individual announcement for dates and deadlines.",
+          "checkState": "readable"
+        },
+        {
+          "id": "regional-tourism-updates",
+          "url": "https://t.me/s/travelkhorezm",
+          "role": "regional tourism updates",
+          "relationship": "related",
+          "primary": false,
+          "mode": "manual",
+          "method": "manual-social",
+          "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
+          "note": "Khiva and Urgench updates. Check actual city and dates."
+        }
+      ]
+    },
+    {
+      "id": "bukhara-region",
+      "name": "Bukhara regional government and tourism",
+      "rank": 23,
+      "tier": "P1",
+      "sourceType": "Authority",
+      "coverage": "Bukhara region",
+      "rationale": "Regional gold embroidery, crafts, tourism and trade fairs.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://gov.uz/oz/buxoro",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Discover dated official news or event entries on this institution section; use the individual announcement for dates and deadlines.",
+          "checkState": "readable"
+        },
+        {
+          "id": "regional-tourism-updates",
+          "url": "https://t.me/s/bukhtourism",
+          "role": "regional tourism updates",
+          "relationship": "related",
+          "primary": false,
+          "mode": "manual",
+          "method": "manual-social",
+          "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
+          "note": "Bukhara heritage festival and tourism notices."
+        }
+      ]
+    },
+    {
+      "id": "samarkand-region",
+      "name": "Samarqand regional government",
+      "rank": 24,
+      "tier": "P1",
+      "sourceType": "Authority",
+      "coverage": "Samarqand region",
+      "rationale": "Regional cultural plans and embroidery festival leads.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://gov.uz/oz/samarqand",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Discover dated official news or event entries on this institution section; use the individual announcement for dates and deadlines.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "namangan-region",
+      "name": "Namangan government and festival programme",
+      "rank": 25,
+      "tier": "P1",
+      "sourceType": "Authority",
+      "coverage": "Namangan region",
+      "rationale": "Official regional festival dates and fashion or artisan subprogrammes.",
+      "eventFamilies": [
+        "namangan-fashion-programmes"
+      ],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://gov.uz/oz/namangan",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Discover dated official news or event entries on this institution section; use the individual announcement for dates and deadlines.",
+          "checkState": "readable"
+        },
+        {
+          "id": "regional-tourism-updates",
+          "url": "https://t.me/s/namtourism",
+          "role": "regional tourism updates",
+          "relationship": "related",
+          "primary": false,
+          "mode": "manual",
+          "method": "manual-social",
+          "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
+          "note": "Local programmes and timely festival updates."
+        },
+        {
+          "id": "flower-festival-programme",
+          "url": "https://www.gullarfestivali.uz/uz-cyrl",
+          "role": "flower festival programme",
+          "relationship": "related",
+          "primary": false,
+          "mode": "planned",
+          "method": "index-detail",
+          "plan": "Review dated listing entries and verify event facts on each original announcement.",
+          "checkState": "readable",
+          "note": "Separately track fashion and craft modules when published.",
+          "eventFamily": "namangan-fashion-programmes"
+        }
+      ]
+    },
+    {
+      "id": "andijan-region",
+      "name": "Andijan regional government",
+      "rank": 26,
+      "tier": "P2",
+      "sourceType": "Authority",
+      "coverage": "Andijan, Shahrixon",
+      "rationale": "Regional handicrafts and do‘ppi exhibition corroboration.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://gov.uz/oz/andijan",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Discover dated official news or event entries on this institution section; use the individual announcement for dates and deadlines.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "margilan-city",
+      "name": "Margilan city government",
+      "rank": 27,
+      "tier": "P2",
+      "sourceType": "Authority",
+      "coverage": "Margilan",
+      "rationale": "City-level updates on atlas, adras and craft initiatives.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://gov.uz/oz/margilan",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Discover dated official news or event entries on this institution section; use the individual announcement for dates and deadlines.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "kokand-city",
+      "name": "Kokand city government",
+      "rank": 28,
+      "tier": "P2",
+      "sourceType": "Authority",
+      "coverage": "Kokand",
+      "rationale": "Host-city notices for the international handicrafts festival and local programme changes.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://gov.uz/oz/qoqon",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Discover dated official news or event entries on this institution section; use the individual announcement for dates and deadlines.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "samarkand-city",
+      "name": "Samarqand city government",
+      "rank": 29,
+      "tier": "P2",
+      "sourceType": "Authority",
+      "coverage": "Samarqand",
+      "rationale": "Local city-day and venue programmes. Distinct from the province feed.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://gov.uz/oz/samshahar",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Discover dated official news or event entries on this institution section; use the individual announcement for dates and deadlines.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "bukhara-city",
+      "name": "Bukhara city government",
+      "rank": 30,
+      "tier": "P2",
+      "sourceType": "Authority",
+      "coverage": "Bukhara",
+      "rationale": "City announcements that complement regional festival and venue notices.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://gov.uz/oz/buxoroshahar",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Discover dated official news or event entries on this institution section; use the individual announcement for dates and deadlines.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "qashqadaryo-region",
+      "name": "Qashqadaryo government and tourism",
+      "rank": 31,
+      "tier": "P2",
+      "sourceType": "Authority",
+      "coverage": "Qashqadaryo",
+      "rationale": "Regional tourism posts on Shahrisabz embroidery and festival programmes.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://t.me/s/kashkadaryo_travel",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "manual",
+          "method": "manual-social",
+          "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "shahrisabz-city",
+      "name": "Shahrisabz city government",
+      "rank": 32,
+      "tier": "P2",
+      "sourceType": "Authority",
+      "coverage": "Shahrisabz",
+      "rationale": "City-level festival announcements. Shahrisabz district is a different office.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://gov.uz/oz/shakhrisabzgov",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Discover dated official news or event entries on this institution section; use the individual announcement for dates and deadlines.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "nurota-district",
+      "name": "Nurota district government",
+      "rank": 33,
+      "tier": "P2",
+      "sourceType": "Authority",
+      "coverage": "Nurota",
+      "rationale": "Local suzani and embroidery event watch.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://gov.uz/oz/nurota",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Discover dated official news or event entries on this institution section; use the individual announcement for dates and deadlines.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "navoi-tourism",
+      "name": "Navoiy regional tourism",
+      "rank": 34,
+      "tier": "P2",
+      "sourceType": "Authority",
+      "coverage": "Navoiy region",
+      "rationale": "Original regional tourism announcements and cultural programme notices.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://t.me/s/navoitourism",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "manual",
+          "method": "manual-social",
+          "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "chust-district",
+      "name": "Chust district government",
+      "rank": 35,
+      "tier": "P2",
+      "sourceType": "Authority",
+      "coverage": "Chust",
+      "rationale": "District watch for skullcap fairs and craft events. Prior fair remains a lead.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://gov.uz/oz/chust",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Discover dated official news or event entries on this institution section; use the individual announcement for dates and deadlines.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "tashkent-city",
+      "name": "Tashkent city tourism and municipal notices",
+      "rank": 36,
+      "tier": "P2",
+      "sourceType": "Authority",
+      "coverage": "Tashkent",
+      "rationale": "Public tourism announcements for the capital, with municipal notices as a separate cross-check.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://t.me/s/visittashkent",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "manual",
+          "method": "manual-social",
+          "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
+          "checkState": "readable"
+        },
+        {
+          "id": "city-administration-news",
+          "url": "https://tashkent.uz/uz/news",
+          "role": "city administration news",
+          "relationship": "related",
+          "primary": false,
+          "mode": "manual",
+          "method": "manual-review",
+          "plan": "Verify readable public event evidence and confirm this route before enabling any reader.",
+          "checkState": "unavailable",
+          "note": "Direct retrieval timed out. Keep municipal and tourism feeds as separate streams."
+        }
+      ]
+    },
+    {
+      "id": "min-culture",
+      "name": "Uzbekistan Ministry of Culture",
+      "rank": 37,
+      "tier": "P2",
+      "sourceType": "Authority",
+      "coverage": "Uzbekistan",
+      "rationale": "Cultural festival and museum announcements, with event-specific filtering.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://gov.uz/oz/madaniyat",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Discover dated official news or event entries on this institution section; use the individual announcement for dates and deadlines.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "women-family",
+      "name": "Committee on Family and Women",
+      "rank": 38,
+      "tier": "P2",
+      "sourceType": "Authority",
+      "coverage": "Uzbekistan",
+      "rationale": "Primary producer of some national embroidery and women's craft calls.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://gov.uz/oz/wcu",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Discover dated official news or event entries on this institution section; use the individual announcement for dates and deadlines.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "youth-affairs",
+      "name": "Youth Affairs Agency",
+      "rank": 39,
+      "tier": "P2",
+      "sourceType": "Authority",
+      "coverage": "Uzbekistan",
+      "rationale": "Youth designer competitions and programme announcements. Check each eligibility window.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://gov.uz/oz/yoshlar",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Discover dated official news or event entries on this institution section; use the individual announcement for dates and deadlines.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "light-industry",
+      "name": "Light Industry Development Agency",
+      "rank": 40,
+      "tier": "P2",
+      "sourceType": "Authority",
+      "coverage": "Uzbekistan",
+      "rationale": "Textile industry news and regional apparel manufacturing programmes.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://gov.uz/oz/adli",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Discover dated official news or event entries on this institution section; use the individual announcement for dates and deadlines.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "uzcharm",
+      "name": "Uzcharmsanoat",
+      "rank": 41,
+      "tier": "P2",
+      "sourceType": "Industry body",
+      "coverage": "Uzbekistan",
+      "rationale": "Leather goods, footwear and apparel exhibitions relevant to sourcing.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://www.uzcharm.uz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Find dated fairs and calls on the association site; confirm terms in the specific event notice.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "vostock-textile",
+      "name": "Vostock textile forum",
+      "rank": 42,
+      "tier": "P2",
+      "sourceType": "Organizer",
+      "coverage": "Tashkent, online",
+      "rationale": "Primary forum and webinar source. Search indexes still expose the programme, but the current direct check returned 404.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://textileuz.com/en/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "manual",
+          "method": "manual-review",
+          "plan": "Verify readable public event evidence and confirm this route before enabling any reader.",
+          "checkState": "indexed"
+        }
+      ]
+    },
+    {
+      "id": "ttysi",
+      "name": "Tashkent Institute of Textile and Light Industry",
+      "rank": 43,
+      "tier": "P2",
+      "sourceType": "Education",
+      "coverage": "Tashkent",
+      "rationale": "Textile education and designer calls. Check whether each opportunity admits nonstudents.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://ttysi.uz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Discover dated programme, exhibition and call entries. Confirm application window and eligibility on the issuing programme page.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "atakent",
+      "name": "Atakent Expo",
+      "rank": 44,
+      "tier": "P2",
+      "sourceType": "Venue",
+      "coverage": "Almaty, Kazakhstan",
+      "rationale": "Original venue calendar for CAF and other apparel fairs. Check year, hall and organiser pages before using dates.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://www.atakentexpo.kz/calendar",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "calendar-rows",
+          "plan": "Read explicitly dated programme entries; keep venue evidence and verify participation with the organizer.",
+          "checkState": "readable"
+        },
+        {
+          "id": "english-venue-calendar",
+          "url": "https://www.akr.kz/en/calendar.html",
+          "role": "English venue calendar",
+          "relationship": "related",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Atakent venue calendar mirror for earlier dates and halls. Recheck against the current Russian calendar."
+        }
+      ]
+    },
+    {
+      "id": "mrdi",
+      "name": "Kamoliddin Behzod National Institute",
+      "rank": 45,
+      "tier": "P2",
+      "sourceType": "Education",
+      "coverage": "Tashkent",
+      "rationale": "Applied arts and design student calls with programme-specific eligibility.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://mrdi.uz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Discover dated programme, exhibition and call entries. Confirm application window and eligibility on the issuing programme page.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "sdtu",
+      "name": "Samarqand State Technical University",
+      "rank": 46,
+      "tier": "P2",
+      "sourceType": "Education",
+      "coverage": "Samarqand",
+      "rationale": "Host programme for Samarkand Style and related local fashion events.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://sdtu.uz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Discover dated programme, exhibition and call entries. Confirm application window and eligibility on the issuing programme page.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "unesco-tashkent",
+      "name": "UNESCO Tashkent",
+      "rank": 47,
+      "tier": "P2",
+      "sourceType": "Institution",
+      "coverage": "Uzbekistan",
+      "rationale": "Craft safeguarding, artisan initiatives and open calls for skills and heritage.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://www.unesco.org/en/fieldoffice/tashkent",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Read dated programmes and calls, keeping publication date, occurrence dates and deadlines separate.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "turksoy",
+      "name": "TURKSOY",
+      "rank": 48,
+      "tier": "P2",
+      "sourceType": "Institution",
+      "coverage": "Central Asia",
+      "rationale": "Original Turkic cultural programmes and traditional costume events.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://www.turksoy.org/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Read dated programmes and calls, keeping publication date, occurrence dates and deadlines separate.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "goethe-uz",
+      "name": "Goethe-Institut Uzbekistan",
+      "rank": 49,
+      "tier": "P2",
+      "sourceType": "Institution",
+      "coverage": "Tashkent, Uzbekistan",
+      "rationale": "Cultural calls and exhibitions, including craft and design collaborators.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://t.me/s/goetheinstituttaschkent",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "manual",
+          "method": "manual-social",
+          "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
+          "checkState": "readable"
+        },
+        {
+          "id": "event-evidence",
+          "url": "https://www.goethe.de/ins/uz/de/ver.cfm?event_id=27312309",
+          "role": "event evidence",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Example of Goethe's original exhibition notices."
+        }
+      ]
+    },
+    {
+      "id": "tashkent-design-week",
+      "name": "Tashkent Design Week",
+      "rank": 50,
+      "tier": "P2",
+      "sourceType": "Organizer",
+      "coverage": "Tashkent",
+      "rationale": "Original programme is searchable, while direct extraction returned a page shell. Keep relevant textile and apparel modules.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://www.designweek.uz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "manual",
+          "method": "manual-review",
+          "plan": "Verify readable public event evidence and confirm this route before enabling any reader.",
+          "checkState": "indexed"
+        }
+      ]
+    },
+    {
+      "id": "ticketon",
+      "name": "Freedom Ticketon",
+      "rank": 51,
+      "tier": "P2",
+      "sourceType": "Ticketing",
+      "coverage": "Uzbekistan, Kazakhstan",
+      "rationale": "Known fashion festival ticket coverage. Uzbekistan and Kazakhstan have separate catalogues and access varies by route.",
+      "eventFamilies": [
+        "zero-waste-fashion-festival"
+      ],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://ticketon.uz/en",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "manual",
+          "method": "manual-review",
+          "plan": "Verify readable public event evidence and confirm this route before enabling any reader.",
+          "checkState": "indexed"
+        },
+        {
+          "id": "uzbekistan-city-page",
+          "url": "https://ticketon.uz/tashkent",
+          "role": "Uzbekistan city page",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "manual",
+          "method": "manual-review",
+          "plan": "Verify readable public event evidence and confirm this route before enabling any reader.",
+          "note": "Direct check returned 403. Indexed calendar evidence still exists."
+        },
+        {
+          "id": "uzbekistan-fashion-ticket-example",
+          "url": "https://ticketon.uz/en/entertainment/event/tckt2-zero-waste-fashion-festival",
+          "role": "Uzbekistan fashion ticket example",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Ticket seller evidence, distinct from Human House's organizer announcement.",
+          "eventFamily": "zero-waste-fashion-festival"
+        },
+        {
+          "id": "kazakhstan-fashion-ticket-example",
+          "url": "https://ticketon.kz/kz/entertainment/event/tckt2-eurasian-fashion-week-almaty",
+          "role": "Kazakhstan fashion ticket example",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Separate locale catalogue within the Ticketon brand."
+        }
+      ]
+    },
+    {
+      "id": "gtickets",
+      "name": "Get Tickets",
+      "rank": 52,
+      "tier": "P2",
+      "sourceType": "Ticketing",
+      "coverage": "Uzbekistan, multiple cities",
+      "rationale": "City listings include Samarqand, Bukhara, Fergana and Andijan. Filter out cinema and unrelated entertainment.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://gtickets.uz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "ticket-index",
+          "plan": "Use individual public offers for visitor price and availability. Exhibitor and designer access require separate evidence.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "visituzbek",
+      "name": "Visit Uzbek events",
+      "rank": 53,
+      "tier": "P2",
+      "sourceType": "Aggregator",
+      "coverage": "Uzbekistan",
+      "rationale": "Countrywide discovery and exhibit leads such as Hikmah. Distinct from the official Uzbekistan Travel portal.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://www.visituzbek.uz/events",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "aggregator-index",
+          "plan": "Trace dated listings to named upstreams and use the organizer to resolve conflicting information.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "hd-magazine",
+      "name": "HD Magazine",
+      "rank": 54,
+      "tier": "P2",
+      "sourceType": "Media",
+      "coverage": "Uzbekistan",
+      "rationale": "Dated cultural coverage for Tuskiiz and designer market guides.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://mag.humodoc.com/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Use dated articles as discovery; corroborate edition dates, venue and access with the organizer. Exclude recaps from new event candidates.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "elle-uz",
+      "name": "ELLE Uzbekistan",
+      "rank": 55,
+      "tier": "P2",
+      "sourceType": "Media",
+      "coverage": "Uzbekistan",
+      "rationale": "Runway and designer competition reporting, including announcement leads.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://elleuzbekistan.com/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Use dated articles as discovery; corroborate edition dates, venue and access with the organizer. Exclude recaps from new event candidates.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "park-in-mall",
+      "name": "Park in Mall venue",
+      "rank": 56,
+      "tier": "P2",
+      "sourceType": "Venue",
+      "coverage": "Tashkent",
+      "rationale": "Venue check for Park in Mall Market. A vendor application or organizer feed remains to verify.",
+      "eventFamilies": [
+        "park-in-mall-market"
+      ],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://www.pkmall.uz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "manual",
+          "method": "manual-review",
+          "plan": "Verify readable public event evidence and confirm this route before enabling any reader.",
+          "checkState": "unavailable"
+        },
+        {
+          "id": "market-listing",
+          "url": "https://anons.uz/ru/events/yarmarka-park-in-mall-market-1",
+          "role": "market listing",
+          "relationship": "cross-check",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Venue and dates only. Vendor organizer relationship still unconfirmed.",
+          "eventFamily": "park-in-mall-market"
+        }
+      ]
+    },
+    {
+      "id": "eventflow",
+      "name": "EVENTFLOW",
+      "rank": 57,
+      "tier": "P2",
+      "sourceType": "Directory and registration",
+      "coverage": "Uzbekistan",
+      "rationale": "New multi-city organizer and registration platform. Track incremental apparel and craft signal before expansion.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://eventflow.uz/en",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "index-detail",
+          "plan": "Use public dated event pages and treat forms as routes; do not submit them or infer acceptance.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "twig",
+      "name": "Tashkent Women's International Group",
+      "rank": 58,
+      "tier": "P2",
+      "sourceType": "Organizer",
+      "coverage": "Tashkent",
+      "rationale": "Official public channel for the holiday bazaar family. Confirm the next dated edition and vendor rules.",
+      "eventFamilies": [
+        "twig-bazaar"
+      ],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://t.me/s/twig2018",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "manual",
+          "method": "manual-social",
+          "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
+          "checkState": "readable"
+        },
+        {
+          "id": "official-website",
+          "url": "https://twig.uz/",
+          "role": "official website",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "checkState": "limited",
+          "note": "Web page returned a shell in the check.",
+          "eventFamily": "twig-bazaar"
+        }
+      ]
+    },
+    {
+      "id": "compass-mall",
+      "name": "Compass Mall",
+      "rank": 59,
+      "tier": "P2",
+      "sourceType": "Venue",
+      "coverage": "Tashkent",
+      "rationale": "Official handmade-fair announcements and venue events. Confirm each edition's fashion content.",
+      "eventFamilies": [
+        "compass-mall-handmade"
+      ],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://compassmall.uz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "calendar-rows",
+          "plan": "Read explicitly dated programme entries; keep venue evidence and verify participation with the organizer.",
+          "checkState": "readable"
+        },
+        {
+          "id": "handmade-fair-example",
+          "url": "https://compassmall.uz/all_news/hand-made-jarmarkamy-prodolzhaem-cheredu-vyhod/",
+          "role": "handmade fair example",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "First-party event evidence. Prior weekend language does not imply future dates.",
+          "eventFamily": "compass-mall-handmade"
+        }
+      ]
+    },
+    {
+      "id": "kfw",
+      "name": "Kazakhstan Fashion Week network",
+      "rank": 60,
+      "tier": "P2",
+      "sourceType": "Organizer",
+      "coverage": "Almaty, Astana",
+      "rationale": "Runway and OPEN WAY watch. Keep city editions distinct even when the brand is shared.",
+      "eventFamilies": [
+        "kazakhstan-fw"
+      ],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://kfw.kz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "edition-page",
+          "plan": "Find the current edition on the organizer programme or news page; read explicit dates and follow only published visitor/exhibitor routes as evidence.",
+          "checkState": "readable"
+        },
+        {
+          "id": "astana-edition-publisher",
+          "url": "https://kfwastana.kz/",
+          "role": "Astana edition publisher",
+          "relationship": "related",
+          "primary": false,
+          "mode": "planned",
+          "method": "index-detail",
+          "plan": "Review dated listing entries and verify event facts on each original announcement.",
+          "note": "Track city programmes separately. Shared event brand does not prove identical publisher.",
+          "eventFamily": "kazakhstan-fw"
+        }
+      ]
+    },
+    {
+      "id": "vfw-almaty",
+      "name": "Visa Fashion Week Almaty",
+      "rank": 61,
+      "tier": "P2",
+      "sourceType": "Organizer",
+      "coverage": "Almaty",
+      "rationale": "Separate city edition and publisher feed. Common sponsorship does not establish common ownership.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://www.instagram.com/fwalmaty/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "manual",
+          "method": "manual-social",
+          "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
+          "checkState": "unavailable"
+        }
+      ]
+    },
+    {
+      "id": "biexpo",
+      "name": "BiExpo",
+      "rank": 62,
+      "tier": "P2",
+      "sourceType": "Organizer",
+      "coverage": "Bishkek, Kyrgyzstan",
+      "rationale": "Bishkek Fashion and Textile dates and exhibitor notices.",
+      "eventFamilies": [
+        "bishkek-fashion-textile"
+      ],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://biexpo.kg/en/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "edition-page",
+          "plan": "Find the current edition on the organizer programme or news page; read explicit dates and follow only published visitor/exhibitor routes as evidence.",
+          "checkState": "readable"
+        },
+        {
+          "id": "organizer-telegram",
+          "url": "https://t.me/s/biexpo4you",
+          "role": "organizer Telegram",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "manual",
+          "method": "manual-social",
+          "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
+          "note": "Organizer channel for venue or date changes.",
+          "eventFamily": "bishkek-fashion-textile"
+        }
+      ]
+    },
+    {
+      "id": "tfw-dushanbe",
+      "name": "Tajikistan Fashion Week and Fashion Group TZ",
+      "rank": 63,
+      "tier": "P2",
+      "sourceType": "Organizer",
+      "coverage": "Dushanbe, Tajikistan",
+      "rationale": "Direct regional runway news. Confirm each new season and attendance route.",
+      "eventFamilies": [
+        "tajikistan-fw"
+      ],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://www.instagram.com/tfw.official/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "manual",
+          "method": "manual-social",
+          "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
+          "checkState": "unavailable"
+        },
+        {
+          "id": "facebook-page",
+          "url": "https://www.facebook.com/Tajikistan.Fashion.Week/",
+          "role": "Facebook page",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "manual",
+          "method": "manual-social",
+          "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
+          "note": "Same runway programme watch.",
+          "eventFamily": "tajikistan-fw"
+        }
+      ]
+    },
+    {
+      "id": "central-asia-textile-expo",
+      "name": "Central Asia Textile Expo",
+      "rank": 64,
+      "tier": "P2",
+      "sourceType": "Organizer",
+      "coverage": "Astana, Kazakhstan",
+      "rationale": "Regional B2B textile sourcing and scheduled exhibitor programme.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://centralasiatextileexpo.com/en/exhibition/about-the-exhibition",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "edition-page",
+          "plan": "Find the current edition on the organizer programme or news page; read explicit dates and follow only published visitor/exhibitor routes as evidence.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "wcc",
+      "name": "World Crafts Council International",
+      "rank": 65,
+      "tier": "P2",
+      "sourceType": "Institution",
+      "coverage": "Central Asia craft network",
+      "rationale": "First-party evidence for the Kokand craft festival. A recurring readable event index has yet to be established.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://www.wccinternational.org/event-details/iii-international-festival-of-handicrafts-kokand-uzbekistan",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "The linked Kokand edition is historical corroboration; find and verify an active WCC calendar before polling.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "kultura-uz",
+      "name": "Kultura Uzbekistan",
+      "rank": 66,
+      "tier": "P3",
+      "sourceType": "Media",
+      "coverage": "Uzbekistan",
+      "rationale": "Craft and gallery announcements, including Keramistan. Confirm exact dates with the venue.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://www.kultura.uz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Use dated articles as discovery; corroborate edition dates, venue and access with the organizer. Exclude recaps from new event candidates.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "gazeta-uz",
+      "name": "Gazeta Uzbekistan",
+      "rank": 67,
+      "tier": "P3",
+      "sourceType": "Media",
+      "coverage": "Uzbekistan",
+      "rationale": "Occasional original cultural reporting. Query fashion and craft only.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://www.gazeta.uz/ru/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Use dated articles as discovery; corroborate edition dates, venue and access with the organizer. Exclude recaps from new event candidates.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "uzdaily",
+      "name": "UzDaily",
+      "rank": 68,
+      "tier": "P3",
+      "sourceType": "Media",
+      "coverage": "Uzbekistan",
+      "rationale": "Textile industry and expo reports for corroboration.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://www.uzdaily.uz/en/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Use dated articles as discovery; corroborate edition dates, venue and access with the organizer. Exclude recaps from new event candidates.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "uza",
+      "name": "UzA national news agency",
+      "rank": 69,
+      "tier": "P3",
+      "sourceType": "Media",
+      "coverage": "Uzbekistan",
+      "rationale": "Regional festival recaps and official programme announcements. Publication dates need separate handling.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://uza.uz/en",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Use dated articles as discovery; corroborate edition dates, venue and access with the organizer. Exclude recaps from new event candidates.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "kabar",
+      "name": "Kabar Kyrgyz news agency",
+      "rank": 70,
+      "tier": "P3",
+      "sourceType": "Media",
+      "coverage": "Kyrgyzstan",
+      "rationale": "Regional coverage of creative industries, clothing and craft events. Confirm event and access details with organisers.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://en.kabar.kg/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Use dated articles as discovery; corroborate edition dates, venue and access with the organizer. Exclude recaps from new event candidates.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "spot",
+      "name": "Spot Uzbekistan",
+      "rank": 71,
+      "tier": "P3",
+      "sourceType": "Media",
+      "coverage": "Uzbekistan",
+      "rationale": "Dedicated business events page, selected for textiles or local brands.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://www.spot.uz/ru/events/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Use dated articles as discovery; corroborate edition dates, venue and access with the organizer. Exclude recaps from new event candidates.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "yuz",
+      "name": "Yangi O‘zbekiston",
+      "rank": 72,
+      "tier": "P3",
+      "sourceType": "Media",
+      "coverage": "Uzbekistan",
+      "rationale": "Regional festival and national programme evidence. Avoid duplicates of original government releases.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://yuz.uz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Use dated articles as discovery; corroborate edition dates, venue and access with the organizer. Exclude recaps from new event candidates.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "dunyo",
+      "name": "Dunyo news agency",
+      "rank": 73,
+      "tier": "P3",
+      "sourceType": "Media",
+      "coverage": "Uzbekistan",
+      "rationale": "Trade exhibitions and cultural programmes with international participation.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://dunyo.info/en",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Use dated articles as discovery; corroborate edition dates, venue and access with the organizer. Exclude recaps from new event candidates.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "golden-pages",
+      "name": "Golden Pages Uzbekistan exhibitions",
+      "rank": 74,
+      "tier": "P3",
+      "sourceType": "Directory",
+      "coverage": "Uzbekistan",
+      "rationale": "Useful annual discovery snapshot. Obtain each new year's URL and confirm dates with the organizer.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://www.goldenpages.uz/en/exhibitions/exhibitions2026/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "10times",
+      "name": "10times exhibitions",
+      "rank": 75,
+      "tier": "P3",
+      "sourceType": "Directory",
+      "coverage": "Uzbekistan, Central Asia",
+      "rationale": "Long-tail expo leads. Higher duplication and stale dates make it a secondary discovery source.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://10times.com/uzbekistan",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "index-detail",
+          "plan": "Use dated listings and individual detail permalinks for discovery; check every current date and access route at the issuer.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "advantour",
+      "name": "Advantour festivals guide",
+      "rank": 76,
+      "tier": "P3",
+      "sourceType": "Directory",
+      "coverage": "Uzbekistan",
+      "rationale": "Historical festival family and watch-window clues. Verify specific editions at primary sources.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://www.advantour.com/uzbekistan/festivals.htm",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "visit-tashkent-guide",
+      "name": "VisitTashkent events guide",
+      "rank": 77,
+      "tier": "P3",
+      "sourceType": "Directory",
+      "coverage": "Tashkent",
+      "rationale": "Visitor-facing event guide and craft leads. Verify operator relationship before grouping with the municipal tourism channel.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://visittashkent.uz/events/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "biletim",
+      "name": "Biletim",
+      "rank": 78,
+      "tier": "P3",
+      "sourceType": "Ticketing",
+      "coverage": "Tashkent",
+      "rationale": "Festival ticket partner including Milliy Festival. Limited dated relevant inventory on the checked page.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://www.biletim.uz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "manual",
+          "method": "manual-review",
+          "plan": "Verify readable public event evidence and confirm this route before enabling any reader.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "olbilet",
+      "name": "Olbilet",
+      "rank": 79,
+      "tier": "P3",
+      "sourceType": "Ticketing",
+      "coverage": "Tashkent",
+      "rationale": "Public festival category. Primarily entertainment, so test incremental results before polling.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://olbilet.uz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "ticket-index",
+          "plan": "Use individual public offers for visitor price and availability. Exhibitor and designer access require separate evidence.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "ticketgo",
+      "name": "TicketGo",
+      "rank": 80,
+      "tier": "P3",
+      "sourceType": "Ticketing",
+      "coverage": "Uzbekistan",
+      "rationale": "Event storefront is indexed. The fetched page exposed no usable listings.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://ticketgo.uz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "manual",
+          "method": "manual-review",
+          "plan": "Verify readable public event evidence and confirm this route before enabling any reader.",
+          "checkState": "limited"
+        }
+      ]
+    },
+    {
+      "id": "sxodim",
+      "name": "Sxodim regional guide",
+      "rank": 81,
+      "tier": "P3",
+      "sourceType": "Directory",
+      "coverage": "Kazakhstan, Kyrgyzstan",
+      "rationale": "Almaty culture and craft market listings. Keep regional city streams separate. The similarly named Uzbekistan site needs its own ownership check.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://sxodim.com/almaty",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "index-detail",
+          "plan": "Use dated listings and individual detail permalinks for discovery; check every current date and access route at the issuer.",
+          "checkState": "readable"
+        },
+        {
+          "id": "bishkek-exhibitions",
+          "url": "https://sxodim.com/bishkek/events/vystavki",
+          "role": "Bishkek exhibitions",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "manual",
+          "method": "manual-review",
+          "plan": "Verify readable public event evidence and confirm this route before enabling any reader.",
+          "checkState": "unavailable",
+          "note": "Same regional listing site, separate city. This direct check timed out."
+        }
+      ]
+    },
+    {
+      "id": "namangan-today",
+      "name": "Namangan Today",
+      "rank": 82,
+      "tier": "P3",
+      "sourceType": "Media",
+      "coverage": "Namangan",
+      "rationale": "Local opening reports can reveal craft sections absent from national calendars.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://namangantoday.uz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Use dated articles as discovery; corroborate edition dates, venue and access with the organizer. Exclude recaps from new event candidates.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "glamour-avenue",
+      "name": "Glamour Avenue",
+      "rank": 83,
+      "tier": "P3",
+      "sourceType": "Organizer and retailer",
+      "coverage": "Tashkent",
+      "rationale": "Occasional fashion presentations. The store and social accounts are one operator group.",
+      "eventFamilies": [
+        "glamour-avenue-shows"
+      ],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://glamouravenue.uz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "manual",
+          "method": "manual-review",
+          "plan": "Verify readable public event evidence and confirm this route before enabling any reader.",
+          "checkState": "readable"
+        },
+        {
+          "id": "official-telegram",
+          "url": "https://t.me/glamour_avenue",
+          "role": "official Telegram",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "manual",
+          "method": "manual-social",
+          "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
+          "note": "Fashion presentation and retailer news.",
+          "eventFamily": "glamour-avenue-shows"
+        },
+        {
+          "id": "official-instagram",
+          "url": "https://www.instagram.com/glamour.av/",
+          "role": "official Instagram",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "manual",
+          "method": "manual-social",
+          "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
+          "note": "Dated event posts only.",
+          "eventFamily": "glamour-avenue-shows"
+        }
+      ]
+    },
+    {
+      "id": "tashkent-city-mall",
+      "name": "Tashkent City Mall",
+      "rank": 84,
+      "tier": "P3",
+      "sourceType": "Venue",
+      "coverage": "Tashkent",
+      "rationale": "Mall exhibitions and markets. Do not infer ownership of every tenant event.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://tcmall.uz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "manual",
+          "method": "manual-review",
+          "plan": "Verify readable public event evidence and confirm this route before enabling any reader.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "cultural-heritage-agency",
+      "name": "Uzbekistan Cultural Heritage Agency",
+      "rank": 85,
+      "tier": "P3",
+      "sourceType": "Authority",
+      "coverage": "Uzbekistan",
+      "rationale": "Museum and craft notices, including the State Museum of Applied Arts programme. Use the dated announcement for each edition.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://gov.uz/oz/madaniymeros",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Discover dated official news or event entries on this institution section; use the individual announcement for dates and deadlines.",
+          "checkState": "readable"
+        },
+        {
+          "id": "applied-arts-museum-programme",
+          "url": "https://gov.uz/oz/madaniymeros/news/view/145213",
+          "role": "applied arts museum programme",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Evidence of a museum craft programme."
+        }
+      ]
+    },
+    {
+      "id": "guz-partners",
+      "name": "German-Uzbekistan Textile Business Partnership",
+      "rank": 86,
+      "tier": "P3",
+      "sourceType": "Industry programme",
+      "coverage": "Uzbekistan, Fergana",
+      "rationale": "Recorded clothing design seminars. Keep as a revival and professional-learning watch.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://www.guz-partners.org/news/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "ufw",
+      "name": "Uzbekistan Fashion Week",
+      "rank": 87,
+      "tier": "P3",
+      "sourceType": "Organizer",
+      "coverage": "Tashkent",
+      "rationale": "Organizer link hub and November 2026 edition coverage. The next edition and current organizer feed remain to verify.",
+      "eventFamilies": [
+        "uzbekistan-fashion-week"
+      ],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://linktr.ee/ufweek",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Resolve the current edition and official calls from the link hub and dated corroboration. Never treat a link-hub update as an event.",
+          "checkState": "readable"
+        },
+        {
+          "id": "legacy-website",
+          "url": "https://ufweek.uz/",
+          "role": "legacy website",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "checkState": "unavailable",
+          "note": "Prior organizer source, currently inaccessible in the check.",
+          "eventFamily": "uzbekistan-fashion-week"
+        },
+        {
+          "id": "november-2026-edition-coverage",
+          "url": "https://www.afisha.uz/ru/fashion/2026/11/05/uzbekistanfashionweek",
+          "role": "November 2026 edition coverage",
+          "relationship": "cross-check",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Dated Afisha reporting, independent of the organizer's current link hub.",
+          "eventFamily": "uzbekistan-fashion-week"
+        }
+      ]
+    },
+    {
+      "id": "osiyo-ramzi",
+      "name": "Osiyo Ramzi",
+      "rank": 88,
+      "tier": "P3",
+      "sourceType": "Organizer",
+      "coverage": "Tashkent",
+      "rationale": "Separate historical Tashkent Fashion Week, National Dress and youth competitions. Revival watch.",
+      "eventFamilies": [
+        "osiyo-ramzi-tfw"
+      ],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://en.osiyoramzi.uz/news",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "checkState": "readable"
+        },
+        {
+          "id": "organizer-homepage",
+          "url": "https://osiyoramzi.uz/",
+          "role": "organizer homepage",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Historical runway and competition pages.",
+          "eventFamily": "osiyo-ramzi-tfw"
+        }
+      ]
+    },
+    {
+      "id": "lex-uz",
+      "name": "LexUZ policy register",
+      "rank": 89,
+      "tier": "P3",
+      "sourceType": "Authority",
+      "coverage": "Uzbekistan",
+      "rationale": "Festival plans and eligibility law. A policy window does not confirm a date or call.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://lex.uz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Use official rules and eligibility documents as reference evidence. No event polling.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "aral-school",
+      "name": "Aral School",
+      "rank": 90,
+      "tier": "P3",
+      "sourceType": "Education",
+      "coverage": "Nukus, Karakalpakstan",
+      "rationale": "Artisan and material research cohort calls, mainly for learning.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://www.aralschool.uz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Discover dated programme, exhibition and call entries. Confirm application window and eligibility on the issuing programme page.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "ichkari",
+      "name": "ICHKARI",
+      "rank": 91,
+      "tier": "P3",
+      "sourceType": "Museum",
+      "coverage": "Tashkent",
+      "rationale": "Cultural institution with historical dress exhibitions. Check current programme, not retail.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://ichkari.com/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Find dated exhibitions or public programmes; ongoing display pages are reference.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "history-museum",
+      "name": "State Museum of History of Uzbekistan",
+      "rank": 92,
+      "tier": "P3",
+      "sourceType": "Museum",
+      "coverage": "Tashkent",
+      "rationale": "Host exhibition notices, including fashion-related programming where evidenced.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://history-museum.uz/site/expositions",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Find dated exhibitions or public programmes; ongoing display pages are reference.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "emkp",
+      "name": "Endangered Material Knowledge Programme",
+      "rank": 93,
+      "tier": "P3",
+      "sourceType": "Research calls",
+      "coverage": "Online, worldwide",
+      "rationale": "Grant and online-session watch for textile craft documentation. Institutional eligibility applies.",
+      "eventFamilies": [
+        "emkp-material-knowledge"
+      ],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://www.emkp.org/grants/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Read the current call document and its explicit deadline, supported countries and requirements.",
+          "checkState": "readable"
+        },
+        {
+          "id": "grant-and-q-a-notice",
+          "url": "https://www.emkp.org/announcing-the-2026-2027-emkp-call-for-applications/",
+          "role": "grant and Q&A notice",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Example of deadline and online session separation.",
+          "eventFamily": "emkp-material-knowledge"
+        }
+      ]
+    },
+    {
+      "id": "expo-position",
+      "name": "Expo Position Uzbekistan",
+      "rank": 94,
+      "tier": "P3",
+      "sourceType": "Organizer",
+      "coverage": "Tashkent",
+      "rationale": "KinderExpo and other mixed trade events. Keep relevant children's apparel sections.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://expoposition.com/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "edition-page",
+          "plan": "Find the current edition on the organizer programme or news page; read explicit dates and follow only published visitor/exhibitor routes as evidence.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "un-uzbekistan",
+      "name": "United Nations in Uzbekistan",
+      "rank": 95,
+      "tier": "P3",
+      "sourceType": "Institution",
+      "coverage": "Uzbekistan",
+      "rationale": "Institutional programme announcements and cross-checks. UNESCO Tashkent maintains its own editorial source.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://uzbekistan.un.org/en",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Read dated programmes and calls, keeping publication date, occurrence dates and deadlines separate.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "bonum-factum",
+      "name": "Bonum Factum Gallery",
+      "rank": 96,
+      "tier": "P3",
+      "sourceType": "Organizer",
+      "coverage": "Tashkent",
+      "rationale": "Published independent art calls. Confirm a new textile or craft edition before promotion.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://vkartfact.wixsite.com/bonafact/about-2?lang=en",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "checkState": "readable"
+        }
+      ]
+    },
+    {
+      "id": "uz-chamber",
+      "name": "Uzbekistan Chamber of Commerce and Industry",
+      "rank": 97,
+      "tier": "P3",
+      "sourceType": "Industry body",
+      "coverage": "Uzbekistan",
+      "rationale": "Delegation and trade fair leads. The official homepage returned a minimal page, so confirm an accessible news route.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://chamber.uz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "manual",
+          "method": "manual-review",
+          "plan": "Verify readable public event evidence and confirm this route before enabling any reader.",
+          "checkState": "limited"
+        }
+      ]
+    },
+    {
+      "id": "eventgo",
+      "name": "EventGO",
+      "rank": 98,
+      "tier": "P3",
+      "sourceType": "Directory and registration",
+      "coverage": "Uzbekistan",
+      "rationale": "Public multi-organizer catalogue. Check apparel and maker-event yield before moving it into the core tier.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://eventgo.uz/events",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "index-detail",
+          "plan": "Use public dated event pages and treat forms as routes; do not submit them or infer acceptance.",
+          "checkState": "readable"
+        },
+        {
+          "id": "hosted-event-example",
+          "url": "https://eventgo.uz/girlhoodsociety/events/1853",
+          "role": "hosted event example",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "checkState": "unavailable",
+          "note": "Documented in the other archive. The current direct event-page check could not retrieve it."
+        }
+      ]
+    },
+    {
+      "id": "tamyr",
+      "name": "Tamyr Art Lab and BulBul residency",
+      "rank": 99,
+      "tier": "P3",
+      "sourceType": "Organizer",
+      "coverage": "Bishkek region",
+      "rationale": "Regional textile residency evidence. Keep collaborating organizations distinct from the joint call.",
+      "eventFamilies": [
+        "tamyr-bulbul-residence"
+      ],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://tamyrart.org/open-call-tamyr-art-lab-bulbul-residence-2026",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Historical residency call; keep the expired edition and verify a new call URL before polling.",
+          "checkState": "readable"
+        },
+        {
+          "id": "bulbul-residence-partner",
+          "url": "https://bulbul.org.kg/partnerships",
+          "role": "BulBul residence partner",
+          "relationship": "related",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Separate institution associated with the joint call.",
+          "eventFamily": "tamyr-bulbul-residence"
+        }
+      ]
+    },
+    {
+      "id": "qaztourism",
+      "name": "QazTourism events",
+      "rank": 100,
+      "tier": "P3",
+      "sourceType": "Authority",
+      "coverage": "Kazakhstan",
+      "rationale": "Official tourism publisher and regional craft programme leads. The separate event subdomain has inconsistent access.",
+      "eventFamilies": [
+        "turkistan-brand-craft-fair"
+      ],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://qaztourism.kz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "planned",
+          "method": "news-index",
+          "plan": "Discover dated official news or event entries on this institution section; use the individual announcement for dates and deadlines.",
+          "checkState": "readable"
+        },
+        {
+          "id": "event-service-example",
+          "url": "https://event.qaztourism.kz/?p=3119",
+          "role": "event service example",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "reference",
+          "method": "reference",
+          "plan": "Retain as evidence or an access route. No polling or form submission.",
+          "note": "Programme evidence. The event subdomain root timed out.",
+          "eventFamily": "turkistan-brand-craft-fair"
+        }
+      ]
+    }
+  ]
+}

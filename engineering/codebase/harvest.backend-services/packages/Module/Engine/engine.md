@@ -16,7 +16,8 @@ calls the adapter's brokers.
   writes; no transaction spans network I/O; `UNIQUE (pipeline_id, kind, scheduled_for)` makes scheduling idempotent.
 - A challenge, block or rate limit stays the item's outcome: its lane backs off, and the item waits for the lane, never
   for another route.
-- Adapters register in code (`AddHarvestBroker<T>()`); named-source brokers come from the private adapters repo.
+- Adapters register in code (`AddHarvestBroker<T>()`); named-source brokers come from `sources/`, registered by
+  `HarvestSources.Api`.
 
 ## Execution
 

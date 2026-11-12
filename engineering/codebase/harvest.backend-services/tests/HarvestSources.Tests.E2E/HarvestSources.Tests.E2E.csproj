@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="WoW2.Sdk.Beta.Be.Testing" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
+    <ProjectReference Include="../../service/HarvestSources.Api/HarvestSources.Api.csproj" />
+    <Compile Include="../Shared/SourcePostgres.cs" Link="Shared/SourcePostgres.cs" />
+    <Using Include="Xunit" />
+  </ItemGroup>
+</Project>

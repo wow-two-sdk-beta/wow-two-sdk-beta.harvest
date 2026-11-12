@@ -40,3 +40,6 @@ engineering/codebase/harvest.backend-services/service/Harvest.Api/wwwroot/*
 .vs/
 .vscode/*
 .DS_Store
+
+# Local-only stacks, certificates and env files (never committed)
+.local/

@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <ProjectReference Include="../../sources/Module/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Module.csproj" />
+    <ProjectReference Include="../../packages/Hosting/WoW.Two.Sdk.Beta.Be.Harvest.Hosting.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Remove="wwwroot/**" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Craftfair public event source adapter and deterministic reader for Harvest.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="AngleSharp" />
+    <ProjectReference Include="../../packages/Abstractions/WoW.Two.Sdk.Beta.Be.Harvest.Abstractions.csproj" />
+  </ItemGroup>
+</Project>

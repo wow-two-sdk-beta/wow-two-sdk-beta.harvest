@@ -6,7 +6,7 @@ Defer to `wow-two-ws/conventions/development/frontend/`.
 
 - Frontend root: `engineering/codebase/harvest.frontend-services/`; Node `24.11.0` from `.nvmrc`, `pnpm@10.33.2`.
 - `packages/fe-harvest` is `@wow-two-beta/fe-harvest`, published to npm: `./contracts` (the TypeScript mirror of the
-  registry contract), `./kit` (`createRegistryClient`) and `./admin` (`ContainersPanel`, the management screens). It peers `@wow-two-beta/fe` at `>=0.0.n <0.1.0`, `n` the pinned
+  registry contract), `./kit` (`createRegistryClient`) and `./admin` (the console's provider and page panels). It peers `@wow-two-beta/fe` at `>=0.0.n <0.1.0`, `n` the pinned
   version; `check:package` enforces it and fails when one of the three exports is missing.
 - `apps/web` is `@harvest/web`, private: the console, one route per page (Home; Sources and a source with its
   Overview, Posts, Activity and Settings tabs; Subscribers; Access) inside the fe sdk `AppFrame`; hosted pages join as

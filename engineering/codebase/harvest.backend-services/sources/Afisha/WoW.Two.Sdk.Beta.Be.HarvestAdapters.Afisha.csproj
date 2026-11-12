@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Afisha.uz source adapter and event reader for Harvest, with source-specific discovery and date evidence.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="AngleSharp" />
+    <ProjectReference Include="../../packages/Abstractions/WoW.Two.Sdk.Beta.Be.Harvest.Abstractions.csproj" />
+  </ItemGroup>
+</Project>

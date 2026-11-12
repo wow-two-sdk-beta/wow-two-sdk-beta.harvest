@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Explicitly configured proxy, IP-lease, account-session and CAPTCHA clients for Harvest source readers.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="WoW2.Sdk.Beta.Be" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../packages/Abstractions/WoW.Two.Sdk.Beta.Be.Harvest.Abstractions.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="HarvestAdapters.Tests.Unit" />
+  </ItemGroup>
+</Project>

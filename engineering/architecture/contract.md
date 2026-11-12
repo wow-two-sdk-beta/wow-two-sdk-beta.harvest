@@ -1,10 +1,10 @@
 # wow-two-sdk-beta.harvest — Contract
 
-*Last updated: 2026-11-10*
+*Last updated: 2026-11-12*
 
 > Everything in `packages/Abstractions`: the registry broker every form implements, and the seams the engine lanes and
-> source adapters build against. Interfaces and models only — no DI, options or I/O. Rules:
-> wow-two-ws/conventions/development/capability-forms.md § Contract.
+> source readers build against. Interfaces and models only — no DI, options or I/O. Rules:
+> wow-two-ws/conventions/development/capability-forms.md § Contract. The source host's own routes: § Source host.
 
 ---
 
@@ -82,19 +82,19 @@
 
 ## Engine seams
 
-The lanes of v0.1 implement these in `packages/Module/{Lane}/`; named-source brokers implement the step contract in
-the private adapters repository. Every type references the BCL and the kernel only.
+The lanes of v0.1 implement these in `packages/Module/{Lane}/`; the named source readers under `sources/` implement
+the step contract. Every type references the BCL and the kernel only.
 
 | Seam | Namespace | Implemented by | Called by |
 |---|---|---|---|
-| `ISourceAdapter` → `AdapterDescriptor` (`StepDescriptor`, plans per `WorkKind`) | `Steps` | Readers lane (generic family adapters) · private adapters repo (named sources) | Engine |
+| `ISourceAdapter` → `AdapterDescriptor` (`StepDescriptor`, plans per `WorkKind`) | `Steps` | Readers lane (generic family adapters) · `sources/*` (named sources) | Engine |
 | `ISourceConfigurationProvider` → `SourceConfigurationModel` | `Sources` | Optional adapter metadata: scope schema and local readiness | Authorized source-capabilities API and shared UI |
 | `IStepBroker.ExecuteAsync(StepItem, IStepContext)` → `StepResult` | `Steps` | the same adapters, one broker per step | Engine |
 | `IStepContext` (`ResolvedPlan`, `Observe(StepSignal)`) | `Steps` | Engine lane (iteration 3) | step brokers |
 | `StepRequirements` (`RenderNeed`, `MinDelay`) | `Steps` | vocabulary | adapters, Engine |
 | outcomes: `FetchOutcome`, `ItemOutcome`, `LinkSignal` · `LinkObservation`, `RunReason` | `Steps` · `Runs` | vocabulary | adapters, Engine, Posts |
 | `IFetchClientFactory` — direct clients, one user agent, a run's cookie jar | `Capabilities.Fetching` | Fetching lane (iteration 2), inline in `Module/Capabilities/` over core `Http/Safety` | Engine |
-| `IFetchTransportFactory` → `IFetchTransportLease` | `Capabilities.Fetching` | direct public default; explicit private route/session providers | fetching policy handler, after permission/pause gates |
+| `IFetchTransportFactory` → `IFetchTransportLease` | `Capabilities.Fetching` | direct default; explicit route/session providers in `sources/Integrations` | fetching policy handler, after permission/pause gates |
 | `IChallengeDetector` (`ChallengeProbe` → `ChallengeVerdict`: challenge, block or rate limit; `ChallengeKind`) | `Capabilities.Challenges` | Fetching lane (generic) · adapters (their own) | step brokers |
 | `IBrowserRenderer` | `Capabilities.Rendering` | declared, unbound in v0.1; a step that needs it reports `capabilityUnavailable` | Engine |
 | `ICaptureReader` → `CaptureReadResult` (`Capture`, `DiscoveredUrl`) over `FetchedDocument` | `Readers` | Readers lane (iteration 4) | step brokers |
@@ -103,11 +103,11 @@ the private adapters repository. Every type references the BCL and the kernel on
 | `SubscriptionModel` · `DeliveryEvent` · `DeliveryEventTypes` · `CursorPage<T>` | `Delivery` | Delivery lane (iteration 7), which declares the subscription broker | consumers |
 
 - A challenge, a block or a rate limit is a `FetchOutcome` the run records, and the host backs off. The generic engine
-  never automatically retries through another route or submits a challenge. A private host may explicitly configure
+  never automatically retries through another route or submits a challenge. The source host may explicitly configure
   proxy/IP and supplied account-session leases, plus a source-aware challenge client. Provider failure never silently
   falls back to direct HTTP. Route secrets do not enter captures or delivery.
-- A lease owns its client and account/IP reservation until disposal, including robots and allowed redirects. Private
-  sessions do not share cached bodies. The direct factory remains the public default.
+- A lease owns its client and account/IP reservation until disposal, including robots and allowed redirects. Leased
+  sessions do not share cached bodies. The direct factory remains the default.
 - The renderer serves pages that show their content only through JavaScript, never a challenge.
 - The schema in the SQL migrations is the shared seam between lanes: `001-baseline`, `002-drop-escalation` (no
   ladder), `003-fetching`, `004-posts-delivery`, `005-subscription-filter`, `006-source-groups` (source groups, display
@@ -201,6 +201,54 @@ stores. Groups and display names are `IRegistrationBroker`'s; the reading pace i
 
 - Conformance: `SourceOverviewBrokerConformance` runs against all three; groups, names and `maxPages` join
   `RegistrationBrokerConformance`, the reading pace `RunBrokerConformance`.
+
+---
+
+## Source host
+
+`HarvestSources.Api` serves every route above through Hosting, with the same policies and `{ data }` envelopes, plus
+operator setup (`HarvestSources:Audience` `internal` only):
+
+| Method | Route | Policy | Result |
+|---|---|---|---|
+| GET | `/api/ocharo/sources/presets` | operator `tenants:manage` | original preset keys, names, seeds and authority |
+| GET | `/api/ocharo/sources/registry` | operator `tenants:manage` | `{ format, reviewedOn, groups }`; a read neither provisions nor fetches |
+| POST | `/api/ocharo/sources/setup` | operator `tenants:manage` | `{ tenantId, containerId, sources: [{ sourceKey, seed, groupId, channelId, eventFamily?, sourceId, pipelineId, subscriptionId }] }` |
+
+- The registry (`sources/Module/Ocharo/ocharo-event-sources.json`, [review](../research/ocharo-source-registry.md))
+  lists each publisher, its channels and each channel's collection mode: `harvest` (installed reader), `provider`
+  (installed opt-in integration; credentials and publisher access required), `planned`, `manual`, `reference`. Rank
+  measures relevance, not readiness; only owned channels with an installed collector can be provisioned.
+- Setup takes `{ enableSchedules: false, includeInstagram: false, groupIds?: string[] }`. Without `groupIds` it keeps
+  the original five website scopes and, when asked, the three Instagram routes; explicit IDs select every eligible
+  channel in those groups. An unknown group, or a group with no eligible channel, fails before any row is written.
+  CAEx is selectable explicitly and has no link-check schedule. The two Teplo event channels share one Instagram
+  source with distinct pipelines, subscriptions and event families.
+- Setup creates missing identities and keeps existing rows, cadences and keys. New website captures run every 6 hours
+  when enabled, plus a daily link check for individual-link sources; Instagram schedules start disabled. Sources stay
+  private to the tenant, non-pool-shareable, AI-disabled, robots-obeying and window-complete; differing existing
+  AI/sharing/robots settings need operator review. The host verb `ocharo setup|status`:
+  `engineering/deployment/deployment.md` § Provisioning Ocharo on a target.
+- Subscriptions request `wow2.event.v1` with filter `ocharo-fashion-v1` and context `catalog=ocharo-fashion`,
+  `sourceGroup`, `sourceChannel` and optional `eventFamily`. Existing subscriptions keep their IDs and context; the
+  setup response maps them to groups. Each observed event keeps its own source link; groups never auto-merge editions.
+- The event payload keeps canonical source provenance in `links` and registration/ticket/other URLs in
+  `contentLinks`. Dates keep their precision and evidence; application deadlines, closed calls and participation
+  evidence stay in the source's `schemaOrg` namespace. Missing eligibility, fees or routes are unknown. Afisha/ANONS
+  articles without an event announcement stay raw posts outside this stream.
+- The host writes nothing to Events or Desk and promotes no candidate; Events pulls and classifies (events-integration #53).
+- `ICaptchaSolver` and the IP broker JSON protocol: [integration-providers.md](../research/integration-providers.md).
+  No provider credential reaches registry rows, captures or delivery.
+
+### Marketplace sources
+
+- `AddHarvestListingSources` composes the `olx-uz` adapter and creates no source rows, schedules or subscriptions.
+  Operators register an OLX source with a saved category or search URL through the registry API and subscribe to
+  `wow2.post.v1`; listing posts skip the fashion-event filter.
+- OLX implements `IFetchDestinationPolicy` and `ILinkAvailabilityReader`: initial and redirected requests stay on
+  supported public routes; known-link checks validate the ad ID, explicit unavailable markers and matching native
+  status. An unknown layout, challenge or unrelated redirect stays inconclusive; search windows never establish
+  disappearance. [OLX review](../research/olx-source-review.md)
 
 ---
 

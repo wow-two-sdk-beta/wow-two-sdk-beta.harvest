@@ -1,7 +1,7 @@
 # WoW2 SCFD
 
 SCFD stands for **Source Collection and Feed Delivery**. It collects from scheduled sources, normalizes records and
-delivers updates to connected products. SCFD Adapters supplies private sources and egress over the public engine.
+delivers updates to connected products. Its source readers and opt-in egress ship in the same image.
 
 ## Naming
 
@@ -9,11 +9,11 @@ delivers updates to connected products. SCFD Adapters supplies private sources a
 |---|---|
 | Platform catalog, wordmark and standalone demo | SCFD |
 | Full product name | WoW2 SCFD |
-| Public solution | `SCFD.BackendServices.slnx` |
-| Private runtime and solution | SCFD Adapters · `SCFD.Adapters.BackendServices.slnx` |
-| GitHub checkouts | `wow-two-sdk-beta.harvest` · `wow-two-sdk-beta.harvest-adapters` |
+| Solution | `SCFD.BackendServices.slnx` |
+| Deployed host | `HarvestSources.Api` |
+| GitHub checkout | `wow-two-sdk-beta.harvest` |
 | SDKs | `WoW2.Sdk.Beta.Be.Harvest.*` · `@wow-two-beta/fe-harvest` |
-| Deployment IDs | `harvest` · `harvestadapters` |
+| Deployment ID | `harvest` |
 
 The existing integration vocabulary uses `Harvest` for C# symbols and configuration, and `harvest` for runtime
 service and migration IDs. The shared Rider project dictionaries accept `scfd` in folder and solution views.
@@ -47,7 +47,7 @@ The [transparent raster master](scfd-master.png) is the original 2172 × 724 bui
 The derived artwork uses WoW2 navy `#23324F` and white. SHA-256 of the master is
 `ca0f4e542eab78c675957112d16d051c23671bf54d2ce9a8a8687e504b4bfeef`.
 The [export script](../../engineering/scripts/export-scfd-brand.sh) uses FFmpeg to crop the master, apply the two
-inks and export the logo, marks, browser icons and review sheet. SCFD Adapters uses the same two Wheelhouse marks.
+inks and export the logo, marks, browser icons and review sheet.
 
 ```sh
 bash engineering/scripts/export-scfd-brand.sh /tmp/scfd-artwork

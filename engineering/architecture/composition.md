@@ -1,7 +1,7 @@
 # Runtime composition
 
-The public repository owns the API, engine and extension contracts. A source runtime references these packages
-and registers its implementations. Pipeline instances are registry data returned by the authenticated API.
+This repository owns the API, engine, extension contracts and the source readers; `HarvestSources.Api` registers
+the readers over Hosting. Pipeline instances are registry data returned by the authenticated API.
 
 ## Standalone UI
 
@@ -47,8 +47,8 @@ source. A host owns its connections; source-specific execution code is never loa
 
 ## Artifact boundary
 
-`apps/web/dist` includes `harvest-console.json`: contract `harvest.console.v1`, app version and optional public
-source revision for standalone builds.
+`apps/web/dist` includes `harvest-console.json`: contract `harvest.console.v1`, app version and optional source
+revision for standalone builds.
 
-An extension repository pins its reviewed public revision and exact published backend package version. It owns only
-its implementation packages, configuration and thin API host.
+Source readers, provider clients and their configuration live in `sources/` and ship only inside the image; no
+extension repository pins a Harvest revision.

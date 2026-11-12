@@ -1,4 +1,3 @@
-export { default as ContainersPanel } from './ContainersPanel.vue';
 export {
   createHarvestConsole,
   provideHarvestConsole,

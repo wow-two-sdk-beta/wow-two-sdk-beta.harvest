@@ -3,7 +3,8 @@
   <!--
     Solution-wide build defaults for the Harvest domain (.NET 10). The folder decides the role:
       packages/  the NuGet family WoW2.Sdk.Beta.Be.Harvest.* — packable, XML docs, warnings as errors
-      service/   the deployable host — not packable
+      sources/   the source readers and their composition — not packable, built into the image
+      service/   the deployable hosts — not packable
       tests/     the test tiers — not packable
     Per-project .csproj files stay minimal: they declare only references and a package description.
   -->
@@ -14,6 +15,7 @@
     <IsPackable>false</IsPackable>
     <DomainProjectFolder>$([MSBuild]::MakeRelative($(MSBuildThisFileDirectory), $(MSBuildProjectDirectory)).Replace('\', '/'))</DomainProjectFolder>
     <IsDomainPackage Condition="$(DomainProjectFolder.StartsWith('packages/'))">true</IsDomainPackage>
+    <IsSourceReader Condition="$(DomainProjectFolder.StartsWith('sources/'))">true</IsSourceReader>
   </PropertyGroup>
 
   <PropertyGroup Condition="$(DomainProjectFolder.StartsWith('tests/'))">
@@ -48,6 +50,13 @@
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <!-- The source readers: built into the service image, never published as packages; the same strictness as the
+       NuGet family. -->
+  <PropertyGroup Condition="'$(IsSourceReader)' == 'true'">
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>

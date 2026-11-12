@@ -1,23 +1,23 @@
-# Local verification only. Bring up from engineering/deployment/:
+# Local runtime: the database and SCFD's source host. Bring it up from engineering/deployment/:
 #
-#   docker compose up -d --build     the database and the service; the service answers on http://127.0.0.1:8397
+#   cp .env.example .env     then fill the password and the operator key with local random values
+#   docker compose up -d --build     the service answers on http://127.0.0.1:8397 (HARVEST_HTTP_PORT)
 #
-# PostgreSQL major upgrades require a reviewed migration; retain existing data volumes.
-#
-# The credentials and the operator key are local-only test values; a deployed environment's live in its Wheelhouse
-# target settings. The database stays on the compose network; an IDE run points appsettings.Local.json at its own.
+# Secrets come from the ignored .env or the invoking environment; a deployed environment's values live in its
+# Wheelhouse target settings. PostgreSQL major upgrades require a reviewed migration; keep existing data volumes.
+name: harvest
 services:
   database:
     image: postgres:18-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: harvest
-      POSTGRES_USER: harvest
-      POSTGRES_PASSWORD: harvest
+      POSTGRES_DB: ${HARVEST_DB_NAME:-harvest_sources}
+      POSTGRES_USER: ${HARVEST_DB_USER:-harvest}
+      POSTGRES_PASSWORD: ${HARVEST_DB_PASSWORD:?Set HARVEST_DB_PASSWORD in the ignored .env}
     volumes:
-      - database:/var/lib/postgresql
+      - sources-database:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U harvest -d harvest"]
+      test: ["CMD-SHELL", 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
       interval: 5s
       timeout: 3s
       retries: 20
@@ -27,15 +27,27 @@ services:
       context: ../codebase
       dockerfile: ../deployment/Dockerfile
     restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
     ports:
-      - "127.0.0.1:8397:8080"
+      - "127.0.0.1:${HARVEST_HTTP_PORT:-8397}:8080"
     environment:
-      DB_CONNECTION: "Host=database;Database=harvest;Username=harvest;Password=harvest"
-      Harvest__Operator__ApiKey: "hv_LocalComposeOperatorKey000000000"
+      ASPNETCORE_ENVIRONMENT: Development
+      DB_CONNECTION: "Host=database;Database=${HARVEST_DB_NAME:-harvest_sources};Username=${HARVEST_DB_USER:-harvest};Password=${HARVEST_DB_PASSWORD:?Set HARVEST_DB_PASSWORD in the ignored .env}"
+      Harvest__Operator__ApiKey: ${HARVEST_OPERATOR_KEY:?Set a local operator key in the ignored .env}
+      Harvest__Worker__Enabled: ${HARVEST_WORKER_ENABLED:-true}
+      HarvestSources__Audience: ${HARVEST_SOURCE_AUDIENCE:-internal}
+      HarvestIntegrations__Enabled: ${HARVEST_INTEGRATIONS_ENABLED:-false}
+      HarvestIntegrations__OlxProxyProfile: ${HARVEST_OLX_PROXY_PROFILE:-}
+      HarvestIntegrations__ProxyProfilesJson: ${HARVEST_PROXY_PROFILES_JSON:-}
+      HarvestIntegrations__OlxProxy__Server: ${HARVEST_OLX_PROXY_SERVER:-}
+      HarvestIntegrations__OlxProxy__Username: ${HARVEST_OLX_PROXY_USERNAME:-}
+      HarvestIntegrations__OlxProxy__Password: ${HARVEST_OLX_PROXY_PASSWORD:-}
+      HarvestIntegrations__Captcha__Enabled: "false"
+      HarvestInstagram__Enabled: "false"
     depends_on:
       database:
         condition: service_healthy
-    mem_limit: 256m
-
+    mem_limit: 768m
 volumes:
-  database:
+  sources-database:

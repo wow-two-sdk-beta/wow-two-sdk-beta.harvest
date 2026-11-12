@@ -1,20 +1,21 @@
 # yaml-language-server: $schema=../../../../../conventions/deployment/descriptor/deploy.schema.json
-# The shared SCFD API and worker. Hostnames and credentials live in Wheelhouse targets.
+# SCFD: the engine, its HTTP API, the worker and the source readers, in one image. Hostnames and credentials live in
+# Wheelhouse targets.
 descriptor: 2
 product: harvest
 name: SCFD
-description: Source Collection and Feed Delivery for connected products.
+description: Source Collection and Feed Delivery for connected products, with its own source readers.
 platform: linux/amd64
 # Dev runs as .NET Development, prod as Production; appsettings.Development.json holds defaults only, and an IDE
 # run's own values live in appsettings.Local.json.
 dotnetEnvironment: true
 migrate:
   - service: harvest
-    command: [dotnet, Harvest.Api.dll, migrate]
+    command: [dotnet, HarvestSources.Api.dll, migrate]
     timeout: 10m
 configCheck:
   - service: harvest
-    command: [dotnet, Harvest.Api.dll, config, check]
+    command: [dotnet, HarvestSources.Api.dll, config, check]
 # The dev check: once a dev rollout succeeds, the service's own image asks it for its health (the database answers)
 # and its status over the platform network. A pass lets auto-promote take the release. Each request carries the probe Host (localhost): a
 # target's AllowedHosts names its public hosts plus localhost, so the service's platform-network name in the URL
@@ -42,8 +43,9 @@ services:
       dockerfile: deployment/Dockerfile
     paths:
       - codebase/harvest.backend-services/**
+      - deployment/Dockerfile
     health: /health
-    memory: 256m
+    memory: 512m
     settings:
       keys:
         DatabaseSettings:ConnectionString: { required: true, secret: true }
@@ -52,6 +54,14 @@ services:
         Harvest:ServiceAccess:Authority: { type: url, required: true }
         Harvest:ServiceAccess:Audience: { required: true }
         Harvest:ServiceAccess:ClientGrantsJson: { required: true }
+        HarvestSources:Audience: { default: internal }
+        HarvestIntegrations:Enabled: { type: boolean, default: false }
+        HarvestIntegrations:OlxProxyProfile: {}
+        HarvestIntegrations:ProxyProfilesJson: { secret: true }
+        HarvestIntegrations:OlxProxy:Server: {}
+        HarvestIntegrations:OlxProxy:Username: { secret: true }
+        HarvestIntegrations:OlxProxy:Password: { secret: true }
+        HarvestInstagram:Enabled: { type: boolean, default: false }
     needs: [postgres]
     # The bundle services harvest starts after: none, since PostgreSQL is a platform service under needs.
     dependsOn: []

@@ -5,8 +5,8 @@ screens a console composes.
 
 - **Kit** — `createRegistryClient` reads containers, sources and pipelines from the consumer's own backend (Form 1, the
   default same-origin client) or the running Harvest service (Forms 2 and 3, `createRegistryClient({ baseUrl, apiKey })`).
-- **Admin** — `ContainersPanel` lists the containers a key may see. The service's own console composes it; a central
-  console or a product's admin page imports the same export.
+- **Admin** — the console's page panels; the service's own console composes them, and a central console or a
+  product's admin page imports the same export.
 - **Console** — `HarvestConsoleProvider` opens one console session (the connection, the open workspace and its data)
   and shares it with page panels in the operator's words — source, group, section, harvest, subscriber: `HomePanel`;
   `SourcesGallery` (groups as tiles, then each group's sources as cards or rows, with search and state filters,
@@ -41,7 +41,7 @@ The panels are styled with Tailwind utilities on the fe sdk theme; add the packa
 |---|---|
 | `./contracts` | `TenantModel`, `ApiKeyModel`, `ContainerModel`, `SourceModel`, `PipelineModel`, `ScheduleModel`, the Sources area's `SourceOverviewModel`, `SourceGroupModel`, `SourcePostModel` and `PostRevisionModel`, the enum labels, `RegistrationRouteConstants`, `HarvestScopeConstants`, `ApiKeyConstants` |
 | `./kit` | `createRegistryClient`, `createHarvestClient` |
-| `./admin` | `ContainersPanel` (an optional client); `HarvestConsoleProvider`, `useHarvestConsole` and the page panels it serves |
+| `./admin` | `HarvestConsoleProvider`, `useHarvestConsole` and the page panels it serves |
 
 The contracts export run, host-health, post/link, subscription, delivery-event and cursor-page models too.
 The console session cancels stale reads on workspace changes and disconnect, polls every five seconds while visible,

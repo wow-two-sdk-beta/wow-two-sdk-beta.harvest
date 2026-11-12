@@ -6,8 +6,20 @@
     <Project Path="packages/Module/WoW.Two.Sdk.Beta.Be.Harvest.Module.csproj" />
     <Project Path="packages/Testing/WoW.Two.Sdk.Beta.Be.Harvest.Testing.csproj" />
   </Folder>
+  <Folder Name="/Sources/">
+    <Project Path="sources/Afisha/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Afisha.csproj" />
+    <Project Path="sources/Anons/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Anons.csproj" />
+    <Project Path="sources/Caex/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Caex.csproj" />
+    <Project Path="sources/Craftfair/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Craftfair.csproj" />
+    <Project Path="sources/Instagram/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Instagram.csproj" />
+    <Project Path="sources/Integrations/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Integrations.csproj" />
+    <Project Path="sources/Module/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Module.csproj" />
+    <Project Path="sources/Olx/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Olx.csproj" />
+    <Project Path="sources/Uzexpocentre/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Uzexpocentre.csproj" />
+  </Folder>
   <Folder Name="/Services/">
     <Project Path="service/Harvest.Api/Harvest.Api.csproj" />
+    <Project Path="service/HarvestSources.Api/HarvestSources.Api.csproj" />
   </Folder>
   <Folder Name="/Tests/">
     <Project Path="tests/Harvest.Tests.Conformance/Harvest.Tests.Conformance.csproj" />
@@ -15,5 +27,8 @@
     <Project Path="tests/Harvest.Tests.Integration/Harvest.Tests.Integration.csproj" />
     <Project Path="tests/Harvest.Tests.Migrations/Harvest.Tests.Migrations.csproj" />
     <Project Path="tests/Harvest.Tests.Unit/Harvest.Tests.Unit.csproj" />
+    <Project Path="tests/HarvestAdapters.Tests.Integration/HarvestAdapters.Tests.Integration.csproj" />
+    <Project Path="tests/HarvestAdapters.Tests.Unit/HarvestAdapters.Tests.Unit.csproj" />
+    <Project Path="tests/HarvestSources.Tests.E2E/HarvestSources.Tests.E2E.csproj" />
   </Folder>
 </Solution>

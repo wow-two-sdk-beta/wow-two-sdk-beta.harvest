@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Instagram Business Discovery adapter with bounded, credential-isolated recent-media harvesting.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="WoW2.Sdk.Beta.Be" />
+    <ProjectReference Include="../../packages/Abstractions/WoW.Two.Sdk.Beta.Be.Harvest.Abstractions.csproj" />
+  </ItemGroup>
+</Project>

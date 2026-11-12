@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Composes the source readers over Harvest contracts and runtime services. -->
+  <PropertyGroup>
+    <Description>Source composition and Ocharo event filtering over the Harvest engine.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="WoW2.Sdk.Beta.Be" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Afisha\WoW.Two.Sdk.Beta.Be.HarvestAdapters.Afisha.csproj" />
+    <ProjectReference Include="..\Anons\WoW.Two.Sdk.Beta.Be.HarvestAdapters.Anons.csproj" />
+    <ProjectReference Include="..\Caex\WoW.Two.Sdk.Beta.Be.HarvestAdapters.Caex.csproj" />
+    <ProjectReference Include="..\Craftfair\WoW.Two.Sdk.Beta.Be.HarvestAdapters.Craftfair.csproj" />
+    <ProjectReference Include="..\Uzexpocentre\WoW.Two.Sdk.Beta.Be.HarvestAdapters.Uzexpocentre.csproj" />
+    <ProjectReference Include="..\Integrations\WoW.Two.Sdk.Beta.Be.HarvestAdapters.Integrations.csproj" />
+    <ProjectReference Include="..\Instagram\WoW.Two.Sdk.Beta.Be.HarvestAdapters.Instagram.csproj" />
+    <ProjectReference Include="..\Olx\WoW.Two.Sdk.Beta.Be.HarvestAdapters.Olx.csproj" />
+    <ProjectReference Include="../../packages/Module/WoW.Two.Sdk.Beta.Be.Harvest.Module.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Ocharo/ocharo-event-sources.json" LogicalName="Ocharo.EventSources.json" />
+  </ItemGroup>
+
+</Project>

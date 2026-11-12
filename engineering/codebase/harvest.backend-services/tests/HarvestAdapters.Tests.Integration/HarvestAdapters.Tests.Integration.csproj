@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <!-- Source pipelines over public Harvest and disposable PostgreSQL; no external provider calls. -->
+  <ItemGroup>
+    <PackageReference Include="WoW2.Sdk.Beta.Be.Testing" />
+    <PackageReference Include="WoW2.Sdk.Beta.Be.Testing.Data" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
+    <PackageReference Include="AwesomeAssertions" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="../Shared/SourcePostgres.cs" Link="Shared/SourcePostgres.cs" />
+    <ProjectReference Include="../../sources/Module/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Module.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

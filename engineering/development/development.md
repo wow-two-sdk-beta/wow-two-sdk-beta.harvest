@@ -11,6 +11,8 @@ Repository-specific development guidance:
 ## Repository
 
 - Created by the hub's `create-library` skill (phase 1), never by hand; `origin` comes from `gh repo clone`.
+- Holds the source readers, their tests and `HarvestSources.Api` since 2026-11-12, when `wow-two-sdk-beta.harvest-adapters`
+  merged in (events-integration #63); that repository stays where it is, read-only.
 - GitHub settings, per wow-two-ws/conventions/development/repo/structure/domain-structure.md § Repository:
   - public in `wow-two-sdk-beta`;
   - issues, wiki, projects and discussions off;
@@ -29,7 +31,8 @@ Repository-specific development guidance:
   - npm first version of `@wow-two-beta/fe-harvest`, then `npm trust` for `publish-packages.yml` (2FA) → unblocks the
     fe job;
   - Wheelhouse product registration: import, server, sites → dev rollouts of the image;
-  - third-party secret values, entered in Wheelhouse → the dev verify check;
+  - third-party secret values, entered in Wheelhouse → the dev verify check; provider credentials (OLX proxy profile,
+    CAPTCHA, Instagram) only once that integration is enabled;
   - public DNS for each public site → the public site; prod promotion stays the owner's.
 
 Rules: wow-two-ws/conventions/development/
