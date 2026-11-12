@@ -224,15 +224,26 @@ export function statusWords(status: SourceHarvestStatus | RunModel['status']) {
 }
 
 /**
- * What the last harvest found, as one pill reads: `3 hours ago · +4 new of 23 · partial`. The pill's icon says
- * `last harvest`, so the words stay out of the text.
+ * What the last harvest found, as one pill reads: `3 hours ago · +4 new · 23 found`. The pill's icon says `last
+ * harvest`, so the words stay out of the text; `found` counts the links the harvest listed and `new` those never seen
+ * before. A partial harvest adds no word, its amber tint says it (`lastHarvestNote` words it for the title and
+ * assistive technology); a failed or cancelled one does.
  */
 export function lastHarvestText(harvest?: SourceHarvestModel, now = new Date()) {
   if (!harvest) return 'no harvest yet';
   if (harvest.status === 'running') return 'harvesting now';
   if (harvest.status === 'queued') return 'harvest queued';
-  const found = `${agoOf(harvest.at, now)} · ${harvest.newPosts ? `+${harvest.newPosts}` : '0'} new of ${harvest.found}`;
-  return harvest.status === 'completed' ? found : `${found} · ${statusWords(harvest.status)}`;
+  const found = `${agoOf(harvest.at, now)} · ${harvest.newPosts ? `+${harvest.newPosts}` : '0'} new · ${harvest.found} found`;
+  return harvest.status === 'completed' || harvest.status === 'partial'
+    ? found
+    : `${found} · ${statusWords(harvest.status)}`;
+}
+
+/** How the last harvest ended, when it stopped short: `partial · page limit`; nothing for a clean one. */
+export function lastHarvestNote(harvest?: SourceHarvestModel) {
+  if (!harvest || harvest.status === 'completed' || harvest.status === 'running' || harvest.status === 'queued')
+    return '';
+  return [statusWords(harvest.status), harvest.reason ? codeWords(harvest.reason) : ''].filter(Boolean).join(' · ');
 }
 
 /** The last-harvest pill's tint; dashed when nothing was harvested yet. */

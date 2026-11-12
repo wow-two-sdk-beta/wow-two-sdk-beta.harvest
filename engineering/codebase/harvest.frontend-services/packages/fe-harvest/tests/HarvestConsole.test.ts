@@ -341,7 +341,8 @@ describe('Sources gallery', () => {
     });
     await flushPromises();
     const card = wrapper.get('article[aria-label="Afisha.uz"]');
-    expect(card.get('[data-pill="last-harvest"]').text()).toBe('3 hours ago · +4 new of 23 · partial');
+    expect(card.get('[data-pill="last-harvest"]').text()).toContain('3 hours ago · +4 new · 23 found');
+    expect(card.get('[data-pill="last-harvest"]').text()).toContain('partial');
     expect(card.get('[data-pill="last-harvest"]').attributes('data-tone')).toBe('warning');
     expect(card.text()).not.toContain('next');
     expect(card.text()).toContain('healthy');

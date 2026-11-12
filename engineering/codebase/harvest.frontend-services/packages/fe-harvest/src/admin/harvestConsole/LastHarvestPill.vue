@@ -2,19 +2,22 @@
 import { computed } from 'vue';
 import type { SourceHarvestModel } from '../../contracts';
 import HarvestPill from './HarvestPill.vue';
-import { clockOf, lastHarvestText, lastHarvestTone } from './SourceWords';
+import { clockOf, lastHarvestNote, lastHarvestText, lastHarvestTone } from './SourceWords';
 
 /**
  * The one pill that says what a source's last harvest found: a history icon for `last harvest`, how long ago it ran,
- * the new posts of those found and its outcome when it stopped short — `3 hours ago · +4 new of 23 · partial`. Its
- * title gives the exact time.
+ * its new posts and the links found — `3 hours ago · +4 new · 23 found`. A partial harvest is told by the amber tint
+ * alone, and by a hidden word for assistive technology; the title gives the exact time and the outcome.
  */
 defineOptions({ name: 'LastHarvestPill' });
 const props = withDefaults(defineProps<{ harvest?: SourceHarvestModel; size?: 'sm' | 'md' }>(), {
   harvest: undefined,
   size: 'sm',
 });
-const title = computed(() => (props.harvest ? `Last harvest ${clockOf(props.harvest.at)}` : undefined));
+const note = computed(() => lastHarvestNote(props.harvest));
+const title = computed(() =>
+  props.harvest ? [`Last harvest ${clockOf(props.harvest.at)}`, note.value].filter(Boolean).join(' · ') : undefined,
+);
 </script>
 
 <template>
@@ -38,5 +41,6 @@ const title = computed(() => (props.harvest ? `Last harvest ${clockOf(props.harv
       <path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5M12 7.5V12l3 2" />
     </svg>
     {{ lastHarvestText(props.harvest) }}
+    <span v-if="props.harvest?.status === 'partial'" class="sr-only">, partial</span>
   </HarvestPill>
 </template>

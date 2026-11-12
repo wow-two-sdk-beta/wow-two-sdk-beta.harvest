@@ -5,6 +5,7 @@ import {
   checkChoiceOf,
   harvestTimesText,
   intervalWords,
+  lastHarvestNote,
   lastHarvestText,
   paceWords,
   runFoundWords,
@@ -90,7 +91,7 @@ describe('source words', () => {
     expect(timingOf('2026-10-01', undefined, now)).toBeUndefined();
   });
 
-  it('writes the last-harvest pill as one short line, the icon standing for "last harvest"', () => {
+  it('writes the last-harvest pill as one short line, the icon standing for "last harvest" and the tint for a partial one', () => {
     const now = new Date('2026-11-12T12:00:00Z');
     const harvest = (change: Partial<SourceHarvestModel>): SourceHarvestModel => ({
       runId: 'r',
@@ -101,10 +102,11 @@ describe('source words', () => {
       found: 23,
       ...change,
     });
-    expect(lastHarvestText(harvest({}), now)).toBe('3 hours ago · +4 new of 23');
-    expect(lastHarvestText(harvest({ status: 'partial', newPosts: 0 }), now)).toBe(
-      '3 hours ago · 0 new of 23 · partial',
-    );
+    expect(lastHarvestText(harvest({}), now)).toBe('3 hours ago · +4 new · 23 found');
+    expect(lastHarvestText(harvest({ status: 'partial', newPosts: 0 }), now)).toBe('3 hours ago · 0 new · 23 found');
+    expect(lastHarvestText(harvest({ status: 'failed' }), now)).toBe('3 hours ago · +4 new · 23 found · failed');
+    expect(lastHarvestNote(harvest({ status: 'partial', reason: 'page_limit' }))).toBe('partial · page limit');
+    expect(lastHarvestNote(harvest({}))).toBe('');
     expect(lastHarvestText(harvest({ status: 'running' }), now)).toBe('harvesting now');
   });
 });
