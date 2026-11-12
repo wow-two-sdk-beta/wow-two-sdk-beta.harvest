@@ -118,6 +118,7 @@ public sealed class FakeSourceOverviewBroker(
                     StartsAt = post.Base.Dates.FirstOrDefault(date => date.Role == DateRole.Start)?.Value,
                     EndsAt = post.Base.Dates.FirstOrDefault(date => date.Role == DateRole.End)?.Value,
                     PostedAt = post.Base.PostedAt?.Value,
+                    ImageUrls = [.. post.Base.Media.Where(media => media.Kind == MediaKind.Image).Select(media => media.Url).Take(SourceConstants.MaxPostImages)],
                     Url = first.Url,
                     ImageUrl = post.Base.Media.FirstOrDefault(media => media.Kind == MediaKind.Image)?.Url,
                 });

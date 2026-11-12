@@ -152,9 +152,10 @@ public abstract class SourceOverviewBrokerConformance
         posts.Single(post => post.PostId == withRun.Post.Id).Should().Match<SourcePostModel>(post => post.Title == "Concert"
             && post.Kind == PostKind.Event && post.State == PostState.Live && post.Revision == 1 && post.PipelineId == pipeline.Id
             && post.StartsAt == "2026-11-20T19:00" && post.EndsAt == "2026-11-22" && post.PostedAt == "2026-11-12T09:30" && post.Url == $"https://{context.Source.Handle}/concert"
-            && post.ImageUrl == $"https://{context.Source.Handle}/poster.jpg");
+            && post.ImageUrl == $"https://{context.Source.Handle}/poster.jpg"
+            && post.ImageUrls.SequenceEqual(new[] { $"https://{context.Source.Handle}/poster.jpg", $"https://{context.Source.Handle}/second.jpg" }));
         posts.Single(post => post.PostId == untitled.Post.Id).Should().Match<SourcePostModel>(post =>
-            post.Title == $"https://{context.Source.Handle}/untitled" && post.Kind == PostKind.Other && post.PipelineId == null && post.StartsAt == null && post.EndsAt == null && post.PostedAt == null && post.ImageUrl == null);
+            post.Title == $"https://{context.Source.Handle}/untitled" && post.Kind == PostKind.Other && post.PipelineId == null && post.StartsAt == null && post.EndsAt == null && post.PostedAt == null && post.ImageUrl == null && post.ImageUrls.Count == 0);
         Value(await Overview.ListSourcePostsAsync(context.Source.Id, limit: 1)).Should().ContainSingle();
     }
 

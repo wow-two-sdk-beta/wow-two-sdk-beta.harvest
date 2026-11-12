@@ -89,7 +89,11 @@ internal sealed class ModuleSourceOverviewBroker(
                     WHERE m.value->>'kind'='image' ORDER BY m.position LIMIT 1),
                 (SELECT d->>'value' FROM jsonb_array_elements(CASE WHEN jsonb_typeof(p.base->'dates')='array'
                     THEN p.base->'dates' ELSE '[]'::jsonb END) d WHERE d->>'role'='end' LIMIT 1),
-                p.base->'postedAt'->>'value'
+                p.base->'postedAt'->>'value',
+                (SELECT coalesce(jsonb_agg(t.u ORDER BY t.pos), '[]'::jsonb)::text FROM (
+                    SELECT m.value->>'url' u, m.position pos FROM jsonb_array_elements(CASE WHEN jsonb_typeof(p.base->'media')='array'
+                        THEN p.base->'media' ELSE '[]'::jsonb END) WITH ORDINALITY m(value,position)
+                    WHERE m.value->>'kind'='image' AND m.value->>'url' IS NOT NULL ORDER BY m.position LIMIT @images) t)
             FROM harvest_posts p
             JOIN LATERAL (
                 SELECT l.url FROM harvest_post_links l WHERE l.container_id=p.container_id AND l.post_id=p.id AND l.source_id=@source
@@ -104,7 +108,7 @@ internal sealed class ModuleSourceOverviewBroker(
             ) fc ON true
             WHERE p.container_id=@container AND p.merged_into IS NULL
             ORDER BY p.first_seen_at DESC,p.id DESC LIMIT @limit
-            """, ("source", sourceId), ("container", source.ContainerId), ("limit", limit));
+            """, ("source", sourceId), ("container", source.ContainerId), ("limit", limit), ("images", SourceConstants.MaxPostImages));
         var posts = new List<SourcePostModel>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
@@ -125,6 +129,7 @@ internal sealed class ModuleSourceOverviewBroker(
                 ImageUrl = reader.IsDBNull(10) ? null : reader.GetString(10),
                 EndsAt = reader.IsDBNull(11) ? null : reader.GetString(11),
                 PostedAt = reader.IsDBNull(12) ? null : reader.GetString(12),
+                ImageUrls = System.Text.Json.JsonSerializer.Deserialize<string[]>(reader.GetString(13)) ?? [],
             });
         }
 

@@ -46,4 +46,8 @@ public sealed record SourcePostModel
     /// <summary>Gets the source URL of the first image in the post's resolved media; null when it has none. A stored
     /// copy (<see cref="PostMedia.FileRef"/>) is never used.</summary>
     public string? ImageUrl { get; init; }
+
+    /// <summary>Gets the source URLs of the post's resolved images in order, at most
+    /// <see cref="SourceConstants.MaxPostImages"/>; empty when it has none. The first is <see cref="ImageUrl"/>.</summary>
+    public IReadOnlyList<string> ImageUrls { get; init; } = [];
 }
