@@ -63,7 +63,7 @@ export default defineConfig(({ command, mode }) => {
       https: https ? {} : undefined,
       proxy: {
         '/api': {
-          target: process.env.VITE_API_TARGET ?? 'https://localhost:8396',
+          target: process.env.VITE_API_TARGET ?? 'https://localhost:8400',
           changeOrigin: false,
           secure: false,
         },
