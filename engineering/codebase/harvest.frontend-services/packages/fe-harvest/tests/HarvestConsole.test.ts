@@ -5,6 +5,7 @@ import { defineComponent, h, type VNodeChild } from 'vue';
 import HarvestConnectPanel from '../src/admin/harvestConsole/HarvestConnectPanel.vue';
 import HarvestConsoleProvider from '../src/admin/harvestConsole/HarvestConsoleProvider.vue';
 import HomePanel from '../src/admin/harvestConsole/HomePanel.vue';
+import PostPanel from '../src/admin/harvestConsole/PostPanel.vue';
 import SourcePanel from '../src/admin/harvestConsole/SourcePanel.vue';
 import SourcesGallery from '../src/admin/harvestConsole/SourcesGallery.vue';
 import AccessPanel from '../src/admin/harvestConsole/AccessPanel.vue';
@@ -214,7 +215,16 @@ function fixtureFetch({ groups = 1 }: { groups?: 1 | 2 } = {}) {
                               { kind: 'image', url: 'https://www.afisha.uz/media/show-3.jpg' },
                             ],
                           },
-                          links: [],
+                          links: [
+                            {
+                              id: 'link-1',
+                              sourceId: 'source-1',
+                              externalKey: 'show',
+                              url: 'https://www.afisha.uz/ru/fashion/show',
+                              state: 'live',
+                              role: 'primary',
+                            },
+                          ],
                           fieldSources: {},
                           firstSeenAtUtc: '2026-11-10T08:11:00Z',
                           lastChangedAtUtc: '2026-11-10T08:11:00Z',
@@ -481,61 +491,59 @@ describe('a source', () => {
     ]);
   });
 
-  it('opens a post with its revisions in words', async () => {
-    const wrapper = mountConsole({
+  it('opens a post on its own page with its revisions in words', async () => {
+    mountConsole({
       options: { client: createHarvestClient({ fetch: fixtureFetch() }) },
-      panels: () => h(SourcePanel, { sourceId: 'source-1', tab: 'posts', view: 'rows' }),
+      panels: () => h(PostPanel, { sourceId: 'source-1', postId: 'post-1' }),
     });
     await flushPromises();
-    await wrapper.get('[aria-label="Posts"] [role="row"] button').trigger('click');
-    await flushPromises();
-    const modal = document.body.querySelector('[data-post-modal]');
-    expect(modal?.textContent).toContain('Starts');
-    expect(modal?.textContent).toContain('Revision 2');
-    expect(modal?.textContent).toContain('the place changed');
-    expect(modal?.textContent).toContain('first harvest');
-    expect(modal?.querySelector('a[href="https://www.afisha.uz/ru/fashion/show"]')?.textContent).toContain(
-      'Open the original',
-    );
+    const page = document.body.querySelector('[aria-label="Post"]');
+    expect(page?.textContent).toContain('Starts');
+    expect(page?.textContent).toContain('Revision 2');
+    expect(page?.textContent).toContain('the place changed');
+    expect(page?.textContent).toContain('first harvest');
   });
 });
 
-describe('post images', () => {
-  /** Opens the Posts tab in `view` and the post whose title is `title`. */
-  async function openPost(title: string) {
-    const wrapper = mountConsole({
+describe('post page and cards', () => {
+  /** Mounts the page of the post with `postId` and returns the page's element. */
+  async function openPost(postId: string) {
+    mountConsole({
       options: { client: createHarvestClient({ fetch: fixtureFetch() }) },
-      panels: () => h(SourcePanel, { sourceId: 'source-1', tab: 'posts', view: 'rows' }),
+      panels: () => h(PostPanel, { sourceId: 'source-1', postId }),
     });
     await flushPromises();
-    await wrapper
-      .findAll('[aria-label="Posts"] [role="row"] button')
-      .find((item) => item.text() === title)!
-      .trigger('click');
-    await flushPromises();
-    return document.body.querySelector('[data-post-modal]')!;
+    return document.body.querySelector('[aria-label="Post"]')!;
   }
 
-  it('shows a post’s harvested images in the modal, one large and the rest beside it', async () => {
-    const modal = await openPost('Fashion Show Line 2026');
-    const images = [...modal.querySelectorAll('[data-post-images] img')].map((image) => image.getAttribute('src'));
+  it('shows a post’s harvested images on its page, one large and the rest beside it', async () => {
+    const page = await openPost('post-1');
+    const images = [...page.querySelectorAll('[data-post-images] img')].map((image) => image.getAttribute('src'));
     expect(images).toEqual([
       'https://www.afisha.uz/media/show-1.jpg',
       'https://www.afisha.uz/media/show-2.jpg',
       'https://www.afisha.uz/media/show-3.jpg',
     ]);
-    expect(modal.querySelector('[data-post-images] img')?.getAttribute('referrerpolicy')).toBe('no-referrer');
-    expect(modal.querySelector('[data-post-images] a')).toBeNull();
+    expect(page.querySelector('[data-post-images] img')?.getAttribute('referrerpolicy')).toBe('no-referrer');
+    expect(page.querySelector('[data-post-images] a')).toBeNull();
   });
 
   it('shows no image block for a post without images', async () => {
-    const modal = await openPost('A guide to the season’s fabrics');
-    expect(modal.textContent).toContain('Revision 1');
-    expect(modal.querySelector('[data-post-images]')).toBeNull();
-    expect(modal.querySelector('img')).toBeNull();
+    const page = await openPost('post-2');
+    expect(page.textContent).toContain('Revision 1');
+    expect(page.querySelector('[data-post-images]')).toBeNull();
+    expect(page.querySelector('img')).toBeNull();
   });
 
-  it('tops a post card with its first image, and leaves a card without one bare', async () => {
+  it('opens the original from the top right, or says why it cannot', async () => {
+    const live = await openPost('post-1');
+    const link = live.querySelector('header a[target="_blank"]');
+    expect(link?.textContent).toContain('Open the original');
+    expect(link?.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(live.querySelector('h1')?.textContent).toBe('Fashion Show Line 2026');
+  });
+
+  it('fills a post card with its first image, and gives a card without one a soft tile', async () => {
     const wrapper = mountConsole({
       options: { client: createHarvestClient({ fetch: fixtureFetch() }) },
       panels: () => h(SourcePanel, { sourceId: 'source-1', tab: 'posts', view: 'cards' }),
@@ -545,6 +553,34 @@ describe('post images', () => {
     expect(cards).toHaveLength(2);
     expect(cards[0]!.get('[data-post-image]').attributes('src')).toBe('https://www.afisha.uz/media/show-1.jpg');
     expect(cards[1]!.find('img').exists()).toBe(false);
+  });
+
+  it('writes a card’s pills in lower case, and never says when SCFD saw the post', async () => {
+    const wrapper = mountConsole({
+      options: { client: createHarvestClient({ fetch: fixtureFetch() }) },
+      panels: () => h(SourcePanel, { sourceId: 'source-1', tab: 'posts', view: 'cards' }),
+    });
+    await flushPromises();
+    for (const card of wrapper.findAll('ul[aria-label="Posts"] > li')) {
+      const pills = card.findAll('[data-tone]').map((pill) => pill.text());
+      expect(pills.length).toBeGreaterThan(0);
+      for (const text of pills) expect(text).toBe(text.toLowerCase());
+      expect(card.text()).not.toContain('seen');
+    }
+  });
+
+  it('puts an open-original button on a card with a link, and a disabled one on a card without', async () => {
+    const wrapper = mountConsole({
+      options: { client: createHarvestClient({ fetch: fixtureFetch() }) },
+      panels: () => h(SourcePanel, { sourceId: 'source-1', tab: 'posts', view: 'cards' }),
+    });
+    await flushPromises();
+    const [withLink, without] = wrapper.findAll('ul[aria-label="Posts"] > li');
+    const open = withLink!.get('a[target="_blank"]');
+    expect(open.attributes('href')).toBe('https://www.afisha.uz/ru/fashion/show');
+    expect(open.attributes('rel')).toBe('noopener noreferrer');
+    expect(without!.find('a[target="_blank"]').exists()).toBe(false);
+    expect(without!.get('[role="img"]').attributes('aria-label')).toBe('No link to the original');
   });
 });
 

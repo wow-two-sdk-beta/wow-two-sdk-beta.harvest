@@ -11,7 +11,7 @@ screens a console composes.
   and shares it with page panels in the operator's words — source, group, section, harvest, subscriber: `HomePanel`;
   `SourcesGallery` (groups as tiles, then each group's sources as cards or rows, with search and state filters,
   `SourceGroupsDialog` behind its Groups button); `SourcePanel` (a source's header card over its Overview, Posts,
-  Activity and, for operators, Settings tabs; a post opens in `PostModal` with its images, facts and revisions);
+  Activity and, for operators, Settings tabs; a post opens on its own page, `PostPanel`, with its images, facts and revisions);
   `SubscribersPanel`; `AccessPanel`. A section is turned on from the adapter's own section list, never a typed URL.
   `ContainerSwitch`, `ConsoleNotices` and `HarvestConnectPanel` fill the host's frame and signed-out screen. The
   provider's optional `HarvestClient` works in every form. Without a client it offers an API-key connection held only

@@ -36,6 +36,6 @@ export { default as HomePanel } from './harvestConsole/HomePanel.vue';
 export { default as SourcesGallery } from './harvestConsole/SourcesGallery.vue';
 export { default as SourceGroupsDialog } from './harvestConsole/SourceGroupsDialog.vue';
 export { default as SourcePanel } from './harvestConsole/SourcePanel.vue';
-export { default as PostModal } from './harvestConsole/PostModal.vue';
+export { default as PostPanel } from './harvestConsole/PostPanel.vue';
 export { default as SubscribersPanel } from './harvestConsole/SubscribersPanel.vue';
 export { default as AccessPanel } from './harvestConsole/AccessPanel.vue';

@@ -70,8 +70,10 @@ const crumbs = computed(() => {
   const source = session.overviewOf(id);
   const group = source ? session.groupOf(source.groupId) : undefined;
   const groupKey = group?.id ?? OtherGroupKey;
-  const tab = SourceTabLabels[routeName.value];
+  const isPost = routeName.value === 'source-post';
+  const tab = isPost ? 'Posts' : SourceTabLabels[routeName.value];
   const sourceHref = router.resolve({ name: 'source', params: { id } }).href;
+  const postsHref = router.resolve({ name: 'source-posts', params: { id } }).href;
   return [
     ...head,
     { label: page.label, href: router.resolve({ name: page.route }).href },
@@ -84,7 +86,8 @@ const crumbs = computed(() => {
         ]
       : []),
     tab ? { label: source?.name ?? 'Source', href: sourceHref } : { label: source?.name ?? 'Source' },
-    ...(tab ? [{ label: tab }] : []),
+    ...(tab ? [isPost ? { label: tab, href: postsHref } : { label: tab }] : []),
+    ...(isPost ? [{ label: 'Post' }] : []),
   ];
 });
 const account = computed(() => {

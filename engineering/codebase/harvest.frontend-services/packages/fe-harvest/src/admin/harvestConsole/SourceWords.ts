@@ -96,6 +96,17 @@ export function agoOf(value?: string, now = new Date()) {
   return days < 30 ? `${plural(days, 'day')} ago` : fullDate.format(date);
 }
 
+/** A public web address to link out to — `http` or `https`, with no credentials — or nothing. */
+export function webUrlOf(value?: string) {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** A calendar date: `21 Nov 2026`. */
 export function dateOf(value?: string) {
   const date = instant(value);

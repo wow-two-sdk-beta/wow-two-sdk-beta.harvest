@@ -27,7 +27,8 @@ const RemovedPages = ['pipelines', 'pipelines/:id', 'runs', 'posts', 'subscripti
 
 /**
  * Holds the route table: one console layout route, and a page per place in the operator's flow — Home; Sources and one
- * source with its tabs (`/sources/:id`, `/posts`, `/activity`, `/settings`); Subscribers; Access. Each title matches its
+ * source with its tabs (`/sources/:id`, `/posts`, `/activity`, `/settings`) and one of its posts
+ * (`/sources/:id/posts/:postId`); Subscribers; Access. Each title matches its
  * sidebar label. The Pipelines, Runs, Hosts, Posts and Subscriptions pages are gone; their paths redirect to Sources.
  */
 export const routes: RouteConfig = [
@@ -56,6 +57,15 @@ export const routes: RouteConfig = [
       },
       sourceTab('sources/:id', 'source', 'Source', 'overview'),
       sourceTab('sources/:id/posts', 'source-posts', 'Posts', 'posts'),
+      {
+        path: 'sources/:id/posts/:postId',
+        id: 'source-post',
+        handle: { title: 'Post' },
+        lazy: lazyPage(
+          () => import('../../presentation/console/pages/PostPage.vue'),
+          (route) => ({ sourceId: String(route.params['id'] ?? ''), postId: String(route.params['postId'] ?? '') }),
+        ),
+      },
       sourceTab('sources/:id/activity', 'source-activity', 'Activity', 'activity'),
       sourceTab('sources/:id/settings', 'source-settings', 'Settings', 'settings'),
       {

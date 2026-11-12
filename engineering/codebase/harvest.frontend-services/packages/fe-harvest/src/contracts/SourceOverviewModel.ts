@@ -125,6 +125,8 @@ export interface SourcePostModel {
   readonly startsAt?: string;
   /** The event end as stated; omitted when the post states none. */
   readonly endsAt?: string;
+  /** When the post itself was published at its source; omitted when its reader cannot tell. */
+  readonly postedAt?: string;
   /** The link's URL. */
   readonly url?: string;
   /** The post's first image, as the source published it; omitted when it has none. */

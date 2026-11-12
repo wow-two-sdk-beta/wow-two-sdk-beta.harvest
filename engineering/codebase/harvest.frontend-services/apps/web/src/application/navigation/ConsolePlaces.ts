@@ -7,6 +7,7 @@ export function placeLocation(place: ConsolePlace): RouteLocationRaw {
     case 'sources':
       return { name: 'sources', ...(place.group ? { hash: `#${groupElementId(place.group)}` } : {}) };
     case 'source':
+      if (place.post) return { name: 'source-post', params: { id: place.id, postId: place.post } };
       return {
         name: !place.tab || place.tab === 'overview' ? 'source' : `source-${place.tab}`,
         params: { id: place.id },

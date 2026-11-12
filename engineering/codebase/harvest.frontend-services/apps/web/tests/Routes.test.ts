@@ -135,19 +135,19 @@ describe('the Cards | Rows switch', () => {
   });
 });
 
-describe('a post', () => {
-  it('opens in a modal over the Posts tab without changing the route', async () => {
+describe('a post’s page', () => {
+  it('opens from the Posts tab at its own address and keeps the source current in the sidebar', async () => {
     const { router, wrapper } = await renderAt(`${Afisha}/posts`);
-    useGalleryView().value = 'rows';
-    await vi.waitFor(() =>
-      expect(wrapper.find('[role="table"][aria-label="Posts"] [role="row"] button').exists()).toBe(true),
-    );
-    const before = router.currentRoute.value.fullPath;
-    await wrapper.get('[role="table"][aria-label="Posts"] [role="row"] button').trigger('click');
-    await vi.waitFor(() =>
-      expect(document.body.querySelector('[data-post-modal]')?.textContent).toContain('Revision 2'),
-    );
-    expect(document.body.querySelector('[data-post-modal]')?.textContent).toContain('Дворец творчества молодёжи');
-    expect(router.currentRoute.value.fullPath).toBe(before);
+    await vi.waitFor(() => expect(wrapper.find('a[data-post-link]').exists()).toBe(true));
+    const link = wrapper.get('a[data-post-link]');
+    expect(link.attributes('href')).toMatch(new RegExp(`^${Afisha}/posts/[0-9a-f-]+$`));
+    await link.trigger('click');
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('source-post'));
+    await vi.waitFor(() => expect(wrapper.find('[aria-label="Post"] h1').exists()).toBe(true));
+    expect(wrapper.findAll('h1')).toHaveLength(1);
+    expect(wrapper.get('nav[aria-label="Console"] [aria-current="page"]').text()).toContain('Afisha.uz');
+    expect(wrapper.get('[data-app-frame-bar]').text()).toContain('Post');
+    await vi.waitFor(() => expect(wrapper.get('[aria-label="Post"]').text()).toContain('Revision 2'));
+    expect(wrapper.get('[aria-label="Post"]').text()).toContain('Дворец творчества молодёжи');
   });
 });

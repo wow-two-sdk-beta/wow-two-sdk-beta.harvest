@@ -16,8 +16,8 @@ export interface ConsoleSection {
   readonly destinations: readonly ConsoleDestination[];
 }
 
-/** The routes of one source's page: Overview, then its tabs. */
-export const SourceRoutes = ['source', 'source-posts', 'source-activity', 'source-settings'] as const;
+/** The routes of one source's page: Overview, its tabs, and one of its posts. */
+export const SourceRoutes = ['source', 'source-posts', 'source-post', 'source-activity', 'source-settings'] as const;
 
 /** The operator's sidebar, in order: Overview, Collect, Deliver, System. */
 export const ConsoleSections: readonly ConsoleSection[] = [

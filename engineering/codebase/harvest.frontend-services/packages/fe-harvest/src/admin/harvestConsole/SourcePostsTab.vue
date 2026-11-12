@@ -2,12 +2,12 @@
 import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue';
 import { SearchInput } from '@wow-two-beta/fe/presentation/forms';
 import type { SourceOverviewModel, SourcePostModel } from '../../contracts';
+import ConsoleLink from './ConsoleLink.vue';
 import FilterChip from './FilterChip.vue';
 import HarvestPill from './HarvestPill.vue';
-import PostModal from './PostModal.vue';
 import SourceIcon from './SourceIcon.vue';
 import { useHarvestConsole } from './HarvestConsole';
-import { agoOf, dateOf, imageSrcOf, kindPlural, timingOf, whenOf, type GalleryView } from './SourceWords';
+import { dateOf, imageSrcOf, kindPlural, timingOf, webUrlOf, type GalleryView } from './SourceWords';
 
 /**
  * A source's posts, newest first: a search, filter chips by section and by kind with their counts, and the posts as
@@ -25,7 +25,6 @@ const state = ref<'loading' | 'ready' | 'unavailable'>('loading');
 const search = ref('');
 const section = ref<string | null>(null);
 const kind = ref<string | null>(null);
-const openId = ref<string | null>(null);
 let read: AbortController | null = null;
 
 async function load() {
@@ -69,7 +68,6 @@ const shown = computed(() =>
     (post) => (!section.value || post.pipelineId === section.value) && (!kind.value || post.kind === kind.value),
   ),
 );
-const opened = computed(() => posts.value.find((post) => post.postId === openId.value));
 
 /** A post's own date when it has one, with `ongoing` or `finished` once its stated end allows — `1 Oct 2026 · ongoing`. */
 function startOf(post: SourcePostModel) {
@@ -79,9 +77,17 @@ function startOf(post: SourcePostModel) {
       .join(' · ') || undefined
   );
 }
-/** The line under a card's title: its date if any, and when SCFD first saw it — `21 Nov 2026 · seen 3 days ago`. */
+/** The line under a card's title: when the post itself was published, else its event date — `posted 12 Nov 2026`. */
 function cardLine(post: SourcePostModel) {
-  return [startOf(post), `seen ${agoOf(post.firstSeenAt)}`].filter(Boolean).join(' · ');
+  return post.postedAt ? `posted ${dateOf(post.postedAt)}` : startOf(post);
+}
+/** Why a post has no working link out: it is gone from its source, or it never had a link. */
+function unavailableWords(post: SourcePostModel) {
+  return post.state === 'gone' ? 'Removed from the source' : 'No link to the original';
+}
+/** The page a post opens, `/sources/{id}/posts/{postId}`. */
+function placeOf(post: SourcePostModel) {
+  return { kind: 'source', id: props.source.sourceId, tab: 'posts', post: post.postId } as const;
 }
 function sectionOf(post: SourcePostModel) {
   return post.pipelineId ? session.sectionLabel(post.pipelineId) : '—';
@@ -148,42 +154,43 @@ function sectionOf(post: SourcePostModel) {
         <span role="columnheader">Post</span>
         <span role="columnheader">Kind</span>
         <span role="columnheader" class="max-md:hidden">Section</span>
-        <span role="columnheader" class="max-md:hidden">Harvested</span>
+        <span role="columnheader" class="max-md:hidden">Posted</span>
       </div>
       <div
         v-for="post in shown"
         :key="post.postId"
         role="row"
-        class="relative grid min-h-16 grid-cols-[minmax(0,1fr)_7rem_9rem_8rem] items-center gap-4 border-b border-border px-5 py-2.5 last:border-b-0 hover:bg-muted/40 has-[button:focus-visible]:outline-2 has-[button:focus-visible]:-outline-offset-2 has-[button:focus-visible]:outline-ring max-md:grid-cols-[minmax(0,1fr)_6rem]"
+        class="relative grid min-h-16 grid-cols-[minmax(0,1fr)_7rem_9rem_8rem] items-center gap-4 border-b border-border px-5 py-2.5 last:border-b-0 hover:bg-muted/40 has-[a[data-post-link]:focus-visible]:outline-2 has-[a[data-post-link]:focus-visible]:-outline-offset-2 has-[a[data-post-link]:focus-visible]:outline-ring max-md:grid-cols-[minmax(0,1fr)_6rem]"
       >
         <span role="cell" class="min-w-0">
-          <button
-            type="button"
+          <ConsoleLink
+            :to="placeOf(post)"
             class="block max-w-full truncate text-start text-[15px] font-semibold outline-none after:absolute after:inset-0 after:content-['']"
-            @click="openId = post.postId"
+            v-bind="{ 'data-post-link': '' }"
           >
             {{ post.title ?? 'Untitled post' }}
-          </button>
+          </ConsoleLink>
           <span v-if="startOf(post)" class="block text-[13px] text-muted-foreground">{{ startOf(post) }}</span>
         </span>
         <span role="cell">
           <HarvestPill :tone="post.kind === 'event' ? 'success' : 'outline'">{{ post.kind }}</HarvestPill>
         </span>
         <span role="cell" class="truncate max-md:hidden">{{ sectionOf(post) }}</span>
-        <span role="cell" class="max-md:hidden">{{ whenOf(post.firstSeenAt) }}</span>
+        <span role="cell" class="max-md:hidden">{{ post.postedAt ? dateOf(post.postedAt) : '—' }}</span>
       </div>
     </div>
     <ul v-else class="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-3" aria-label="Posts">
       <li
         v-for="post in shown"
         :key="post.postId"
-        class="group relative isolate flex aspect-[4/5] min-w-0 flex-col justify-end overflow-hidden rounded-2xl border border-border bg-muted hover:border-primary/40 has-[button:focus-visible]:outline-2 has-[button:focus-visible]:outline-offset-2 has-[button:focus-visible]:outline-ring"
+        class="group relative isolate flex aspect-[4/5] min-w-0 flex-col justify-end overflow-hidden rounded-2xl border border-border bg-muted hover:border-primary/40 has-[a[data-post-link]:focus-visible]:outline-2 has-[a[data-post-link]:focus-visible]:outline-offset-2 has-[a[data-post-link]:focus-visible]:outline-ring"
       >
         <img
           v-if="imageSrcOf(post.imageUrl)"
           :src="imageSrcOf(post.imageUrl)"
           alt=""
           class="absolute inset-0 -z-10 size-full object-cover transition-transform duration-300 group-hover:scale-105 motion-reduce:transition-none motion-reduce:group-hover:scale-100"
+          :class="post.state === 'gone' ? 'grayscale' : ''"
           loading="lazy"
           decoding="async"
           referrerpolicy="no-referrer"
@@ -196,33 +203,74 @@ function sectionOf(post: SourcePostModel) {
         >
           <SourceIcon :family="props.source.family" size="lg" bare />
         </div>
+        <a
+          v-if="webUrlOf(post.url) && post.state !== 'gone'"
+          :href="webUrlOf(post.url)"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="absolute top-3 right-3 z-20 inline-flex size-8 items-center justify-center rounded-full border border-white/20 bg-black/35 text-white backdrop-blur-md transition-colors hover:bg-black/55 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+          :aria-label="`Open the original of ${post.title ?? 'this post'}`"
+          :title="
+            post.state === 'suspect'
+              ? 'Open the original — the last check could not confirm it is still there'
+              : 'Open the original'
+          "
+        >
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M7 17 17 7M8 7h9v9" />
+          </svg>
+        </a>
+        <span
+          v-else
+          class="absolute top-3 right-3 z-20 inline-flex size-8 items-center justify-center rounded-full border border-dashed border-white/30 bg-black/25 text-white/60 backdrop-blur-md"
+          role="img"
+          :aria-label="unavailableWords(post)"
+          :title="unavailableWords(post)"
+        >
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M7 17 17 7M8 7h9v9M4 4l16 16" />
+          </svg>
+        </span>
         <div
           class="pointer-events-none absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-black/80 via-black/45 to-transparent backdrop-blur-xl [-webkit-mask-image:linear-gradient(to_top,black_50%,transparent)] [mask-image:linear-gradient(to_top,black_50%,transparent)]"
           aria-hidden="true"
         ></div>
-        <div class="relative flex h-[8.5rem] min-w-0 flex-col gap-2 p-4 text-white">
+        <div class="z-10 flex h-[8.5rem] min-w-0 flex-col gap-2 p-4 text-white">
           <div class="flex flex-wrap gap-1.5">
             <HarvestPill :tone="post.kind === 'event' ? 'glassSuccess' : 'glass'">{{ post.kind }}</HarvestPill>
-            <HarvestPill v-if="post.pipelineId" tone="glass">{{ sectionOf(post) }}</HarvestPill>
+            <HarvestPill v-if="post.pipelineId" tone="glass">{{ sectionOf(post).toLowerCase() }}</HarvestPill>
+            <HarvestPill v-if="post.state === 'gone'" tone="glass">removed</HarvestPill>
           </div>
-          <button
-            type="button"
+          <ConsoleLink
+            :to="placeOf(post)"
             class="line-clamp-2 min-h-[2lh] text-start text-[15px] leading-snug font-semibold outline-none after:absolute after:inset-0 after:content-['']"
-            @click="openId = post.postId"
+            v-bind="{ 'data-post-link': '' }"
           >
             {{ post.title ?? 'Untitled post' }}
-          </button>
+          </ConsoleLink>
           <p class="mt-auto truncate text-[13px] text-white/75">{{ cardLine(post) }}</p>
         </div>
       </li>
     </ul>
-
-    <PostModal
-      :open="openId !== null"
-      :post="opened"
-      :source-name="props.source.name"
-      :section-name="opened ? sectionOf(opened) : undefined"
-      @update:open="(open) => !open && (openId = null)"
-    />
   </div>
 </template>

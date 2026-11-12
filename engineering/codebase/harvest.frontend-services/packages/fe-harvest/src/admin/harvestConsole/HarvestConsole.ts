@@ -44,7 +44,7 @@ export type SourceTab = 'overview' | 'posts' | 'activity' | 'settings';
 export type ConsolePlace =
   | { readonly kind: 'home' }
   | { readonly kind: 'sources'; readonly group?: string }
-  | { readonly kind: 'source'; readonly id: string; readonly tab?: SourceTab }
+  | { readonly kind: 'source'; readonly id: string; readonly tab?: SourceTab; readonly post?: string }
   | { readonly kind: 'subscribers' }
   | { readonly kind: 'access' };
 
