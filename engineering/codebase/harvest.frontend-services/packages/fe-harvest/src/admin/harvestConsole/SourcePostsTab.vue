@@ -7,6 +7,7 @@ import {
   CarouselSlide,
   CarouselSlides,
   CarouselViewport,
+  DotsIndicator,
 } from '@wow-two-beta/fe/presentation/display';
 import { SearchInput } from '@wow-two-beta/fe/presentation/forms';
 import type { SourceOverviewModel, SourcePostModel } from '../../contracts';
@@ -95,6 +96,14 @@ function cardLine(post: SourcePostModel) {
 /** Why a post has no working link out: it is gone from its source, or it never had a link. */
 function unavailableWords(post: SourcePostModel) {
   return post.state === 'gone' ? 'Removed from the source' : 'No link to the original';
+}
+/** Which image each card's carousel shows, by post. */
+const imageIndexes = ref<Record<string, number>>({});
+function imageIndexOf(post: SourcePostModel) {
+  return imageIndexes.value[post.postId] ?? 0;
+}
+function showImage(post: SourcePostModel, index: number) {
+  imageIndexes.value = { ...imageIndexes.value, [post.postId]: index };
 }
 /** The page a post opens, `/sources/{id}/posts/{postId}`. */
 /**
@@ -210,7 +219,13 @@ function sectionOf(post: SourcePostModel) {
         :key="post.postId"
         class="group relative isolate flex aspect-[4/5] min-w-0 flex-col justify-end overflow-hidden rounded-2xl border border-border bg-muted hover:border-primary/40 has-[a[data-post-link]:focus-visible]:outline-2 has-[a[data-post-link]:focus-visible]:outline-offset-2 has-[a[data-post-link]:focus-visible]:outline-ring"
       >
-        <Carousel v-if="imagesOf(post).length" :can-loop="imagesOf(post).length > 1" class="absolute inset-0 size-full">
+        <Carousel
+          v-if="imagesOf(post).length"
+          :index="imageIndexOf(post)"
+          :can-loop="imagesOf(post).length > 1"
+          class="absolute inset-0 size-full"
+          @update:index="showImage(post, $event)"
+        >
           <CarouselViewport
             class="size-full rounded-none"
             v-bind="{ tabindex: -1, 'aria-label': 'Photos of this post' }"
@@ -239,6 +254,17 @@ function sectionOf(post: SourcePostModel) {
           aria-hidden="true"
         >
           <SourceIcon :family="props.source.family" size="lg" bare />
+        </div>
+        <div
+          v-if="imagesOf(post).length > 1"
+          class="pointer-events-none absolute inset-x-0 top-3 z-10 flex h-8 items-center justify-center"
+        >
+          <DotsIndicator
+            :count="imagesOf(post).length"
+            :index="imageIndexOf(post)"
+            :visible-count="5"
+            class="rounded-full bg-black/30 px-2 py-1.5 text-white backdrop-blur-md"
+          />
         </div>
         <a
           v-if="webUrlOf(post.url) && post.state !== 'gone'"

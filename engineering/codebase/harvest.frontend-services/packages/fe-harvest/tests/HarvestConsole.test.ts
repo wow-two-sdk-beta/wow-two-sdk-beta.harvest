@@ -572,11 +572,14 @@ describe('post page and cards', () => {
     ]);
     const track = several!.get('[aria-live]');
     expect(track.attributes('style')).toContain('translateX(-0%)');
+    expect(several!.get('[role="img"][aria-label$="of 2"]').attributes('aria-label')).toBe('1 of 2');
     await several!.get('button[aria-label="Next slide"]').trigger('click');
     expect(track.attributes('style')).toContain('translateX(-100%)');
+    expect(several!.get('[role="img"][aria-label$="of 2"]').attributes('aria-label')).toBe('2 of 2');
     await several!.get('button[aria-label="Previous slide"]').trigger('click');
     expect(track.attributes('style')).toContain('translateX(-0%)');
     expect(none!.find('button[aria-label="Next slide"]').exists()).toBe(false);
+    expect(none!.find('[role="img"][aria-label$="of 2"]').exists()).toBe(false);
   });
 
   it('shows a one-image card the same two arrows, disabled', async () => {
