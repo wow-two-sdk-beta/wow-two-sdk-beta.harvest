@@ -99,10 +99,10 @@ function unavailableWords(post: SourcePostModel) {
 /** The page a post opens, `/sources/{id}/posts/{postId}`. */
 /**
  * The two arrows of a card's carousel: glass buttons centred on the card's height, shown only while the card is
- * hovered or focused.
+ * hovered or focused. A one-image card shows the same two, dimmed and inert, so every card reads alike.
  */
 const ArrowClass =
-  'z-20 size-8 border border-white/20 bg-black/35 text-white ring-0 backdrop-blur-md opacity-0 transition-opacity hover:bg-black/55 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100';
+  'z-20 size-8 border border-white/20 bg-black/35 text-white ring-0 backdrop-blur-md opacity-0 transition-opacity hover:bg-black/55 group-hover:opacity-100 group-hover:disabled:opacity-40 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 [@media(hover:none)]:disabled:opacity-40';
 /** A post's usable images in order: the list's `imageUrls`, else its first image alone. */
 function imagesOf(post: SourcePostModel) {
   const urls = post.imageUrls?.length ? post.imageUrls : post.imageUrl ? [post.imageUrl] : [];
@@ -210,7 +210,7 @@ function sectionOf(post: SourcePostModel) {
         :key="post.postId"
         class="group relative isolate flex aspect-[4/5] min-w-0 flex-col justify-end overflow-hidden rounded-2xl border border-border bg-muted hover:border-primary/40 has-[a[data-post-link]:focus-visible]:outline-2 has-[a[data-post-link]:focus-visible]:outline-offset-2 has-[a[data-post-link]:focus-visible]:outline-ring"
       >
-        <Carousel v-if="imagesOf(post).length > 1" can-loop class="absolute inset-0 size-full">
+        <Carousel v-if="imagesOf(post).length" :can-loop="imagesOf(post).length > 1" class="absolute inset-0 size-full">
           <CarouselViewport
             class="size-full rounded-none"
             v-bind="{ tabindex: -1, 'aria-label': 'Photos of this post' }"
@@ -233,17 +233,6 @@ function sectionOf(post: SourcePostModel) {
           <CarouselPrev :class="ArrowClass" class="left-2" />
           <CarouselNext :class="ArrowClass" class="right-2" />
         </Carousel>
-        <img
-          v-else-if="imagesOf(post).length === 1"
-          :src="imagesOf(post)[0]"
-          alt=""
-          class="absolute inset-0 -z-10 size-full object-cover transition-transform duration-300 group-hover:scale-105 motion-reduce:transition-none motion-reduce:group-hover:scale-100"
-          :class="post.state === 'gone' ? 'grayscale' : ''"
-          loading="lazy"
-          decoding="async"
-          referrerpolicy="no-referrer"
-          v-bind="{ 'data-post-image': '' }"
-        />
         <div
           v-else
           class="absolute inset-0 -z-10 flex items-start justify-center bg-gradient-to-br from-primary-soft to-muted pt-[18%]"

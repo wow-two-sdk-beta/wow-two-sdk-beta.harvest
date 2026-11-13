@@ -579,6 +579,28 @@ describe('post page and cards', () => {
     expect(none!.find('button[aria-label="Next slide"]').exists()).toBe(false);
   });
 
+  it('shows a one-image card the same two arrows, disabled', async () => {
+    const base = fixtureFetch();
+    const single = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const response = await base(input, init);
+      const path = new URL(input instanceof Request ? input.url : String(input), 'https://harvest.example.test')
+        .pathname;
+      if (path !== '/api/sources/source-1/posts') return response;
+      const body = (await response.json()) as { data: { imageUrl?: string; imageUrls?: string[] }[] };
+      body.data[0]!.imageUrls = [body.data[0]!.imageUrl!];
+      return Response.json(body);
+    });
+    const wrapper = mountConsole({
+      options: { client: createHarvestClient({ fetch: single }) },
+      panels: () => h(SourcePanel, { sourceId: 'source-1', tab: 'posts', view: 'cards' }),
+    });
+    await flushPromises();
+    const [card] = wrapper.findAll('ul[aria-label="Posts"] > li');
+    expect(card!.findAll('[data-post-image]')).toHaveLength(1);
+    expect(card!.get('button[aria-label="Previous slide"]').attributes('disabled')).toBeDefined();
+    expect(card!.get('button[aria-label="Next slide"]').attributes('disabled')).toBeDefined();
+  });
+
   it('writes a card’s pills in lower case, and never says when SCFD saw the post', async () => {
     const wrapper = mountConsole({
       options: { client: createHarvestClient({ fetch: fixtureFetch() }) },
