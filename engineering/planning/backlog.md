@@ -1,6 +1,6 @@
 # SCFD — Backlog
 
-*Last updated: 2026-11-10*
+*Last updated: 2026-11-13*
 
 Every unbuilt item, grouped; top of each group = next. Shipped work lives in [`version-track/`](version-track/).
 Shape: wow-two-ws/conventions/planning/version-track/version-track.md
@@ -41,6 +41,7 @@ Picks for `system/sessions/events-integration` in wow-two-ws (P1 = this goal, P2
 
 | Item | Type | Notes |
 |---|---|---|
+| De-duplicate a post's images | feature | a post lists one picture at two sizes (Afisha: `…_l.webp` from `og:image`, `…_m.webp` from the page), so the console's carousel steps between near-identical images; needs a rule that keeps the largest size per picture in the reader, a generic de-dup by `PostMedia.Hash` once images are fetched, the posts list counting distinct pictures, and a `refresh` run for stored posts (console live edits, 2026-11-13) |
 | Telegram `t.me/s` reader | feature | a reader in `sources/` |
 | Live event-source coverage | feature | complete bounded acceptance of ANONS, Craftfair and Uzexpocentre, and review dates and access evidence, as Afisha passed on dev |
 | Ocharo Identity on the source host | feature | operator email sign-in passes on the local console; the phone/code round trip, role review, sign-out and restart checks remain |
