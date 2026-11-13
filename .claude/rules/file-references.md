@@ -45,10 +45,10 @@
 | `packages/Client` | Forms 2/3: the broker over the service's HTTP API, `AddHarvestClient()` |
 | `packages/Testing` | `FakeRegistrationBroker` and the conformance suite |
 | `packages/Hosting` | shared startup, access policies and HTTP controllers both hosts compose |
-| `sources/{Afisha,Anons,Caex,Craftfair,Olx,Uzexpocentre}` | named source readers: adapter, capture reader, no network I/O |
+| `sources/{Afisha,Anons,Caex,Craftfair,Domtut,Olx,Uzexpocentre}` | named source readers: adapter, capture reader, no network I/O |
 | `sources/Instagram` | opt-in Business Discovery client and source broker, disabled by default |
 | `sources/Integrations` | opt-in proxy/IP lease, supplied-session and CAPTCHA clients, disabled by default |
-| `sources/Module` | source composition: the Ocharo registry, preset, provisioner and `ocharo-fashion-v1` filter; the marketplace (OLX) |
+| `sources/Module` | source composition: the Ocharo registry, preset, provisioner and `ocharo-fashion-v1` filter; the marketplace (OLX, Domtut), its profiles and provisioner |
 | `service/HarvestSources.Api` | the deployed host: Hosting, the source readers, the Ocharo routes and the `ocharo` host verb; serves no console |
 | `tests/Harvest.Tests.{Unit,Integration,E2E,Conformance,Migrations}` | the engine test tiers |
 | `tests/HarvestAdapters.Tests.{Unit,Integration}` · `tests/HarvestSources.Tests.E2E` | the source tiers: reader fixtures, pipelines over PostgreSQL, the source host and its verbs |

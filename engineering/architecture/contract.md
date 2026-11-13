@@ -242,7 +242,7 @@ operator setup (`HarvestSources:Audience` `internal` only):
 
 ### Marketplace sources
 
-- `AddHarvestListingSources` composes the `olx-uz` adapter, the `marketplace-listing-v1` delivery filter (listings
+- `AddHarvestListingSources` composes the `olx-uz` and `domtut-uz` adapters, the `marketplace-listing-v1` delivery filter (listings
   only) and `MarketplaceProvisioner`; registration creates no rows. Listing posts skip the fashion-event filter.
 - A marketplace profile (`MarketplaceProfiles`) names a consumer's tenant, private container, saved searches, cadence,
   run budget and key name. Setup applies it idempotently, like Ocharo's, through the `marketplace setup|status` verb
@@ -262,6 +262,9 @@ operator setup (`HarvestSources:Audience` `internal` only):
   supported public routes; known-link checks validate the ad ID, explicit unavailable markers and matching native
   status. An unknown layout, challenge or unrelated redirect stays inconclusive; search windows never establish
   disappearance. [OLX review](../research/olx-source-review.md)
+- Domtut reads the server-rendered new-build catalog (`/catalog-nedvijimosty`) and complex pages, keyed by the page's
+  numeric post ID; its `/filter/` searches, rent included, are JavaScript shells and are not fetched. A redirect to
+  `/404`, which robots.txt disallows, stays inconclusive. `sources/Domtut/domtut.md`
 
 ---
 

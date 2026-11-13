@@ -11,6 +11,7 @@
     <Project Path="sources/Anons/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Anons.csproj" />
     <Project Path="sources/Caex/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Caex.csproj" />
     <Project Path="sources/Craftfair/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Craftfair.csproj" />
+    <Project Path="sources/Domtut/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Domtut.csproj" />
     <Project Path="sources/Instagram/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Instagram.csproj" />
     <Project Path="sources/Integrations/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Integrations.csproj" />
     <Project Path="sources/Module/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Module.csproj" />

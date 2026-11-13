@@ -19,6 +19,7 @@
     <ProjectReference Include="..\Integrations\WoW.Two.Sdk.Beta.Be.HarvestAdapters.Integrations.csproj" />
     <ProjectReference Include="..\Instagram\WoW.Two.Sdk.Beta.Be.HarvestAdapters.Instagram.csproj" />
     <ProjectReference Include="..\Olx\WoW.Two.Sdk.Beta.Be.HarvestAdapters.Olx.csproj" />
+    <ProjectReference Include="..\Domtut\WoW.Two.Sdk.Beta.Be.HarvestAdapters.Domtut.csproj" />
     <ProjectReference Include="../../packages/Module/WoW.Two.Sdk.Beta.Be.Harvest.Module.csproj" />
   </ItemGroup>
 

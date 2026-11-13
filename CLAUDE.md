@@ -21,7 +21,7 @@ engineering/             ← the HOW
 ├── deployment/          ← deploy.yml · Dockerfile · docker-compose.yml · .env.example · deployment.md
 ├── research/ · scripts/ ← source and provider reviews · release helpers publish-packages.yml calls
 └── codebase/            ← THE CODE — only place code lives
-    ├── harvest.backend-services/    ← SCFD.BackendServices.slnx: packages/{Abstractions,Module,Client,Testing,Hosting} (NuGet) · sources/{Afisha,Anons,Caex,Craftfair,Instagram,Integrations,Olx,Uzexpocentre,Module} (image only) · service/HarvestSources.Api · tests/ · tools/
+    ├── harvest.backend-services/    ← SCFD.BackendServices.slnx: packages/{Abstractions,Module,Client,Testing,Hosting} (NuGet) · sources/{Afisha,Anons,Caex,Craftfair,Domtut,Instagram,Integrations,Olx,Uzexpocentre,Module} (image only) · service/HarvestSources.Api · tests/ · tools/
     └── harvest.frontend-services/   ← pnpm workspace: packages/fe-harvest (npm: contracts · kit · admin) · standalone demo
 ```
 
