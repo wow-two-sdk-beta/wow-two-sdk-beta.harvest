@@ -1,8 +1,9 @@
 # HarvestAdapters.Module
 
 Source composition over Harvest.Module: Afisha, ANONS, CAEx, Craftfair/Hunarmand, Uzexpocentre, the
-`ocharo-fashion-v1` delivery filter and explicit repeatable source setup (`Ocharo/`); OLX listings
-(`Marketplace/`, `AddHarvestListingSources`).
+`ocharo-fashion-v1` delivery filter and explicit repeatable source setup (`Ocharo/`); OLX listings, the
+`marketplace-listing-v1` filter and repeatable marketplace profiles such as Haven's (`Marketplace/`,
+`AddHarvestListingSources`, `MarketplaceProvisioner`).
 
 Not packable: `HarvestSources.Api` references this project and the image ships it.
 

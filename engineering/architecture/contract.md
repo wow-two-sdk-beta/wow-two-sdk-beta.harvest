@@ -242,9 +242,22 @@ operator setup (`HarvestSources:Audience` `internal` only):
 
 ### Marketplace sources
 
-- `AddHarvestListingSources` composes the `olx-uz` adapter and creates no source rows, schedules or subscriptions.
-  Operators register an OLX source with a saved category or search URL through the registry API and subscribe to
-  `wow2.post.v1`; listing posts skip the fashion-event filter.
+- `AddHarvestListingSources` composes the `olx-uz` adapter, the `marketplace-listing-v1` delivery filter (listings
+  only) and `MarketplaceProvisioner`; registration creates no rows. Listing posts skip the fashion-event filter.
+- A marketplace profile (`MarketplaceProfiles`) names a consumer's tenant, private container, saved searches, cadence,
+  run budget and key name. Setup applies it idempotently, like Ocharo's, through the `marketplace setup|status` verb
+  and operator routes (`internal` only):
+
+| Method | Route | Policy | Result |
+|---|---|---|---|
+| GET | `/api/marketplace/profiles` | operator `tenants:manage` | the reviewed profiles; a read neither provisions nor fetches |
+| POST | `/api/marketplace/{profile}/setup` | operator `tenants:manage` | `{ profile, tenantId, containerId, sourceId, searches: [{ key, url, pipelineId, subscriptionId }], consumerKey? }` |
+| GET | `/api/marketplace/{profile}/status` | operator `tenants:manage` | each search's pipeline with its schedules, its subscription and the active key count |
+
+- Setup takes `{ enableSchedules: false, issueKey: false, rotateKey: false }`. One pipeline and one `wow2.post.v1`
+  subscription per search, context `catalog` and `search`. The consumer's tenant key holds `events:read` only;
+  `consumerKey.secret` is present only in the response that issued it. Haven's profile and target steps:
+  `engineering/deployment/deployment.md` § Provisioning Haven on a target.
 - OLX implements `IFetchDestinationPolicy` and `ILinkAvailabilityReader`: initial and redirected requests stay on
   supported public routes; known-link checks validate the ad ID, explicit unavailable markers and matching native
   status. An unknown layout, challenge or unrelated redirect stays inconclusive; search windows never establish

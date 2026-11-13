@@ -137,6 +137,38 @@ when setup has not run for the tenant.
 The HTTP form, `POST /api/ocharo/sources/setup`, takes `{ enableSchedules, includeInstagram, groupIds? }` with the
 operator key or token: `engineering/architecture/contract.md` § Source host.
 
+## Provisioning Haven on a target
+
+`dotnet HarvestSources.Api.dll marketplace setup --profile haven [--schedules] [--run] [--issue-key]` applies the
+`haven` marketplace profile on the target's own settings through Wheelhouse Run, with no listener and no operator token.
+A profile is data (`sources/Module/Marketplace/MarketplaceProfiles.cs`); another product adds a profile, not a verb.
+
+- It creates or reuses tenant `haven`, the private container `haven-listings`, one OLX source (`www.olx.uz`, private,
+  AI off, robots obeyed, `web-direct` checks) and one pipeline per saved search: Tashkent apartments and houses for
+  long-term rent and Tashkent daily rent, each read newest first. Each pipeline gets one `wow2.post.v1` subscription
+  with filter `marketplace-listing-v1` (listings only) and context `catalog=haven-rent-res`, `search=<key>`. Repeating
+  the verb keeps every existing row.
+- Schedules stay off unless `--schedules` is given: capture every 2 h and a daily link check, keeping an interval an
+  operator tuned. A run reads at most 60 ads (`maxItems`); its page budget, 64, counts each ad's detail page too.
+- `--run` queues one bounded capture run per search for the running worker.
+- Haven's credential is a tenant API key named `haven-supply` with `events:read` only, sent as `X-Api-Key`.
+  `--issue-key` issues it when the tenant holds no active one; `--rotate-key` revokes the active ones and issues a new
+  one. The secret appears once, in the last stdout line, never on stderr; move it into Haven's target setting without
+  printing it. Picked over an OAuth client: an OAuth client needs a release of the issuer's Identity (Ocharo's on dev)
+  and a `ClientGrantsJson` redeploy here, and production has no SCFD issuer yet.
+- The last stdout line is one JSON object: `profile`, `tenantId`, `containerId`, `sourceId`, `searches` (`key`, `url`,
+  `pipelineId`, `subscriptionId`), `consumerKey` (`id`, `prefix`, `secret` only when issued) and `runs`.
+- Haven Supply reads one subscription per search, each with its own cursor; a pull page is
+  `{ data: { data, next, hasMore } }` and each listing link carries `captureId`, `externalKey`, `capturedAtUtc` and
+  `sourceFields` with schema `olx.ad.v1`. A post Haven already received also reaches it as `link.state` (`suspect`,
+  `gone`, `relisted`) and as merges.
+
+`dotnet HarvestSources.Api.dll marketplace status --profile haven` writes nothing; its last stdout line gives the active
+key count and, per search, each schedule's cadence, next due time and latest run.
+
+The HTTP form, `POST /api/marketplace/haven/setup` with `{ enableSchedules, issueKey, rotateKey }`, and
+`GET /api/marketplace/profiles` / `GET /api/marketplace/haven/status` take the operator key or token.
+
 ## Integrations
 
 Every provider integration ships in the image and stays off until explicitly configured: `HarvestIntegrations:Enabled`,
