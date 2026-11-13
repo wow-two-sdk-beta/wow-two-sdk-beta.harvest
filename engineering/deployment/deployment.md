@@ -164,7 +164,12 @@ A profile is data (`sources/Module/Marketplace/MarketplaceProfiles.cs`); another
   `gone`, `relisted`) and as merges.
 
 `dotnet HarvestSources.Api.dll marketplace status --profile haven` writes nothing; its last stdout line gives the active
-key count and, per search, each schedule's cadence, next due time and latest run.
+key count and, per search, each schedule's cadence, next due time, latest run and the events its subscription's first
+pull page holds (`events 5`, `events 100+`), so the deployed host proves delivery with no consumer key.
+
+Through Wheelhouse Run, the job record never holds the issued secret: the runner cuts token-like runs out of the last
+line and keeps that line for the owner to read once, within 15 minutes, beside the job. Issue the key when Haven's
+target is ready to take it.
 
 The HTTP form, `POST /api/marketplace/haven/setup` with `{ enableSchedules, issueKey, rotateKey }`, and
 `GET /api/marketplace/profiles` / `GET /api/marketplace/haven/status` take the operator key or token.

@@ -77,7 +77,7 @@ public sealed class MarketplaceSetupVerbTests
         last.Length.Should().BeLessThan(600);
         var lines = JsonDocument.Parse(last).RootElement.GetProperty("pipelines").EnumerateArray().Select(item => item.GetString()!).ToArray();
         lines.Should().HaveCount(3).And.OnlyContain(line => line.Contains("capture 2h due ") && line.Contains("check 1d due ")
-            && !line.Contains("no subscription"));
+            && line.EndsWith("; events 0", StringComparison.Ordinal));
         again.Output.Should().Be(status.Output, "status reads and never queues or writes");
     }
 

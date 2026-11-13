@@ -1,5 +1,6 @@
 using System.Text.Json;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
+using WoW.Two.Sdk.Beta.Be.Harvest.Delivery;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Runs;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Marketplace;
@@ -17,7 +18,8 @@ namespace HarvestSources.Api.Marketplace;
 ///   - stderr carries the report; the last stdout line is one JSON object with the tenant, container, source, searches
 ///     (pipeline and subscription each), the consumer key and queued runs
 ///   - <c>marketplace status --profile &lt;key&gt;</c> writes nothing; its last stdout line names each search's cadence,
-///     next due time and latest run of its kind
+///     next due time, latest run of its kind and how many events its subscription's first pull page holds
+///     (<c>events 100+</c> past one page), so a deployed host proves delivery with no consumer key
 ///   - exit codes: <c>0</c> done, <c>1</c> refused by setup or a run, or nothing to read, <c>2</c> usage
 /// </remarks>
 public static class MarketplaceSetupVerb
@@ -115,6 +117,7 @@ public static class MarketplaceSetupVerb
         }
 
         var runs = services.GetRequiredService<IRunBroker>();
+        var delivery = services.GetRequiredService<IDeliveryBroker>();
         var lines = new List<string>();
         foreach (var search in status.Searches)
         {
@@ -132,7 +135,10 @@ public static class MarketplaceSetupVerb
                 return $"{Snake(schedule.Kind)} {cadence}" + (last is null ? "" : $" last {Snake(last.Status)}"
                     + (last.CompletionReason is { } reason ? "/" + Snake(reason) : "") + " " + Time(last.FinishedAtUtc ?? last.QueuedAtUtc));
             });
-            string line = search.Key + " " + string.Join("; ", parts) + (search.SubscriptionId is null ? " no subscription" : "");
+            string delivered = search.SubscriptionId is not { } subscription ? " no subscription"
+                : await delivery.PullAsync(subscription, null, 100, ct) is Result<CursorPage<DeliveryEvent>>.Success { Value: var page }
+                    ? $"; events {page.Data.Count}{(page.HasMore ? "+" : "")}" : "; events unreadable";
+            string line = search.Key + " " + string.Join("; ", parts) + delivered;
             lines.Add(line);
             await error.WriteLineAsync($"{line} (pipeline {pipeline.Id}, subscription {search.SubscriptionId})");
         }
