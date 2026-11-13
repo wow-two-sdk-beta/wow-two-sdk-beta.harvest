@@ -30,6 +30,9 @@ public sealed class MarketplaceProfilesTests
         foreach (MarketplaceSearch search in MarketplaceProfiles.All.SelectMany(profile => profile.Searches))
         {
             var url = new Uri(search.Url);
+            url.IdnHost.Should().Be(search.Site.Handle, search.Key);
+            if (search.Site != MarketplaceSite.Olx)
+                continue;
             reader.Allows(url).Should().BeTrue(search.Key);
             Uri.UnescapeDataString(url.Query).Should().Be("?search[order]=created_at:desc", search.Key);
         }

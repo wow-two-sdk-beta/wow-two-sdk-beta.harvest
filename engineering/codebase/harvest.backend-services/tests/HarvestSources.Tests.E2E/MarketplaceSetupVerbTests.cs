@@ -30,8 +30,9 @@ public sealed class MarketplaceSetupVerbTests
         result.GetProperty("consumerKey").ValueKind.Should().Be(JsonValueKind.Null, "setup issues no key unless asked");
         again.Exit.Should().Be(0, again.Error);
         var repeated = Last(again.Output);
-        foreach (string id in new[] { "tenantId", "containerId", "sourceId" })
+        foreach (string id in new[] { "tenantId", "containerId" })
             repeated.GetProperty(id).GetGuid().Should().Be(result.GetProperty(id).GetGuid());
+        searches.Select(item => item.GetProperty("sourceId").GetGuid()).Distinct().Should().ContainSingle("OLX searches share one source");
         repeated.GetProperty("searches").EnumerateArray().Select(item => item.GetProperty("subscriptionId").GetGuid())
             .Should().Equal(searches.Select(item => item.GetProperty("subscriptionId").GetGuid()));
         repeated.GetProperty("runs").GetArrayLength().Should().Be(0);

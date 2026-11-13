@@ -50,5 +50,18 @@ public sealed record MarketplaceProfile
 /// <summary>One saved marketplace search: a category or search URL with every query filter it needs.</summary>
 /// <param name="Key">The search's stable key inside its profile, echoed as the subscription's <c>search</c> context.</param>
 /// <param name="Name">The pipeline's display name.</param>
-/// <param name="Url">The complete public search URL the pipeline starts from.</param>
-public sealed record MarketplaceSearch(string Key, string Name, string Url);
+/// <param name="Url">The complete public search URL the pipeline starts from, on its site's host.</param>
+/// <param name="Site">The marketplace the URL belongs to; searches on one site share its source.</param>
+public sealed record MarketplaceSearch(string Key, string Name, string Url, MarketplaceSite Site);
+
+/// <summary>A marketplace whose reader ships in the image: the source row setup registers for it.</summary>
+/// <param name="Key">The reader's key, stored as the source's external reference.</param>
+/// <param name="Handle">The host the source reads, as its URLs name it.</param>
+/// <param name="Name">The source's display name in the console.</param>
+/// <param name="Group">The source group the console lists it under.</param>
+/// <param name="CheckPolicy">How known ads are re-checked.</param>
+public sealed record MarketplaceSite(string Key, string Handle, string Name, string Group, string CheckPolicy = "web-direct")
+{
+    /// <summary>Gets OLX Uzbekistan.</summary>
+    public static MarketplaceSite Olx { get; } = new("olx-uz", "www.olx.uz", "OLX Uzbekistan", "OLX");
+}

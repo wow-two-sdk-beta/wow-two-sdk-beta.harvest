@@ -143,8 +143,8 @@ operator key or token: `engineering/architecture/contract.md` § Source host.
 `haven` marketplace profile on the target's own settings through Wheelhouse Run, with no listener and no operator token.
 A profile is data (`sources/Module/Marketplace/MarketplaceProfiles.cs`); another product adds a profile, not a verb.
 
-- It creates or reuses tenant `haven`, the private container `haven-listings`, one OLX source (`www.olx.uz`, private,
-  AI off, robots obeyed, `web-direct` checks) and one pipeline per saved search: Tashkent apartments and houses for
+- It creates or reuses tenant `haven`, the private container `haven-listings`, one source per marketplace site (OLX:
+  `www.olx.uz`; private, AI off, robots obeyed, `web-direct` checks) and one pipeline per saved search: Tashkent apartments and houses for
   long-term rent and Tashkent daily rent, each read newest first. Each pipeline gets one `wow2.post.v1` subscription
   with filter `marketplace-listing-v1` (listings only) and context `catalog=haven-rent-res`, `search=<key>`. Repeating
   the verb keeps every existing row.
@@ -156,7 +156,7 @@ A profile is data (`sources/Module/Marketplace/MarketplaceProfiles.cs`); another
   one. The secret appears once, in the last stdout line, never on stderr; move it into Haven's target setting without
   printing it. Picked over an OAuth client: an OAuth client needs a release of the issuer's Identity (Ocharo's on dev)
   and a `ClientGrantsJson` redeploy here, and production has no SCFD issuer yet.
-- The last stdout line is one JSON object: `profile`, `tenantId`, `containerId`, `sourceId`, `searches` (`key`, `url`,
+- The last stdout line is one JSON object: `profile`, `tenantId`, `containerId`, `searches` (`key`, `url`, `sourceId`,
   `pipelineId`, `subscriptionId`), `consumerKey` (`id`, `prefix`, `secret` only when issued) and `runs`.
 - Haven Supply reads one subscription per search, each with its own cursor; a pull page is
   `{ data: { data, next, hasMore } }` and each listing link carries `captureId`, `externalKey`, `capturedAtUtc` and

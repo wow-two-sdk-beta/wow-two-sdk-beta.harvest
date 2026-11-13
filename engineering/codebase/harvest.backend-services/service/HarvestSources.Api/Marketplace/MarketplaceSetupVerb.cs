@@ -15,8 +15,8 @@ namespace HarvestSources.Api.Marketplace;
 ///     interval; <c>--run</c> queues one bounded capture run per search for the running worker
 ///   - <c>--issue-key</c> issues the consumer's <c>events:read</c> key when it holds no active one; <c>--rotate-key</c>
 ///     revokes its active keys and issues one. The secret goes only into the last stdout line, once; stderr never carries it
-///   - stderr carries the report; the last stdout line is one JSON object with the tenant, container, source, searches
-///     (pipeline and subscription each), the consumer key and queued runs
+///   - stderr carries the report; the last stdout line is one JSON object with the tenant, container, searches (source,
+///     pipeline and subscription each), the consumer key and queued runs
 ///   - <c>marketplace status --profile &lt;key&gt;</c> writes nothing; its last stdout line names each search's cadence,
 ///     next due time, latest run of its kind and how many events its subscription's first pull page holds
 ///     (<c>events 100+</c> past one page), so a deployed host proves delivery with no consumer key
@@ -85,18 +85,18 @@ public static class MarketplaceSetupVerb
         string key = value.ConsumerKey is { } consumer
             ? $"key {consumer.Prefix} ({consumer.Id})" + (consumer.Secret is null ? "" : ", issued now; its secret is on stdout only")
             : "no consumer key";
-        await error.WriteLineAsync($"tenant {value.TenantId}, container {value.ContainerId}, source {value.SourceId}, "
+        await error.WriteLineAsync($"tenant {value.TenantId}, container {value.ContainerId}, "
             + $"{value.Searches.Count} subscription(s), {key}, {runs.Count} run(s) queued");
         await output.WriteLineAsync(JsonSerializer.Serialize(new
         {
             profile = value.Profile,
             tenantId = value.TenantId,
             containerId = value.ContainerId,
-            sourceId = value.SourceId,
             searches = value.Searches.Select(search => new
             {
                 key = search.Key,
                 url = search.Url,
+                sourceId = search.SourceId,
                 pipelineId = search.PipelineId,
                 subscriptionId = search.SubscriptionId,
             }),

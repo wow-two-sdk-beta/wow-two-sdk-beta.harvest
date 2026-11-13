@@ -251,7 +251,7 @@ operator setup (`HarvestSources:Audience` `internal` only):
 | Method | Route | Policy | Result |
 |---|---|---|---|
 | GET | `/api/marketplace/profiles` | operator `tenants:manage` | the reviewed profiles; a read neither provisions nor fetches |
-| POST | `/api/marketplace/{profile}/setup` | operator `tenants:manage` | `{ profile, tenantId, containerId, sourceId, searches: [{ key, url, pipelineId, subscriptionId }], consumerKey? }` |
+| POST | `/api/marketplace/{profile}/setup` | operator `tenants:manage` | `{ profile, tenantId, containerId, searches: [{ key, url, sourceId, pipelineId, subscriptionId }], consumerKey? }` |
 | GET | `/api/marketplace/{profile}/status` | operator `tenants:manage` | each search's pipeline with its schedules, its subscription and the active key count |
 
 - Setup takes `{ enableSchedules: false, issueKey: false, rotateKey: false }`. One pipeline and one `wow2.post.v1`

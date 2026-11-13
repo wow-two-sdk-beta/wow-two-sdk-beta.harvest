@@ -10,17 +10,11 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Tenants;
 
 namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Marketplace;
 
-/// <summary>Applies a marketplace profile: the consumer's tenant, its private container, the marketplace source, one
-/// pipeline and one listing subscription per saved search, and the consumer's key. Existing rows and operator settings
+/// <summary>Applies a marketplace profile: the consumer's tenant, its private container, one source per marketplace site,
+/// one pipeline and one listing subscription per saved search, and the consumer's key. Existing rows and operator settings
 /// are kept.</summary>
 public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDeliveryBroker delivery)
 {
-    private const string SourceHandle = "www.olx.uz";
-    private const string SourceKey = "olx-uz";
-    private const string SourceName = "OLX Uzbekistan";
-    private const string SourceGroup = "OLX";
-    private const string CheckPolicy = "web-direct";
-
     private static readonly SemaphoreSlim SetupGate = new(1, 1);
 
     /// <summary>Creates what the profile names and is missing. Schedules start disabled unless requested; a request also
@@ -38,6 +32,9 @@ public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDelive
         ArgumentNullException.ThrowIfNull(profile);
         if (profile.Searches.Count == 0 || profile.Searches.Select(search => search.Key).Distinct(StringComparer.Ordinal).Count() != profile.Searches.Count)
             return Invalid("A marketplace profile needs one or more searches with distinct keys.");
+        if (profile.Searches.FirstOrDefault(search => !Uri.TryCreate(search.Url, UriKind.Absolute, out Uri? url)
+                || url.Scheme != Uri.UriSchemeHttps || url.IdnHost != search.Site.Handle) is { } stray)
+            return Invalid($"Search {stray.Key} must be an https URL on {stray.Site.Handle}.");
 
         await SetupGate.WaitAsync(cancellationToken);
         try
@@ -54,12 +51,14 @@ public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDelive
             if (container.Kind != ContainerKind.Private || container.TenantId != tenant.Id || container.EmbeddingsEnabled)
                 return Conflict($"The existing {profile.ContainerRef} container is not private, the tenant's own and non-embedded.");
 
-            SourceModel source = await EnsureSourceAsync(container.Id, cancellationToken);
+            var sources = new Dictionary<string, SourceModel>(StringComparer.Ordinal);
             var pipelines = Value(await registry.ListPipelinesAsync(container.Id, cancellationToken)).ToList();
             var subscriptions = Value(await delivery.ListSubscriptionsAsync(tenant.Id, cancellationToken)).ToList();
             var rows = new List<MarketplaceSearchRegistration>();
             foreach (MarketplaceSearch search in profile.Searches)
             {
+                if (!sources.TryGetValue(search.Site.Key, out SourceModel? source))
+                    sources[search.Site.Key] = source = await EnsureSourceAsync(container.Id, search.Site, cancellationToken);
                 var schedules = Cadence(profile, enableSchedules);
                 PipelineModel? pipeline = pipelines.SingleOrDefault(item => item.SourceId == source.Id && item.Scope.Url == search.Url);
                 if (pipeline is not null && enableSchedules && EnabledCadence(pipeline, schedules) is { } cadence)
@@ -97,11 +96,11 @@ public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDelive
                     }, cancellationToken));
                     subscriptions.Add(subscription);
                 }
-                rows.Add(new(search.Key, search.Url, pipeline.Id, subscription.Id));
+                rows.Add(new(search.Key, search.Url, source.Id, pipeline.Id, subscription.Id));
             }
 
             MarketplaceConsumerKey? key = await EnsureKeyAsync(tenant.Id, profile.Consumer, keys, cancellationToken);
-            return Result<MarketplaceSetup>.Ok(new(profile.Key, tenant.Id, container.Id, source.Id, rows, key));
+            return Result<MarketplaceSetup>.Ok(new(profile.Key, tenant.Id, container.Id, rows, key));
         }
         catch (ProvisioningFailure failure) { return Result<MarketplaceSetup>.Fail(failure.Error); }
         finally { SetupGate.Release(); }
@@ -140,30 +139,30 @@ public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDelive
         catch (ProvisioningFailure failure) { return Result<MarketplaceStatus>.Fail(failure.Error); }
     }
 
-    /// <summary>Creates or reuses the container's OLX source, named and grouped for the console; an operator's name or
-    /// group is kept.</summary>
-    private async Task<SourceModel> EnsureSourceAsync(Guid containerId, CancellationToken cancellationToken)
+    /// <summary>Creates or reuses the container's source for a marketplace site, named and grouped for the console; an
+    /// operator's name or group is kept.</summary>
+    private async Task<SourceModel> EnsureSourceAsync(Guid containerId, MarketplaceSite site, CancellationToken cancellationToken)
     {
         var sources = Value(await registry.ListSourcesAsync(containerId, cancellationToken));
-        SourceModel source = sources.SingleOrDefault(item => item.Family == SourceFamily.Site && item.Handle == SourceHandle)
+        SourceModel source = sources.SingleOrDefault(item => item.Family == SourceFamily.Site && item.Handle == site.Handle)
             ?? Value(await registry.RegisterSourceAsync(new()
             {
-                ContainerId = containerId, Family = SourceFamily.Site, Handle = SourceHandle, ExternalRef = SourceKey,
+                ContainerId = containerId, Family = SourceFamily.Site, Handle = site.Handle, ExternalRef = site.Key,
                 Coverage = SourceCoverage.Filtered, Completeness = SourceCompleteness.Window, Posture = SourcePosture.OwnFetch,
-                AiAllowed = false, PoolShareable = false, RobotsPolicy = RobotsPolicy.Obey, CheckPolicy = CheckPolicy,
+                AiAllowed = false, PoolShareable = false, RobotsPolicy = RobotsPolicy.Obey, CheckPolicy = site.CheckPolicy,
             }, cancellationToken));
         if (source.AiAllowed || source.PoolShareable || source.RobotsPolicy != RobotsPolicy.Obey)
             throw new ProvisioningFailure(AppErrorFactory.Conflict(
-                "The existing OLX source has a different AI, sharing or robots posture. Review it before applying this profile."));
+                $"The existing {site.Name} source has a different AI, sharing or robots posture. Review it before applying this profile."));
         if (source.GroupId is not null && source.Name is not null)
             return source;
 
         var groups = Value(await registry.ListSourceGroupsAsync(containerId, cancellationToken));
-        SourceGroupModel group = groups.FirstOrDefault(item => string.Equals(item.Name, SourceGroup, StringComparison.OrdinalIgnoreCase))
-            ?? Value(await registry.DeclareSourceGroupAsync(new() { ContainerId = containerId, Name = SourceGroup }, cancellationToken));
+        SourceGroupModel group = groups.FirstOrDefault(item => string.Equals(item.Name, site.Group, StringComparison.OrdinalIgnoreCase))
+            ?? Value(await registry.DeclareSourceGroupAsync(new() { ContainerId = containerId, Name = site.Group }, cancellationToken));
         return Value(await registry.UpdateSourceAsync(source.Id, new()
         {
-            Name = source.Name is null ? SourceName : null,
+            Name = source.Name is null ? site.Name : null,
             GroupId = source.GroupId is null ? group.Id : null,
         }, cancellationToken));
     }

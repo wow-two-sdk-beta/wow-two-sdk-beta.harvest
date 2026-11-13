@@ -20,11 +20,11 @@ public static class MarketplaceProfiles
         Searches =
         [
             new("apartments-rent", "OLX · Tashkent apartments, long-term rent · Haven",
-                "https://www.olx.uz/nedvizhimost/kvartiry/arenda-dolgosrochnaya/tashkent/" + NewestFirst),
+                "https://www.olx.uz/nedvizhimost/kvartiry/arenda-dolgosrochnaya/tashkent/" + NewestFirst, MarketplaceSite.Olx),
             new("houses-rent", "OLX · Tashkent houses, long-term rent · Haven",
-                "https://www.olx.uz/nedvizhimost/doma/arenda-dolgosrochnaya/tashkent/" + NewestFirst),
+                "https://www.olx.uz/nedvizhimost/doma/arenda-dolgosrochnaya/tashkent/" + NewestFirst, MarketplaceSite.Olx),
             new("daily-rent", "OLX · Tashkent daily rent · Haven",
-                "https://www.olx.uz/nedvizhimost/posutochno_pochasovo/tashkent/" + NewestFirst),
+                "https://www.olx.uz/nedvizhimost/posutochno_pochasovo/tashkent/" + NewestFirst, MarketplaceSite.Olx),
         ],
     };
 

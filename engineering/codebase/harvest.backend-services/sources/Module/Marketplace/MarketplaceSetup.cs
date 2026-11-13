@@ -6,19 +6,19 @@ namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Marketplace;
 /// <param name="Profile">The applied profile's key.</param>
 /// <param name="TenantId">The consumer's tenant.</param>
 /// <param name="ContainerId">The tenant's private listing container.</param>
-/// <param name="SourceId">The marketplace source the searches read.</param>
 /// <param name="Searches">One pipeline and one pull subscription per saved search, in profile order.</param>
 /// <param name="ConsumerKey">The consumer's newest active key, or null when it has none; its secret only when this call
 /// issued it.</param>
-public sealed record MarketplaceSetup(string Profile, Guid TenantId, Guid ContainerId, Guid SourceId,
+public sealed record MarketplaceSetup(string Profile, Guid TenantId, Guid ContainerId,
     IReadOnlyList<MarketplaceSearchRegistration> Searches, MarketplaceConsumerKey? ConsumerKey);
 
 /// <summary>One saved search's pipeline and subscription.</summary>
 /// <param name="Key">The search's key in the profile.</param>
 /// <param name="Url">The search URL the pipeline starts from.</param>
+/// <param name="SourceId">The site's source the pipeline reads.</param>
 /// <param name="PipelineId">The search's pipeline.</param>
 /// <param name="SubscriptionId">The <c>wow2.post.v1</c> subscription the consumer pulls.</param>
-public sealed record MarketplaceSearchRegistration(string Key, string Url, Guid PipelineId, Guid SubscriptionId);
+public sealed record MarketplaceSearchRegistration(string Key, string Url, Guid SourceId, Guid PipelineId, Guid SubscriptionId);
 
 /// <summary>The consumer's tenant API key: <c>events:read</c> on its own tenant only.</summary>
 /// <param name="Id">The key's ID, which revocation takes.</param>
