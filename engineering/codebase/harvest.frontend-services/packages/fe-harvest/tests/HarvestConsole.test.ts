@@ -618,6 +618,23 @@ describe('post page and cards', () => {
     expect(event!.text()).not.toMatch(/posted \d|ago/);
   });
 
+  it('drops the label a chosen filter chip already states, and keeps the card’s height', async () => {
+    const wrapper = mountConsole({
+      options: { client: createHarvestClient({ fetch: fixtureFetch() }) },
+      panels: () => h(SourcePanel, { sourceId: 'source-1', tab: 'posts', view: 'cards' }),
+    });
+    await flushPromises();
+    const kindPills = () => wrapper.findAll('ul[aria-label="Posts"] > li [data-tone]').map((pill) => pill.text());
+    expect(kindPills()).toContain('event');
+    await wrapper
+      .findAll('[aria-label="Filter posts"] button')
+      .find((chip) => chip.text().startsWith('Events'))!
+      .trigger('click');
+    expect(wrapper.findAll('ul[aria-label="Posts"] > li')).toHaveLength(1);
+    expect(kindPills()).not.toContain('event');
+    expect(wrapper.find('ul[aria-label="Posts"] > li [data-tone]').exists()).toBe(true);
+  });
+
   it('writes a card’s pills in lower case, and never says when SCFD saw the post', async () => {
     const wrapper = mountConsole({
       options: { client: createHarvestClient({ fetch: fixtureFetch() }) },

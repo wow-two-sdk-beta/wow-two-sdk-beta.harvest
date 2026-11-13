@@ -121,10 +121,11 @@ const monthName = (parts: CalendarParts) => monthShort.format(new Date(Date.UTC(
 
 /**
  * An event's dates as the card writes them: one day `21 Nov`, a range in one month `21–23 Nov`, across months
- * `28 Nov – 2 Dec`, across years `28 Dec – 3 Jan 2027`. A year appears only when it is not the current one, and the
- * end's year always when the range crosses years. A month-only start reads `Nov`; an end before the start, or with no
- * day, is ignored; text that names no date gives nothing. The days are read from the stated text, never shifted into
- * the viewer's time zone.
+ * `28 Nov – 2 Dec`. A year appears only when it is not the current one, once, at the end. A range over New Year of
+ * under twelve months writes no start year, since the order of the months gives it: `30 Dec – 1 Jan 2027`, or
+ * `30 Dec – 1 Jan` when the end is this year. Only a range longer than a year writes both years. A month-only start
+ * reads `Nov`; an end before the start, or with no day, is ignored; text that names no date gives nothing. The days
+ * are read from the stated text, never shifted into the viewer's time zone.
  */
 export function eventDatesOf(startsAt?: string, endsAt?: string, now = new Date()) {
   const start = calendarPartsOf(startsAt);
@@ -139,7 +140,9 @@ export function eventDatesOf(startsAt?: string, endsAt?: string, now = new Date(
   if (end.year === start.year && end.month === start.month)
     return withYear(`${start.day}–${end.day} ${monthName(start)}`, start.year);
   if (end.year === start.year) return withYear(`${dayText(start)} – ${dayText(end)}`, start.year);
-  return `${withYear(dayText(start), start.year)} – ${dayText(end)} ${end.year}`;
+  const overYear = dayKey({ ...end, year: start.year }) < dayKey(start);
+  if (overYear && end.year === start.year + 1) return withYear(`${dayText(start)} – ${dayText(end)}`, end.year);
+  return `${dayText(start)} ${start.year} – ${dayText(end)} ${end.year}`;
 }
 
 /** A public web address to link out to — `http` or `https`, with no credentials — or nothing. */

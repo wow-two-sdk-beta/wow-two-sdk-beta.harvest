@@ -4,6 +4,7 @@ import HarvestPill from './HarvestPill.vue';
 import PillIcon from './PillIcon.vue';
 import { useHarvestConsole } from './HarvestConsole';
 import { kindGlyphOf, readMethodGlyphOf, sectionGlyphOf } from './PostGlyphs';
+import type { PostLabel } from './PostLabels';
 import { languageName } from './SourceSections';
 import { readMethodOf } from './SourceWords';
 
@@ -22,30 +23,45 @@ const props = withDefaults(
     sourceName?: string;
     family?: string;
     removed?: boolean;
+    /** Labels to leave out because the list's filter already states them. */
+    hidden?: ReadonlySet<PostLabel>;
     onImage?: boolean;
     compact?: boolean;
   }>(),
-  { pipelineId: undefined, sourceName: undefined, family: 'site', removed: false, onImage: false, compact: false },
+  {
+    pipelineId: undefined,
+    sourceName: undefined,
+    family: 'site',
+    removed: false,
+    hidden: undefined,
+    onImage: false,
+    compact: false,
+  },
 );
 const session = useHarvestConsole();
 const section = computed(() => (props.pipelineId ? session.sectionParts(props.pipelineId) : undefined));
 const kindTone = computed(() =>
   props.onImage ? (props.kind === 'event' ? 'glassSuccess' : 'glass') : props.kind === 'event' ? 'success' : 'outline',
 );
+const shows = (label: PostLabel) => !props.hidden?.has(label);
 const quietTone = computed(() => (props.onImage ? 'glass' : 'outline'));
 </script>
 
 <template>
-  <div class="flex min-w-0 flex-nowrap items-center gap-1.5">
-    <HarvestPill :tone="kindTone">
+  <div class="flex min-h-6 min-w-0 flex-nowrap items-center gap-1.5">
+    <HarvestPill v-if="shows('kind')" :tone="kindTone">
       <PillIcon :name="kindGlyphOf(props.kind)" />
       {{ props.kind }}
     </HarvestPill>
-    <HarvestPill v-if="section" :tone="quietTone" shrinkable>
+    <HarvestPill v-if="section && shows('section')" :tone="quietTone" shrinkable>
       <PillIcon :name="sectionGlyphOf(section.name)" />
       <span class="truncate">{{ section.name.toLowerCase() }}</span>
     </HarvestPill>
-    <HarvestPill v-if="section?.locale" :tone="quietTone" v-bind="{ title: languageName(section.locale) }">
+    <HarvestPill
+      v-if="section?.locale && shows('language')"
+      :tone="quietTone"
+      v-bind="{ title: languageName(section.locale) }"
+    >
       <PillIcon name="language" />
       {{ (props.compact ? section.locale : languageName(section.locale)).toLowerCase() }}
     </HarvestPill>
@@ -53,7 +69,7 @@ const quietTone = computed(() => (props.onImage ? 'glass' : 'outline'));
       <PillIcon :name="readMethodGlyphOf(readMethodOf(props.family))" />
       <span class="truncate">{{ props.sourceName.toLowerCase() }}</span>
     </HarvestPill>
-    <HarvestPill v-if="props.removed" :tone="props.onImage ? 'glass' : 'danger'">
+    <HarvestPill v-if="props.removed && shows('removed')" :tone="props.onImage ? 'glass' : 'danger'">
       <PillIcon name="unlink" />
       removed
     </HarvestPill>

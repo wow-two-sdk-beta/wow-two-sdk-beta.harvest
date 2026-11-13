@@ -17,6 +17,7 @@ import HarvestPill from './HarvestPill.vue';
 import PillIcon from './PillIcon.vue';
 import PostPills from './PostPills.vue';
 import { kindGlyphOf } from './PostGlyphs';
+import { labelsStatedBy } from './PostLabels';
 import SourceIcon from './SourceIcon.vue';
 import { useHarvestConsole } from './HarvestConsole';
 import {
@@ -83,6 +84,10 @@ const kindChips = computed(() =>
     count: searched.value.filter((post) => post.kind === value && (!section.value || post.pipelineId === section.value))
       .length,
   })),
+);
+/** The card labels the active filters already state, so the cards leave them out. */
+const statedLabels = computed(() =>
+  labelsStatedBy({ kind: kind.value ? [kind.value] : [], section: section.value ? [section.value] : [] }),
 );
 const shown = computed(() =>
   searched.value.filter(
@@ -332,6 +337,7 @@ function sectionOf(post: SourcePostModel) {
             :kind="post.kind"
             :pipeline-id="post.pipelineId"
             :removed="post.state === 'gone'"
+            :hidden="statedLabels"
             on-image
             compact
           />

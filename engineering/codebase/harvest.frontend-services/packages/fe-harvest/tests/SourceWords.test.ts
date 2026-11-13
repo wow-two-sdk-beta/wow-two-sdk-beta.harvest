@@ -133,7 +133,10 @@ describe('source words', () => {
     expect(dates('2026-11-21', '2026-11-23')).toBe('21–23 Nov');
     expect(dates('2026-11-28T10:00', '2026-12-02')).toBe('28 Nov – 2 Dec');
     expect(dates('2026-12-28', '2027-01-03')).toBe('28 Dec – 3 Jan 2027');
-    expect(dates('2025-12-28', '2026-01-03')).toBe('28 Dec 2025 – 3 Jan 2026');
+    expect(dates('2026-12-30', '2027-01-01')).toBe('30 Dec – 1 Jan 2027');
+    expect(dates('2025-12-28', '2026-01-03')).toBe('28 Dec – 3 Jan');
+    expect(dates('2026-03-05', '2027-06-10')).toBe('5 Mar 2026 – 10 Jun 2027');
+    expect(dates('2026-11-24', '2027-01-24')).toBe('24 Nov – 24 Jan 2027');
     expect(dates('2025-10-01', '2025-10-12')).toBe('1–12 Oct 2025');
     expect(dates('2027-03-05')).toBe('5 Mar 2027');
     expect(dates('2026-11')).toBe('Nov');
