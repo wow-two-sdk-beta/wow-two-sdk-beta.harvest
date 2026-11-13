@@ -81,20 +81,65 @@ export function timingOf(startsAt?: string, endsAt?: string, now = new Date()): 
 }
 
 /**
- * How long ago something happened, as one count of minutes, hours, days or years: `just now`, `5 min ago`, `1 hour ago`,
- * `3 hours ago`, `1 day ago`, `200 days ago`, `1 year ago`. Never a month or a date. Counts round down, so
- * `3 hours ago` holds until the fourth hour.
+ * How long ago something happened, as one count of minutes, hours, days or years, with no `ago`: `just now`, `5 min`,
+ * `1 hour`, `3 hours`, `1 day`, `200 days`, `1 year`. Never a month or a date. Counts round down, so `3 hours` holds
+ * until the fourth hour. For a label that carries its own icon, such as the card's posted age.
  */
-export function agoOf(value?: string, now = new Date()) {
+export function ageOf(value?: string, now = new Date()) {
   const date = instant(value);
   if (!date) return '—';
   const minutes = Math.floor((now.getTime() - date.getTime()) / 60_000);
   if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 60) return `${minutes} min`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${plural(hours, 'hour')} ago`;
+  if (hours < 24) return plural(hours, 'hour');
   const days = Math.floor(hours / 24);
-  return days < 365 ? `${plural(days, 'day')} ago` : `${plural(Math.floor(days / 365), 'year')} ago`;
+  return days < 365 ? plural(days, 'day') : plural(Math.floor(days / 365), 'year');
+}
+
+/** The same count with `ago`: `5 min ago`, `3 hours ago`, `1 year ago`; `just now` stays as it is. */
+export function agoOf(value?: string, now = new Date()) {
+  const age = ageOf(value, now);
+  return age === 'just now' || age === '—' ? age : `${age} ago`;
+}
+
+const monthShort = new Intl.DateTimeFormat(Locale, { month: 'short', timeZone: 'UTC' });
+
+/** The year, month and day a stated value names, read from its own text so the viewer's time zone never moves it. */
+function calendarPartsOf(value?: string) {
+  const match = /^(\d{4})-(\d{2})(?:-(\d{2}))?/.exec(value ?? '');
+  if (!match) return undefined;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = match[3] ? Number(match[3]) : undefined;
+  if (month < 1 || month > 12 || (day !== undefined && (day < 1 || day > 31))) return undefined;
+  return { year, month, ...(day === undefined ? {} : { day }) };
+}
+type CalendarParts = NonNullable<ReturnType<typeof calendarPartsOf>>;
+const dayKey = (parts: CalendarParts) => (parts.year * 12 + parts.month) * 32 + (parts.day ?? 0);
+const monthName = (parts: CalendarParts) => monthShort.format(new Date(Date.UTC(parts.year, parts.month - 1, 1)));
+
+/**
+ * An event's dates as the card writes them: one day `21 Nov`, a range in one month `21–23 Nov`, across months
+ * `28 Nov – 2 Dec`, across years `28 Dec – 3 Jan 2027`. A year appears only when it is not the current one, and the
+ * end's year always when the range crosses years. A month-only start reads `Nov`; an end before the start, or with no
+ * day, is ignored; text that names no date gives nothing. The days are read from the stated text, never shifted into
+ * the viewer's time zone.
+ */
+export function eventDatesOf(startsAt?: string, endsAt?: string, now = new Date()) {
+  const start = calendarPartsOf(startsAt);
+  if (!start) return undefined;
+  const thisYear = now.getFullYear();
+  const withYear = (text: string, year: number) => (year === thisYear ? text : `${text} ${year}`);
+  const dayText = (parts: CalendarParts) =>
+    parts.day === undefined ? monthName(parts) : `${parts.day} ${monthName(parts)}`;
+  const end = calendarPartsOf(endsAt);
+  if (start.day === undefined || !end || end.day === undefined || dayKey(end) <= dayKey(start))
+    return withYear(dayText(start), start.year);
+  if (end.year === start.year && end.month === start.month)
+    return withYear(`${start.day}–${end.day} ${monthName(start)}`, start.year);
+  if (end.year === start.year) return withYear(`${dayText(start)} – ${dayText(end)}`, start.year);
+  return `${withYear(dayText(start), start.year)} – ${dayText(end)} ${end.year}`;
 }
 
 /** A public web address to link out to — `http` or `https`, with no credentials — or nothing. */

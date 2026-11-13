@@ -604,6 +604,20 @@ describe('post page and cards', () => {
     expect(card!.get('button[aria-label="Next slide"]').attributes('disabled')).toBeDefined();
   });
 
+  it('leads a card’s last line with the event dates and the posted age, each behind its own icon', async () => {
+    const wrapper = mountConsole({
+      options: { client: createHarvestClient({ fetch: fixtureFetch() }) },
+      panels: () => h(SourcePanel, { sourceId: 'source-1', tab: 'posts', view: 'cards' }),
+    });
+    await flushPromises();
+    const [event, article] = wrapper.findAll('ul[aria-label="Posts"] > li');
+    const dates = event!.get('[data-event-dates]');
+    expect(dates.text()).toContain('21 Nov 2099');
+    expect(dates.find('svg').exists()).toBe(true);
+    expect(article!.find('[data-event-dates]').exists()).toBe(false);
+    expect(event!.text()).not.toMatch(/posted \d|ago/);
+  });
+
   it('writes a card’s pills in lower case, and never says when SCFD saw the post', async () => {
     const wrapper = mountConsole({
       options: { client: createHarvestClient({ fetch: fixtureFetch() }) },

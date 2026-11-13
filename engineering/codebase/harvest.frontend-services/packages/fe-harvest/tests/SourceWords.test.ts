@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ageOf,
   agoOf,
+  eventDatesOf,
   changedWords,
   checkChoiceOf,
   harvestTimesText,
@@ -111,5 +113,34 @@ describe('source words', () => {
     expect(lastHarvestNote(harvest({ status: 'partial', reason: 'page_limit' }))).toBe('partial · page limit');
     expect(lastHarvestNote(harvest({}))).toBe('');
     expect(lastHarvestText(harvest({ status: 'running' }), now)).toBe('harvesting now');
+  });
+
+  it('counts the same age without the word ago, for a label with its own icon', () => {
+    const now = new Date('2026-11-12T12:00:00Z');
+    expect(ageOf('2026-11-12T11:55:00Z', now)).toBe('5 min');
+    expect(ageOf('2026-11-12T08:12:00Z', now)).toBe('3 hours');
+    expect(ageOf('2026-11-11T11:00:00Z', now)).toBe('1 day');
+    expect(ageOf('2025-11-12T08:00:00Z', now)).toBe('1 year');
+    expect(ageOf('2026-11-12T11:59:50Z', now)).toBe('just now');
+    expect(agoOf('2026-11-12T11:59:50Z', now)).toBe('just now');
+  });
+
+  it('writes an event’s dates as one day or a range, with the year only when it is not this one', () => {
+    const now = new Date('2026-11-12T12:00:00Z');
+    const dates = (start?: string, end?: string) => eventDatesOf(start, end, now);
+    expect(dates('2026-11-21')).toBe('21 Nov');
+    expect(dates('2026-11-21T19:00', '2026-11-21')).toBe('21 Nov');
+    expect(dates('2026-11-21', '2026-11-23')).toBe('21–23 Nov');
+    expect(dates('2026-11-28T10:00', '2026-12-02')).toBe('28 Nov – 2 Dec');
+    expect(dates('2026-12-28', '2027-01-03')).toBe('28 Dec – 3 Jan 2027');
+    expect(dates('2025-12-28', '2026-01-03')).toBe('28 Dec 2025 – 3 Jan 2026');
+    expect(dates('2025-10-01', '2025-10-12')).toBe('1–12 Oct 2025');
+    expect(dates('2027-03-05')).toBe('5 Mar 2027');
+    expect(dates('2026-11')).toBe('Nov');
+    expect(dates('2026-11-21', '2026-11-20')).toBe('21 Nov');
+    expect(dates('2026-11-21', '2026-11')).toBe('21 Nov');
+    expect(dates('2026-12-19T18:30:00+05:00')).toBe('19 Dec');
+    expect(dates(undefined, '2026-11-23')).toBeUndefined();
+    expect(dates('soon')).toBeUndefined();
   });
 });

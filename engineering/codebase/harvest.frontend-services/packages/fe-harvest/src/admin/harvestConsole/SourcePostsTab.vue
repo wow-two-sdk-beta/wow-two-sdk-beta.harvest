@@ -19,7 +19,16 @@ import PostPills from './PostPills.vue';
 import { kindGlyphOf } from './PostGlyphs';
 import SourceIcon from './SourceIcon.vue';
 import { useHarvestConsole } from './HarvestConsole';
-import { agoOf, dateOf, imageSrcOf, kindPlural, timingOf, webUrlOf, type GalleryView } from './SourceWords';
+import {
+  ageOf,
+  agoOf,
+  eventDatesOf,
+  imageSrcOf,
+  kindPlural,
+  timingOf,
+  webUrlOf,
+  type GalleryView,
+} from './SourceWords';
 
 /**
  * A source's posts, newest first: a search, filter chips by section and by kind with their counts, and the posts as
@@ -81,17 +90,17 @@ const shown = computed(() =>
   ),
 );
 
-/** A post's own date when it has one, with `ongoing` or `finished` once its stated end allows — `1 Oct 2026 · ongoing`. */
+/** An event's dates — `21 Nov`, `21–23 Nov` — with `ongoing` or `finished` once its stated end allows. */
 function startOf(post: SourcePostModel) {
   return (
-    [post.startsAt ? dateOf(post.startsAt) : undefined, timingOf(post.startsAt, post.endsAt)]
-      .filter(Boolean)
-      .join(' · ') || undefined
+    [eventDatesOf(post.startsAt, post.endsAt), timingOf(post.startsAt, post.endsAt)].filter(Boolean).join(' · ') ||
+    undefined
   );
 }
-/** The line under a card's title: how long ago the post itself was published, else its event date — `posted 3 days ago`. */
-function cardLine(post: SourcePostModel) {
-  return post.postedAt ? `posted ${agoOf(post.postedAt)}` : startOf(post);
+/** An event's dates for a card's chip: the text, and whether it is `ongoing`, `finished` or neither. */
+function eventChipOf(post: SourcePostModel) {
+  const text = eventDatesOf(post.startsAt, post.endsAt);
+  return text ? { text, timing: timingOf(post.startsAt, post.endsAt) } : undefined;
 }
 /** Why a post has no working link out: it is gone from its source, or it never had a link. */
 function unavailableWords(post: SourcePostModel) {
@@ -333,7 +342,31 @@ function sectionOf(post: SourcePostModel) {
           >
             {{ post.title ?? 'Untitled post' }}
           </ConsoleLink>
-          <p class="mt-auto truncate text-[13px] text-white/75">{{ cardLine(post) }}</p>
+          <p class="mt-auto flex min-w-0 items-center gap-3 text-[13px] text-white/75">
+            <span
+              v-if="eventChipOf(post)"
+              class="inline-flex min-w-0 items-center gap-1"
+              :class="
+                eventChipOf(post)?.timing === 'ongoing'
+                  ? 'text-emerald-200'
+                  : eventChipOf(post)?.timing === 'finished'
+                    ? 'opacity-60'
+                    : ''
+              "
+              v-bind="{ 'data-event-dates': eventChipOf(post)?.timing ?? '' }"
+            >
+              <PillIcon name="dates" />
+              <span class="truncate">{{ eventChipOf(post)?.text }}</span>
+              <span v-if="eventChipOf(post)?.timing" class="sr-only">{{ eventChipOf(post)?.timing }}</span>
+            </span>
+            <span v-if="post.postedAt" class="inline-flex shrink-0 items-center gap-1" v-bind="{ 'data-posted': '' }">
+              <span class="inline-flex items-center gap-1" aria-hidden="true">
+                <PillIcon name="history" />
+                {{ ageOf(post.postedAt) }}
+              </span>
+              <span class="sr-only">posted {{ agoOf(post.postedAt) }}</span>
+            </span>
+          </p>
         </div>
       </li>
     </ul>
