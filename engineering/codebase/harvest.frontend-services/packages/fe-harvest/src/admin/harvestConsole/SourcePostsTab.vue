@@ -35,9 +35,9 @@ import {
  * A source's posts, newest first: a search, filter chips by section and by kind with their counts, and the posts as
  * rows or cards. A card is filled edge to edge by the post's first image, its text on a fixed-height area at the
  * bottom where the blur fades into the image; a post with no image gets a soft tile with its source's icon. Cards
- * fill the width in as many columns of 16rem or more as fit, so the grid steps 4, 3, 2 as the page narrows. The pool
- * keeps posts of every kind; a subscriber receives only its matches. A post opens over the page in a modal with its
- * facts and revisions — revisions never show in the list.
+ * fill the width in as many columns of 17rem or more as fit, so the grid steps 4, 3, 2 as the page narrows. The pool
+ * keeps posts of every kind; a subscriber receives only its matches. A post opens on its own page, with its facts and
+ * revisions — revisions never show in the list.
  */
 defineOptions({ name: 'SourcePostsTab' });
 const props = withDefaults(defineProps<{ source: SourceOverviewModel; view?: GalleryView }>(), { view: 'rows' });
@@ -227,7 +227,7 @@ function sectionOf(post: SourcePostModel) {
         <span role="cell" class="max-md:hidden">{{ post.postedAt ? agoOf(post.postedAt) : '—' }}</span>
       </div>
     </div>
-    <ul v-else class="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-3" aria-label="Posts">
+    <ul v-else class="grid grid-cols-[repeat(auto-fill,minmax(17rem,1fr))] gap-3" aria-label="Posts">
       <li
         v-for="post in shown"
         :key="post.postId"
