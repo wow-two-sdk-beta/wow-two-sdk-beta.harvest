@@ -70,7 +70,7 @@ public sealed class SourceConsoleEndpointTests(HarvestApiFixture fixture)
 
         var post = await CaptureAsync(admin, lane, "Concert");
         var posts = (await DataAsync(await admin.GetAsync($"/api/sources/{lane.SourceId}/posts?limit=10"))).EnumerateArray().Single();
-        Keys(posts).Should().BeEquivalentTo("postId", "title", "kind", "state", "revision", "firstSeenAt", "lastChangedAt", "url");
+        Keys(posts).Should().BeEquivalentTo("postId", "title", "kind", "state", "revision", "firstSeenAt", "lastChangedAt", "url", "imageUrls");
         posts.GetProperty("kind").GetString().Should().Be("event");
         await ExpectAsync(admin.GetAsync($"/api/sources/{lane.SourceId}/posts?limit=0"), HttpStatusCode.BadRequest);
         var revision = (await DataAsync(await admin.GetAsync($"/api/posts/{post}/revisions"))).EnumerateArray().Single();
