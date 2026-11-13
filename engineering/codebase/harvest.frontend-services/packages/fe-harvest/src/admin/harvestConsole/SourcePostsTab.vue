@@ -97,9 +97,12 @@ function unavailableWords(post: SourcePostModel) {
   return post.state === 'gone' ? 'Removed from the source' : 'No link to the original';
 }
 /** The page a post opens, `/sources/{id}/posts/{postId}`. */
-/** The two arrows of a card's carousel: glass buttons shown only while the card is hovered or focused. */
+/**
+ * The two arrows of a card's carousel: glass buttons centred on the card's height, shown only while the card is
+ * hovered or focused.
+ */
 const ArrowClass =
-  'top-[34%] z-20 size-8 border border-white/20 bg-black/35 text-white ring-0 backdrop-blur-md opacity-0 transition-opacity hover:bg-black/55 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100';
+  'z-20 size-8 border border-white/20 bg-black/35 text-white ring-0 backdrop-blur-md opacity-0 transition-opacity hover:bg-black/55 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100';
 /** A post's usable images in order: the list's `imageUrls`, else its first image alone. */
 function imagesOf(post: SourcePostModel) {
   const urls = post.imageUrls?.length ? post.imageUrls : post.imageUrl ? [post.imageUrl] : [];
