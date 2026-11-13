@@ -72,9 +72,11 @@ public sealed class MarketplaceHostTests
         using var error = new StringWriter();
         (await MarketplaceSetupVerb.RunAsync(host.Services, ["status", "--profile", "haven"], output, error, CancellationToken.None))
             .Should().Be(0, error.ToString());
-        JsonDocument.Parse(output.ToString().TrimEnd().Split('\n')[^1]).RootElement.GetProperty("pipelines").EnumerateArray()
-            .Select(line => line.GetString()).Should().Contain(line => line!.StartsWith("apartments-rent ") && line.EndsWith("; events 2"),
-                "the deployed host's status proves delivery without the consumer's key");
+        var readout = JsonDocument.Parse(output.ToString().TrimEnd().Split('\n')[^1]).RootElement;
+        readout.GetProperty("pipelines").EnumerateArray().Select(line => line.GetString()).Should().Contain(line =>
+            line!.StartsWith("apartments-rent ") && line.Contains(" 2 captured 0 failed ") && line.EndsWith("; events 2"),
+            "the deployed host's status proves delivery without the consumer's key");
+        readout.GetProperty("hosts").EnumerateArray().Select(host => host.GetString()).Should().Contain(host => host!.StartsWith("www.olx.uz/"));
     }
 
     private static async Task<WebApplication> StartAsync(OlxFixtureFetcher fetcher)

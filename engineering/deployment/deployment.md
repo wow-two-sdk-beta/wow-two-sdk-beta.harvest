@@ -161,7 +161,9 @@ A profile is data (`sources/Module/Marketplace/MarketplaceProfiles.cs`); another
 - Haven Supply reads one subscription per search, each with its own cursor; a pull page is
   `{ data: { data, next, hasMore } }` and each listing link carries `captureId`, `externalKey`, `capturedAtUtc` and
   `sourceFields` with schema `olx.ad.v1`. A post Haven already received also reaches it as `link.state` (`suspect`,
-  `gone`, `relisted`) and as merges.
+  `gone`, `relisted`) and as merges. The searches of one site share its source, and check runs pick due links
+  source-wide, so a lifecycle event can arrive on a sibling search's subscription too: apply it by `externalKey`,
+  idempotently (rehearsed locally on 2026-11-14 with two direct 404s: `suspect`, then `gone`, on all three).
 
 `dotnet HarvestSources.Api.dll marketplace status --profile haven` writes nothing; its last stdout line gives the active
 key count and, per search, each schedule's cadence, next due time, latest run and the events its subscription's first

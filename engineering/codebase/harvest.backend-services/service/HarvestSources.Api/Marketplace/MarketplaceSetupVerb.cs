@@ -133,7 +133,9 @@ public static class MarketplaceSetupVerb
                 string cadence = schedule.Enabled ? Cadence(schedule) + " due " + Time(schedule.NextDueAtUtc) : "off";
                 RunModel? last = recent.Where(item => item.Kind == schedule.Kind).MaxBy(item => item.QueuedAtUtc);
                 return $"{Snake(schedule.Kind)} {cadence}" + (last is null ? "" : $" last {Snake(last.Status)}"
-                    + (last.CompletionReason is { } reason ? "/" + Snake(reason) : "") + " " + Time(last.FinishedAtUtc ?? last.QueuedAtUtc));
+                    + (last.CompletionReason is { } reason ? "/" + Snake(reason) : "") + " " + Time(last.FinishedAtUtc ?? last.QueuedAtUtc)
+                    + $" {last.Captured} captured {last.Failed} failed {last.Requests} requests"
+                    + (last.FetchOutcome is { } outcome ? " fetch " + Snake(outcome) : ""));
             });
             string delivered = search.SubscriptionId is not { } subscription ? " no subscription"
                 : await delivery.PullAsync(subscription, null, 100, ct) is Result<CursorPage<DeliveryEvent>>.Success { Value: var page }
@@ -142,7 +144,20 @@ public static class MarketplaceSetupVerb
             lines.Add(line);
             await error.WriteLineAsync($"{line} (pipeline {pipeline.Id}, subscription {search.SubscriptionId})");
         }
-        await output.WriteLineAsync(JsonSerializer.Serialize(new { profile = status.Profile, activeKeys = status.ActiveKeys, pipelines = lines }));
+        var now = (services.GetService<TimeProvider>() ?? TimeProvider.System).GetUtcNow();
+        IReadOnlyList<HostHealthModel> health = await runs.HostsAsync(status.ContainerId, ct) is Result<IReadOnlyList<HostHealthModel>>.Success { Value: var known }
+            ? known : [];
+        var hosts = health.Select(host => $"{host.HostKey}/{host.Lane}"
+            + (host.PausedUntilUtc > now ? " paused until " + Time(host.PausedUntilUtc) : " open")
+            + (host.ConsecutiveFailures > 0 ? $" {host.ConsecutiveFailures} failures" : "")
+            + (host.LastChallengeKind is { Length: > 0 } challenge ? " challenge " + challenge : "")
+            + $" {host.Queued} queued {host.Running} running").ToList();
+        foreach (string host in hosts)
+            await error.WriteLineAsync("host " + host);
+        await output.WriteLineAsync(JsonSerializer.Serialize(new
+        {
+            profile = status.Profile, activeKeys = status.ActiveKeys, pipelines = lines, hosts,
+        }));
         return 0;
     }
 
