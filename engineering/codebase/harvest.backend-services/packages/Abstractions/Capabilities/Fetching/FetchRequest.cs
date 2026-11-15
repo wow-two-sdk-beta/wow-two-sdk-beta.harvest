@@ -20,4 +20,7 @@ public sealed record FetchRequest
 
     /// <summary>Gets an optional source route restriction, applied before initial and redirected page requests.</summary>
     public IFetchDestinationPolicy? DestinationPolicy { get; init; }
+
+    /// <summary>Gets whether to cache the response in Harvest's conditional page cache.</summary>
+    public bool CacheResponse { get; init; } = true;
 }

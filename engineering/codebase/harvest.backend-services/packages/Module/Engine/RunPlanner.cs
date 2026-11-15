@@ -70,9 +70,9 @@ internal static class RunPlanner
         await EngineSql.ExecuteAsync(connection, transaction,
             """
             INSERT INTO harvest_runs(id,container_id,pipeline_id,schedule_id,kind,trigger,scheduled_for,frozen,status,steps,
-                queued_at,finished_at,fetch_outcome,completion_reason,message)
+                queued_at,finished_at,fetch_outcome,completion_reason,message,new_posts)
             VALUES(@id,@container,@pipeline,@schedule,@kind,@trigger,@slot,@frozen::jsonb,@status,@steps::jsonb,@now,
-                @finished,@outcome,@reason,@message)
+                @finished,@outcome,@reason,@message,0)
             ON CONFLICT (pipeline_id,kind,scheduled_for) DO NOTHING
             """, ct,
             ("id", runId), ("container", pipeline.ContainerId), ("pipeline", pipeline.Id), ("schedule", scheduleId),
@@ -139,7 +139,7 @@ internal static class RunPlanner
         return !scope.RestrictToPath && uri.IsDefaultPort;
     }
 
-    internal static async Task<int> EnqueueAsync(
+    internal static async Task<EnqueueResult> EnqueueAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         FrozenRun frozen,
@@ -150,10 +150,27 @@ internal static class RunPlanner
     {
         StepDescriptor? step = frozen.Adapter.Steps.SingleOrDefault(candidate => candidate.Key == target.StepKey);
         if (step is null || !InScope(target.Target, frozen.Source, frozen.Pipeline.Scope))
-            return 0;
+            return EnqueueResult.Skipped;
         frozen.Pipeline.Steps.TryGetValue(step.Key, out StepOverride? change);
         if (step.Optional && change?.Enabled != true)
-            return 0;
+            return EnqueueResult.Skipped;
+        string address = new Uri(target.Target).GetComponents(UriComponents.AbsoluteUri & ~UriComponents.Fragment, UriFormat.UriEscaped);
+        if (step.Role == StepRole.Enumerate && frozen.Pipeline.Limits.MaxPages is { } listingLimit)
+        {
+            // Admission runs under the run's row lock. Count the whole frontier, including work still queued.
+            string[] listingSteps = [.. frozen.Adapter.Steps.Where(candidate => candidate.Role == StepRole.Enumerate)
+                .Select(candidate => candidate.Key)];
+            await using NpgsqlCommand count = EngineSql.Command(connection, transaction,
+                """
+                SELECT CASE WHEN EXISTS(SELECT 1 FROM harvest_work_item WHERE run_id=@run AND step=@step AND target=@target)
+                    THEN -1 ELSE (SELECT count(*)::int FROM harvest_work_item WHERE run_id=@run AND step=ANY(@listing)) END
+                """, ("run", runId), ("step", step.Key), ("target", address), ("listing", listingSteps));
+            int admitted = (int)(await count.ExecuteScalarAsync(ct))!;
+            if (admitted < 0)
+                return EnqueueResult.Skipped;
+            if (admitted >= listingLimit)
+                return EnqueueResult.PageLimit;
+        }
         StepCapabilityPolicy? policy = frozen.Source.CapabilityPolicy.Steps.GetValueOrDefault(step.Key);
         string lane = change?.Lane ?? policy?.Lane ?? frozen.Source.CapabilityPolicy.Defaults?.Lane ?? step.Lane;
         var plan = new ResolvedPlan { StepKey = step.Key, HostKey = frozen.Source.Handle, Lane = lane, Requirements = step.Requires };
@@ -163,7 +180,7 @@ internal static class RunPlanner
         await EngineSql.ExecuteAsync(connection, transaction,
             "INSERT INTO harvest_host_lane(host_key,lane) VALUES(@host,@lane) ON CONFLICT DO NOTHING", ct,
             ("host", plan.HostKey), ("lane", lane));
-        return await EngineSql.ExecuteAsync(connection, transaction,
+        int added = await EngineSql.ExecuteAsync(connection, transaction,
             """
             INSERT INTO harvest_work_item(id,container_id,run_id,pipeline_id,host_key,step,lane,plan_ref,route,target,payload,
                 priority,due_at,not_before,created_at)
@@ -171,7 +188,10 @@ internal static class RunPlanner
             ON CONFLICT(run_id,step,target) DO NOTHING
             """, ct, ("id", Guid.CreateVersion7(now)), ("container", frozen.Pipeline.ContainerId), ("run", runId),
             ("pipeline", frozen.Pipeline.Id), ("host", plan.HostKey), ("step", step.Key), ("lane", lane),
-            ("plan", StoreJson.Write(plan)), ("target", new Uri(target.Target).GetComponents(UriComponents.AbsoluteUri & ~UriComponents.Fragment, UriFormat.UriEscaped)),
+            ("plan", StoreJson.Write(plan)), ("target", address),
             ("payload", target.Payload?.GetRawText()), ("priority", (short)(target.Priority ?? WorkPriority.Fresh)), ("now", now));
+        return added == 0 ? EnqueueResult.Skipped : EnqueueResult.Enqueued;
     }
+
+    internal enum EnqueueResult { Skipped, Enqueued, PageLimit }
 }

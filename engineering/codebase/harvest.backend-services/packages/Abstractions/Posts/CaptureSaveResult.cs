@@ -11,4 +11,7 @@ public sealed record CaptureSaveResult
     public Guid? CaptureId { get; init; }
     /// <summary>Gets whether a new capture was written.</summary>
     public required bool Changed { get; init; }
+
+    /// <summary>Gets whether this capture created a canonical post.</summary>
+    public bool Created { get; init; }
 }

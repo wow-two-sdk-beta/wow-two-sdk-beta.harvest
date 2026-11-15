@@ -45,6 +45,7 @@ public static class HarvestModuleServiceCollectionExtensions
             migrations.Version = MigrationVersionMapper.ToVersion(typeof(HarvestModuleAssembly).Assembly);
         });
         services.AddScoped<IRegistrationBroker, ModuleRegistrationBroker>();
+        services.AddScoped<SourceSectionRegistration>();
         services.AddHealthChecks().AddDatabaseReadinessCheck<HarvestDbContext>();
 
         services.AddValidatedOptions<HarvestModuleOptions>(null, rules => rules

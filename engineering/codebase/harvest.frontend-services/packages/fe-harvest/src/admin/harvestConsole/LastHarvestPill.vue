@@ -7,8 +7,8 @@ import { clockOf, lastHarvestNote, lastHarvestText, lastHarvestTone } from './So
 
 /**
  * The one pill that says what a source's last harvest found: a history icon for `last harvest`, how long ago it ran,
- * its new posts and the links found — `3 hours ago · +4 new · 23 found`. A partial harvest is told by the amber tint
- * alone, and by a hidden word for assistive technology; the title gives the exact time and the outcome.
+ * its new posts, the links found and any incomplete outcome, such as `3 hours ago · +4 new · 23 found · partial`.
+ * The title gives the exact time and the reason it stopped.
  */
 defineOptions({ name: 'LastHarvestPill' });
 const props = withDefaults(defineProps<{ harvest?: SourceHarvestModel; size?: 'sm' | 'md' }>(), {
@@ -25,10 +25,10 @@ const title = computed(() =>
   <HarvestPill
     :tone="lastHarvestTone(props.harvest)"
     :size="props.size"
+    wrap
     v-bind="{ 'data-pill': 'last-harvest', title }"
   >
     <PillIcon name="history" />
-    {{ lastHarvestText(props.harvest) }}
-    <span v-if="props.harvest?.status === 'partial'" class="sr-only">, partial</span>
+    <span>{{ lastHarvestText(props.harvest) }}</span>
   </HarvestPill>
 </template>

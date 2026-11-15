@@ -80,13 +80,18 @@ const facts = computed(() => {
     { label: 'Harvested', value: post.value ? whenOf(post.value.firstSeenAtUtc) : undefined },
   ].filter((item): item is { label: string; value: string } => !!item.value);
 });
-/** The post's images, as harvested: each `media` item of kind `image`, by its URL. */
-const images = computed(() =>
-  (base.value?.media ?? [])
-    .filter((item) => item.kind === 'image')
-    .map((item) => imageSrcOf(item.url))
-    .filter((url): url is string => !!url),
-);
+/** The source's image list prefers private copies, including when the post's captured URL is older. */
+const images = computed(() => {
+  const originals = (base.value?.media ?? []).filter((item) => item.kind === 'image').map((item) => item.url);
+  const stored = listed.value?.imageUrls ?? [];
+  const urls = originals.length
+    ? originals.map((url, index) => {
+        const copy = stored[index];
+        return copy?.startsWith(`/api/sources/${props.sourceId}/assets/`) ? copy : url;
+      })
+    : stored;
+  return urls.map(imageSrcOf).filter((url): url is string => !!url);
+});
 const kind = computed(() => base.value?.kind ?? 'post');
 </script>
 
@@ -121,6 +126,7 @@ const kind = computed(() => base.value?.kind ?? 'post');
           <PostPills
             :kind="kind"
             :pipeline-id="listed?.pipelineId"
+            :language="listed?.language"
             :source-name="source?.name"
             :family="source?.family"
             :removed="gone"

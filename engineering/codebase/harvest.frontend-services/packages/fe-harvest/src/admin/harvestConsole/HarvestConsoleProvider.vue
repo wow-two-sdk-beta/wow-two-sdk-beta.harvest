@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { FeedbackBus } from '@wow-two-beta/fe/feedback';
 import type { HarvestClient } from '../../kit';
 import {
   createHarvestConsole,
@@ -28,6 +29,8 @@ const props = withDefaults(
     localWorkerEnabled?: boolean;
     /** Resolves and opens console places in the host app. */
     navigation?: ConsoleNavigation;
+    /** Sends action and refresh notices to the host's feedback bus. */
+    feedback?: FeedbackBus;
     /** How often the open container refreshes, in milliseconds. */
     refreshIntervalMs?: number;
   }>(),
@@ -39,6 +42,7 @@ const props = withDefaults(
     isOperator: undefined,
     localWorkerEnabled: undefined,
     navigation: undefined,
+    feedback: undefined,
     refreshIntervalMs: undefined,
   },
 );

@@ -1,3 +1,5 @@
+using HarvestSources.Api.Media;
+using WoW.Two.Sdk.Beta.Be.Files.Client;
 using WoW.Two.Sdk.Beta.Be.Foundation.Options;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Integrations;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Instagram;
@@ -49,4 +51,17 @@ public static partial class HostConfiguration
         return builder;
     }
 
+    /// <summary>Enables the private source asset worker when a Files service is configured.</summary>
+    private static WebApplicationBuilder AddSourceAssets(this WebApplicationBuilder builder)
+    {
+        var configuration = builder.Configuration.GetSection("HarvestAssets:Files");
+        if (string.IsNullOrWhiteSpace(configuration["BaseAddress"]))
+            return builder;
+
+        builder.Services.AddFilesClient(options => configuration.Bind(options))
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
+        builder.Services.AddSingleton<SourceAssetStore>();
+        builder.Services.AddHostedService<SourceAssetWorker>();
+        return builder;
+    }
 }

@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, watch } from 'vue';
 import { RouterView, useRouter } from 'vue-router';
+import { createFeedbackBus } from '@wow-two-beta/fe/feedback';
 import { Button } from '@wow-two-beta/fe/presentation/actions';
+import { FeedbackToastHost } from '@wow-two-beta/fe/presentation/feedback';
 import { HarvestConsoleProvider, type ConsoleNavigation, type HarvestConsole } from '@wow-two-beta/fe-harvest/admin';
 import { useDemoConsole } from '../application/demo/UseDemoConsole';
 import { useHarvestIdentity } from '../application/identity/UseHarvestIdentity';
@@ -22,6 +24,9 @@ const router = useRouter();
 const { demo, session: demoSession, client: demoClient, reset: resetDemo } = useDemoConsole();
 const identity = useHarvestIdentity();
 const { status, runningVersion } = useSystemStatus(!demo);
+const feedback = createFeedbackBus();
+
+watch([demoSession, identity.epoch], () => feedback.reset());
 
 /** Lets the shared panels link to this app's routes. */
 const navigation: ConsoleNavigation = {
@@ -53,11 +58,22 @@ function account(session: HarvestConsole): ConsoleAccount {
       onSignOut: identity.signOut,
       isBusy: identity.pending.value,
     };
-  return { description: 'Connected with an API key', signOutLabel: 'Disconnect', onSignOut: session.disconnect };
+  return {
+    description: 'Connected with an API key',
+    signOutLabel: 'Disconnect',
+    onSignOut: () => {
+      session.disconnect();
+      feedback.reset();
+    },
+  };
 }
 </script>
 
 <template>
+  <FeedbackToastHost
+    :bus="feedback"
+    class="top-[calc(var(--frame-bar-height)+env(safe-area-inset-top,0px)+1rem)] right-[max(1rem,env(safe-area-inset-right,0px))] max-w-[calc(100dvw-2rem)] [&>*]:max-w-full"
+  />
   <main v-if="!demo && !identity.ready.value" class="surface-ambient grid min-h-dvh place-items-center p-8">
     <div class="max-w-md space-y-4 rounded-2xl border border-border bg-card p-8">
       <h1 class="text-2xl font-semibold">SCFD</h1>
@@ -80,6 +96,7 @@ function account(session: HarvestConsole): ConsoleAccount {
     :is-operator="identity.identityEnabled.value ? identity.isOperator.value : undefined"
     :local-worker-enabled="status?.localWorkerEnabled"
     :navigation="navigation"
+    :feedback="feedback"
   >
     <AppLayout
       v-if="session.connected.value"

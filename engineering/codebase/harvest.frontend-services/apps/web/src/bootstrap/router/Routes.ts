@@ -75,7 +75,10 @@ export const routes: RouteConfig = [
           title: 'Subscribers',
           description: 'The products that receive posts, and the source and section each one follows.',
         },
-        lazy: lazyRoute(() => import('../../presentation/console/pages/SubscribersPage.vue')),
+        lazy: lazyPage(
+          () => import('../../presentation/console/pages/SubscribersPage.vue'),
+          (route) => ({ section: typeof route.query['section'] === 'string' ? route.query['section'] : undefined }),
+        ),
       },
       {
         path: 'access',

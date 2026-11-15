@@ -69,6 +69,8 @@ export interface SourceOverviewModel {
   readonly name: string;
   readonly family: SourceFamily;
   readonly handle: string;
+  /** Same-origin address of the source icon when a copy has been stored. */
+  readonly faviconUrl?: string;
   /** Omitted when the source belongs to no group. */
   readonly groupId?: string;
   readonly state: SourceOverviewState;
@@ -121,6 +123,8 @@ export interface SourcePostModel {
   readonly lastChangedAt: string;
   /** The section that first captured it. */
   readonly pipelineId?: string;
+  /** The language stated by the post, when known. */
+  readonly language?: string;
   /** The event start as stated. */
   readonly startsAt?: string;
   /** The event end as stated; omitted when the post states none. */

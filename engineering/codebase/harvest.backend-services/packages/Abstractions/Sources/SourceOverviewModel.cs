@@ -16,6 +16,9 @@ public sealed record SourceOverviewModel
     /// <summary>Gets the source's normalized identity.</summary>
     public required string Handle { get; init; }
 
+    /// <summary>Gets the source's stored favicon address, when available.</summary>
+    public string? FaviconUrl { get; init; }
+
     /// <summary>Gets the source's group; null when ungrouped.</summary>
     public Guid? GroupId { get; init; }
 

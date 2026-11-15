@@ -16,7 +16,7 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Registration;
 
 /// <summary>Integrates the registry over the module's store: validates, normalizes and writes the registry tables.</summary>
 /// <remarks>Duplicates are checked before the insert for a readable error, and the unique indexes catch the race.</remarks>
-internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider time) : IRegistrationBroker
+internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider time, SourceSectionRegistration sections) : IRegistrationBroker
 {
     /// <summary>Holds PostgreSQL's unique-violation state.</summary>
     private const string UniqueViolation = "23505";
@@ -239,7 +239,7 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
             CreatedAt = now,
         };
         db.Sources.Add(row);
-
+        await sections.StageAsync(row.ToModel(registration.CheckPolicy), cancellationToken);
         return await SaveAsync(() => row.ToModel(registration.CheckPolicy), () => RegistrationErrors.SourceExists(handle!), cancellationToken);
     }
 

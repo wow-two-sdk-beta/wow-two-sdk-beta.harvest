@@ -16,6 +16,31 @@ namespace Harvest.Tests.Integration.Engine;
 public sealed class HarvestEngineTests
 {
     [Fact]
+    public async Task ListingPageLimit_ShouldCompleteDetailsFromAdmittedListings()
+    {
+        await using var host = await EngineHost.StartAsync();
+        var registration = await host.RegisterAsync(limits: new() { MaxPages = 2 });
+        host.Fetcher.Set("https://mstar.uz/sitemap.xml",
+            "<sitemapindex><sitemap><loc>https://mstar.uz/first.xml</loc></sitemap>"
+            + "<sitemap><loc>https://mstar.uz/excluded.xml</loc></sitemap></sitemapindex>", "application/xml");
+        host.Fetcher.Set("https://mstar.uz/first.xml",
+            "<urlset><url><loc>https://mstar.uz/events/1</loc></url><url><loc>https://mstar.uz/events/2</loc></url></urlset>",
+            "application/xml");
+        host.Fetcher.Set("https://mstar.uz/events/1", Event("mstar.uz", 1));
+        host.Fetcher.Set("https://mstar.uz/events/2", Event("mstar.uz", 2));
+        using var scope = host.Services.CreateScope();
+        var runs = scope.ServiceProvider.GetRequiredService<IRunBroker>();
+        var queued = EngineHost.Data(await runs.StartAsync(registration.PipelineId));
+
+        (await host.DrainAsync()).Should().Be(4);
+        var run = EngineHost.Data(await runs.GetAsync(queued.Id));
+        run.Status.Should().Be(RunStatus.Partial);
+        run.CompletionReason.Should().Be(RunReason.PageLimit);
+        run.NewPosts.Should().Be(2);
+        host.Fetcher.Calls.Should().NotContain("https://mstar.uz/excluded.xml");
+    }
+
+    [Fact]
     public async Task EditingAFilter_ShouldPreserveQueuedScopeAndUseNewScopeForTheNextRun()
     {
         await using var host = await EngineHost.StartAsync();

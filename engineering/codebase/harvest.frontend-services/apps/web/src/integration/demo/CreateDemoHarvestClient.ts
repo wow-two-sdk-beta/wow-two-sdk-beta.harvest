@@ -309,6 +309,38 @@ export function createDemoHarvestClient(): HarvestClient {
       'Textile art on show in Bukhara',
     ].map((title) => ({ post: post(exhibitions, title, 'article', 48), pipelineId: exhibitions.id })),
   ];
+  // Put the two footer review cases first while keeping the existing demo posts' IDs.
+  const dateExamples = [
+    {
+      title: 'Demo: One-day exhibition last year',
+      startsAt: '2025-11-18',
+      endsAt: '2025-11-18',
+      postedAt: '2025-11-01',
+      image: poster('#334a5e', '#7394a5', 'One day'),
+    },
+    {
+      title: 'Demo: Exhibition across two years',
+      startsAt: '2026-03-05',
+      endsAt: '2027-06-10',
+      postedAt: '2026-07-21',
+      image: poster('#564131', '#ba9266', 'Date range'),
+    },
+  ];
+  posts.unshift(
+    ...dateExamples.map(({ title, startsAt, endsAt, postedAt, image }) => ({
+      post: post(exhibitions, title, 'event', 47, {
+        dates: [
+          { role: 'start', value: startsAt, precision: 'day' },
+          { role: 'end', value: endsAt, precision: 'day' },
+        ],
+        postedAt: { value: postedAt, precision: 'day' },
+        ...images(image),
+      }),
+      pipelineId: exhibitions.id,
+      startsAt,
+      endsAt,
+    })),
+  );
   const revisions = new Map<string, PostRevisionModel[]>(
     posts.map(({ post: row }) => [
       row.id,
@@ -466,6 +498,7 @@ export function createDemoHarvestClient(): HarvestClient {
               pipelineId,
               ...(startsAt ? { startsAt } : {}),
               ...(endsAt ? { endsAt } : {}),
+              ...(row.base.postedAt ? { postedAt: row.base.postedAt.value } : {}),
               url: row.links[0]?.url,
               ...(row.base.media?.some((item) => item.kind === 'image')
                 ? { imageUrl: row.base.media.find((item) => item.kind === 'image')!.url }

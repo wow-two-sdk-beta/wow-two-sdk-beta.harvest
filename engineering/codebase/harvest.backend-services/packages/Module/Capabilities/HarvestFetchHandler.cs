@@ -77,7 +77,7 @@ internal sealed class HarvestFetchHandler(
                         return Synthetic(request, FetchOutcome.RobotsDisallowed, HttpStatusCode.Forbidden, "Host robots policy disallows this path.");
                 }
 
-                var validators = sharedCache ? await lease.GetValidatorsAsync(uri.AbsoluteUri, cancellationToken) : null;
+                var validators = sharedCache && policy.CacheResponse ? await lease.GetValidatorsAsync(uri.AbsoluteUri, cancellationToken) : null;
                 HttpResponseMessage response = await ReadNetworkAsync(uri, route, request.Method, request, validators, lease, gap, usage, cancellationToken);
                 int status = (int)response.StatusCode;
                 if (IsRedirect(status))
@@ -130,7 +130,7 @@ internal sealed class HarvestFetchHandler(
                     lease.State.RetryAfterUntil = retryAfter is { } wait ? clock.GetUtcNow() + wait : null;
                     lease.State.AdaptiveDelayMilliseconds = Math.Max((int)options.MinimumDelay.TotalMilliseconds,
                         (int)(lease.State.AdaptiveDelayMilliseconds * 0.9));
-                    if (response.IsSuccessStatusCode && request.Method == HttpMethod.Get && sharedCache)
+                    if (response.IsSuccessStatusCode && request.Method == HttpMethod.Get && sharedCache && policy.CacheResponse)
                     {
                         bool cacheable = response.Headers.CacheControl?.NoStore != true && response.Headers.CacheControl?.Private != true
                             && !response.Headers.Vary.Any(value => !value.Equals("Accept-Encoding", StringComparison.OrdinalIgnoreCase))

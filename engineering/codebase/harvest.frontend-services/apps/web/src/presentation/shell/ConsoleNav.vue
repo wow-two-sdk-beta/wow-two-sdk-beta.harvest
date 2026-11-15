@@ -75,7 +75,9 @@ const counts = computed<Record<string, number | undefined>>(() => ({
             <li class="flex flex-col">
               <ul :class="props.collapsed ? '' : 'ms-3 border-s border-border ps-2'">
                 <SidebarMenuItem as-child is-active>
-                  <template #icon><SourceIcon :family="trail.source.family" size="xs" bare /></template>
+                  <template #icon>
+                    <SourceIcon :family="trail.source.family" :favicon-url="trail.source.faviconUrl" size="xs" bare />
+                  </template>
                   <RouterLink :to="{ name: 'source', params: { id: trail.id } }" :title="trail.source.name">
                     <span :class="labelClass">{{ trail.source.name }}</span>
                   </RouterLink>

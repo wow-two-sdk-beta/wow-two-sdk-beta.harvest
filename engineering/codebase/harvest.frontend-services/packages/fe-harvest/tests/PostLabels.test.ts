@@ -4,7 +4,8 @@ import { labelsStatedBy } from '../src/admin/harvestConsole/PostLabels';
 describe('labels a filter already states', () => {
   it('drops the label of a filter with exactly one value selected', () => {
     expect([...labelsStatedBy({ kind: ['event'] })]).toEqual(['kind']);
-    expect([...labelsStatedBy({ section: ['fashion'] })].sort()).toEqual(['language', 'section']);
+    expect([...labelsStatedBy({ section: ['fashion'] })]).toEqual(['section']);
+    expect([...labelsStatedBy({ language: ['ru'] })]).toEqual(['language']);
     expect([...labelsStatedBy({ state: ['gone'] })]).toEqual(['removed']);
   });
 
@@ -14,7 +15,7 @@ describe('labels a filter already states', () => {
   });
 
   it('combines filters, and ignores a filter that states no label', () => {
-    expect([...labelsStatedBy({ kind: ['event'], section: ['fashion'] })].sort()).toEqual([
+    expect([...labelsStatedBy({ kind: ['event'], section: ['fashion'], language: ['ru'] })].sort()).toEqual([
       'kind',
       'language',
       'section',

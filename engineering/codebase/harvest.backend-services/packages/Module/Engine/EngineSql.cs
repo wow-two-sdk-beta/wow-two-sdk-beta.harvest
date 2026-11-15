@@ -10,7 +10,7 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Engine;
 internal static class EngineSql
 {
     internal const string RunColumns = "id, container_id, pipeline_id, kind, status, queued_at, started_at, "
-        + "finished_at, discovered, captured, unchanged, failed, pages, requests, bytes, fetch_outcome, completion_reason, message";
+        + "finished_at, discovered, captured, unchanged, failed, pages, requests, bytes, fetch_outcome, completion_reason, message, new_posts";
 
     internal static NpgsqlCommand Command(
         NpgsqlConnection connection,
@@ -50,6 +50,7 @@ internal static class EngineSql
             FetchOutcome = reader.IsDBNull(15) ? null : SnakeCaseEnum<FetchOutcome>.Parse(reader.GetString(15)),
             CompletionReason = reader.IsDBNull(16) ? null : SnakeCaseEnum<RunReason>.Parse(reader.GetString(16)),
             Message = reader.IsDBNull(17) ? null : reader.GetString(17),
+            NewPosts = reader.IsDBNull(18) ? null : reader.GetInt32(18),
         };
     }
 }

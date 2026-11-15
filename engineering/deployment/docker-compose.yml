@@ -37,6 +37,8 @@ services:
       Harvest__Operator__ApiKey: ${HARVEST_OPERATOR_KEY:?Set a local operator key in the ignored .env}
       Harvest__Worker__Enabled: ${HARVEST_WORKER_ENABLED:-true}
       HarvestSources__Audience: ${HARVEST_SOURCE_AUDIENCE:-internal}
+      HarvestAssets__Files__BaseAddress: ${HARVEST_FILES_URL:-}
+      HarvestAssets__Files__ApiKey: ${HARVEST_FILES_KEY:-}
       HarvestIntegrations__Enabled: ${HARVEST_INTEGRATIONS_ENABLED:-false}
       HarvestIntegrations__OlxProxyProfile: ${HARVEST_OLX_PROXY_PROFILE:-}
       HarvestIntegrations__ProxyProfilesJson: ${HARVEST_PROXY_PROFILES_JSON:-}

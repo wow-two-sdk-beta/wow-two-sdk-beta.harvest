@@ -33,6 +33,7 @@
     <PackageVersion Include="WoW2.Sdk.Beta.Be.Identity.Auth" Version="$(IdentitySdkVersion)" />
     <PackageVersion Include="WoW2.Sdk.Beta.Be.Identity.Client" Version="$(IdentitySdkVersion)" />
     <PackageVersion Include="WoW2.Sdk.Beta.Be.Identity.Testing" Version="$(IdentitySdkVersion)" />
+    <PackageVersion Include="WoW2.Sdk.Beta.Be.Files.Client" Version="10.0.6-beta" />
   </ItemGroup>
 
   <!-- Tests. -->

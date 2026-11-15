@@ -128,7 +128,7 @@ internal sealed partial class ModulePostBroker(
             var post = (await ReadPostAsync(connection, transaction, containerId, link.PostId, cancellationToken))!;
             await DeliveryEventWriter.AppendAsync(connection, transaction, post, isNewPost ? "post.new" : "post.changed", runId, link.Id, now, postFilters, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
-            return Result<CaptureSaveResult>.Ok(new CaptureSaveResult { Post = post, LinkId = link.Id, CaptureId = captureId, Changed = changed });
+            return Result<CaptureSaveResult>.Ok(new CaptureSaveResult { Post = post, LinkId = link.Id, CaptureId = captureId, Changed = changed, Created = isNewPost });
         }
 
         var unchanged = (await ReadPostAsync(connection, transaction, containerId, link.PostId, cancellationToken))!;

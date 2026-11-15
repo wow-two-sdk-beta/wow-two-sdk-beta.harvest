@@ -39,6 +39,7 @@ internal sealed class ModuleSourceOverviewBroker(
         var daily = await DailyAsync(connection, containerId, now, cancellationToken);
         var sectionPosts = await SectionPostsAsync(connection, containerId, cancellationToken);
         var subscribers = await SubscribersAsync(connection, containerId, cancellationToken);
+        var favicons = await FaviconsAsync(connection, containerId, cancellationToken);
         var hosts = await SourceHealthSql.ReadHostsAsync(connection, [.. sources.Select(source => source.Handle).Distinct()], cancellationToken);
         var refusals = await SourceHealthSql.ReadRefusalsAsync(connection, [.. sources.Select(source => source.Id)], cancellationToken);
 
@@ -55,6 +56,7 @@ internal sealed class ModuleSourceOverviewBroker(
                 Name = source.Name ?? source.Handle,
                 Family = source.Family,
                 Handle = source.Handle,
+                FaviconUrl = favicons.TryGetValue(source.Id, out Guid icon) ? SourceRouteConstants.AssetUrl(source.Id, icon) : null,
                 GroupId = source.GroupId,
                 State = SourceOverviewRules.State(active.Contains(source.Id), health, lastHarvest, sections),
                 LastHarvest = lastHarvest,
@@ -84,19 +86,18 @@ internal sealed class ModuleSourceOverviewBroker(
                 (SELECT d->>'value' FROM jsonb_array_elements(CASE WHEN jsonb_typeof(p.base->'dates')='array'
                     THEN p.base->'dates' ELSE '[]'::jsonb END) d WHERE d->>'role'='start' LIMIT 1),
                 fl.url,
-                (SELECT m.value->>'url' FROM jsonb_array_elements(CASE WHEN jsonb_typeof(p.base->'media')='array'
-                    THEN p.base->'media' ELSE '[]'::jsonb END) WITH ORDINALITY m(value,position)
-                    WHERE m.value->>'kind'='image' ORDER BY m.position LIMIT 1),
                 (SELECT d->>'value' FROM jsonb_array_elements(CASE WHEN jsonb_typeof(p.base->'dates')='array'
                     THEN p.base->'dates' ELSE '[]'::jsonb END) d WHERE d->>'role'='end' LIMIT 1),
                 p.base->'postedAt'->>'value',
-                (SELECT coalesce(jsonb_agg(t.u ORDER BY t.pos), '[]'::jsonb)::text FROM (
-                    SELECT m.value->>'url' u, m.position pos FROM jsonb_array_elements(CASE WHEN jsonb_typeof(p.base->'media')='array'
+                (SELECT ARRAY(SELECT CASE WHEN a.file_id IS NULL THEN m.value->>'url'
+                        ELSE @asset_prefix || a.id::text END FROM jsonb_array_elements(CASE WHEN jsonb_typeof(p.base->'media')='array'
                         THEN p.base->'media' ELSE '[]'::jsonb END) WITH ORDINALITY m(value,position)
-                    WHERE m.value->>'kind'='image' AND m.value->>'url' IS NOT NULL ORDER BY m.position LIMIT @images) t)
+                    LEFT JOIN harvest_source_assets a ON a.source_id=@source AND a.kind='image' AND a.origin_url=m.value->>'url'
+                    WHERE m.value->>'kind'='image' AND m.value->>'url' IS NOT NULL ORDER BY m.position LIMIT @images)),
+                coalesce(nullif(fl.locale, ''), nullif(p.base->'language'->>'code', 'und'))
             FROM harvest_posts p
             JOIN LATERAL (
-                SELECT l.url FROM harvest_post_links l WHERE l.container_id=p.container_id AND l.post_id=p.id AND l.source_id=@source
+                SELECT l.url,l.locale FROM harvest_post_links l WHERE l.container_id=p.container_id AND l.post_id=p.id AND l.source_id=@source
                 ORDER BY l.first_seen_at,l.id LIMIT 1
             ) fl ON true
             LEFT JOIN LATERAL (
@@ -108,12 +109,14 @@ internal sealed class ModuleSourceOverviewBroker(
             ) fc ON true
             WHERE p.container_id=@container AND p.merged_into IS NULL
             ORDER BY p.first_seen_at DESC,p.id DESC LIMIT @limit
-            """, ("source", sourceId), ("container", source.ContainerId), ("limit", limit), ("images", SourceConstants.MaxPostImages));
+            """, ("source", sourceId), ("container", source.ContainerId), ("limit", limit), ("images", SourceConstants.MaxPostImages),
+            ("asset_prefix", $"/api/sources/{sourceId:D}/{SourceRouteConstants.Assets}/"));
         var posts = new List<SourcePostModel>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
             var url = reader.GetString(9);
+            var images = reader.GetFieldValue<string[]>(12);
             posts.Add(new SourcePostModel
             {
                 PostId = reader.GetGuid(0),
@@ -126,14 +129,28 @@ internal sealed class ModuleSourceOverviewBroker(
                 PipelineId = reader.IsDBNull(7) ? null : reader.GetGuid(7),
                 StartsAt = reader.IsDBNull(8) ? null : reader.GetString(8),
                 Url = url,
-                ImageUrl = reader.IsDBNull(10) ? null : reader.GetString(10),
-                EndsAt = reader.IsDBNull(11) ? null : reader.GetString(11),
-                PostedAt = reader.IsDBNull(12) ? null : reader.GetString(12),
-                ImageUrls = System.Text.Json.JsonSerializer.Deserialize<string[]>(reader.GetString(13)) ?? [],
+                EndsAt = reader.IsDBNull(10) ? null : reader.GetString(10),
+                PostedAt = reader.IsDBNull(11) ? null : reader.GetString(11),
+                ImageUrl = images.FirstOrDefault(),
+                ImageUrls = images,
+                Language = reader.IsDBNull(13) ? null : reader.GetString(13),
             });
         }
 
         return Result<IReadOnlyList<SourcePostModel>>.Ok(posts);
+    }
+
+    private static async Task<Dictionary<Guid, Guid>> FaviconsAsync(NpgsqlConnection connection, Guid containerId, CancellationToken ct)
+    {
+        var icons = new Dictionary<Guid, Guid>();
+        await using var command = PostSql.Command(connection, null, """
+            SELECT a.source_id,a.id FROM harvest_source_assets a JOIN harvest_sources s ON s.id=a.source_id
+            WHERE s.container_id=@container AND a.kind='favicon' AND a.file_id IS NOT NULL
+            """, ("container", containerId));
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+            icons.Add(reader.GetGuid(0), reader.GetGuid(1));
+        return icons;
     }
 
     /// <inheritdoc />
@@ -185,7 +202,7 @@ internal sealed class ModuleSourceOverviewBroker(
         };
     }
 
-    private const string RunColumns = "r.id,r.pipeline_id,r.kind,r.status,COALESCE(r.finished_at,r.queued_at),r.completion_reason,r.captured,r.discovered";
+    private const string RunColumns = "r.id,r.pipeline_id,r.kind,r.status,COALESCE(r.finished_at,r.queued_at),r.completion_reason,coalesce(r.new_posts,r.captured),r.discovered";
 
     private static RunRow ReadRun(NpgsqlDataReader reader, int offset) => new(
         reader.GetGuid(offset), reader.GetGuid(offset + 1), SnakeCaseEnum<WorkKind>.Parse(reader.GetString(offset + 2)),

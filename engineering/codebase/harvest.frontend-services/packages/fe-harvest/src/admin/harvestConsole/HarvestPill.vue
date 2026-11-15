@@ -3,15 +3,14 @@ import { computed } from 'vue';
 import type { PillTone } from './SourceWords';
 
 /**
- * One rounded pill: a state, what the last harvest found, a kind or a section. The tone tints it; `dashed` marks an
- * absence, such as `no harvest yet`.
+ * One rounded pill: a state, what the last harvest found, a kind or a section. A dashed border marks an absence,
+ * such as `no harvest yet`, and longer summaries can wrap.
  */
 defineOptions({ name: 'HarvestPill' });
-const props = withDefaults(defineProps<{ tone?: PillTone; size?: 'sm' | 'md'; shrinkable?: boolean }>(), {
-  tone: 'neutral',
-  size: 'sm',
-  shrinkable: false,
-});
+const props = withDefaults(
+  defineProps<{ tone?: PillTone; size?: 'sm' | 'md'; shrinkable?: boolean; wrap?: boolean }>(),
+  { tone: 'neutral', size: 'sm', shrinkable: false, wrap: false },
+);
 defineSlots<{ default(): unknown }>();
 
 /** Each tone's border, fill and text. @internal */
@@ -26,13 +25,18 @@ const ToneClass: Record<PillTone, string> = {
   glass: 'border-white/20 bg-white/15 text-white',
   glassSuccess: 'border-emerald-300/30 bg-emerald-400/25 text-emerald-50',
 };
-const sizeClass = computed(() => (props.size === 'md' ? 'h-7 px-3 text-[13px]' : 'h-6 px-2.5 text-xs'));
+const sizeClass = computed(() => (props.size === 'md' ? 'min-h-7 px-3 text-[13px]' : 'min-h-6 px-2.5 text-xs'));
 </script>
 
 <template>
   <span
-    class="inline-flex max-w-full items-center gap-1 truncate rounded-full border font-semibold whitespace-nowrap"
-    :class="[ToneClass[props.tone], sizeClass, props.shrinkable ? 'min-w-0 shrink' : 'shrink-0']"
+    class="inline-flex max-w-full items-center gap-1 rounded-full border font-semibold"
+    :class="[
+      ToneClass[props.tone],
+      sizeClass,
+      props.shrinkable ? 'min-w-0 shrink' : 'shrink-0',
+      props.wrap ? 'py-0.5 whitespace-normal' : 'truncate whitespace-nowrap',
+    ]"
     v-bind="{ 'data-tone': props.tone }"
   >
     <slot></slot>

@@ -67,6 +67,7 @@ internal sealed class HarvestDbContext(DbContextOptions<HarvestDbContext> option
 
         var pipeline = modelBuilder.Entity<PipelineRow>().ToTable(PipelineRow.TableName);
         pipeline.HasKey(row => row.Id);
+        pipeline.HasOne<SourceRow>().WithMany().HasForeignKey(row => row.SourceId);
         pipeline.Property(row => row.State).HasConversion(Text<PipelineState>());
         pipeline.Property(row => row.PauseReason).HasConversion(Text<PipelinePauseReason>());
         pipeline.Property(row => row.AiMode).HasConversion(Text<AiMode>());

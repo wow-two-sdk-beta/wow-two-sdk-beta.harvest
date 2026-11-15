@@ -13,19 +13,28 @@ export const ReadMethodPaths: Record<ReadMethod, string> = {
 </script>
 
 <script setup lang="ts">
-import { computed } from 'vue';
-import { ReadMethodWords, readMethodOf } from './SourceWords';
+import { computed, ref } from 'vue';
+import { imageSrcOf, ReadMethodWords, readMethodOf } from './SourceWords';
 
 /**
  * How a source is read — its website, Telegram, Instagram or a branch — as a glyph on a soft tile. `bare` drops the
  * tile, for a menu row; the title names the method for pointers and assistive technology.
  */
 defineOptions({ name: 'SourceIcon' });
-const props = withDefaults(defineProps<{ family: string; size?: 'xs' | 'sm' | 'md' | 'lg'; bare?: boolean }>(), {
-  size: 'md',
-  bare: false,
-});
+const props = withDefaults(
+  defineProps<{ family: string; faviconUrl?: string; size?: 'xs' | 'sm' | 'md' | 'lg'; bare?: boolean }>(),
+  {
+    faviconUrl: undefined,
+    size: 'md',
+    bare: false,
+  },
+);
 const method = computed(() => readMethodOf(props.family));
+const failed = ref<string>();
+const favicon = computed(() => {
+  const url = imageSrcOf(props.faviconUrl);
+  return url && url !== failed.value ? url : undefined;
+});
 /** Each size's tile and glyph. @internal */
 const Sizes = {
   xs: { tile: 'size-5 rounded', glyph: 13 },
@@ -42,7 +51,18 @@ const Sizes = {
     :title="ReadMethodWords[method]"
     v-bind="{ 'data-read-method': method }"
   >
+    <img
+      v-if="favicon"
+      :key="favicon"
+      :src="favicon"
+      :width="Sizes[props.size].glyph"
+      :height="Sizes[props.size].glyph"
+      alt=""
+      class="object-contain"
+      @error="failed = favicon"
+    />
     <svg
+      v-else
       :width="Sizes[props.size].glyph"
       :height="Sizes[props.size].glyph"
       viewBox="0 0 24 24"

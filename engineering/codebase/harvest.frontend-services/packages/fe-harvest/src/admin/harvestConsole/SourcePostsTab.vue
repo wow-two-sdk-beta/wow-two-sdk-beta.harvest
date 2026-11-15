@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue';
+import { computed, onMounted, onScopeDispose, ref, shallowRef, watch } from 'vue';
 import {
   Carousel,
   CarouselNext,
@@ -12,14 +12,15 @@ import {
 import { SearchInput } from '@wow-two-beta/fe/presentation/forms';
 import type { SourceOverviewModel, SourcePostModel } from '../../contracts';
 import ConsoleLink from './ConsoleLink.vue';
-import FilterChip from './FilterChip.vue';
+import FilterToggleGroup from './FilterToggleGroup.vue';
 import HarvestPill from './HarvestPill.vue';
 import PillIcon from './PillIcon.vue';
 import PostPills from './PostPills.vue';
-import { kindGlyphOf } from './PostGlyphs';
+import { kindGlyphOf, sectionGlyphOf } from './PostGlyphs';
 import { labelsStatedBy } from './PostLabels';
 import SourceIcon from './SourceIcon.vue';
 import { useHarvestConsole } from './HarvestConsole';
+import { languageName } from './SourceSections';
 import {
   ageOf,
   agoOf,
@@ -33,9 +34,9 @@ import {
 
 /**
  * A source's posts, newest first: a search, filter chips by section and by kind with their counts, and the posts as
- * rows or cards. A card is filled edge to edge by the post's first image, its text on a fixed-height area at the
- * bottom where the blur fades into the image; a post with no image gets a soft tile with its source's icon. Cards
- * fill the width in as many columns of 17rem or more as fit, so the grid steps 4, 3, 2 as the page narrows. The pool
+ * rows or cards. A card is filled edge to edge by the post's first image, its text at the bottom where the blur
+ * fades into the image. The dates and publication age share a line when they fit. A post with no image gets
+ * a soft tile with its source's icon. The grid fits as many columns of 17rem or more as the page allows. The pool
  * keeps posts of every kind; a subscriber receives only its matches. A post opens on its own page, with its facts and
  * revisions — revisions never show in the list.
  */
@@ -46,8 +47,10 @@ const posts = shallowRef<readonly SourcePostModel[]>([]);
 const state = ref<'loading' | 'ready' | 'unavailable'>('loading');
 const search = ref('');
 const section = ref<string | null>(null);
+const language = ref<string | null>(null);
 const kind = ref<string | null>(null);
 let read: AbortController | null = null;
+let timer: ReturnType<typeof setInterval> | undefined;
 
 async function load() {
   read?.abort();
@@ -65,34 +68,88 @@ watch(
   { immediate: true },
 );
 onScopeDispose(() => read?.abort());
+onMounted(() => {
+  // Media copies can finish independently of the harvest.
+  timer = setInterval(() => void load(), 60_000);
+});
+onScopeDispose(() => clearInterval(timer));
 
 const query = computed(() => search.value.trim().toLowerCase());
 const searched = computed(() =>
   posts.value.filter((post) => !query.value || (post.title ?? '').toLowerCase().includes(query.value)),
 );
+const byPipeline = computed(
+  () =>
+    new Map(
+      [
+        ...new Set([
+          ...props.source.sections.map((row) => row.pipelineId),
+          ...posts.value.flatMap((post) => (post.pipelineId ? [post.pipelineId] : [])),
+        ]),
+      ].map((id) => [id, session.sectionParts(id)]),
+    ),
+);
+const catalog = computed(() => [
+  ...session
+    .sectionsOf(props.source.sourceId)
+    .map((entry) => ({ name: entry.name ?? entry.label, locale: entry.locale })),
+  ...byPipeline.value.values(),
+]);
+const postSection = (post: SourcePostModel) => (post.pipelineId ? byPipeline.value.get(post.pipelineId) : undefined);
+const postLanguage = (post: SourcePostModel) => post.language ?? postSection(post)?.locale;
+const matchesSection = (post: SourcePostModel) => !section.value || postSection(post)?.name === section.value;
+const matchesLanguage = (post: SourcePostModel) => !language.value || postLanguage(post) === language.value;
+const matchesKind = (post: SourcePostModel) => !kind.value || post.kind === kind.value;
 const sectionChips = computed(() =>
-  [...new Set(searched.value.map((post) => post.pipelineId).filter((id): id is string => !!id))].map((id) => ({
-    key: id,
-    label: session.sectionLabel(id),
-    count: searched.value.filter((post) => post.pipelineId === id && (!kind.value || post.kind === kind.value)).length,
+  [...new Set(catalog.value.map((entry) => entry.name))].map((name) => ({
+    key: name,
+    label: name,
+    icon: sectionGlyphOf(name),
+    count: searched.value.filter(
+      (post) => postSection(post)?.name === name && matchesKind(post) && matchesLanguage(post),
+    ).length,
   })),
 );
+const languageChips = computed(() => {
+  const locales = new Set([
+    ...catalog.value.flatMap((entry) => (entry.locale ? [entry.locale] : [])),
+    ...posts.value.flatMap((post) => (post.language ? [post.language] : [])),
+  ]);
+  return [...locales].map((locale) => ({
+    key: locale,
+    label: languageName(locale),
+    icon: 'language' as const,
+    code: locale,
+    count: searched.value.filter((post) => postLanguage(post) === locale && matchesSection(post) && matchesKind(post))
+      .length,
+  }));
+});
 const kindChips = computed(() =>
-  [...new Set(searched.value.map((post) => post.kind))].map((value) => ({
+  [...new Set(posts.value.map((post) => post.kind))].map((value) => ({
     key: value,
     label: kindPlural(value),
-    count: searched.value.filter((post) => post.kind === value && (!section.value || post.pipelineId === section.value))
-      .length,
+    icon: kindGlyphOf(value),
+    count: searched.value.filter((post) => post.kind === value && matchesSection(post) && matchesLanguage(post)).length,
   })),
 );
+const all = computed({
+  get: () => (section.value || kind.value || language.value ? null : 'all'),
+  set: () => {
+    section.value = null;
+    language.value = null;
+    kind.value = null;
+  },
+});
 /** The card labels the active filters already state, so the cards leave them out. */
 const statedLabels = computed(() =>
-  labelsStatedBy({ kind: kind.value ? [kind.value] : [], section: section.value ? [section.value] : [] }),
+  labelsStatedBy({
+    kind: kind.value ? [kind.value] : [],
+    section: section.value ? [section.value] : [],
+    language: language.value ? [language.value] : [],
+  }),
 );
 const shown = computed(() =>
-  searched.value.filter(
-    (post) => (!section.value || post.pipelineId === section.value) && (!kind.value || post.kind === kind.value),
-  ),
+  searched.value.filter((post) => matchesSection(post) && matchesLanguage(post) && matchesKind(post)),
 );
 
 /** An event's dates — `21 Nov`, `21–23 Nov` — with `ongoing` or `finished` once its stated end allows. */
@@ -142,37 +199,24 @@ function sectionOf(post: SourcePostModel) {
 <template>
   <div class="flex min-w-0 flex-col gap-4">
     <div class="flex flex-wrap items-center gap-2.5">
-      <div class="min-w-56 flex-1">
+      <div class="min-w-[min(100%,15rem)] flex-1">
         <SearchInput
           v-model="search"
           placeholder="Search this source's posts"
           v-bind="{ 'aria-label': 'Search posts' }"
+          class="[&>input]:rounded-full [&>button]:rounded-full"
           is-clearable
         />
       </div>
-      <div class="flex flex-wrap items-center gap-2" role="group" aria-label="Filter posts">
-        <FilterChip
-          label="All"
-          :count="searched.length"
-          :is-pressed="!section && !kind"
-          @press="((section = null), (kind = null))"
+      <div class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2" role="group" aria-label="Filter posts">
+        <FilterToggleGroup
+          v-model="all"
+          label="Reset post filters"
+          :items="[{ key: 'all', label: 'All', count: searched.length, icon: 'all' }]"
         />
-        <FilterChip
-          v-for="chip in sectionChips"
-          :key="`section:${chip.key}`"
-          :label="chip.label"
-          :count="chip.count"
-          :is-pressed="section === chip.key"
-          @press="section = section === chip.key ? null : chip.key"
-        />
-        <FilterChip
-          v-for="chip in kindChips"
-          :key="`kind:${chip.key}`"
-          :label="chip.label"
-          :count="chip.count"
-          :is-pressed="kind === chip.key"
-          @press="kind = kind === chip.key ? null : chip.key"
-        />
+        <FilterToggleGroup v-if="sectionChips.length" v-model="section" label="Section" :items="sectionChips" />
+        <FilterToggleGroup v-if="languageChips.length > 1" v-model="language" label="Language" :items="languageChips" />
+        <FilterToggleGroup v-if="kindChips.length" v-model="kind" label="Post type" :items="kindChips" />
       </div>
     </div>
 
@@ -218,7 +262,7 @@ function sectionOf(post: SourcePostModel) {
           <span v-if="startOf(post)" class="block text-[13px] text-muted-foreground">{{ startOf(post) }}</span>
         </span>
         <span role="cell">
-          <HarvestPill :tone="post.kind === 'event' ? 'success' : 'outline'">
+          <HarvestPill tone="outline">
             <PillIcon :name="kindGlyphOf(post.kind)" />
             {{ post.kind }}
           </HarvestPill>
@@ -267,7 +311,7 @@ function sectionOf(post: SourcePostModel) {
           class="absolute inset-0 -z-10 flex items-start justify-center bg-gradient-to-br from-primary-soft to-muted pt-[18%]"
           aria-hidden="true"
         >
-          <SourceIcon :family="props.source.family" size="lg" bare />
+          <SourceIcon :family="props.source.family" :favicon-url="props.source.faviconUrl" size="lg" bare />
         </div>
         <div
           v-if="imagesOf(post).length > 1"
@@ -332,10 +376,11 @@ function sectionOf(post: SourcePostModel) {
           class="pointer-events-none absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-black/80 via-black/45 to-transparent backdrop-blur-xl [-webkit-mask-image:linear-gradient(to_top,black_50%,transparent)] [mask-image:linear-gradient(to_top,black_50%,transparent)]"
           aria-hidden="true"
         ></div>
-        <div class="z-10 flex h-[8.5rem] min-w-0 flex-col gap-2 p-4 text-white">
+        <div class="z-10 flex min-h-[8.5rem] min-w-0 flex-col gap-2 p-4 text-white">
           <PostPills
             :kind="post.kind"
             :pipeline-id="post.pipelineId"
+            :language="post.language"
             :removed="post.state === 'gone'"
             :hidden="statedLabels"
             on-image
@@ -348,10 +393,12 @@ function sectionOf(post: SourcePostModel) {
           >
             {{ post.title ?? 'Untitled post' }}
           </ConsoleLink>
-          <p class="mt-auto flex min-w-0 items-center gap-3 text-[13px] text-white/75">
+          <p
+            class="mt-auto flex min-h-5 min-w-0 flex-wrap content-start items-start gap-x-3 text-[13px] leading-5 text-white/75"
+          >
             <span
               v-if="eventChipOf(post)"
-              class="inline-flex min-w-0 items-center gap-1"
+              class="inline-flex min-w-0 max-w-full items-center gap-1"
               :class="
                 eventChipOf(post)?.timing === 'ongoing'
                   ? 'text-emerald-200'
@@ -362,7 +409,7 @@ function sectionOf(post: SourcePostModel) {
               v-bind="{ 'data-event-dates': eventChipOf(post)?.timing ?? '' }"
             >
               <PillIcon name="dates" />
-              <span class="truncate">{{ eventChipOf(post)?.text }}</span>
+              <span>{{ eventChipOf(post)?.text }}</span>
               <span v-if="eventChipOf(post)?.timing" class="sr-only">{{ eventChipOf(post)?.timing }}</span>
             </span>
             <span v-if="post.postedAt" class="inline-flex shrink-0 items-center gap-1" v-bind="{ 'data-posted': '' }">

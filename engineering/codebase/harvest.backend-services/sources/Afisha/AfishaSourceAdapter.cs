@@ -7,17 +7,14 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Afisha;
 
 /// <summary>Declares Afisha's public category, article and known-link check steps.</summary>
-public sealed class AfishaSourceAdapter : ISourceAdapter, ISourceConfigurationProvider
+public sealed class AfishaSourceAdapter : ISourceAdapter, ISourceConfigurationProvider, ISourceSectionCatalog
 {
     /// <inheritdoc />
     public SourceConfigurationModel DescribeConfiguration(SourceModel source)
     {
         var schema = JsonNode.Parse(SourceScopeSchemas.WebUrl(
             "Choose an Afisha section or save a specific announcement URL.").GetRawText())!.AsObject();
-        schema["sections"] = JsonSerializer.SerializeToNode(
-            from locale in new[] { "ru", "uz" }
-            from section in AfishaUrls.Sections
-            select new { label = section.Value, url = $"https://{source.Handle}/{locale}/{section.Key}", locale });
+        schema["sections"] = JsonSerializer.SerializeToNode(Sections(source), new JsonSerializerOptions(JsonSerializerDefaults.Web));
         return new()
         {
             DisplayName = "Afisha Uzbekistan",
@@ -25,6 +22,16 @@ public sealed class AfishaSourceAdapter : ISourceAdapter, ISourceConfigurationPr
             ScopeSchema = JsonSerializer.SerializeToElement(schema),
         };
     }
+
+    /// <inheritdoc />
+    public IReadOnlyList<SourceSectionDefinition> Sections(SourceModel source) =>
+        [.. from locale in new[] { "ru", "uz" }
+            from section in AfishaUrls.Sections
+            select new SourceSectionDefinition(section.Value, $"https://{source.Handle}/{locale}/{section.Key}", locale)
+            {
+                // Afisha also publishes category entries at /{locale}/{date}/{slug}.
+                RestrictToPath = false,
+            }];
 
     /// <inheritdoc />
     public string Key => "afisha-uz";

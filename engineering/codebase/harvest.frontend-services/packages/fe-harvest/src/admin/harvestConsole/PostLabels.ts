@@ -2,13 +2,12 @@
 export type PostLabel = 'kind' | 'section' | 'language' | 'removed';
 
 /**
- * Which card labels each list filter states by its value. A section filter names the section and, as the adapter lists
- * a section with its language, the language too. A new filter registers here once; the card never checks a filter by
- * name.
+ * Which card labels each list filter states by its value. Section and language can be filtered independently.
  */
 export const FilterLabels: Readonly<Record<string, readonly PostLabel[]>> = {
   kind: ['kind'],
-  section: ['section', 'language'],
+  section: ['section'],
+  language: ['language'],
   state: ['removed'],
 };
 

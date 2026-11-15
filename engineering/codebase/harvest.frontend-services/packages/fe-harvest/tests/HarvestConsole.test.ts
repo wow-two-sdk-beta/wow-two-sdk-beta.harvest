@@ -1,4 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
+import { createFeedbackBus, NoticeTone } from '@wow-two-beta/fe/feedback';
+import { ApiFailureFactory } from '@wow-two-beta/fe/foundation/http';
 import { ResultExtensions } from '@wow-two-beta/fe/foundation/results';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, type VNodeChild } from 'vue';
@@ -9,7 +11,7 @@ import PostPanel from '../src/admin/harvestConsole/PostPanel.vue';
 import SourcePanel from '../src/admin/harvestConsole/SourcePanel.vue';
 import SourcesGallery from '../src/admin/harvestConsole/SourcesGallery.vue';
 import AccessPanel from '../src/admin/harvestConsole/AccessPanel.vue';
-import type { HarvestConsoleOptions } from '../src/admin';
+import type { HarvestConsole, HarvestConsoleOptions } from '../src/admin';
 import { createHarvestClient } from '../src/kit';
 
 const wrappers: ReturnType<typeof mount>[] = [];
@@ -264,7 +266,7 @@ interface Harness {
   readonly options?: HarvestConsoleOptions;
   readonly signInPath?: string;
   /** The panels the connected session shows. */
-  readonly panels: () => VNodeChild;
+  readonly panels: (session: HarvestConsole) => VNodeChild;
 }
 
 /** Mounts a console session the way an app composes it: the connect card until connected, then the panels. */
@@ -273,9 +275,9 @@ function mountConsole({ options = {}, signInPath, panels }: Harness) {
     setup() {
       return () =>
         h(HarvestConsoleProvider, options, {
-          default: ({ session }: { session: { connected: { value: boolean }; disconnect(): void } }) =>
+          default: ({ session }: { session: HarvestConsole }) =>
             session.connected.value
-              ? [h('button', { type: 'button', onClick: () => session.disconnect() }, 'Disconnect'), panels()]
+              ? [h('button', { type: 'button', onClick: () => session.disconnect() }, 'Disconnect'), panels(session)]
               : h(HarvestConnectPanel, signInPath ? { signInPath } : {}),
         });
     },
@@ -345,6 +347,48 @@ describe('SCFD console session', () => {
     expect(wrapper.text()).toContain('Connect to SCFD');
     expect(wrapper.find('[aria-label="Sources"]').exists()).toBe(false);
   });
+
+  it('reports an action failure and each distinct refresh outage once', async () => {
+    const api = createHarvestClient({ fetch: fixtureFetch() });
+    const feedback = createFeedbackBus();
+    const notices = vi.fn();
+    feedback.subscribe(notices);
+    const listSources = api.listSources;
+    const unavailable = ResultExtensions.fail(ApiFailureFactory.create('transport'));
+    const wrapper = mountConsole({
+      options: { client: api, feedback, refreshIntervalMs: 60000 },
+      panels: (session) => [
+        h(SourcePanel, { sourceId: 'source-1' }),
+        h('button', { type: 'button', onClick: session.refresh }, 'Refresh'),
+      ],
+    });
+    await flushPromises();
+
+    api.startRun = async () => unavailable;
+    await button(wrapper, 'Harvest now')!.trigger('click');
+    await flushPromises();
+    expect(notices).toHaveBeenCalledWith(
+      expect.objectContaining({ tone: NoticeTone.Danger, title: 'The operation is unavailable.' }),
+    );
+
+    api.listSources = async () => unavailable;
+    await button(wrapper, 'Refresh')!.trigger('click');
+    await flushPromises();
+    await button(wrapper, 'Refresh')!.trigger('click');
+    await flushPromises();
+    expect(notices).toHaveBeenCalledTimes(2);
+    expect(notices).toHaveBeenLastCalledWith(
+      expect.objectContaining({ tone: NoticeTone.Danger, title: 'Could not refresh the workspace.' }),
+    );
+
+    api.listSources = listSources;
+    await button(wrapper, 'Refresh')!.trigger('click');
+    await flushPromises();
+    api.listSources = async () => unavailable;
+    await button(wrapper, 'Refresh')!.trigger('click');
+    await flushPromises();
+    expect(notices).toHaveBeenCalledTimes(3);
+  });
 });
 
 describe('Sources gallery', () => {
@@ -357,7 +401,7 @@ describe('Sources gallery', () => {
     const card = wrapper.get('article[aria-label="Afisha.uz"]');
     expect(card.get('[data-pill="last-harvest"]').text()).toContain('3 hours ago · +4 new · 23 found');
     expect(card.get('[data-pill="last-harvest"]').text()).toContain('partial');
-    expect(card.get('[data-pill="last-harvest"]').attributes('data-tone')).toBe('warning');
+    expect(card.get('[data-pill="last-harvest"]').attributes('data-tone')).toBe('outline');
     expect(card.text()).not.toContain('next');
     expect(card.text()).toContain('healthy');
 
@@ -387,7 +431,7 @@ describe('Sources gallery', () => {
     await flushPromises();
     const tile = wrapper.get('article[aria-label="Afisha"]');
     expect(tile.text()).toContain('1 source');
-    expect(tile.get('[data-pill="group-harvest"]').text()).toBe('+4 new');
+    expect(tile.get('[data-pill="group-harvest"]').text()).toBe('+4 new · partial');
     expect(wrapper.findAll('section header')).toHaveLength(2);
   });
 
@@ -423,7 +467,7 @@ describe('a source', () => {
     expect(harvestedTable.text()).toContain('1 subscriber');
     const fold = wrapper.get('details[data-folded-sections]');
     expect(fold.attributes('open')).toBeUndefined();
-    expect(fold.get('summary').text()).toBe('2 more sections nobody follows');
+    expect(fold.get('summary').text()).toBe('2 more sections');
     expect(fold.text()).toContain('Theatre');
     expect(fold.text()).toContain('Concerts');
     expect(wrapper.get('[aria-label="Health"]').text()).toContain('a page every 5 s');
@@ -435,6 +479,10 @@ describe('a source', () => {
       panels: () => h(SourcePanel, { sourceId: 'source-1', tab: 'activity' }),
     });
     await flushPromises();
+    const toggle = wrapper.get('button[aria-controls^="run-detail-"]');
+    expect(toggle.attributes('aria-expanded')).toBe('false');
+    await toggle.trigger('click');
+    expect(toggle.attributes('aria-expanded')).toBe('true');
     const problem = wrapper.get('[data-run-problem]');
     expect(problem.get('[data-problem-label]').text()).toBe('timed out');
     expect(problem.get('[data-problem-sentence]').text()).toBe('The host did not answer within 30 seconds.');
@@ -635,16 +683,19 @@ describe('post page and cards', () => {
     expect(wrapper.find('ul[aria-label="Posts"] > li [data-tone]').exists()).toBe(true);
   });
 
-  it('writes a card’s pills in lower case, and never says when SCFD saw the post', async () => {
+  it('draws neutral, lower-case card pills and hides when SCFD first saw the post', async () => {
     const wrapper = mountConsole({
       options: { client: createHarvestClient({ fetch: fixtureFetch() }) },
       panels: () => h(SourcePanel, { sourceId: 'source-1', tab: 'posts', view: 'cards' }),
     });
     await flushPromises();
     for (const card of wrapper.findAll('ul[aria-label="Posts"] > li')) {
-      const pills = card.findAll('[data-tone]').map((pill) => pill.text());
+      const pills = card.findAll('[data-tone]');
       expect(pills.length).toBeGreaterThan(0);
-      for (const text of pills) expect(text).toBe(text.toLowerCase());
+      for (const pill of pills) {
+        expect(pill.attributes('data-tone')).toBe('glass');
+        expect(pill.text()).toBe(pill.text().toLowerCase());
+      }
       expect(card.text()).not.toContain('seen');
     }
   });

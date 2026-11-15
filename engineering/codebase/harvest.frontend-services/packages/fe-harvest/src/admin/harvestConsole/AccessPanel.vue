@@ -16,7 +16,7 @@ export const PermissionWords: readonly { readonly scope: string; readonly words:
 <script setup lang="ts">
 import { computed } from 'vue';
 import { Button } from '@wow-two-beta/fe/presentation/actions';
-import { Badge, BadgeVariant, Card } from '@wow-two-beta/fe/presentation/display';
+import { Badge, Card } from '@wow-two-beta/fe/presentation/display';
 import { useHarvestConsole } from './HarvestConsole';
 
 /**
@@ -107,7 +107,7 @@ function workspaceName(item: (typeof containers.value)[number]) {
             <p class="truncate font-medium">{{ workspaceName(item) }}</p>
             <p class="mt-1 text-xs text-muted-foreground">{{ item.kind === 'pool' ? 'Shared pool' : 'Private' }}</p>
           </div>
-          <Badge v-if="item.id === containerId" :variant="BadgeVariant.Brand">open</Badge>
+          <Badge v-if="item.id === containerId">open</Badge>
         </li>
       </ul>
       <p v-else class="mt-4 text-sm text-muted-foreground">No workspaces yet.</p>

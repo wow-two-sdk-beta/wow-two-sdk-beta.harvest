@@ -20,7 +20,7 @@ public sealed record SourceHarvestModel
     /// <summary>Gets why the run stopped, as the store names a <see cref="RunReason"/> (<c>page_limit</c>).</summary>
     public string? Reason { get; init; }
 
-    /// <summary>Gets the captures the run changed or created.</summary>
+    /// <summary>Gets the posts the run created, falling back to changed captures for older runs.</summary>
     public required int NewPosts { get; init; }
 
     /// <summary>Gets the addresses the run discovered.</summary>

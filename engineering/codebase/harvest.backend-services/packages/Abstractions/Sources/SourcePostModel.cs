@@ -30,6 +30,9 @@ public sealed record SourcePostModel
     /// <summary>Gets the section whose run first captured the post from this source; null when no run did.</summary>
     public Guid? PipelineId { get; init; }
 
+    /// <summary>Gets the locale of this source's post link, or its extracted language.</summary>
+    public string? Language { get; init; }
+
     /// <summary>Gets the event's start as the post states it, a partial ISO 8601 value.</summary>
     public string? StartsAt { get; init; }
 
@@ -43,11 +46,10 @@ public sealed record SourcePostModel
     /// <summary>Gets the URL of the source's first link to the post.</summary>
     public string? Url { get; init; }
 
-    /// <summary>Gets the source URL of the first image in the post's resolved media; null when it has none. A stored
-    /// copy (<see cref="PostMedia.FileRef"/>) is never used.</summary>
+    /// <summary>Gets the first image address, using the private stored copy when available.</summary>
     public string? ImageUrl { get; init; }
 
-    /// <summary>Gets the source URLs of the post's resolved images in order, at most
+    /// <summary>Gets the post's image addresses in order, at most
     /// <see cref="SourceConstants.MaxPostImages"/>; empty when it has none. The first is <see cref="ImageUrl"/>.</summary>
     public IReadOnlyList<string> ImageUrls { get; init; } = [];
 }

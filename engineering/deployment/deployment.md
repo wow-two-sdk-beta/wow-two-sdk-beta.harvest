@@ -116,6 +116,9 @@ Wheelhouse Run, with no listener and no operator token.
 - It creates or reuses tenant `ocharo`, the private container `ocharo-events`, one pipeline per harvest channel of each
   selected publisher and one `wow2.event.v1` subscription per pipeline (filter `ocharo-fashion-v1`, context
   `catalog=ocharo-fashion`). Repeating the verb keeps every existing row.
+- Afisha's adapter registers Fashion, Exhibitions and Concerts in Russian and Uzbek when the source is created. Host
+  startup fills missing sections for existing sources. Only the selected Ocharo channels receive the setup cadence and
+  subscription.
 - Schedules stay off unless `--schedules` is given; the flag also switches on the registry cadences of existing
   pipelines (capture every 6 h, plus a daily check where the source's check policy is `web-direct`), keeping an
   interval an operator tuned.
@@ -137,6 +140,16 @@ when setup has not run for the tenant.
 The HTTP form, `POST /api/ocharo/sources/setup`, takes `{ enableSchedules, includeInstagram, groupIds? }` with the
 operator key or token: `engineering/architecture/contract.md` § Source host.
 
+## Private source media
+
+Set `HarvestAssets:Files:BaseAddress` and either a dedicated Files tenant key in `HarvestAssets:Files:ApiKey` or Files
+Identity client settings under `HarvestAssets:Files:Identity`. The client needs `files.read` and `files.write` in the
+Files tenant used for SCFD. Use a policy allowing raster images and ICO files up to 5 MiB with no orphan expiry.
+
+The internal host queues icons for registered web sources with pipelines and copies same-host HTTPS images from
+captured posts, including existing posts. Requests use Harvest's robots policy and host pacing. SCFD serves the stored
+bytes through the source's authorized API and uses the source URL while an image copy is pending or unavailable.
+
 ## Provisioning Haven on a target
 
 `dotnet HarvestSources.Api.dll marketplace setup --profile haven [--schedules] [--run] [--issue-key]` applies the
@@ -149,7 +162,7 @@ A profile is data (`sources/Module/Marketplace/MarketplaceProfiles.cs`); another
   with filter `marketplace-listing-v1` (listings only) and context `catalog=haven-rent-res`, `search=<key>`. Repeating
   the verb keeps every existing row.
 - Schedules stay off unless `--schedules` is given: capture every 2 h and a daily link check, keeping an interval an
-  operator tuned. A run reads at most 60 ads (`maxItems`); its page budget, 64, counts each ad's detail page too.
+  operator tuned. A run reads at most 60 ads (`maxItems`). The 64-page budget applies to catalog pages.
 - `--run` queues one bounded capture run per search for the running worker.
 - Haven's credential is a tenant API key named `haven-supply` with `events:read` only, sent as `X-Api-Key`.
   `--issue-key` issues it when the tenant holds no active one; `--rotate-key` revokes the active ones and issues a new

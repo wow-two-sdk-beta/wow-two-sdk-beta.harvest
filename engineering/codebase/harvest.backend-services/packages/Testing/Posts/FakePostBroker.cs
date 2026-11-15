@@ -88,7 +88,7 @@ public sealed class FakePostBroker(IRegistrationBroker registry, TimeProvider? c
                 Resolve(entry.PostId, !isNewPost);
                 Changed?.Invoke(Read(entry.PostId), isNewPost ? "post.new" : "post.changed", runId, entry.Id);
             }
-            return Result<CaptureSaveResult>.Ok(new CaptureSaveResult { Post = Read(entry.PostId), LinkId = entry.Id, CaptureId = captureId, Changed = changed });
+            return Result<CaptureSaveResult>.Ok(new CaptureSaveResult { Post = Read(entry.PostId), LinkId = entry.Id, CaptureId = captureId, Changed = changed, Created = isNewPost });
         }
     }
 

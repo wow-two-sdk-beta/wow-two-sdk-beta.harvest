@@ -242,6 +242,7 @@ public sealed class HarvestEngine(
 
         RunReason? limit = await LimitAsync(connection, transaction, claim, now, ct);
         int captured = 0;
+        int created = 0;
         int unchanged = 0;
         var savedKeys = new HashSet<string>(StringComparer.Ordinal);
         if (limit is null && result.Outcome == FetchOutcome.Ok)
@@ -256,7 +257,10 @@ public sealed class HarvestEngine(
                     claim.Item.RunId, capture, envelope, ct);
                 if (saved is Result<CaptureSaveResult>.Failure failure)
                     throw new InvalidOperationException(failure.Error.Message);
-                if (((Result<CaptureSaveResult>.Success)saved).Value.Changed)
+                var captureResult = ((Result<CaptureSaveResult>.Success)saved).Value;
+                if (captureResult.Created)
+                    created++;
+                if (captureResult.Changed)
                     captured++;
                 else
                     unchanged++;
@@ -295,9 +299,17 @@ public sealed class HarvestEngine(
                         ("id", claim.Item.RunId));
                     break;
                 }
-                int added = await RunPlanner.EnqueueAsync(connection, transaction, claim.Frozen, claim.Item.RunId, target, now, ct);
-                existing += added;
-                discovered += added;
+                RunPlanner.EnqueueResult queued = await RunPlanner.EnqueueAsync(connection, transaction, claim.Frozen,
+                    claim.Item.RunId, target, now, ct);
+                if (queued == RunPlanner.EnqueueResult.PageLimit)
+                    await EngineSql.ExecuteAsync(connection, transaction,
+                        "UPDATE harvest_runs SET completion_reason=coalesce(completion_reason,'page_limit'),enumeration_complete=false WHERE id=@id",
+                        ct, ("id", claim.Item.RunId));
+                if (queued == RunPlanner.EnqueueResult.Enqueued)
+                {
+                    existing++;
+                    discovered++;
+                }
             }
         }
 
@@ -309,13 +321,13 @@ public sealed class HarvestEngine(
             """
             UPDATE harvest_work_item SET state=@state,outcome=@outcome,last_error=@message,finished_at=@now,
               lease_owner=NULL,lease_until=NULL WHERE id=@id;
-            UPDATE harvest_runs SET pages=pages+1,captured=captured+@captured,unchanged=unchanged+@unchanged,
+            UPDATE harvest_runs SET pages=pages+1,captured=captured+@captured,new_posts=new_posts+@created,unchanged=unchanged+@unchanged,
               discovered=discovered+@discovered,failed=failed+@failed,requests=requests+@requests,bytes=bytes+@bytes,
               cost_usd_est=cost_usd_est+@cost,enumeration_complete=(enumeration_complete OR @complete) AND completion_reason IS NULL,
               fetch_outcome=CASE WHEN @ok THEN fetch_outcome ELSE @outcome END,message=@message WHERE id=@run
             """, ct, ("id", claim.Item.WorkItemId), ("run", claim.Item.RunId), ("now", now),
             ("state", ok ? "done" : refused ? "blocked" : "failed"), ("outcome", SnakeCaseEnum<FetchOutcome>.ToText(result.Outcome)),
-            ("message", result.Message), ("captured", captured), ("unchanged", unchanged), ("discovered", discovered),
+            ("message", result.Message), ("captured", captured), ("created", created), ("unchanged", unchanged), ("discovered", discovered),
             ("failed", ok ? 0 : 1), ("requests", checked((int)Math.Min(result.Usage.Requests, int.MaxValue))),
             ("bytes", result.Usage.Bytes), ("cost", result.Usage.EstimatedUsd), ("complete", result.EnumerationComplete && limit is null), ("ok", ok));
         foreach ((string meter, long units) in new[] { ("requests", result.Usage.Requests), ("bytes", result.Usage.Bytes) })
@@ -370,20 +382,18 @@ public sealed class HarvestEngine(
         CancellationToken ct)
     {
         await using NpgsqlCommand command = EngineSql.Command(connection, transaction,
-            "SELECT pages,captured+unchanged,requests,bytes,coalesce(started_at,queued_at) FROM harvest_runs WHERE id=@id",
+            "SELECT captured+unchanged,requests,bytes,coalesce(started_at,queued_at) FROM harvest_runs WHERE id=@id",
             ("id", claim.Item.RunId));
         await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(ct);
         await reader.ReadAsync(ct);
         PipelineLimits limits = claim.Frozen.Pipeline.Limits;
-        if (reader.GetInt32(0) >= (limits.MaxPages ?? int.MaxValue))
-            return RunReason.PageLimit;
-        if (reader.GetInt32(1) >= (limits.MaxItems ?? options.Value.MaxItems))
+        if (reader.GetInt32(0) >= (limits.MaxItems ?? options.Value.MaxItems))
             return RunReason.ItemLimit;
-        if (reader.GetInt32(2) >= (limits.MaxRequests ?? options.Value.MaxRequests))
+        if (reader.GetInt32(1) >= (limits.MaxRequests ?? options.Value.MaxRequests))
             return RunReason.RequestLimit;
-        if (reader.GetInt64(3) >= (limits.MaxBytes ?? options.Value.MaxBytes))
+        if (reader.GetInt64(2) >= (limits.MaxBytes ?? options.Value.MaxBytes))
             return RunReason.ByteLimit;
-        if (now - reader.GetFieldValue<DateTimeOffset>(4) >= (limits.MaxDuration ?? options.Value.MaxDuration))
+        if (now - reader.GetFieldValue<DateTimeOffset>(3) >= (limits.MaxDuration ?? options.Value.MaxDuration))
             return RunReason.TimeLimit;
         return null;
     }

@@ -5,6 +5,12 @@
 Every unbuilt item, grouped; top of each group = next. Shipped work lives in [`version-track/`](version-track/).
 Shape: wow-two-ws/conventions/planning/version-track/version-track.md
 
+## Console
+
+| Item | Type | Notes |
+|---|---|---|
+| Post card composition | engineering | review date layout first, then isolate the card from list state and adopt the SDK primitives that preserve card links and controls |
+
 ## Events integration
 
 Picks for `system/sessions/events-integration` in wow-two-ws (P1 = this goal, P2 = after it).

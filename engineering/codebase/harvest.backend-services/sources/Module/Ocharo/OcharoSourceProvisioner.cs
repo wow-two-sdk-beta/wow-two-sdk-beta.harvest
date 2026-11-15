@@ -84,6 +84,8 @@ public sealed class OcharoSourceProvisioner(IRegistrationBroker registry, IDeliv
                         CheckPolicy = profile.CheckPolicy,
                     }, cancellationToken));
                     sources.Add(source);
+                    // The registry may have declared the adapter's passive sections with the source.
+                    pipelines = Value(await registry.ListPipelinesAsync(container.Id, cancellationToken)).ToList();
                 }
                 if (source.AiAllowed || source.PoolShareable || source.RobotsPolicy != RobotsPolicy.Obey)
                     return Conflict("An existing source has a different AI, sharing or robots posture. Review it before applying this registry.");

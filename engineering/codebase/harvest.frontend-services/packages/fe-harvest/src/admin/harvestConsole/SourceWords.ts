@@ -1,3 +1,4 @@
+import { differenceInMonths } from '@wow-two-beta/fe/foundation/datetime';
 import type {
   RunModel,
   SourceHarvestModel,
@@ -24,6 +25,7 @@ export type GalleryView = 'cards' | 'rows';
 const Locale = 'en-GB';
 const time = new Intl.DateTimeFormat(Locale, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 const dayMonth = new Intl.DateTimeFormat(Locale, { day: 'numeric', month: 'short' });
+const trendDayMonth = new Intl.DateTimeFormat(Locale, { day: 'numeric', month: 'short', timeZone: 'UTC' });
 const fullDate = new Intl.DateTimeFormat(Locale, { day: 'numeric', month: 'short', year: 'numeric' });
 
 /** Parses an instant, or nothing for a missing or unreadable one. @internal */
@@ -81,9 +83,7 @@ export function timingOf(startsAt?: string, endsAt?: string, now = new Date()): 
 }
 
 /**
- * How long ago something happened, as one count of minutes, hours, days or years, with no `ago`: `just now`, `5 min`,
- * `1 hour`, `3 hours`, `1 day`, `200 days`, `1 year`. Never a month or a date. Counts round down, so `3 hours` holds
- * until the fourth hour. For a label that carries its own icon, such as the card's posted age.
+ * Formats elapsed time for an icon-led label. Counts completed units from minutes through calendar months and years.
  */
 export function ageOf(value?: string, now = new Date()) {
   const date = instant(value);
@@ -93,14 +93,31 @@ export function ageOf(value?: string, now = new Date()) {
   if (minutes < 60) return `${minutes} min`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return plural(hours, 'hour');
-  const days = Math.floor(hours / 24);
-  return days < 365 ? plural(days, 'day') : plural(Math.floor(days / 365), 'year');
+  const months = differenceInMonths(date, now);
+  if (months >= 12) return plural(Math.floor(months / 12), 'year');
+  if (months > 0) return plural(months, 'month');
+  return plural(Math.floor(hours / 24), 'day');
 }
 
 /** The same count with `ago`: `5 min ago`, `3 hours ago`, `1 year ago`; `just now` stays as it is. */
 export function agoOf(value?: string, now = new Date()) {
   const age = ageOf(value, now);
   return age === 'just now' || age === '—' ? age : `${age} ago`;
+}
+
+/** A harvest's next scheduled time, rounded up to the next minute, hour or day. */
+export function nextHarvestWords(value?: string, now = new Date()) {
+  const due = instant(value);
+  if (!due) return 'No harvest scheduled';
+  const remaining = due.getTime() - now.getTime();
+  if (remaining <= 0) return 'Next harvest due';
+  const minutes = Math.ceil(remaining / 60_000);
+  if (minutes < 60) return `Next harvest in ${minutes} min`;
+  if (minutes < 1440) {
+    const hours = plural(Math.floor(minutes / 60), 'hour');
+    return `Next harvest in ${hours}${minutes % 60 ? ` ${minutes % 60} min` : ''}`;
+  }
+  return `Next harvest in ${plural(Math.floor(minutes / 1440), 'day')}`;
 }
 
 const monthShort = new Intl.DateTimeFormat(Locale, { month: 'short', timeZone: 'UTC' });
@@ -172,13 +189,13 @@ export function dateTimeOf(value?: string) {
 /** The date a day of a 14-day trend stands for, oldest first, the last one today. */
 export function trendDayOf(index: number, length: number, now = new Date()) {
   const date = new Date(now);
-  date.setDate(now.getDate() - (length - 1 - index));
+  date.setUTCDate(now.getUTCDate() - (length - 1 - index));
   return date;
 }
 
 /** The first date of a 14-day trend: `28 Oct`. */
 export function trendStartOf(length: number, now = new Date()) {
-  return dayMonth.format(trendDayOf(0, length, now));
+  return trendDayMonth.format(trendDayOf(0, length, now));
 }
 
 /** Reads an ISO-8601 duration (`PT6H`, `P1D`, `PT90M`) as minutes; nothing for an unreadable one. */
@@ -262,23 +279,6 @@ export const StateWords: Record<SourceOverviewState, string> = {
   idle: 'idle',
 };
 
-/** A source state's tint. */
-export function stateTone(state: SourceOverviewState): PillTone {
-  if (state === 'healthy') return 'success';
-  if (state === 'harvesting') return 'info';
-  if (state === 'needsAttention') return 'warning';
-  return 'neutral';
-}
-
-/** A harvest status's tint: done green, partial amber, failed red, in flight blue. */
-export function statusTone(status: SourceHarvestStatus | RunModel['status']): PillTone {
-  if (status === 'completed') return 'success';
-  if (status === 'partial') return 'warning';
-  if (status === 'failed' || status === 'interrupted') return 'danger';
-  if (status === 'running' || status === 'queued') return 'info';
-  return 'neutral';
-}
-
 /** A run status in words. */
 export function statusWords(status: SourceHarvestStatus | RunModel['status']) {
   return status === 'running' ? 'running' : codeWords(status);
@@ -286,18 +286,15 @@ export function statusWords(status: SourceHarvestStatus | RunModel['status']) {
 
 /**
  * What the last harvest found, as one pill reads: `3 hours ago · +4 new · 23 found`. The pill's icon says `last
- * harvest`, so the words stay out of the text; `found` counts the links the harvest listed and `new` those never seen
- * before. A partial harvest adds no word, its amber tint says it (`lastHarvestNote` words it for the title and
- * assistive technology); a failed or cancelled one does.
+ * harvest`, `found` counts the links the harvest listed and `new` those never seen before. The last label names
+ * outcomes such as `partial` or `failed`.
  */
 export function lastHarvestText(harvest?: SourceHarvestModel, now = new Date()) {
   if (!harvest) return 'no harvest yet';
   if (harvest.status === 'running') return 'harvesting now';
   if (harvest.status === 'queued') return 'harvest queued';
   const found = `${agoOf(harvest.at, now)} · ${harvest.newPosts ? `+${harvest.newPosts}` : '0'} new · ${harvest.found} found`;
-  return harvest.status === 'completed' || harvest.status === 'partial'
-    ? found
-    : `${found} · ${statusWords(harvest.status)}`;
+  return harvest.status === 'completed' ? found : `${found} · ${statusWords(harvest.status)}`;
 }
 
 /** How the last harvest ended, when it stopped short: `partial · page limit`; nothing for a clean one. */
@@ -307,9 +304,9 @@ export function lastHarvestNote(harvest?: SourceHarvestModel) {
   return [statusWords(harvest.status), harvest.reason ? codeWords(harvest.reason) : ''].filter(Boolean).join(' · ');
 }
 
-/** The last-harvest pill's tint; dashed when nothing was harvested yet. */
+/** The last-harvest pill uses a dashed border when nothing was harvested yet. */
 export function lastHarvestTone(harvest?: SourceHarvestModel): PillTone {
-  return harvest ? statusTone(harvest.status) : 'dashed';
+  return harvest ? 'outline' : 'dashed';
 }
 
 /** The line under a source's name: `last harvest 13:12 · next 19:12`, or `never harvested`. */
@@ -402,7 +399,10 @@ export function runFoundWords(run: RunModel, maxPages?: number) {
       : reasonWords(run.completionReason);
   if (run.status === 'failed' && !run.captured && !run.discovered) return 'nothing harvested';
   if (run.kind === 'capture') {
-    return [`${run.captured} new of ${run.discovered} found`, stop].filter(Boolean).join(' · ');
+    const added = run.newPosts ?? run.captured;
+    const updated = run.newPosts === undefined ? 0 : Math.max(0, run.captured - added);
+    const found = run.discovered ? `${added} new of ${run.discovered} found` : `${added} new`;
+    return [found, updated ? `${updated} updated` : '', stop].filter(Boolean).join(' · ');
   }
   const changed = run.captured ? `${plural(run.captured, 'post')} changed` : 'nothing changed';
   return [changed, run.unchanged ? `${run.unchanged} unchanged` : '', stop].filter(Boolean).join(' · ');
@@ -456,6 +456,7 @@ export function shortUrl(url: string) {
  */
 export function imageSrcOf(value?: string) {
   if (!value) return undefined;
+  if (/^\/api\/sources\/[a-f0-9-]{36}\/assets\/[a-f0-9-]{36}$/i.test(value)) return value;
   if (/^data:image\/(png|jpeg|gif|webp|avif|svg\+xml)[;,]/i.test(value)) return value;
   try {
     const url = new URL(value);

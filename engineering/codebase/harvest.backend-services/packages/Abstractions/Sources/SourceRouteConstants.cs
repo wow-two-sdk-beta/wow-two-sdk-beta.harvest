@@ -15,6 +15,13 @@ public static class SourceRouteConstants
     /// <summary>Holds a source's reading pace, under <c>api/sources/{sourceId}</c>.</summary>
     public const string Reading = "reading";
 
+    /// <summary>Holds a source's authorized media route, under <c>api/sources/{sourceId}</c>.</summary>
+    public const string Assets = "assets";
+
+    /// <summary>Returns the relative address of a stored source asset.</summary>
+    public static string AssetUrl(Guid sourceId, Guid assetId) =>
+        $"/api/sources/{sourceId:D}/{Assets}/{assetId:D}";
+
     /// <summary>Holds a post's revisions, under <c>api/posts/{postId}</c>.</summary>
     public const string Revisions = "revisions";
 

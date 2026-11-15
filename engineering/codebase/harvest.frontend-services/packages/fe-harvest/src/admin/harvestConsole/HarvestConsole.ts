@@ -12,6 +12,7 @@ import {
   type Ref,
   type ShallowRef,
 } from 'vue';
+import { feedbackQueryErrors, NoticeTone, type FeedbackBus } from '@wow-two-beta/fe/feedback';
 import { ApiFailureFactory, type ApiFailure } from '@wow-two-beta/fe/foundation/http';
 import { ResultExtensions, type Result } from '@wow-two-beta/fe/foundation/results';
 import type {
@@ -45,7 +46,7 @@ export type ConsolePlace =
   | { readonly kind: 'home' }
   | { readonly kind: 'sources'; readonly group?: string }
   | { readonly kind: 'source'; readonly id: string; readonly tab?: SourceTab; readonly post?: string }
-  | { readonly kind: 'subscribers' }
+  | { readonly kind: 'subscribers'; readonly section?: string }
   | { readonly kind: 'access' };
 
 /** How often a section is checked for changes. */
@@ -90,6 +91,8 @@ export interface HarvestConsoleOptions {
   readonly localWorkerEnabled?: boolean;
   /** Resolves and opens places; omitted, panels show names without links. */
   readonly navigation?: ConsoleNavigation;
+  /** Sends action and refresh notices to the host's feedback bus. */
+  readonly feedback?: FeedbackBus;
   /** How often the open container refreshes while the tab is visible. Default 5 seconds. */
   readonly refreshIntervalMs?: number;
 }
@@ -172,6 +175,7 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
   const capabilityRequested = new Set<string>();
   let inflight: Promise<void> | null = null;
   let again = false;
+  let refreshFailed = false;
   let disposed = false;
   let timer: ReturnType<typeof setInterval> | null = null;
 
@@ -280,6 +284,26 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
     notice.value = null;
   }
 
+  /** A failed background refresh reports once until a refresh succeeds. */
+  function reportRefreshFailure(error?: ApiFailure) {
+    const feedback = options.feedback;
+    if (!feedback) {
+      if (error) failure.value = message(error);
+      return;
+    }
+    if (!error) {
+      refreshFailed = false;
+      return;
+    }
+    if (refreshFailed || error.status === 401 || error.code === 'cancelled') return;
+    refreshFailed = true;
+    feedback.notify({
+      tone: NoticeTone.Danger,
+      title: 'Could not refresh the workspace.',
+      description: error.message,
+    });
+  }
+
   /** Reads each source's adapter metadata once per container. */
   async function loadCapabilities() {
     const api = client.value;
@@ -349,17 +373,19 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
         overviewState.value = overviewResult.ok ? 'ready' : 'unavailable';
       if (groupResult.ok) groups.value = groupResult.value;
       if (subscriptionResult.ok) subscriptions.value = subscriptionResult.value;
-      if (!sourceResult.ok) failure.value = message(sourceResult.failure);
-      else if (!pipelineResult.ok) failure.value = message(pipelineResult.failure);
       await loadRuns(api, current, controller.signal);
-      if (controller.signal.aborted || containerId.value !== current) return;
+      if (controller.signal.aborted || disposed || client.value !== api || containerId.value !== current) return;
+      const failedRead = [sourceResult, pipelineResult].find((result) => !result.ok);
+      const overviewFailure = options.feedback && !overviewResult.ok ? overviewResult.failure : undefined;
+      reportRefreshFailure(failedRead?.failure ?? overviewFailure);
       loaded.value = true;
       void loadCapabilities();
     } catch {
       if (!controller.signal.aborted) {
         if (sourceListState.value === 'loading') sourceListState.value = 'unavailable';
         if (overviewState.value === 'loading') overviewState.value = 'unavailable';
-        failure.value = 'The console could not refresh. Try again.';
+        if (options.feedback) reportRefreshFailure(ApiFailureFactory.create('protocol'));
+        else failure.value = 'The console could not refresh. Try again.';
       }
     }
   }
@@ -515,10 +541,12 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
       const result = await operation(api, controller.signal);
       if (disposed || controller.signal.aborted || client.value !== api) return false;
       if (!result.ok) {
-        failure.value = message(result.failure);
+        if (options.feedback) feedbackQueryErrors(options.feedback)(result.failure);
+        else failure.value = message(result.failure);
         return false;
       }
-      notice.value = success;
+      if (options.feedback) options.feedback.notify({ tone: NoticeTone.Success, title: success });
+      else notice.value = success;
       await refresh();
       return true;
     } finally {
@@ -821,6 +849,7 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
     () => {
       saveConnection();
       read?.abort();
+      refreshFailed = false;
       capabilityRead.abort();
       capabilityRead = new AbortController();
       capabilityRequested.clear();

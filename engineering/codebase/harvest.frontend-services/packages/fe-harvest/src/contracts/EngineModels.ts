@@ -11,6 +11,7 @@ export interface RunModel {
   readonly startedAtUtc?: string;
   readonly finishedAtUtc?: string;
   readonly captured: number;
+  readonly newPosts?: number;
   readonly unchanged: number;
   readonly discovered: number;
   readonly failed: number;

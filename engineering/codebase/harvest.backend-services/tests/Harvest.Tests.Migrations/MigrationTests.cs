@@ -14,7 +14,7 @@ public sealed class MigrationTests : IAsyncLifetime
 {
     /// <summary>Holds every migration of the set, in order.</summary>
     private static readonly string[] Migrations =
-        ["001-baseline", "002-drop-escalation", "003-fetching", "004-posts-delivery", "005-subscription-filter", "006-source-groups"];
+        ["001-baseline", "002-drop-escalation", "003-fetching", "004-posts-delivery", "005-subscription-filter", "006-source-groups", "007-source-assets"];
 
     /// <summary>Holds the escalation columns 002 drops.</summary>
     private const string EscalationColumns =
@@ -27,7 +27,7 @@ public sealed class MigrationTests : IAsyncLifetime
         "harvest_fetch_validators", "harvest_host_lane", "harvest_host_policies", "harvest_host_state", "harvest_link_check_log", "harvest_link_events",
         "harvest_link_readings", "harvest_link_schedule", "harvest_pipelines", "harvest_post_links", "harvest_post_texts",
         "harvest_posts", "harvest_post_merges", "harvest_post_keep_apart", "harvest_post_revisions", "harvest_retention_policies", "harvest_runs",
-        "harvest_schedules", "harvest_source_groups", "harvest_source_scopes",
+        "harvest_schedules", "harvest_source_assets", "harvest_source_groups", "harvest_source_scopes",
         "harvest_sources", "harvest_subscription_event", "harvest_subscriptions", "harvest_tenants", "harvest_usage",
         "harvest_work_item",
     ];
@@ -61,7 +61,7 @@ public sealed class MigrationTests : IAsyncLifetime
 
         applied.Should().Equal(Migrations);
         (await HarvestTablesAsync()).Should().BeEquivalentTo(Tables);
-        (await ScalarAsync<long>("SELECT count(*) FROM harvest_migration_history WHERE applied_by = 'startup'")).Should().Be(6);
+        (await ScalarAsync<long>("SELECT count(*) FROM harvest_migration_history WHERE applied_by = 'startup'")).Should().Be(Migrations.Length);
         Unwrap(await Runner.ApplyPendingAsync("startup", CancellationToken.None)).Should().BeEmpty();
     }
 
@@ -107,7 +107,7 @@ public sealed class MigrationTests : IAsyncLifetime
     {
         Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None));
 
-        Unwrap(await Runner.RollbackAsync(targetOrdinal: 5, CancellationToken.None)).Should().Equal("006-source-groups");
+        Unwrap(await Runner.RollbackAsync(targetOrdinal: 5, CancellationToken.None)).Should().Equal("007-source-assets", "006-source-groups");
         (await ColumnCountAsync("table_name = 'harvest_sources' AND column_name IN ('group_id', 'display_name')")).Should().Be(0);
         (await ScalarAsync<bool>("SELECT to_regclass('harvest_source_groups') IS NULL AND to_regclass('harvest_post_revisions') IS NULL")).Should().BeTrue();
 
@@ -124,7 +124,7 @@ public sealed class MigrationTests : IAsyncLifetime
         Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None)).Should().Equal(Migrations);
         (await HarvestTablesAsync()).Should().BeEquivalentTo(Tables);
         var status = Unwrap(await Runner.GetStatusAsync(CancellationToken.None));
-        status.Applied.Select(migration => migration.Ordinal).Should().Equal(1, 2, 3, 4, 5, 6);
+        status.Applied.Select(migration => migration.Ordinal).Should().Equal(Enumerable.Range(1, Migrations.Length));
         status.Pending.Should().BeEmpty();
         status.Drifted.Should().BeEmpty();
     }

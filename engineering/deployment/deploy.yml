@@ -55,6 +55,8 @@ services:
         Harvest:ServiceAccess:Audience: { required: true }
         Harvest:ServiceAccess:ClientGrantsJson: { required: true }
         HarvestSources:Audience: { default: internal }
+        HarvestAssets:Files:BaseAddress: { type: url }
+        HarvestAssets:Files:ApiKey: { secret: true }
         HarvestIntegrations:Enabled: { type: boolean, default: false }
         HarvestIntegrations:OlxProxyProfile: {}
         HarvestIntegrations:ProxyProfilesJson: { secret: true }

@@ -5,7 +5,7 @@ import HarvestPill from './HarvestPill.vue';
 import LastHarvestPill from './LastHarvestPill.vue';
 import NewPostsBars from './NewPostsBars.vue';
 import SourceIcon from './SourceIcon.vue';
-import { StateWords, stateTone } from './SourceWords';
+import { StateWords } from './SourceWords';
 
 /**
  * A source at a glance, as Wheelhouse draws a product: how it is read, its name and state, one pill for the last
@@ -22,16 +22,16 @@ const props = defineProps<{ source: SourceOverviewModel; trendMax?: number }>();
     :aria-label="props.source.name"
   >
     <div class="flex min-w-0 items-center gap-3">
-      <SourceIcon :family="props.source.family" size="md" />
+      <SourceIcon :family="props.source.family" :favicon-url="props.source.faviconUrl" size="md" />
       <ConsoleLink
         :to="{ kind: 'source', id: props.source.sourceId }"
         class="min-w-0 flex-1 truncate text-[15px] font-semibold outline-none after:absolute after:inset-0 after:rounded-2xl after:content-['']"
       >
         {{ props.source.name }}
       </ConsoleLink>
-      <HarvestPill :tone="stateTone(props.source.state)">{{ StateWords[props.source.state] }}</HarvestPill>
+      <HarvestPill>{{ StateWords[props.source.state] }}</HarvestPill>
     </div>
-    <div class="mt-auto flex min-w-0 items-end gap-3 pt-1">
+    <div class="mt-auto flex min-w-0 flex-wrap items-end gap-x-3 gap-y-2 pt-1">
       <LastHarvestPill :harvest="props.source.lastHarvest" />
       <span class="ms-auto flex min-w-12 max-w-36 flex-1 justify-end">
         <NewPostsBars :values="props.source.newPostsDaily" :max="props.trendMax" fill />

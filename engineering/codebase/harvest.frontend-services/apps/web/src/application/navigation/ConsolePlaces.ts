@@ -12,6 +12,8 @@ export function placeLocation(place: ConsolePlace): RouteLocationRaw {
         name: !place.tab || place.tab === 'overview' ? 'source' : `source-${place.tab}`,
         params: { id: place.id },
       };
+    case 'subscribers':
+      return { name: 'subscribers', query: place.section ? { section: place.section } : {} };
     default:
       return { name: place.kind };
   }

@@ -4,7 +4,7 @@ import { Button } from '@wow-two-beta/fe/presentation/actions';
 import { EmptyState } from '@wow-two-beta/fe/presentation/display';
 import { SearchInput } from '@wow-two-beta/fe/presentation/forms';
 import type { SourceOverviewModel } from '../../contracts';
-import FilterChip from './FilterChip.vue';
+import FilterToggleGroup from './FilterToggleGroup.vue';
 import SourceGroupSection from './SourceGroupSection.vue';
 import SourceGroupsDialog from './SourceGroupsDialog.vue';
 import SourceGroupTile from './SourceGroupTile.vue';
@@ -14,20 +14,21 @@ import type { GalleryView } from './SourceWords';
 
 /** The state filters, each with the source states it keeps. @internal */
 const Filters = [
-  { key: 'all', label: 'All', keeps: () => true },
+  { key: 'all', label: 'All', icon: 'all', keeps: () => true },
   {
     key: 'harvesting',
     label: 'Harvesting',
+    icon: 'history',
     keeps: (source: SourceOverviewModel) => source.state === 'harvesting' || source.state === 'healthy',
   },
   {
     key: 'needsAttention',
     label: 'Needs attention',
+    icon: 'attention',
     keeps: (source: SourceOverviewModel) => source.state === 'needsAttention',
   },
-  { key: 'idle', label: 'Idle', keeps: (source: SourceOverviewModel) => source.state === 'idle' },
+  { key: 'idle', label: 'Idle', icon: 'clock', keeps: (source: SourceOverviewModel) => source.state === 'idle' },
 ] as const;
-type FilterKey = (typeof Filters)[number]['key'];
 
 /**
  * The Sources page, built as Wheelhouse's Products page: the groups first — each a tile with its source count,
@@ -47,7 +48,7 @@ const props = withDefaults(
 );
 const { overviews, overviewState, groups } = useHarvestConsole();
 const search = ref('');
-const filter = ref<FilterKey>('all');
+const filter = ref<string | null>('all');
 const collapsed = ref(new Set<string>());
 const groupsOpen = ref(false);
 
@@ -69,7 +70,7 @@ const chips = computed(() =>
   Filters.map((item) => ({ ...item, count: searched.value.filter((source) => item.keeps(source)).length })),
 );
 const kept = computed(() => {
-  const keeps = Filters.find((item) => item.key === filter.value)!.keeps;
+  const keeps = (Filters.find((item) => item.key === filter.value) ?? Filters[0]).keeps;
   return new Set(searched.value.filter((source) => keeps(source)).map((source) => source.sourceId));
 });
 /** Each group with the sources it shows; a narrowed page drops the groups with none. */
@@ -108,24 +109,21 @@ watch(
 <template>
   <div class="flex flex-col gap-6" aria-label="Sources" role="region">
     <div class="flex flex-wrap items-center gap-2.5">
-      <div class="min-w-56 flex-1">
+      <div class="min-w-[min(100%,15rem)] flex-1">
         <SearchInput
           v-model="search"
           :placeholder="`Search ${overviews.length} sources`"
           v-bind="{ 'aria-label': 'Search sources' }"
+          class="[&>input]:rounded-full [&>button]:rounded-full"
           is-clearable
         />
       </div>
-      <div class="flex flex-wrap items-center gap-2" role="group" aria-label="Filter by state">
-        <FilterChip
-          v-for="chip in chips"
-          :key="chip.key"
-          :label="chip.label"
-          :count="chip.count"
-          :is-pressed="filter === chip.key"
-          @press="filter = chip.key"
-        />
-      </div>
+      <FilterToggleGroup
+        :model-value="filter"
+        label="Filter by state"
+        :items="chips"
+        @update:model-value="filter = $event ?? 'all'"
+      />
       <Button variant="outline" @click="groupsOpen = true">Groups</Button>
     </div>
 

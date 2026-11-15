@@ -16,9 +16,9 @@ public sealed class StoreBootTests
         var second = await host.Services.MigrateHarvestOnStartupAsync("test");
 
         first.Should().Equal("001-baseline", "002-drop-escalation", "003-fetching", "004-posts-delivery", "005-subscription-filter",
-            "006-source-groups");
+            "006-source-groups", "007-source-assets");
         second.Should().BeEmpty();
-        (await host.ScalarAsync<long>("SELECT count(*) FROM harvest_migration_history")).Should().Be(6);
+        (await host.ScalarAsync<long>("SELECT count(*) FROM harvest_migration_history")).Should().Be(first.Count);
         (await host.ScalarAsync<bool>("SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm')")).Should().BeTrue();
     }
 

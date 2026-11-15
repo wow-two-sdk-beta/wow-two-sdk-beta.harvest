@@ -13,7 +13,9 @@ screens a console composes.
   `SourceGroupsDialog` behind its Groups button); `SourcePanel` (a source's header card over its Overview, Posts,
   Activity and, for operators, Settings tabs; a post opens on its own page, `PostPanel`, with its images, facts and revisions);
   `SubscribersPanel`; `AccessPanel`. A section is turned on from the adapter's own section list, never a typed URL.
-  `ContainerSwitch`, `ConsoleNotices` and `HarvestConnectPanel` fill the host's frame and signed-out screen. The
+  `ContainerSwitch` and `HarvestConnectPanel` fill the host's frame and signed-out screen. Pass the same
+  `feedback` bus to the provider and the host's `FeedbackToastHost` to show command and refresh notices. The
+  `ConsoleNotices` panel serves hosts that use inline feedback. The
   provider's optional `HarvestClient` works in every form. Without a client it offers an API-key connection held only
   in memory, and makes no authenticated requests until the user connects. The host app owns routes and the frame; its
   `navigation` option resolves each `ConsolePlace` a panel links to.

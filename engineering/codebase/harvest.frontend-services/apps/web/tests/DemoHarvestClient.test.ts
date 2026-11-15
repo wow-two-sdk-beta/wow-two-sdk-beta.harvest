@@ -60,12 +60,17 @@ describe('standalone demo client', () => {
     expect(groups.ok && groups.value.map((group) => group.name)).toContain('Teplo');
     const posts = await api.listSourcePosts(afisha.sourceId);
     if (!posts.ok) throw new Error('Demo posts missing');
-    expect(posts.value).toHaveLength(8);
-    expect(posts.value.filter((row) => row.imageUrl)).toHaveLength(4);
-    expect(posts.value[0]!.imageUrl).toMatch(/^data:image\/svg\+xml/);
-    const show = await api.getPost(posts.value[0]!.postId, container);
+    expect(posts.value).toHaveLength(10);
+    expect(posts.value.filter((row) => row.imageUrl)).toHaveLength(6);
+    expect(posts.value.slice(0, 2)).toMatchObject([
+      { kind: 'event', startsAt: '2025-11-18', endsAt: '2025-11-18', postedAt: '2025-11-01' },
+      { kind: 'event', startsAt: '2026-03-05', endsAt: '2027-06-10', postedAt: '2026-07-21' },
+    ]);
+    const fashionShow = posts.value.find((row) => row.title === 'Показ мод The Fashion Show Line 2026')!;
+    expect(fashionShow.imageUrl).toMatch(/^data:image\/svg\+xml/);
+    const show = await api.getPost(fashionShow.postId, container);
     expect(show.ok && show.value.base.media?.filter((item) => item.kind === 'image')).toHaveLength(3);
-    const revisions = await api.listPostRevisions(posts.value[0]!.postId);
+    const revisions = await api.listPostRevisions(fashionShow.postId);
     expect(revisions.ok && revisions.value.map((row) => row.changed)).toEqual([['location'], ['created']]);
     const again = await api.createSourceGroup({ containerId: container, name: 'afisha' });
     expect(again.ok && again.value.name).toBe('Afisha');

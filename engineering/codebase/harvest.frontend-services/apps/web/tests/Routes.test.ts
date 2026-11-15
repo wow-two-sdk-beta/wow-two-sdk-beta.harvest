@@ -138,8 +138,10 @@ describe('the Cards | Rows switch', () => {
 describe('a post’s page', () => {
   it('opens from the Posts tab at its own address and keeps the source current in the sidebar', async () => {
     const { router, wrapper } = await renderAt(`${Afisha}/posts`);
-    await vi.waitFor(() => expect(wrapper.find('a[data-post-link]').exists()).toBe(true));
-    const link = wrapper.get('a[data-post-link]');
+    const fashionShowLink = () =>
+      wrapper.findAll('a[data-post-link]').find((link) => link.text().includes('The Fashion Show Line 2026'));
+    await vi.waitFor(() => expect(fashionShowLink()).toBeDefined());
+    const link = fashionShowLink()!;
     expect(link.attributes('href')).toMatch(new RegExp(`^${Afisha}/posts/[0-9a-f-]+$`));
     await link.trigger('click');
     await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('source-post'));

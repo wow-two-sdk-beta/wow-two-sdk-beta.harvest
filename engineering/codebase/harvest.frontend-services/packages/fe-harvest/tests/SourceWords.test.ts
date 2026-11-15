@@ -9,6 +9,7 @@ import {
   intervalWords,
   lastHarvestNote,
   lastHarvestText,
+  nextHarvestWords,
   paceWords,
   runFoundWords,
   runProblem,
@@ -51,6 +52,7 @@ describe('source words', () => {
       '4 new of 23 found · stopped at the 5-page limit',
     );
     expect(runFoundWords(run({ kind: 'refresh', captured: 1, unchanged: 0 }))).toBe('1 post changed');
+    expect(runFoundWords(run({ newPosts: 2 }))).toBe('2 new of 23 found · 2 updated');
     expect(runFoundWords(run({ status: 'failed', captured: 0, discovered: 0 }))).toBe('nothing harvested');
   });
 
@@ -71,6 +73,13 @@ describe('source words', () => {
     expect(lastHarvestText(undefined)).toBe('no harvest yet');
   });
 
+  it('rounds a harvest countdown up to a minute and marks a due harvest', () => {
+    const now = new Date('2026-11-12T12:00:00Z');
+    expect(nextHarvestWords('2026-11-12T12:09:20Z', now)).toBe('Next harvest in 10 min');
+    expect(nextHarvestWords('2026-11-12T13:20:00Z', now)).toBe('Next harvest in 1 hour 20 min');
+    expect(nextHarvestWords('2026-11-12T12:00:00Z', now)).toBe('Next harvest due');
+  });
+
   it('counts how long ago something happened, rounding down', () => {
     const now = new Date('2026-11-12T12:00:00Z');
     const ago = (value: string) => agoOf(value, now);
@@ -80,8 +89,8 @@ describe('source words', () => {
     expect(ago('2026-11-12T08:12:00Z')).toBe('3 hours ago');
     expect(ago('2026-11-11T11:00:00Z')).toBe('1 day ago');
     expect(ago('2026-11-10T08:00:00Z')).toBe('2 days ago');
-    expect(ago('2026-09-01T08:00:00Z')).toBe('72 days ago');
-    expect(ago('2025-11-13T08:00:00Z')).toBe('364 days ago');
+    expect(ago('2026-09-01T08:00:00Z')).toBe('2 months ago');
+    expect(ago('2025-11-13T08:00:00Z')).toBe('11 months ago');
     expect(ago('2025-11-12T08:00:00Z')).toBe('1 year ago');
     expect(ago('2023-11-01T08:00:00Z')).toBe('3 years ago');
     expect(agoOf(undefined, now)).toBe('—');
@@ -108,7 +117,9 @@ describe('source words', () => {
       ...change,
     });
     expect(lastHarvestText(harvest({}), now)).toBe('3 hours ago · +4 new · 23 found');
-    expect(lastHarvestText(harvest({ status: 'partial', newPosts: 0 }), now)).toBe('3 hours ago · 0 new · 23 found');
+    expect(lastHarvestText(harvest({ status: 'partial', newPosts: 0 }), now)).toBe(
+      '3 hours ago · 0 new · 23 found · partial',
+    );
     expect(lastHarvestText(harvest({ status: 'failed' }), now)).toBe('3 hours ago · +4 new · 23 found · failed');
     expect(lastHarvestNote(harvest({ status: 'partial', reason: 'page_limit' }))).toBe('partial · page limit');
     expect(lastHarvestNote(harvest({}))).toBe('');
@@ -123,6 +134,14 @@ describe('source words', () => {
     expect(ageOf('2025-11-12T08:00:00Z', now)).toBe('1 year');
     expect(ageOf('2026-11-12T11:59:50Z', now)).toBe('just now');
     expect(agoOf('2026-11-12T11:59:50Z', now)).toBe('just now');
+  });
+
+  it('switches from days to completed calendar months on the monthly anniversary', () => {
+    const postedAt = new Date(2026, 6, 21, 8).toISOString();
+    expect(ageOf(postedAt, new Date(2026, 7, 21, 7, 59))).toBe('30 days');
+    expect(ageOf(postedAt, new Date(2026, 7, 21, 8))).toBe('1 month');
+    expect(ageOf(postedAt, new Date(2026, 10, 14))).toBe('3 months');
+    expect(ageOf(new Date(2026, 0, 31, 8).toISOString(), new Date(2026, 1, 28, 8))).toBe('1 month');
   });
 
   it('writes an event’s dates as one day or a range, with the year only when it is not this one', () => {

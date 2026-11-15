@@ -15,6 +15,7 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Module.Posts;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Readers;
 using WoW.Two.Sdk.Beta.Be.Harvest.Posts;
 using WoW.Two.Sdk.Beta.Be.Harvest.Readers;
+using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
 using WoW.Two.Sdk.Beta.Be.Harvest.Runs;
 using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Ocharo;
@@ -71,6 +72,9 @@ public sealed class OcharoPipelineTests
         await using var scope = provider.CreateAsyncScope();
         OcharoSetup setup = Value(await scope.ServiceProvider.GetRequiredService<OcharoSourceProvisioner>().EnsureAsync());
         OcharoSourceRegistration route = setup.Sources.First(item => item.SourceKey == "afisha-uz");
+        var registry = scope.ServiceProvider.GetRequiredService<IRegistrationBroker>();
+        var sections = Value(await registry.ListPipelinesAsync(setup.ContainerId)).Where(row => row.SourceId == route.SourceId);
+        sections.Should().HaveCount(6).And.OnlyContain(row => row.Schedules.All(schedule => !schedule.Enabled));
         var runs = scope.ServiceProvider.GetRequiredService<IRunBroker>();
         var delivery = scope.ServiceProvider.GetRequiredService<IDeliveryBroker>();
         var posts = scope.ServiceProvider.GetRequiredService<IPostBroker>();

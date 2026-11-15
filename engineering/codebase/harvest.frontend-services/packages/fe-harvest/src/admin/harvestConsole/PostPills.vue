@@ -19,6 +19,7 @@ const props = withDefaults(
   defineProps<{
     kind: string;
     pipelineId?: string;
+    language?: string;
     /** The source's name and family, to add a pill for it. */
     sourceName?: string;
     family?: string;
@@ -30,6 +31,7 @@ const props = withDefaults(
   }>(),
   {
     pipelineId: undefined,
+    language: undefined,
     sourceName: undefined,
     family: 'site',
     removed: false,
@@ -40,36 +42,30 @@ const props = withDefaults(
 );
 const session = useHarvestConsole();
 const section = computed(() => (props.pipelineId ? session.sectionParts(props.pipelineId) : undefined));
-const kindTone = computed(() =>
-  props.onImage ? (props.kind === 'event' ? 'glassSuccess' : 'glass') : props.kind === 'event' ? 'success' : 'outline',
-);
+const language = computed(() => props.language ?? section.value?.locale);
 const shows = (label: PostLabel) => !props.hidden?.has(label);
-const quietTone = computed(() => (props.onImage ? 'glass' : 'outline'));
+const tone = computed(() => (props.onImage ? 'glass' : 'outline'));
 </script>
 
 <template>
   <div class="flex min-h-6 min-w-0 flex-nowrap items-center gap-1.5">
-    <HarvestPill v-if="shows('kind')" :tone="kindTone">
+    <HarvestPill v-if="shows('kind')" :tone="tone">
       <PillIcon :name="kindGlyphOf(props.kind)" />
       {{ props.kind }}
     </HarvestPill>
-    <HarvestPill v-if="section && shows('section')" :tone="quietTone" shrinkable>
+    <HarvestPill v-if="section && shows('section')" :tone="tone" shrinkable>
       <PillIcon :name="sectionGlyphOf(section.name)" />
       <span class="truncate">{{ section.name.toLowerCase() }}</span>
     </HarvestPill>
-    <HarvestPill
-      v-if="section?.locale && shows('language')"
-      :tone="quietTone"
-      v-bind="{ title: languageName(section.locale) }"
-    >
+    <HarvestPill v-if="language && shows('language')" :tone="tone" v-bind="{ title: languageName(language) }">
       <PillIcon name="language" />
-      {{ (props.compact ? section.locale : languageName(section.locale)).toLowerCase() }}
+      {{ (props.compact ? language : languageName(language)).toLowerCase() }}
     </HarvestPill>
-    <HarvestPill v-if="props.sourceName" :tone="quietTone" shrinkable>
+    <HarvestPill v-if="props.sourceName" :tone="tone" shrinkable>
       <PillIcon :name="readMethodGlyphOf(readMethodOf(props.family))" />
       <span class="truncate">{{ props.sourceName.toLowerCase() }}</span>
     </HarvestPill>
-    <HarvestPill v-if="props.removed && shows('removed')" :tone="props.onImage ? 'glass' : 'danger'">
+    <HarvestPill v-if="props.removed && shows('removed')" :tone="tone">
       <PillIcon name="unlink" />
       removed
     </HarvestPill>

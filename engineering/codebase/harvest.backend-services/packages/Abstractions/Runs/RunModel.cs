@@ -26,6 +26,8 @@ public sealed record RunModel
     public int Discovered { get; init; }
     /// <summary>Gets the number of changed captures.</summary>
     public int Captured { get; init; }
+    /// <summary>Gets the canonical posts created by the run, when the worker tracked this separately.</summary>
+    public int? NewPosts { get; init; }
     /// <summary>Gets the number of unchanged captures.</summary>
     public int Unchanged { get; init; }
     /// <summary>Gets the number of failed steps.</summary>

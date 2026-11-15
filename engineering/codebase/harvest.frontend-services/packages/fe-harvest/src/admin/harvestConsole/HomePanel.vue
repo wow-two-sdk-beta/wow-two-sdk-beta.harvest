@@ -7,7 +7,7 @@ import HarvestPill from './HarvestPill.vue';
 import WorkerOffNotice from './WorkerOffNotice.vue';
 import { isActiveRun, isFailedRun } from './ConsoleFormat';
 import { useHarvestConsole } from './HarvestConsole';
-import { plural, runFoundWords, StateWords, stateTone, statusTone, statusWords, whenOf } from './SourceWords';
+import { plural, runFoundWords, StateWords, statusWords, whenOf } from './SourceWords';
 
 /** The console's home: how the open workspace is doing — harvests, failures, sources needing attention, delivery. */
 defineOptions({ name: 'HomePanel' });
@@ -61,7 +61,7 @@ const latestRuns = computed(() => runs.value.slice(0, 6));
           <h2 class="mb-4 text-base font-semibold">Latest harvests</h2>
           <ul v-if="latestRuns.length" class="divide-y divide-border" aria-label="Latest harvests">
             <li v-for="run in latestRuns" :key="run.id" class="flex flex-wrap items-center gap-x-3 gap-y-1 py-3">
-              <HarvestPill :tone="statusTone(run.status)">{{ statusWords(run.status) }}</HarvestPill>
+              <HarvestPill>{{ statusWords(run.status) }}</HarvestPill>
               <ConsoleLink
                 v-if="session.pipelineOf(run.pipelineId)"
                 :to="{ kind: 'source', id: session.pipelineOf(run.pipelineId)!.sourceId, tab: 'activity' }"
@@ -86,7 +86,7 @@ const latestRuns = computed(() => runs.value.slice(0, 6));
               >
                 {{ source.name }}
               </ConsoleLink>
-              <HarvestPill :tone="stateTone(source.state)">{{ StateWords[source.state] }}</HarvestPill>
+              <HarvestPill>{{ StateWords[source.state] }}</HarvestPill>
             </li>
           </ul>
           <p v-else class="text-sm text-muted-foreground">

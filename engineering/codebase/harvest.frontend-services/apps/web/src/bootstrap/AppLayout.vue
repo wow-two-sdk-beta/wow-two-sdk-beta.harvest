@@ -23,13 +23,7 @@ import { computed, useTemplateRef, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { AppFrame } from '@wow-two-beta/fe/presentation/layout';
 import { RoutePageHeader } from '@wow-two-beta/fe/router';
-import {
-  ConsoleNotices,
-  ContainerSwitch,
-  OtherGroupKey,
-  groupElementId,
-  useHarvestConsole,
-} from '@wow-two-beta/fe-harvest/admin';
+import { ContainerSwitch, OtherGroupKey, groupElementId, useHarvestConsole } from '@wow-two-beta/fe-harvest/admin';
 import ConsoleNav from '../presentation/shell/ConsoleNav.vue';
 import GalleryViewSwitch from '../presentation/shell/GalleryViewSwitch.vue';
 import { destinationOf, isSourceRoute } from '../presentation/shell/ConsoleDestinations';
@@ -106,13 +100,9 @@ function navigate(href: string) {
   void router.push(href);
 }
 
-/* A new page starts at its top, with the last page's outcome cleared. */
 watch(
   () => route.path,
-  () => {
-    frame.value?.scrollToTop();
-    session.clearMessages();
-  },
+  () => frame.value?.scrollToTop(),
 );
 </script>
 
@@ -150,7 +140,6 @@ watch(
     </template>
     <div class="space-y-6 pb-10">
       <RoutePageHeader v-if="!isSource" size="lg" />
-      <ConsoleNotices />
       <slot></slot>
     </div>
   </AppFrame>

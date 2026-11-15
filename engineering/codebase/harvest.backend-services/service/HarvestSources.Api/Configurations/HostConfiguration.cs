@@ -1,3 +1,5 @@
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Registration;
+
 namespace HarvestSources.Api.Configurations;
 
 /// <summary>Extends the host builder and the web application for startup wiring.</summary>
@@ -11,7 +13,7 @@ public static partial class HostConfiguration
         global::Harvest.Api.Configurations.HostConfiguration.Configure(builder);
         return builder.Configuration["HarvestSources:Audience"] switch
         {
-            null or "internal" => builder.AddSources().AddProviderSettings().AddSourceControllers(),
+            null or "internal" => builder.AddSources().AddProviderSettings().AddSourceAssets().AddSourceControllers(),
             "public" => builder.AddPublicCatalog(),
             _ => throw new InvalidOperationException("HarvestSources:Audience must be internal or public."),
         };
@@ -20,6 +22,10 @@ public static partial class HostConfiguration
     /// <summary>Runs startup tasks, then configures middleware and endpoints.</summary>
     /// <param name="app">The application.</param>
     /// <returns>The configured application.</returns>
-    public static Task<WebApplication> ConfigureAsync(this WebApplication app) =>
-        global::Harvest.Api.Configurations.HostConfiguration.ConfigureAsync(app);
+    public static async Task<WebApplication> ConfigureAsync(this WebApplication app)
+    {
+        await global::Harvest.Api.Configurations.HostConfiguration.ConfigureAsync(app);
+        await app.Services.ReconcileHarvestSourceSectionsAsync(app.Lifetime.ApplicationStopping);
+        return app;
+    }
 }

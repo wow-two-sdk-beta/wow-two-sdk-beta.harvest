@@ -1,5 +1,5 @@
 import type { SourceGroupModel, SourceOverviewModel } from '../../contracts';
-import { statusTone, type PillTone } from './SourceWords';
+import { type PillTone, statusWords } from './SourceWords';
 
 /** One publisher on the Sources page: its group, or `Other` for sources filed under none. */
 export interface GalleryGroup {
@@ -61,16 +61,15 @@ export function groupFamiliesOf(sources: readonly SourceOverviewModel[]) {
   return [...new Set(sources.map((source) => source.family))];
 }
 
-/** Tones from calm to loud, so a group's pill takes its loudest source's. @internal */
-const Loudness: readonly PillTone[] = ['neutral', 'info', 'success', 'warning', 'danger'];
+/** The latest outcomes to surface beside a group's new post count, in priority order. @internal */
+const GroupStatuses = ['failed', 'interrupted', 'partial', 'cancelled', 'running', 'queued'] as const;
 
-/** A group's one pill: `+4 new`, `nothing new`, or `no harvest yet`. */
+/** A group's harvest count and latest outcome. */
 export function groupHarvestPill(sources: readonly SourceOverviewModel[]): { text: string; tone: PillTone } {
-  const harvested = sources.filter((source) => source.lastHarvest);
+  const harvested = sources.flatMap((source) => (source.lastHarvest ? [source.lastHarvest] : []));
   if (!harvested.length) return { text: 'no harvest yet', tone: 'dashed' };
-  const fresh = harvested.reduce((sum, source) => sum + (source.lastHarvest?.newPosts ?? 0), 0);
-  const tone = harvested
-    .map((source) => statusTone(source.lastHarvest!.status))
-    .reduce((loudest, tone) => (Loudness.indexOf(tone) > Loudness.indexOf(loudest) ? tone : loudest), 'neutral');
-  return { text: fresh ? `+${fresh} new` : 'nothing new', tone };
+  const fresh = harvested.reduce((sum, harvest) => sum + harvest.newPosts, 0);
+  const count = fresh ? `+${fresh} new` : 'nothing new';
+  const status = GroupStatuses.find((status) => harvested.some((harvest) => harvest.status === status));
+  return { text: status ? `${count} · ${statusWords(status)}` : count, tone: 'outline' };
 }
