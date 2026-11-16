@@ -45,6 +45,54 @@ Picks for `system/sessions/events-integration` in wow-two-ws (P1 = this goal, P2
 | Tag and keyword subscriptions | planned | — |
 | AI extraction tiers | planned | — |
 
+## Specced next
+
+ChatGPT builds these in the pull order of wow-two-ws `system/sessions/events-integration/tasks/tasks.md`; each row's spec is its id in the named file there. Delete a row when it ships, with any older row it covers.
+
+| Item | Type | Notes |
+|---|---|---|
+| S01 Fix StoreBootTests and add ListingReplay to the solution | fix | spec in `tasks-scfd.md` |
+| S02 Clear fe-harvest lint errors and Prettier drift | fix | spec in `tasks-scfd.md` |
+| S03 Move the rental-terms prompt out of the generic engine | engineering | spec in `tasks-scfd.md` |
+| S04 Give each section one schedule path | fix | spec in `tasks-scfd.md` |
+| S05 Test stage validation, discoveries and the run audit | engineering | spec in `tasks-scfd.md` |
+| S06 Record Codex's work in the docs | engineering | spec in `tasks-scfd.md` |
+| S07 Commit the work in slices and verify v0.2.7 on dev | engineering | spec in `tasks-scfd.md` |
+| S18 Run ANONS, Craftfair, Uzexpocentre and CAEx for Ocharo | product | spec in `tasks-scfd.md` |
+| S08 Carry Ocharo's filter key in the golden contract pages | fix | spec in `tasks-scfd.md` |
+| S09 Let one subscription follow many sections | feature | spec in `tasks-scfd.md` |
+| E02 Tighten ocharo-fashion-v1 against off-topic event matches | fix | spec in `tasks-events-path.md` |
+| E03 Deliver post.unmatched when a seen post stops matching | fix | spec in `tasks-events-path.md` |
+| E30 Run harvest tests on the workspace SDK | engineering | spec in `tasks-events-path.md` |
+| S13 Typed application deadlines in wow2.event.v1 | feature | spec in `tasks-scfd.md` |
+| E07 Project application deadlines into wow2.event.v1 | feature | spec in `tasks-events-path.md` |
+| E19 Let a subscriber list its tenant's subscriptions | feature | spec in `tasks-events-path.md` |
+| S10 Ocharo filter regression set over every reader's fixtures | engineering | spec in `tasks-scfd.md` |
+| S19 Read trade-fair edition pages (TITF, Texworld, TFT Expo) | feature | spec in `tasks-scfd.md` |
+| S20 Keep one size of each Afisha picture | fix | spec in `tasks-scfd.md` |
+| S11 Emit item-level publisher categories as source tags | feature | spec in `tasks-scfd.md` |
+| S12 Record each subscription's pull lag | feature | spec in `tasks-scfd.md` |
+| S21 Route registry channels to the generic readers | feature | spec in `tasks-scfd.md` |
+| S22 Read Hunarmand association calls | feature | spec in `tasks-scfd.md` |
+| S23 Read regional tourism news on gov.uz | feature | spec in `tasks-scfd.md` |
+| S24 Read public Telegram channels through t.me/s | feature | spec in `tasks-scfd.md` |
+| S25 Fix Instagram paging and file each profile under its publisher | fix | spec in `tasks-scfd.md` |
+| S26 Read iTicket and ShowGo event listings | feature | spec in `tasks-scfd.md` |
+| S27 Stop counting page-limit harvests as failures | fix | spec in `tasks-scfd.md` |
+| S28 Let adapters declare each section's topic | engineering | spec in `tasks-scfd.md` |
+| S29 Show an event's place on cards and the post page | feature | spec in `tasks-scfd.md` |
+| S30 Event timing and an event-date sort for every source | feature | spec in `tasks-scfd.md` |
+| S31 Give Ocharo a client view with Sources and Following | feature | spec in `tasks-scfd.md` |
+| S32 Let an operator grant a restricted source | feature | spec in `tasks-scfd.md` |
+| A05 SCFD relevance pass in shadow on one Afisha pipeline | feature | spec in `tasks-platform.md` · owner: ev-ai lane |
+| S14 Embed the shared AI layer in the source host | engineering | spec in `tasks-scfd.md` |
+| S15 Run Ocharo relevance in shadow on Afisha | feature | spec in `tasks-scfd.md` |
+| S16 Promote AI relevance into Ocharo's delivery | product | spec in `tasks-scfd.md` |
+| S17 Estimate event dates from the AI pass | feature | spec in `tasks-scfd.md` |
+| S33 Serve the console on harvest-dev | engineering | spec in `tasks-scfd.md` |
+| S35 Publish the Harvest NuGet and npm family | engineering | spec in `tasks-scfd.md` |
+| S34 Drop IP-lease pools and CAPTCHA solving from the image | engineering | spec in `tasks-scfd.md` |
+
 ## Sources
 
 | Item | Type | Notes |
