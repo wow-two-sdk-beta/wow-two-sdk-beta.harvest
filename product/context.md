@@ -1,6 +1,6 @@
 # SCFD product context
 
-*Last updated: 2026-11-12*
+*Last updated: 2026-11-18*
 
 ## Current state
 
@@ -11,8 +11,9 @@ registry, setup and filter, and the opt-in Instagram and provider integrations b
 `HarvestSources.Api`. Fixture tests establish no live source access; developer acceptance stays in the version track.
 
 The dev SCFD runs this image. Ocharo's two Afisha pipelines (fashion, exhibitions) capture every 6 hours with a daily
-link check, and Events pulls both `wow2.event.v1` subscriptions. No proxy, CAPTCHA, session or Instagram provider is
-configured; no paid call, account login or application has been made. Prod rollout remains open.
+link check; ANONS, Uzexpocentre and CAEx capture every 6 hours. Events pulls their `wow2.event.v1` subscriptions.
+No proxy, CAPTCHA, session or Instagram provider is configured; no paid call, account login or application has been
+made. Prod rollout remains open.
 
 The shared host supports optional Identity BFF sign-in alongside service tokens and API keys. An explicit
 organization/tenant binding and namespaced grants authorize browser access; organization owners have no global
@@ -43,6 +44,13 @@ requires durable data-protection keys. The console is not served on dev yet (the
   internal use only and authenticates every caller, so the source readers need no private repo. One solution, one
   image, one Wheelhouse product `harvest`; the source pin, the image build that downloaded public Harvest and the
   separate workflows are gone. A fixed outgoing route per source is allowed; rotating proxy pools stay out.
+- 2026-11-17 — each pipeline gets its own console route rather than a panel, since pipelines will carry complex
+  components of their own.
+- 2026-11-17 — the posts list searches, filters and counts facets on the server over the whole source; the console
+  never filters loaded posts itself.
+- 2026-11-17 — Afisha collects its Russian sections only, for current events; the Ocharo registry carries no Uzbek
+  Afisha channel.
+- 2026-11-17 — BirBir keeps direct collection beside its import sections; it does not become import-only.
 
 ## Acceptance
 
