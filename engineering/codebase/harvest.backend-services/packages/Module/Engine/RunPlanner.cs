@@ -4,6 +4,7 @@ using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Persistence;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Registration;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Sources;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Runs;
 using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
@@ -50,6 +51,8 @@ internal static class RunPlanner
 
         ISourceAdapter? adapter = adapters.LastOrDefault(candidate => candidate.Serves(source));
         AdapterDescriptor descriptor = adapter?.Describe(source) ?? new AdapterDescriptor { Steps = [], Plans = new Dictionary<WorkKind, IReadOnlyList<string>>() };
+        if (SourceAddress.Resolve(source, descriptor) is null)
+            return Result<Guid>.Fail(AppErrorFactory.Validation("The adapter's source address is invalid."));
         var steps = StageSteps(descriptor, kind);
         if (kind == WorkKind.Process)
             descriptor = descriptor with { Steps = [.. descriptor.Steps, new StepDescriptor { Key = ProcessingStore.Step, Role = StepRole.Extract }] };
@@ -59,8 +62,8 @@ internal static class RunPlanner
         if (available && kind is not (WorkKind.Check or WorkKind.Refresh or WorkKind.Harvest or WorkKind.Process))
         {
             initialTarget = catalog?.Url ?? pipeline.Scope.Url
-                ?? $"https://{source.Handle}/{(steps[0] == "enumerate" ? "sitemap.xml" : "")}";
-            if (!InScope(initialTarget, source, pipeline.Scope))
+                ?? descriptor.SourceUrl ?? $"https://{source.Handle}/{(steps[0] == "enumerate" ? "sitemap.xml" : "")}";
+            if (!InScope(initialTarget, source, pipeline.Scope, descriptor))
                 return Result<Guid>.Fail(AppErrorFactory.Validation("The pipeline URL must remain on its registered source host."));
             if (pipeline.Scope.Parameters.Count > 0)
             {
@@ -142,7 +145,7 @@ internal static class RunPlanner
             }
             foreach ((Guid linkId, string url, string externalKey) in links)
             {
-                if (!InScope(url, source, pipeline.Scope))
+                if (!InScope(url, source, pipeline.Scope, descriptor))
                     continue;
                 await EnqueueAsync(connection, transaction, frozen, runId,
                     new StepTarget { StepKey = steps[0], Target = url, Payload = JsonSerializer.SerializeToElement(new { linkId, externalKey }) }, now, ct);
@@ -185,7 +188,8 @@ internal static class RunPlanner
     {
         if (adapter is not ISourceSectionCatalog registry || scope.Parameters.Count != 0)
             return null;
-        var sections = registry.Sections(source).Where(section => InScope(section.Url, source, scope)).ToArray();
+        var descriptor = adapter.Describe(source);
+        var sections = registry.Sections(source).Where(section => InScope(section.Url, source, scope, descriptor)).ToArray();
         if (scope.Url is null)
             return sections.Length == 1 ? sections[0] : null;
         var (key, _) = RegistrationRules.CanonicalScopeKey(new PipelineScope { Url = scope.Url });
@@ -193,13 +197,13 @@ internal static class RunPlanner
             RegistrationRules.CanonicalScopeKey(new PipelineScope { Url = section.Url }).ScopeKey == key);
     }
 
-    internal static bool InScope(string target, SourceModel source, PipelineScope scope)
+    internal static bool InScope(string target, SourceModel source, PipelineScope scope, AdapterDescriptor? descriptor = null)
     {
-        if (!Uri.TryCreate(target, UriKind.Absolute, out Uri? uri) || uri.Scheme is not ("http" or "https")
-            || !string.IsNullOrEmpty(uri.UserInfo) || !string.Equals(uri.IdnHost, source.Handle, StringComparison.OrdinalIgnoreCase))
+        if (SourceAddress.Resolve(source, descriptor) is not { } address
+            || !Uri.TryCreate(target, UriKind.Absolute, out Uri? uri) || !address.IncludesOrigin(uri))
             return false;
         if (Uri.TryCreate(scope.Url, UriKind.Absolute, out Uri? root))
-            return uri.Scheme == root.Scheme && uri.Port == root.Port && scope.IncludesUrl(target);
+            return address.IncludesOrigin(root) && uri.Scheme == root.Scheme && uri.Port == root.Port && scope.IncludesUrl(target);
         return !scope.RestrictToPath && uri.IsDefaultPort;
     }
 
@@ -213,7 +217,9 @@ internal static class RunPlanner
         CancellationToken ct)
     {
         StepDescriptor? step = frozen.Adapter.Steps.SingleOrDefault(candidate => candidate.Key == target.StepKey);
-        if (step is null || (frozen.Kind != WorkKind.Process && !InScope(target.Target, frozen.Source, frozen.Pipeline.Scope)))
+        var sourceAddress = SourceAddress.Resolve(frozen.Source, frozen.Adapter);
+        if (step is null || sourceAddress is null
+            || (frozen.Kind != WorkKind.Process && !InScope(target.Target, frozen.Source, frozen.Pipeline.Scope, frozen.Adapter)))
             return EnqueueResult.Skipped;
         frozen.Pipeline.Steps.TryGetValue(step.Key, out StepOverride? change);
         if (step.Optional && change?.Enabled != true)
@@ -237,7 +243,7 @@ internal static class RunPlanner
         StepCapabilityPolicy? policy = frozen.Source.CapabilityPolicy.Steps.GetValueOrDefault(step.Key);
         string lane = frozen.Kind == WorkKind.Process ? ProcessingStore.Step
             : change?.Lane ?? policy?.Lane ?? frozen.Source.CapabilityPolicy.Defaults?.Lane ?? step.Lane;
-        var plan = new ResolvedPlan { StepKey = step.Key, HostKey = frozen.Source.Handle, Lane = lane, Requirements = step.Requires };
+        var plan = new ResolvedPlan { StepKey = step.Key, HostKey = sourceAddress.HostKey, Lane = lane, Requirements = step.Requires };
         await EngineSql.ExecuteAsync(connection, transaction,
             "INSERT INTO harvest_host_state(host_key,next_allowed_at,updated_at) VALUES(@host,@now,@now) ON CONFLICT DO NOTHING", ct,
             ("host", plan.HostKey), ("now", now));

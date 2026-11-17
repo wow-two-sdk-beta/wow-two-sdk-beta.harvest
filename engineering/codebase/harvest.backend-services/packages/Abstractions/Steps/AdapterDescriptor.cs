@@ -5,6 +5,14 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 /// <summary>Represents what an adapter declares for a source: its steps and the step plan of each work kind.</summary>
 public sealed record AdapterDescriptor
 {
+    /// <summary>Gets the canonical source URL when its registry handle is an identity rather than a hostname.
+    /// Its origin bounds queued source targets; publisher paths and provider endpoints remain the adapter's responsibility.</summary>
+    public string? SourceUrl { get; init; }
+
+    /// <summary>Gets the shared pacing and health key. When supplied, it must match the source URL's host;
+    /// otherwise the source URL's host, or the legacy registry handle, is used.</summary>
+    public string? HostKey { get; init; }
+
     /// <summary>Gets the steps the adapter offers.</summary>
     public required IReadOnlyList<StepDescriptor> Steps { get; init; }
 

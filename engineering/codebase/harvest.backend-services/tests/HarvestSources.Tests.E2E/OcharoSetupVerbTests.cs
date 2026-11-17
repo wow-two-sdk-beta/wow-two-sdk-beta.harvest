@@ -51,8 +51,8 @@ public sealed class OcharoSetupVerbTests
         using var firstJson = JsonDocument.Parse(first.Output.TrimEnd().Split('\n')[^1]);
         using var againJson = JsonDocument.Parse(again.Output.TrimEnd().Split('\n')[^1]);
         var subscriptions = firstJson.RootElement.GetProperty("subscriptions").EnumerateArray().ToArray();
-        subscriptions.Should().HaveCount(2).And.OnlyContain(item => item.GetProperty("groupId").GetString() == "teplo");
-        firstJson.RootElement.GetProperty("runs").GetArrayLength().Should().Be(2);
+        subscriptions.Should().HaveCount(3).And.OnlyContain(item => item.GetProperty("groupId").GetString() == "teplo");
+        firstJson.RootElement.GetProperty("runs").GetArrayLength().Should().Be(3);
         againJson.RootElement.GetProperty("runs").GetArrayLength().Should().Be(0);
         againJson.RootElement.GetProperty("subscriptions").EnumerateArray().Select(item => item.GetProperty("pipelineId").GetGuid())
             .Should().BeEquivalentTo(subscriptions.Select(item => item.GetProperty("pipelineId").GetGuid()));

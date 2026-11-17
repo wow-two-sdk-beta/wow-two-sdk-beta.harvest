@@ -39,7 +39,9 @@ describe('source words', () => {
   it('opens Instagram domain sources and individual profiles at their own addresses', () => {
     expect(siteUrlOf('instagram', 'www.instagram.com')).toBe('https://www.instagram.com/');
     expect(siteUrlOf('instagram', 'instagram.com')).toBe('https://instagram.com/');
-    expect(siteUrlOf('instagram', '@publisher')).toBe('https://www.instagram.com/publisher');
+    expect(siteUrlOf('instagram', '@publisher')).toBe('https://www.instagram.com/publisher/');
+    expect(siteUrlOf('instagram', 'teplofest')).toBe('https://www.instagram.com/teplofest/');
+    expect(siteUrlOf('instagram', 'teplostore_2022')).toBe('https://www.instagram.com/teplostore_2022/');
   });
 
   it('splits a run problem into a short label and its own sentence', () => {

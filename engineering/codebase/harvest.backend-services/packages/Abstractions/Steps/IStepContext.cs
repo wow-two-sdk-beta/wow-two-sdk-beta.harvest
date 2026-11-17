@@ -39,6 +39,13 @@ public interface IStepContext
     /// <summary>Tells whether a page destination belongs to the run's selected section.</summary>
     bool AllowsDestination(Uri destination) => true;
 
+    /// <summary>Reserves one provider request under the resolved host's durable permission and pace. Use this for
+    /// SDK/provider calls that do not pass through Harvest's already-paced HTTP client.</summary>
+    /// <param name="cancellationToken">The token that cancels waiting for the shared host.</param>
+    /// <returns>A lease held through the provider response; send only when its outcome is <see cref="FetchOutcome.Ok"/>.</returns>
+    Task<ISourceRequestLease> AcquireRequestAsync(CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This step context does not provide durable request pacing.");
+
     /// <summary>Runs a named operation and lets the host record its timing and result.</summary>
     /// <typeparam name="T">The value returned by the operation.</typeparam>
     /// <param name="key">A stable statement of the operation, such as fetch or deserialize.</param>

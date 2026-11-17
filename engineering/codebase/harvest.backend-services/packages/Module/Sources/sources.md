@@ -21,7 +21,8 @@ implementation. Source groups and display names are the registry's (`Registratio
 - A post belongs to the section whose run made its earliest capture from the source; merged posts are left out.
 - `imageUrl` is the source `url` of the first `image` in the post's `base.media`, omitted when there is none; a stored
   copy (`fileRef`) is never used, since no step writes one and no route serves it.
-- Health: the host key is the source's handle, as the planner names it; the pace is `harvest_host_state.min_delay_ms`
+- Health: the planner resolves the host from adapter `SourceUrl`/`HostKey`, falling back to the source handle;
+  publisher identities on one provider share that host. The pace is `harvest_host_state.min_delay_ms`
   (2000 ms with no row); a pause shows only while it lasts, the later of the host's and its lanes'; `lastRefusal` is the
   newest run whose fetch outcome is a refusal or a challenge.
 - The pace is per host, so setting it for one source paces every source and container on that host.

@@ -12,6 +12,7 @@ import PillIcon from './PillIcon.vue';
 import SourceIcon from './SourceIcon.vue';
 import { sourcePauseReason, sourceStateLabel, sourceTypeLabel } from './SourcePresentation';
 import { useHarvestConsole } from './HarvestConsole';
+import { sourceProfileSchema } from './SourceProfileSchema';
 import {
   ageOf,
   lastHarvestNote,
@@ -96,7 +97,10 @@ const nextHint = computed(() => {
   const label = nextStage.value ? `Next ${WorkLabels[nextStage.value.kind].toLowerCase()} run` : 'Next harvest';
   return `${label} · ${whenOf(next, now.value)}`;
 });
-const canHarvest = computed(() => canOperate.value && canWrite('pipelines:run'));
+const fixedPublisher = computed(
+  () => sourceProfileSchema(session.capabilities.value[props.source.sourceId]?.configuration.scopeSchema)?.fixedUrl,
+);
+const canHarvest = computed(() => canOperate.value && canWrite('pipelines:run') && !fixedPublisher.value);
 const harvestReason = computed(() => {
   if (!readingActive.value) return 'Enable this source to run a harvest. Section choices are preserved.';
   if (sourceState.value && sourceState.value !== 'active')

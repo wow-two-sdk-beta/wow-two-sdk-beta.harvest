@@ -9,6 +9,7 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Capabilities.Challenges;
 using WoW.Two.Sdk.Beta.Be.Harvest.Capabilities.Fetching;
 using WoW.Two.Sdk.Beta.Be.Harvest.Capabilities.Rendering;
 using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Capabilities;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Persistence;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Posts;
@@ -122,7 +123,11 @@ public sealed class HarvestEngine(
         }
         using HttpClient http = clients.CreateClient();
         var context = new EngineStepContext(claim.Plan, claim.Frozen.Source, http, challenges, clock,
-            renderers.FirstOrDefault(), claim.Frozen.Pipeline.Scope, trace) { Limits = claim.Frozen.Pipeline.Limits };
+            renderers.FirstOrDefault(), claim.Frozen.Pipeline.Scope, trace)
+        {
+            Limits = claim.Frozen.Pipeline.Limits, Adapter = claim.Frozen.Adapter,
+            HostRequests = services.GetService<IHostFetchStore>(),
+        };
         StepResult result;
         var readings = new List<(Capture Capture, PostEnvelope Envelope)>();
         try

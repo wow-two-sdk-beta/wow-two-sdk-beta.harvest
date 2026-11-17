@@ -46,7 +46,15 @@ internal sealed class ModuleSourceOverviewBroker(
         var (sourcePosts, sectionPosts) = await PostCountsAsync(connection, containerId, cancellationToken);
         var subscribers = await SubscribersAsync(connection, containerId, cancellationToken);
         var favicons = await FaviconsAsync(connection, containerId, cancellationToken);
-        var hosts = await SourceHealthSql.ReadHostsAsync(connection, [.. sources.Select(source => source.Handle).Distinct()], cancellationToken);
+        var addresses = new Dictionary<Guid, SourceAddress>();
+        foreach (var source in sources)
+        {
+            var descriptor = adapters.LastOrDefault(adapter => adapter.Serves(source))?.Describe(source);
+            if (SourceAddress.Resolve(source, descriptor) is not { } address)
+                return Result<IReadOnlyList<SourceOverviewModel>>.Fail(AppErrorFactory.Validation("The adapter's source address is invalid."));
+            addresses.Add(source.Id, address);
+        }
+        var hosts = await SourceHealthSql.ReadHostsAsync(connection, [.. addresses.Values.Select(address => address.HostKey).Distinct()], cancellationToken);
         var refusals = await SourceHealthSql.ReadRefusalsAsync(connection, [.. sources.Select(source => source.Id)], cancellationToken);
 
         var bySource = pipelines.ToLookup(pipeline => pipeline.SourceId);
@@ -55,7 +63,8 @@ internal sealed class ModuleSourceOverviewBroker(
         {
             var readable = SourceHarvestSelection.CanRead(source);
             var sections = bySource[source.Id].Select(pipeline => Section(pipeline, source, lastRuns, sectionPosts, subscribers)).ToList();
-            var health = SourceOverviewRules.Health(source.Handle, hosts.GetValueOrDefault(source.Handle), refusals.GetValueOrDefault(source.Id), now);
+            string hostKey = addresses[source.Id].HostKey;
+            var health = SourceOverviewRules.Health(hostKey, hosts.GetValueOrDefault(hostKey), refusals.GetValueOrDefault(source.Id), now);
             var lastHarvest = lastHarvests.GetValueOrDefault(source.Id);
             overviews.Add(new SourceOverviewModel
             {

@@ -7,6 +7,8 @@ using HarvestSources.Api.Configurations;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
+using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Instagram;
+using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Ocharo;
 using WoW.Two.Sdk.Beta.Be.Testing;
 
 namespace HarvestSources.Tests.E2E;
@@ -106,10 +108,18 @@ public sealed class SourceHostTests
         capabilities.GetProperty("configuration").GetProperty("displayName").GetString().Should().Be("Afisha Uzbekistan");
         capabilities.GetProperty("workKinds").EnumerateArray().Select(item => item.GetString()).Should().NotContain("metrics");
         JsonElement withInstagram = await Data(await client.PostAsJsonAsync("/api/ocharo/sources/setup", new { enableSchedules = true, includeInstagram = true }));
-        withInstagram.GetProperty("sources").GetArrayLength().Should().Be(8);
+        var expectedInstagram = OcharoSourceRegistry.Current.Groups.SelectMany(group => group.Channels)
+            .Where(channel => channel.AdapterKey == InstagramSourceAdapter.AdapterKey && channel.Setup == "default").ToArray();
+        var instagramRoutes = withInstagram.GetProperty("sources").EnumerateArray()
+            .Where(item => item.GetProperty("sourceKey").GetString() == InstagramSourceAdapter.AdapterKey).ToArray();
+        withInstagram.GetProperty("sources").GetArrayLength().Should().Be(setup.GetProperty("sources").GetArrayLength() + expectedInstagram.Length);
+        instagramRoutes.Select(item => item.GetProperty("seed").GetString()).Should()
+            .BeEquivalentTo(expectedInstagram.Select(channel => channel.Seed ?? channel.Url));
+        instagramRoutes.Select(item => item.GetProperty("sourceId").GetString()).Distinct().Should().HaveCount(expectedInstagram.Length);
+        var instagramPipelineIds = instagramRoutes.Select(item => item.GetProperty("pipelineId").GetString()).ToHashSet();
         JsonElement pipelines = await Data(await client.GetAsync("/api/pipelines?containerId=" + container));
-        var instagram = pipelines.EnumerateArray().Where(item => item.GetProperty("name").GetString()!.Contains("Instagram")).ToArray();
-        instagram.Should().HaveCount(3);
+        var instagram = pipelines.EnumerateArray().Where(item => instagramPipelineIds.Contains(item.GetProperty("id").GetString())).ToArray();
+        instagram.Should().HaveCount(expectedInstagram.Length);
         string instagramSource = instagram[0].GetProperty("sourceId").GetString()!;
         JsonElement disabled = await Data(await client.GetAsync($"/api/sources/{instagramSource}/capabilities"));
         disabled.GetProperty("configuration").GetProperty("readiness").GetString().Should().Be("configurationRequired");

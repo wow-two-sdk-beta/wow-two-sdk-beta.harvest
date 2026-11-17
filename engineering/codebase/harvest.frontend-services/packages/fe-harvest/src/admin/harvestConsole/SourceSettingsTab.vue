@@ -5,10 +5,9 @@ import { SwitchInput, TextInput } from '@wow-two-beta/fe/presentation/forms';
 import type { PipelineModel, SourceOverviewModel } from '../../contracts';
 import ChoicePicker from './ChoicePicker.vue';
 import ConsoleLink from './ConsoleLink.vue';
-import SourceProfileForm from './SourceProfileForm.vue';
+import SourceProfilePipelines from './SourceProfilePipelines.vue';
 import { sourceProfileSchema } from './SourceProfileSchema';
 import { useHarvestConsole, type SectionCheck } from './HarvestConsole';
-import { activeRun } from './PipelineActivity';
 import { sameSection, type SourceSection } from './SourceSections';
 import { sourcePauseReason, sourceStateLabel } from './SourcePresentation';
 import { checkChoiceOf, hoursOf, intervalWords, paceWords, plural } from './SourceWords';
@@ -105,25 +104,6 @@ function toggle(row: SectionRow, on: boolean) {
   else if (row.pipeline) void session.setPipelineHarvest(row.pipeline.id, on);
 }
 
-function canCaptureProfile(pipeline: PipelineModel) {
-  const permission = props.source.permission ?? session.sourceOf(props.source.sourceId)?.permission;
-  return (
-    !pending.value &&
-    session.canWrite('pipelines:run') &&
-    canCapture.value &&
-    sourceState.value === 'active' &&
-    (!permission || permission === 'open' || permission === 'granted') &&
-    pipeline.state === 'active' &&
-    pipeline.sourceId === props.source.sourceId &&
-    !!pipeline.scope.url &&
-    session.localWorkerEnabled.value !== false &&
-    !activeRun(session.runsOf(pipeline.id))
-  );
-}
-function captureProfile(pipeline: PipelineModel) {
-  if (canCaptureProfile(pipeline)) void session.startRun(pipeline.id, 'capture');
-}
-
 /* The source master pause leaves each section's own schedule and pause unchanged. */
 const sourceState = computed(() => props.source.sourceState ?? session.sourceOf(props.source.sourceId)?.state);
 const sourceOn = computed(() => sourceState.value !== 'paused');
@@ -181,15 +161,19 @@ function saveName() {
     <section
       v-if="canManagePipelines"
       class="@container/sections min-w-0 self-start rounded-2xl border border-border bg-card"
-      :aria-label="profileSchema ? 'Profiles' : 'Sections'"
+      :aria-label="profileSchema?.fixedUrl ? 'Publisher' : profileSchema ? 'Profiles' : 'Sections'"
     >
       <div class="px-6 pt-5 pb-3">
-        <h2 class="text-lg font-semibold">{{ profileSchema ? 'Profiles' : 'Sections' }}</h2>
+        <h2 class="text-lg font-semibold">
+          {{ profileSchema?.fixedUrl ? 'Publisher' : profileSchema ? 'Profiles' : 'Sections' }}
+        </h2>
         <p class="mt-1 text-sm text-muted-foreground">
           {{
-            profileSchema
-              ? 'Add a profile, then capture its posts when needed. Open its pipeline to inspect runs.'
-              : 'Turn a section on to harvest it. A section also turns on when a subscriber follows it.'
+            profileSchema?.fixedUrl
+              ? 'This source follows its declared publisher. Manage captures and limits in Pipelines.'
+              : profileSchema
+                ? 'Add a profile, then capture its posts when needed. Open its pipeline to inspect runs.'
+                : 'Turn a section on to harvest it. A section also turns on when a subscriber follows it.'
           }}
         </p>
         <div v-if="capabilityError" class="mt-2 flex flex-wrap items-center gap-3 text-sm" role="status">
@@ -204,41 +188,17 @@ function saveName() {
           }}
         </p>
       </div>
-      <div v-if="profileSchema" class="grid gap-5 px-6 pb-5">
-        <SourceProfileForm :source-id="props.source.sourceId" :schema="profileSchema" />
-        <article
-          v-for="pipeline in pipelines"
-          :key="pipeline.id"
-          class="grid min-w-0 gap-3 border-t border-border pt-4"
+      <div v-if="profileSchema?.fixedUrl" class="grid gap-3 px-6 pb-5">
+        <p class="text-sm wrap-anywhere">{{ profileSchema.fixedUrl }}</p>
+        <ConsoleLink
+          :to="{ kind: 'source', id: props.source.sourceId, tab: 'pipelines' }"
+          class="text-sm font-semibold text-primary underline-offset-2 hover:underline"
         >
-          <div class="flex flex-wrap items-center justify-between gap-3">
-            <ConsoleLink
-              :to="{ kind: 'pipeline', id: pipeline.id }"
-              class="min-w-0 wrap-anywhere text-sm font-semibold text-primary underline-offset-2 hover:underline"
-            >
-              {{ pipeline.name || pipeline.scope.url }}
-            </ConsoleLink>
-            <div class="flex items-center gap-2 text-sm">
-              <Button
-                v-if="session.canWrite('pipelines:run')"
-                variant="outline"
-                :is-disabled="!canCaptureProfile(pipeline)"
-                :aria-label="`Capture ${pipeline.name || pipeline.scope.url} now`"
-                @click="captureProfile(pipeline)"
-              >
-                Capture now
-              </Button>
-              <span>Enabled</span>
-              <SwitchInput
-                :model-value="pipeline.state === 'active'"
-                :is-disabled="pending || !['active', 'paused'].includes(pipeline.state)"
-                v-bind="{ 'aria-label': `Enable ${pipeline.name || pipeline.scope.url}` }"
-                @update:model-value="(on: boolean) => session.setPipelinePaused(pipeline.id, !on)"
-              />
-            </div>
-          </div>
-          <SourceProfileForm :source-id="props.source.sourceId" :schema="profileSchema" :pipeline="pipeline" />
-        </article>
+          Manage publisher pipeline
+        </ConsoleLink>
+      </div>
+      <div v-else-if="profileSchema" class="px-6 pb-5">
+        <SourceProfilePipelines :source="source" :schema="profileSchema" />
       </div>
       <div v-else>
         <table class="block w-full text-sm @min-[43rem]/sections:table" role="table">

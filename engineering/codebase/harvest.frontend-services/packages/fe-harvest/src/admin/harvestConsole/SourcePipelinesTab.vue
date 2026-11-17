@@ -5,23 +5,31 @@ import ChoicePicker from './ChoicePicker.vue';
 import { useHarvestConsole } from './HarvestConsole';
 import { usePipelineStages } from './UsePipelineStages';
 import PipelineStageCard from './PipelineStageCard.vue';
+import SourceProfilePipelines from './SourceProfilePipelines.vue';
+import { sourceProfileSchema } from './SourceProfileSchema';
 
 const props = defineProps<{ source: SourceOverviewModel }>();
 const session = useHarvestConsole();
+const profileSchema = computed(() =>
+  sourceProfileSchema(session.capabilities.value[props.source.sourceId]?.configuration.scopeSchema),
+);
 const sections = computed(() => props.source.sections);
 const choices = computed(() =>
   sections.value.map(({ pipelineId }) => ({ value: pipelineId, label: session.sectionLabel(pipelineId) })),
 );
 const pipelineId = computed(() =>
-  sections.value.some((item) => item.pipelineId === session.focusedPipelineId.value)
-    ? session.focusedPipelineId.value
-    : (sections.value[0]?.pipelineId ?? ''),
+  profileSchema.value?.fixedUrl
+    ? ''
+    : sections.value.some((item) => item.pipelineId === session.focusedPipelineId.value)
+      ? session.focusedPipelineId.value
+      : (sections.value[0]?.pipelineId ?? ''),
 );
 const { client, stages, loading, error, refresh } = usePipelineStages(pipelineId);
 </script>
 
 <template>
-  <div class="grid min-w-0 gap-4">
+  <SourceProfilePipelines v-if="profileSchema?.fixedUrl" :source="source" :schema="profileSchema" />
+  <div v-else class="grid min-w-0 gap-4">
     <p v-if="!client" class="text-sm text-muted-foreground">Source stages are unavailable for this connection.</p>
     <p v-else-if="!sections.length" class="text-sm text-muted-foreground">
       Add a source section to configure its stages.

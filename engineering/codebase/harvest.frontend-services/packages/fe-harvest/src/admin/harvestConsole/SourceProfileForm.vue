@@ -13,13 +13,15 @@ const session = useHarvestConsole();
 const formId = useId();
 const url = ref('');
 const values = ref<Record<string, number | string>>({});
+const profileUrl = computed(() => props.schema.fixedUrl ?? url.value.trim());
+const createLabel = computed(() => (props.schema.fixedUrl ? 'Create pipeline' : 'Add profile'));
 const disabled = computed(
   () => session.pending.value || !session.canOperate.value || !session.canWrite('pipelines:manage'),
 );
 const valid = computed(() => {
   if (!props.pipeline) {
     try {
-      const target = new URL(url.value.trim());
+      const target = new URL(profileUrl.value);
       if (!['https:', 'http:'].includes(target.protocol) || target.username || target.password) return false;
     } catch {
       return false;
@@ -33,6 +35,8 @@ const valid = computed(() => {
 watch(
   () =>
     JSON.stringify([
+      props.sourceId,
+      props.schema.fixedUrl,
       props.pipeline?.id,
       props.pipeline?.limits.pageSize,
       props.pipeline?.limits.maxPages,
@@ -45,21 +49,26 @@ watch(
   },
   { immediate: true },
 );
+watch([() => props.sourceId, () => props.schema.fixedUrl], () => {
+  url.value = '';
+});
 async function save() {
   if (disabled.value || !valid.value) return;
   const limits: NonNullable<PipelineUpdate['limits']> = Object.fromEntries(
     props.schema.limits.map((bound) => [bound.key, Number(values.value[bound.key])]),
   );
   if (props.pipeline) await session.savePipelineLimits(props.pipeline.id, limits);
-  else if (await session.declareCustomPipeline(props.sourceId, url.value, limits)) url.value = '';
+  else if (await session.declareCustomPipeline(props.sourceId, profileUrl.value, limits)) url.value = '';
 }
 </script>
 
 <template>
-  <form class="grid min-w-0 gap-3" :aria-label="pipeline ? 'Profile limits' : 'Add profile'" @submit.prevent="save">
+  <form class="grid min-w-0 gap-3" :aria-label="pipeline ? 'Profile limits' : createLabel" @submit.prevent="save">
     <div v-if="!pipeline" class="grid gap-1.5">
-      <label :for="`${formId}-url`" class="text-sm font-medium">{{ schema.title }}</label>
+      <p v-if="schema.fixedUrl" class="text-sm wrap-anywhere">{{ schema.fixedUrl }}</p>
+      <label v-else :for="`${formId}-url`" class="text-sm font-medium">{{ schema.title }}</label>
       <input
+        v-if="!schema.fixedUrl"
         :id="`${formId}-url`"
         v-model="url"
         type="url"
@@ -90,7 +99,7 @@ async function save() {
         </p>
       </div>
       <Button type="submit" variant="outline" :is-disabled="disabled || !valid">
-        {{ pipeline ? 'Save limits' : 'Add profile' }}
+        {{ pipeline ? 'Save limits' : createLabel }}
       </Button>
     </div>
     <p v-if="!pipeline" class="text-xs text-muted-foreground">Saved for manual runs. No harvest is scheduled.</p>

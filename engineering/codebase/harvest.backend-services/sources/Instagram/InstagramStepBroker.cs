@@ -20,6 +20,7 @@ public sealed class InstagramStepBroker(IInstagramMediaBroker broker) : IStepBro
     public async Task<StepResult> ExecuteAsync(StepItem item, IStepContext context, CancellationToken cancellationToken = default)
     {
         if (!InstagramPublishers.TryReadProfile(context.Scope.Url, out string username, out string profile)
+            || !InstagramPublishers.MatchesSource(context.Source.Handle, profile)
             || context.Scope.Parameters.Count > 0 || context.Scope.RestrictToPath
             || !Uri.TryCreate(item.Target, UriKind.Absolute, out var uri) || uri.Fragment.Length > 0
             || !InstagramPublishers.TryReadProfile(uri.GetLeftPart(UriPartial.Path), out _, out string targetProfile)
@@ -40,7 +41,14 @@ public sealed class InstagramStepBroker(IInstagramMediaBroker broker) : IStepBro
                 || !number.TryGetInt32(out pageNumber) || pageNumber < 1 || pageNumber >= maximumPages || after is null)
                 return new() { Outcome = FetchOutcome.UnexpectedContent, Message = "Invalid Instagram continuation state." };
         }
-        InstagramMediaPage result = await broker.ReadTracedAsync(username, pageSize, after, context, cancellationToken);
+        InstagramMediaPage result;
+        await using (var lease = await context.AcquireRequestAsync(cancellationToken))
+        {
+            if (lease.Outcome != FetchOutcome.Ok)
+                return new() { Outcome = lease.Outcome, RetryAfter = lease.RetryAfter, Message = "The provider request gate did not admit this request." };
+            result = await broker.ReadTracedAsync(username, pageSize, after, context, cancellationToken);
+            await lease.CompleteAsync(result.Outcome, cancellationToken);
+        }
         context.Observe(new() { Outcome = result.Outcome, Bytes = result.Usage.Bytes, RetryAfter = result.RetryAfter });
         if (result.Outcome != FetchOutcome.Ok)
             return new() { Outcome = result.Outcome, Usage = result.Usage, RetryAfter = result.RetryAfter, Message = result.Message };

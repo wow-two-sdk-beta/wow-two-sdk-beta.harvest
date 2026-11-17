@@ -9,7 +9,7 @@ namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Ocharo;
 /// <param name="Authority">Evidence proximity, rather than a claim of access or accuracy.</param>
 public sealed record OcharoSourcePreset(string Key, string Name, IReadOnlyList<string> Seeds, int Authority)
 {
-    /// <summary>The source family; the opt-in Instagram preset shares one platform source across publisher pipelines.</summary>
+    /// <summary>The source family; each opt-in Instagram account is registered as its own publisher source.</summary>
     public SourceFamily Family { get; init; } = SourceFamily.Site;
 
     private static readonly IReadOnlyList<OcharoSourcePreset> Defaults = OcharoSourceRegistry.DefaultPresets();

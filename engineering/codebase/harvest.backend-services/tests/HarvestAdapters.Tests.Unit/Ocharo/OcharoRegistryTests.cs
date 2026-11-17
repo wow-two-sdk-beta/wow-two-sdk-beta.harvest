@@ -19,8 +19,11 @@ public sealed class OcharoRegistryTests
         var teplo = registry.Groups.Single(group => group.Id == "teplo");
         teplo.Channels.Single(channel => channel.Primary).Mode.Should().Be("reference");
         teplo.Channels.Where(channel => channel.Mode == "provider").Select(channel => channel.EventFamily)
-            .Should().BeEquivalentTo("teplo-market", "teplo-fest");
-        teplo.Channels.Single(channel => channel.Id == "store-pop-ups-and-reposts").Mode.Should().Be("manual");
+            .Should().BeEquivalentTo(new string?[] { "teplo-market", "teplo-fest", null });
+        var store = teplo.Channels.Single(channel => channel.Id == "store-pop-ups-and-reposts");
+        store.Mode.Should().Be("provider");
+        store.DisplayName.Should().Be("Teplo Store");
+        store.EventFamily.Should().BeNull();
 
         var idem = registry.Groups.Single(group => group.Id == "idem");
         idem.Aggregates.Should().Contain(["caex", "iticket"]);
@@ -44,7 +47,7 @@ public sealed class OcharoRegistryTests
     }
 
     [Fact]
-    public async Task Publisher_selection_provisions_two_distinct_teplo_channels_with_one_transport_source()
+    public async Task Publisher_selection_provisions_distinct_named_teplo_sources_without_enabling_schedules()
     {
         var registry = new FakeRegistrationBroker();
         var delivery = Delivery(registry);
@@ -54,10 +57,18 @@ public sealed class OcharoRegistryTests
         var repeat = Value(await provisioner.EnsureAsync(includeInstagram: true, groupIds: ["teplo"]));
 
         repeat.Should().BeEquivalentTo(setup);
-        setup.Sources.Should().HaveCount(2).And.OnlyContain(route => route.GroupId == "teplo");
-        setup.Sources.Select(route => route.SourceId).Distinct().Should().ContainSingle();
-        setup.Sources.Select(route => route.PipelineId).Distinct().Should().HaveCount(2);
-        setup.Sources.Select(route => route.SubscriptionId).Distinct().Should().HaveCount(2);
+        setup.Sources.Should().HaveCount(3).And.OnlyContain(route => route.GroupId == "teplo");
+        setup.Sources.Select(route => route.SourceId).Distinct().Should().HaveCount(3);
+        setup.Sources.Select(route => route.PipelineId).Distinct().Should().HaveCount(3);
+        setup.Sources.Select(route => route.SubscriptionId).Distinct().Should().HaveCount(3);
+        var sources = Value(await registry.ListSourcesAsync(setup.ContainerId));
+        sources.Select(source => (source.Handle, source.Name)).Should().BeEquivalentTo(new (string Handle, string? Name)[]
+        {
+            ("teplomarket_", "Teplo Market"), ("teplofest", "Teplo Fest"), ("teplostore_2022", "Teplo Store"),
+        });
+        var group = Value(await registry.ListSourceGroupsAsync(setup.ContainerId)).Should().ContainSingle().Subject;
+        group.Name.Should().Be("Teplo");
+        sources.Should().OnlyContain(source => source.GroupId == group.Id);
         Value(await registry.ListPipelinesAsync(setup.ContainerId)).Should()
             .OnlyContain(pipeline => pipeline.Schedules.All(schedule => !schedule.Enabled));
         var subscriptions = Value(await delivery.ListSubscriptionsAsync(setup.TenantId));
@@ -66,8 +77,37 @@ public sealed class OcharoRegistryTests
             var context = subscriptions.Single(subscription => subscription.Id == route.SubscriptionId).Context;
             context["sourceGroup"].Should().Be(route.GroupId);
             context["sourceChannel"].Should().Be(route.ChannelId);
-            context["eventFamily"].Should().Be(route.EventFamily);
+            if (route.EventFamily is { } family) context["eventFamily"].Should().Be(family);
+            else context.Should().NotContainKey("eventFamily");
         }
+    }
+
+    [Fact]
+    public async Task Publisher_status_does_not_bind_to_a_legacy_domain_pipeline_with_the_same_profile_url()
+    {
+        var registry = new FakeRegistrationBroker();
+        var provisioner = new OcharoSourceProvisioner(registry, Delivery(registry));
+        var initial = Value(await provisioner.EnsureAsync(groupIds: ["afisha"]));
+        var legacy = Value(await registry.RegisterSourceAsync(new()
+        {
+            ContainerId = initial.ContainerId, Family = SourceFamily.Instagram, Handle = "www.instagram.com",
+            Coverage = SourceCoverage.Filtered, Completeness = SourceCompleteness.Window, Posture = SourcePosture.Official,
+        }));
+        var legacyPipeline = Value(await registry.DeclarePipelineAsync(new()
+        {
+            ContainerId = initial.ContainerId, SourceId = legacy.Id,
+            Scope = new() { Url = "https://www.instagram.com/teplofest/" },
+        }));
+        Value(await provisioner.ReadAsync(groupIds: ["teplo"])).Channels.Single(channel => channel.ChannelId == "fest")
+            .Pipeline.Should().BeNull();
+
+        var setup = Value(await provisioner.EnsureAsync(includeInstagram: true, groupIds: ["teplo"]));
+        var status = Value(await provisioner.ReadAsync(groupIds: ["teplo"]));
+        var fest = status.Channels.Single(channel => channel.ChannelId == "fest").Pipeline!;
+
+        fest.Id.Should().Be(setup.Sources.Single(channel => channel.ChannelId == "fest").PipelineId);
+        fest.Id.Should().NotBe(legacyPipeline.Id);
+        Value(await registry.GetPipelineAsync(legacyPipeline.Id)).Should().BeEquivalentTo(legacyPipeline);
     }
 
     [Fact]

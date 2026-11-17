@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Persistence;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Persistence.Rows;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Sources;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
@@ -39,6 +40,9 @@ internal sealed class SourceSectionRegistration(HarvestDbContext db, IEnumerable
         var sections = PassiveSections(source);
         if (sections.Count == 0)
             return;
+        var descriptor = adapters.LastOrDefault(adapter => adapter.Serves(source))?.Describe(source);
+        var address = SourceAddress.Resolve(source, descriptor)
+            ?? throw new InvalidOperationException("The adapter's source address is invalid.");
         var scopes = await db.Pipelines.AsNoTracking().Where(row => row.SourceId == source.Id)
             .Select(row => row.Scope).ToListAsync(ct);
         var urls = scopes.Select(json => StoreJson.Read(json, new PipelineScope()).Url)
@@ -48,7 +52,7 @@ internal sealed class SourceSectionRegistration(HarvestDbContext db, IEnumerable
         {
             if (!Uri.TryCreate(section.Url, UriKind.Absolute, out Uri? url) || url.Scheme != Uri.UriSchemeHttps
                 || !url.IsDefaultPort || url.UserInfo.Length != 0
-                || !string.Equals(url.IdnHost, source.Handle, StringComparison.OrdinalIgnoreCase))
+                || !address.IncludesOrigin(url))
                 throw new InvalidOperationException("The adapter's section must be on the registered source host.");
             if (!urls.Add(section.Url.TrimEnd('/')))
                 continue;

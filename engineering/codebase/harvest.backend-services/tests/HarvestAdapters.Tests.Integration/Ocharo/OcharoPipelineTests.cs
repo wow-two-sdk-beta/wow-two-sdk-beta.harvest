@@ -41,7 +41,34 @@ public sealed class OcharoPipelineTests
         await using var provider = services.BuildServiceProvider(validateScopes: true);
         await provider.MigrateHarvestOnStartupAsync("instagram-fixture");
         await using var scope = provider.CreateAsyncScope();
-        OcharoSetup setup = Value(await scope.ServiceProvider.GetRequiredService<OcharoSourceProvisioner>().EnsureAsync(includeInstagram: true));
+        var provisioner = scope.ServiceProvider.GetRequiredService<OcharoSourceProvisioner>();
+        OcharoSetup setup = Value(await provisioner.EnsureAsync(includeInstagram: true));
+        Value(await provisioner.EnsureAsync(includeInstagram: true)).Should().BeEquivalentTo(setup);
+        var registry = scope.ServiceProvider.GetRequiredService<IRegistrationBroker>();
+        var fest = setup.Sources.Single(item => item.ChannelId == "fest");
+        var store = setup.Sources.Single(item => item.ChannelId == "store-pop-ups-and-reposts");
+        fest.SourceId.Should().NotBe(store.SourceId);
+        var festSource = Value(await registry.GetSourceAsync(fest.SourceId));
+        var storeSource = Value(await registry.GetSourceAsync(store.SourceId));
+        (festSource.Handle, festSource.Name).Should().Be(("teplofest", "Teplo Fest"));
+        (storeSource.Handle, storeSource.Name).Should().Be(("teplostore_2022", "Teplo Store"));
+        storeSource.GroupId.Should().Be(festSource.GroupId);
+        Value(await registry.ListSourceGroupsAsync(setup.ContainerId)).Single(group => group.Id == festSource.GroupId)
+            .Name.Should().Be("Teplo");
+        var festPipeline = Value(await registry.GetPipelineAsync(fest.PipelineId));
+        var storePipeline = Value(await registry.GetPipelineAsync(store.PipelineId));
+        festPipeline.Schedules.Concat(storePipeline.Schedules).Should().OnlyContain(schedule => !schedule.Enabled);
+        (await registry.UpdatePipelineAsync(fest.PipelineId, new()
+        {
+            Scope = storePipeline.Scope, Schedules = [],
+        })).IsSuccess.Should().BeFalse();
+        Value(await registry.GetPipelineAsync(fest.PipelineId)).Should().BeEquivalentTo(festPipeline);
+        (await registry.DeclarePipelineAsync(new()
+        {
+            ContainerId = setup.ContainerId, SourceId = store.SourceId, Scope = festPipeline.Scope,
+        })).IsSuccess.Should().BeFalse();
+        Value(await scope.ServiceProvider.GetRequiredService<IDeliveryBroker>().GetSubscriptionAsync(store.SubscriptionId))
+            .Context.Should().NotContainKey("eventFamily");
         var route = setup.Sources.First(item => item.Seed == "https://www.instagram.com/fwtashkent/");
         var runs = scope.ServiceProvider.GetRequiredService<IRunBroker>();
         var run = Value(await runs.StartAsync(route.PipelineId));

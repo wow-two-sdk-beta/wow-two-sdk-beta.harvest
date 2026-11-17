@@ -24,10 +24,12 @@ through the normal SCFD registry; fixed provider transport safety bounds are cod
 
 ## Profiles and limits in tables
 
-Register an Instagram domain source in a private test container with `family=instagram`, `handle=www.instagram.com`,
+Register one source per Instagram account in a private test container with `family=instagram`, `handle=teplofest`,
 `posture=official`, `coverage=filtered`, `completeness=window`, `checkPolicy=none`, `aiAllowed=false` and
-`poolShareable=false`. In the console's source Settings, add a publisher profile. The form writes an ordinary
-pipeline row via `POST /api/pipelines`, for example (replace the identifiers):
+`poolShareable=false`. The registry declares the publisher name, group and account URL. Teplo Fest (`teplofest`)
+and Teplo Store (`teplostore_2022`) are distinct sources under the Teplo group, using the same Instagram adapter
+and Meta connection. A source's Pipelines view manages only its declared publisher profile. Its ordinary pipeline
+row uses `POST /api/pipelines`, for example (replace the identifiers):
 
 ```json
 {
@@ -42,13 +44,15 @@ pipeline row via `POST /api/pipelines`, for example (replace the identifiers):
 }
 ```
 
-Publisher URLs are the approved collection inventory. Page size and run limits use `harvest_pipelines.limits`;
+Publisher source declarations are the approved collection inventory. A pipeline URL must match its source's
+account; a source cannot collect another publisher by changing that URL. Page size and run limits use `harvest_pipelines.limits`;
 source/pipeline pause, schedules and stage controls use their existing registry records. No schema migration or
 host restart is needed to edit them. Keep request parameters out of `scope.parameters`: those values define scope
 identity, not provider tuning. A page size change preserves the profile URL and its pipeline identity.
 
-An operator first provisions the source through `POST /api/sources`; the console then manages profiles within it.
-That source-level grant lets authorized tenant managers save publisher pipelines and run them with the configured
+An operator first provisions each source through `POST /api/sources`; its registry assigns the source name and
+group through the standard source update API. The console then manages that account's pipeline. The source-level
+grant lets authorized tenant managers save the matching publisher pipeline and run it with the configured
 Meta connection. The stored tenant field `PlatformCredentialsAllowed` is not currently enforced by the provider
 runtime and does not restrict this grant. Follow-up: define and enforce a common provider-credential policy before
 using that field as a tenant access boundary.
@@ -65,6 +69,16 @@ using that field as a tenant access boundary.
 Expired tokens produce `LoginRequired`; renew the same host secret/grant. A rate limit records backoff and must not
 trigger repeated immediate requests. Neither failure means that stored posts were deleted.
 
+Local publisher acceptance on 2026-11-17 used the console's Capture controls for both registry declarations.
+Teplo Fest completed one request/page with one unchanged post and no duplicate; its existing source, pipeline,
+post and history IDs were preserved when correcting the old single-account domain source. Teplo Store completed
+one request/page and saved one new post under its own source and pipeline. Both runs had zero failures, and both
+pipelines retained page size one, max pages one and no schedules. The gallery showed both named sources under
+Teplo, with only the source count beneath its filter pills. Credentials remained in the protected local config.
+
+Legacy domain sources remain readable for compatibility. A domain source containing multiple accounts must not
+be renamed to one publisher: provision the declared sources separately and reconcile historical provenance first.
+
 ## Local console
 
 The deployed image currently serves the API. Run the existing console in real HTTP mode against the chosen local
@@ -78,15 +92,16 @@ cursor paging, post/media storage and deduplication. Local acceptance captured a
 post and repeated the capture without creating a duplicate. DevQA runs the released collector; that deployment
 does not itself prove a configured Meta connection or a scheduled Instagram run.
 
-Collection pipelines and subscriber interests are independent. A consumer may request one Instagram-wide feed
-across publisher pipelines, then receive only events matching its interests after AI analysis. Separate
-subscriptions per publisher are not a product requirement. The current pull contract still follows one pipeline;
+Each Instagram account has its own declared source and collection pipeline. Provider transport, credentials and
+host pacing are shared. Collection identity and subscriber interests are independent: a consumer may request one
+Instagram-wide feed across publisher sources, then receive only events matching its interests after AI analysis.
+Separate subscriptions per publisher are not a product requirement. The current pull contract still follows one pipeline;
 initial source-wide replay does not make it follow future captures from other pipelines. Shared delivery must
 apply the subscription's declared scope consistently to both paths.
 
 One collector-console task remains: expose Capture and its cadence in the generic pipeline view. Its current
 Discover/Harvest/Process cards omit Capture; Instagram supplies neither the discovery catalog nor the Detail step
-needed by the first two cards. Use Source Settings > Capture now for manual collection. The engine supports
+needed by the first two cards. Use the source's Pipelines > Capture now for manual collection. The engine supports
 `kind=capture` schedules through ordinary pipeline updates, but the stage-settings API/UI does not expose them.
 Process runs against saved captures and does not fetch Instagram posts.
 

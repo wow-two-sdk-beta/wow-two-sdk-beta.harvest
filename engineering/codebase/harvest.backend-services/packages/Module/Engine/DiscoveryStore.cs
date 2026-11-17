@@ -53,7 +53,7 @@ internal static class DiscoveryStore
         bool pageLimit = false;
         foreach (var target in next)
         {
-            if (!RunPlanner.InScope(target.Target, frozen.Source, frozen.Pipeline.Scope))
+            if (!RunPlanner.InScope(target.Target, frozen.Source, frozen.Pipeline.Scope, frozen.Adapter))
                 continue;
             string address = Address(target.Target);
             var role = frozen.Adapter.Steps.FirstOrDefault(step => step.Key == target.StepKey)?.Role;

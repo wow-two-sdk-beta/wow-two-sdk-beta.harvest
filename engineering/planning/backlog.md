@@ -62,7 +62,7 @@ ChatGPT builds these in the pull order of wow-two-ws `system/sessions/events-int
 | S39 Leftovers: Settings says "Harvested by stages"; drop `RequiresGrant` / `AwaitingSourceAccess` | engineering | spec in `tasks-scfd.md`; left to the Codex OLX/AI work, which holds those files |
 | S38 Decide what the marketplace collectors keep about people | decision | spec in `tasks-scfd.md` · needs the developer |
 | S18 Run ANONS, Craftfair, Uzexpocentre and CAEx for Ocharo | product | spec in `tasks-scfd.md` |
-| S09 Let one subscription follow many sections | feature | spec in `tasks-scfd.md`; Instagram needs one subscription across publisher pipelines. Collection pipelines stay independent of subscriber interests. Apply the same declared scope to stored-post replay and future delivery; a shared Instagram source is intentional, not a requirement for separate publisher subscriptions. |
+| S09 Let one subscription follow many sections | feature | spec in `tasks-scfd.md`; Instagram needs one subscription across independently declared publisher sources and pipelines. Subscriber interests do not determine collection identity. Apply the same declared subscription scope to stored-post replay and future delivery; reusing one Instagram provider does not combine publisher sources. |
 | E02 Tighten ocharo-fashion-v1 against off-topic event matches | fix | spec in `tasks-events-path.md` |
 | E19 Let a subscriber list its tenant's subscriptions | feature | spec in `tasks-events-path.md` |
 | S10 Ocharo filter regression set over every reader's fixtures | engineering | spec in `tasks-scfd.md` |

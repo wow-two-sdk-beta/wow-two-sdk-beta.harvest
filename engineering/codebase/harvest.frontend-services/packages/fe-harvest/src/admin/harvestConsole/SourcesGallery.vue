@@ -245,10 +245,7 @@ watch(overviewState, () => void restoreView());
         <p>Showing the last source list. The latest refresh failed.</p>
         <Button variant="outline" @click="session.refresh">Retry sources</Button>
       </div>
-      <p class="text-sm text-muted-foreground" role="status">
-        {{ kept.size }} of {{ overviews.length }} sources
-        <span v-if="activeOnly">· Available sources with reading permission</span>
-      </p>
+      <p class="text-sm text-muted-foreground" role="status">{{ kept.size }} of {{ overviews.length }} sources</p>
       <section v-if="!single" aria-labelledby="source-groups-heading" class="flex min-w-0 flex-col gap-3">
         <h2 id="source-groups-heading" class="sr-only">Groups</h2>
         <ul class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4" aria-labelledby="source-groups-heading">

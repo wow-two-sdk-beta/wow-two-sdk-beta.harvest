@@ -11,7 +11,7 @@ public sealed record SourceRegistration
     public required SourceFamily Family { get; init; }
 
     /// <summary>Gets the source's identity: a host for web families (a URL is reduced to its host), <c>tg:{username}</c>
-    /// for Telegram; normalized on save and unique per container and family.</summary>
+    /// for Telegram, an account username for Instagram; normalized on save and unique per container and family.</summary>
     public required string Handle { get; init; }
 
     /// <summary>Gets the platform's own identifier, such as a Telegram peer id; it wins over the handle.</summary>

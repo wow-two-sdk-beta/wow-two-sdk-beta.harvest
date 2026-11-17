@@ -11,6 +11,7 @@ export interface ProfileLimit {
 export interface SourceProfileSchema {
   readonly title: string;
   readonly description?: string;
+  readonly fixedUrl?: string;
   readonly limits: readonly ProfileLimit[];
 }
 
@@ -26,6 +27,16 @@ export function sourceProfileSchema(
 ): SourceProfileSchema | undefined {
   const url = record(record(schema?.properties)?.url);
   if (!Array.isArray(schema?.required) || !schema.required.includes('url') || url?.type !== 'string') return undefined;
+  let fixedUrl: string | undefined;
+  if (typeof url.const === 'string') {
+    try {
+      const target = new URL(url.const);
+      if (!['http:', 'https:'].includes(target.protocol) || target.username || target.password) return undefined;
+      fixedUrl = target.href;
+    } catch {
+      return undefined;
+    }
+  }
   const limits: ProfileLimit[] = [];
   const bounds = record(schema.limits);
   for (const key of ['pageSize', 'maxPages'] as const) {
@@ -58,6 +69,7 @@ export function sourceProfileSchema(
   return {
     title: typeof url.title === 'string' ? url.title : 'Profile URL',
     ...(typeof url.description === 'string' ? { description: url.description } : {}),
+    ...(fixedUrl ? { fixedUrl } : {}),
     limits,
   };
 }

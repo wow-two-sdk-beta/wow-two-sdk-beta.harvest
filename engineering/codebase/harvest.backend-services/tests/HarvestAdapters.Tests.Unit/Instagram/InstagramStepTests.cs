@@ -33,6 +33,43 @@ public sealed class InstagramStepTests
     }
 
     [Theory]
+    [InlineData(FetchOutcome.RateLimited)]
+    [InlineData(FetchOutcome.Blocked)]
+    public async Task A_closed_request_gate_prevents_provider_access_and_preserves_the_retry_delay(FetchOutcome outcome)
+    {
+        var client = new FixtureClient();
+        var context = new Context { RequestOutcome = outcome, RequestRetryAfter = TimeSpan.FromSeconds(17) };
+
+        var result = await new InstagramStepBroker(client).ExecuteAsync(Item("https://www.instagram.com/teplofest/"), context);
+
+        result.Outcome.Should().Be(outcome);
+        result.RetryAfter.Should().Be(context.RequestRetryAfter);
+        result.Usage.Requests.Should().Be(0);
+        client.Calls.Should().BeEmpty();
+        var lease = context.RequestLeases.Should().ContainSingle().Subject;
+        lease.Completed.Should().BeEmpty();
+        lease.Disposed.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(FetchOutcome.Ok)]
+    [InlineData(FetchOutcome.RateLimited)]
+    [InlineData(FetchOutcome.LoginRequired)]
+    public async Task Provider_outcomes_complete_and_release_the_shared_request_lease(FetchOutcome outcome)
+    {
+        var client = new FixtureClient { Outcome = outcome };
+        var context = new Context();
+
+        var result = await new InstagramStepBroker(client).ExecuteAsync(Item("https://www.instagram.com/teplofest/"), context);
+
+        result.Outcome.Should().Be(outcome);
+        client.Calls.Should().ContainSingle();
+        var lease = context.RequestLeases.Should().ContainSingle().Subject;
+        lease.Completed.Should().Equal(outcome);
+        lease.Disposed.Should().BeTrue();
+    }
+
+    [Theory]
     [InlineData("https://www.instagram.com/p/ABC/")]
     [InlineData("https://example.test/teplofest/")]
     [InlineData("https://user:password@www.instagram.com/teplofest/")]
@@ -64,6 +101,18 @@ public sealed class InstagramStepTests
 
         var result = await new InstagramStepBroker(client).ExecuteAsync(Item("https://www.instagram.com/teplofest/"),
             new Context { Scope = new() });
+
+        result.Outcome.Should().Be(FetchOutcome.NotApproved);
+        client.Calls.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_pipeline_cannot_collect_a_different_account_than_its_publisher_source()
+    {
+        var client = new FixtureClient();
+
+        var result = await new InstagramStepBroker(client).ExecuteAsync(Item("https://www.instagram.com/teplofest/"),
+            new Context { SourceHandle = "teplostore_2022" });
 
         result.Outcome.Should().Be(FetchOutcome.NotApproved);
         client.Calls.Should().BeEmpty();
@@ -109,13 +158,14 @@ public sealed class InstagramStepTests
     };
     private sealed class FixtureClient : IInstagramMediaBroker
     {
+        internal FetchOutcome Outcome { get; init; } = FetchOutcome.Ok;
         internal List<(string, int, string?)> Calls { get; } = [];
         public Task<InstagramMediaPage> ReadAsync(string username, int pageSize = 25, string? after = null, CancellationToken cancellationToken = default)
         {
             Calls.Add((username, pageSize, after));
             return Task.FromResult(new InstagramMediaPage
             {
-                Outcome = FetchOutcome.Ok, After = "opaque-cursor",
+                Outcome = Outcome, After = "opaque-cursor",
                 Media = [InstagramCaptureTests.Media("Join us at the fashion market", 1)], Usage = new() { Requests = 1, Bytes = 100 },
             });
         }
@@ -123,14 +173,49 @@ public sealed class InstagramStepTests
     private sealed class Context : IStepContext
     {
         internal List<StepSignal> Signals { get; } = [];
+        internal List<RequestLease> RequestLeases { get; } = [];
+        public FetchOutcome RequestOutcome { get; init; } = FetchOutcome.Ok;
+        public TimeSpan? RequestRetryAfter { get; init; }
         public PipelineScope Scope { get; init; } = new() { Url = "https://www.instagram.com/teplofest/" };
         public PipelineLimits Limits { get; init; } = new() { PageSize = 7, MaxPages = 2 };
         public ResolvedPlan Plan => throw new NotSupportedException();
-        public SourceModel Source => throw new NotSupportedException();
+        public string SourceHandle { get; init; } = "teplofest";
+        public SourceModel Source => new()
+        {
+            Id = Guid.NewGuid(), ContainerId = Guid.NewGuid(), Family = SourceFamily.Instagram, Handle = SourceHandle,
+            Coverage = SourceCoverage.Filtered, Completeness = SourceCompleteness.Window, Posture = SourcePosture.Official,
+            Permission = SourcePermission.Open, AiAllowed = false, PoolShareable = false, RobotsPolicy = RobotsPolicy.Obey,
+            ConsentBasis = ConsentBasis.None, Authority = 50, RetentionClass = "standard", CapabilityPolicy = new(),
+            State = SourceState.Active, StateSinceUtc = DateTimeOffset.UnixEpoch, CreatedAtUtc = DateTimeOffset.UnixEpoch,
+        };
         public HttpClient Http => throw new NotSupportedException();
         public IBrowserRenderer? Browser => null;
         public IChallengeDetector Challenges => throw new NotSupportedException();
         public TimeProvider Clock => TimeProvider.System;
+        public Task<ISourceRequestLease> AcquireRequestAsync(CancellationToken cancellationToken = default)
+        {
+            var lease = new RequestLease { Outcome = RequestOutcome, RetryAfter = RequestRetryAfter };
+            RequestLeases.Add(lease);
+            return Task.FromResult<ISourceRequestLease>(lease);
+        }
         public void Observe(StepSignal signal) => Signals.Add(signal);
+    }
+
+    private sealed class RequestLease : ISourceRequestLease
+    {
+        public FetchOutcome Outcome { get; init; }
+        public TimeSpan? RetryAfter { get; init; }
+        internal List<FetchOutcome> Completed { get; } = [];
+        internal bool Disposed { get; private set; }
+        public Task CompleteAsync(FetchOutcome outcome, CancellationToken cancellationToken = default)
+        {
+            Completed.Add(outcome);
+            return Task.CompletedTask;
+        }
+        public ValueTask DisposeAsync()
+        {
+            Disposed = true;
+            return ValueTask.CompletedTask;
+        }
     }
 }

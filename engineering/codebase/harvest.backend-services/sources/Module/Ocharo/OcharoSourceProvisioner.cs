@@ -7,6 +7,7 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
 using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 using WoW.Two.Sdk.Beta.Be.Harvest.Tenants;
+using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Instagram;
 
 namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Ocharo;
 
@@ -71,13 +72,18 @@ public sealed class OcharoSourceProvisioner(IRegistrationBroker registry, IDeliv
                 string seed = channel.PipelineUrl;
                 var uri = new Uri(seed);
                 bool instagram = profile.Family == SourceFamily.Instagram;
-                string host = uri.IdnHost;
-                SourceModel? source = sources.SingleOrDefault(item => item.Family == profile.Family && item.Handle == host);
+                string handle = uri.IdnHost;
+                if (instagram)
+                {
+                    if (!InstagramPublishers.TryReadProfile(seed, out handle, out _))
+                        return Invalid("An Instagram registry channel needs a public publisher profile URL.");
+                }
+                SourceModel? source = sources.SingleOrDefault(item => item.Family == profile.Family && item.Handle == handle);
                 if (source is null)
                 {
                     source = Value(await registry.RegisterSourceAsync(new()
                     {
-                        ContainerId = container.Id, Family = profile.Family, Handle = host, ExternalRef = profile.Key,
+                        ContainerId = container.Id, Family = profile.Family, Handle = handle, ExternalRef = instagram ? null : profile.Key,
                         Coverage = SourceCoverage.Filtered, Completeness = SourceCompleteness.Window,
                         Posture = instagram ? SourcePosture.Official : SourcePosture.OwnFetch,
                         AiAllowed = false, PoolShareable = false, RobotsPolicy = RobotsPolicy.Obey, Authority = profile.Authority,
@@ -99,7 +105,7 @@ public sealed class OcharoSourceProvisioner(IRegistrationBroker registry, IDeliv
                     int index = sources.IndexOf(source);
                     source = Value(await registry.UpdateSourceAsync(source.Id, new()
                     {
-                        Name = source.Name is null ? DisplayName(source) : null,
+                        Name = source.Name is null ? channel.DisplayName ?? DisplayName(source) : null,
                         GroupId = source.GroupId is null ? publisher.Id : null,
                     }, cancellationToken));
                     sources[index] = source;
@@ -185,10 +191,18 @@ public sealed class OcharoSourceProvisioner(IRegistrationBroker registry, IDeliv
                 : Value(await registry.ListContainersAsync(tenant.Id, cancellationToken)).SingleOrDefault(item => item.ExternalRef == "ocharo-events");
             if (tenant is null || container is null)
                 return Result<OcharoStatus>.Fail(AppErrorFactory.NotFound($"Tenant {tenantSlug} has no Ocharo container yet; run ocharo setup first."));
+            var sources = Value(await registry.ListSourcesAsync(container.Id, cancellationToken));
             var pipelines = Value(await registry.ListPipelinesAsync(container.Id, cancellationToken));
             var channels = catalog.Routes(includeInstagram: true, selection)
-                .Select(route => new OcharoChannelStatus(route.Group.Id, route.Channel.Id,
-                    pipelines.FirstOrDefault(pipeline => pipeline.Scope.Url == route.Channel.PipelineUrl)))
+                .Select(route =>
+                {
+                    string seed = route.Channel.PipelineUrl;
+                    string handle = route.Profile.Family == SourceFamily.Instagram
+                        && InstagramPublishers.TryReadProfile(seed, out string username, out _) ? username : new Uri(seed).IdnHost;
+                    SourceModel? source = sources.SingleOrDefault(item => item.Family == route.Profile.Family && item.Handle == handle);
+                    return new OcharoChannelStatus(route.Group.Id, route.Channel.Id,
+                        pipelines.FirstOrDefault(pipeline => pipeline.SourceId == source?.Id && pipeline.Scope.Url == seed));
+                })
                 .ToList();
             return Result<OcharoStatus>.Ok(new(tenant.Id, container.Id, channels));
         }

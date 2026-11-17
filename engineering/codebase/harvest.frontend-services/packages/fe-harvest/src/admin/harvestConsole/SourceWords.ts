@@ -444,7 +444,7 @@ export function siteUrlOf(family: string, handle: string) {
   if (family === 'telegram') return `https://t.me/${name}`;
   if (family === 'instagram') {
     if (/^(www\.)?instagram\.com\/?$/i.test(name)) return `https://${name.replace(/\/$/, '')}/`;
-    return `https://www.instagram.com/${name}`;
+    return `https://www.instagram.com/${name.replace(/\/$/, '')}/`;
   }
   return /^[\w.-]+\.[a-z]{2,}(\/.*)?$/i.test(handle) ? `https://${handle}` : undefined;
 }

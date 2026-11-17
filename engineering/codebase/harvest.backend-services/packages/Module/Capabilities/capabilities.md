@@ -7,6 +7,7 @@ detection.
 |---|---|
 | `Capabilities.Fetching.IFetchClientFactory` | direct clients over core `Http/Safety`; one honest, configurable user agent that names Harvest; a run-scoped anonymous cookie jar |
 | `Capabilities.Fetching.IPageFetcher` | typed page responses with the same direct policy, explicit outcomes and crash-safe conditional replay |
+| `Steps.IStepContext.AcquireRequestAsync` · `Steps.ISourceRequestLease` | provider SDK requests reserve the resolved host through the same durable host store, retaining the SDK's own transport |
 | `Capabilities.Challenges.IChallengeDetector` | the generic detector: challenge, block or rate limit; adapters add their own |
 | `Capabilities.Rendering.IBrowserRenderer` | declared, unbound; a step that needs it reports `capabilityUnavailable` |
 
@@ -14,6 +15,10 @@ detection.
   failures, last challenge and concurrency), `harvest_fetch_validators` (bounded public response validators and body).
   The engine owns lane pause state and request/byte attribution; fetching holds a PostgreSQL session advisory lock
   per IDNA host until each fetch finishes and updates the durable global gate.
+- Provider SDK steps acquire a request lease, send only on `Ok`, complete it with the provider outcome, and dispose
+  it after the response. The lease checks host permissions and pauses, saves the pacing reservation before I/O, and
+  clears expired host failure state on success. The engine still records usage and applies lane refusal backoff.
+  Harvest's HTTP client already applies this policy; it must not acquire a second lease around the same request.
 - Rules: a challenge, block or rate limit is an outcome the run records; the lane pauses and its delay widens on each
   repeat, and a rate limit waits at least its `Retry-After`. Nothing retries past one through another route: no proxies
   or rotation, no disguised clients, no solvers, no sign-ins or accounts.

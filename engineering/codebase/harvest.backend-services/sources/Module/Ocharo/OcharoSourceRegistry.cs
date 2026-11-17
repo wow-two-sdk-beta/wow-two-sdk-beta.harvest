@@ -100,6 +100,8 @@ public sealed partial record OcharoSourceRegistry
                     || (channel.EventFamily is { } family && !group.EventFamilies.Contains(family))
                     || (supported && (profile is null || channel.Relationship != "owned"
                         || (channel.Mode == "provider") != (profile.Family == SourceFamily.Instagram)
+                        || (profile.Family == SourceFamily.Instagram && (string.IsNullOrWhiteSpace(channel.DisplayName)
+                            || !InstagramPublishers.TryReadProfile(channel.PipelineUrl, out _, out _)))
                         || channel.Setup is not ("default" or "selected")
                         || !PublicUrl(channel.PipelineUrl, requireHttps: true)
                         || !seeds.Add(new Uri(channel.PipelineUrl).AbsoluteUri)))

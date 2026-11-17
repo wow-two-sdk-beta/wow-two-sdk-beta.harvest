@@ -40,6 +40,27 @@ public sealed class InstagramSourceConfigurationTests
     }
 
     [Theory]
+    [InlineData("teplofest")]
+    [InlineData("teplostore_2022")]
+    public void Publisher_sources_expose_one_bound_profile_and_share_the_provider_host(string username)
+    {
+        var adapter = new InstagramSourceAdapter();
+        var source = Source(username);
+        string profile = $"https://www.instagram.com/{username}/";
+
+        adapter.Serves(source).Should().BeTrue();
+        adapter.Describe(source).SourceUrl.Should().Be(profile);
+        adapter.Describe(source).HostKey.Should().Be("www.instagram.com");
+        adapter.DescribeConfiguration(source).ScopeSchema.GetProperty("properties").GetProperty("url").GetProperty("const")
+            .GetString().Should().Be(profile);
+        adapter.ValidatePipeline(source, new() { Url = profile }, new()).IsSuccess.Should().BeTrue();
+        adapter.ValidatePipeline(source, new() { Url = "https://www.instagram.com/other.publisher/" }, new())
+            .IsSuccess.Should().BeFalse();
+        adapter.ValidatePipeline(source, new() { Url = $"https://instagram.com/{username}/" }, new())
+            .IsSuccess.Should().BeFalse();
+    }
+
+    [Theory]
     [InlineData(null)]
     [InlineData("https://www.instagram.com/")]
     [InlineData("http://www.instagram.com/publisher/")]
@@ -81,10 +102,12 @@ public sealed class InstagramSourceConfigurationTests
     }
 
     [Theory]
-    [InlineData("www.instagram.com.example")]
-    [InlineData("graph.facebook.com")]
-    [InlineData("custom_publisher")]
-    public void Unrelated_source_handles_are_not_served(string handle)
+    [InlineData("bad/handle")]
+    [InlineData("publisher with whitespace")]
+    [InlineData("https://www.instagram.com/publisher/")]
+    [InlineData("@publisher")]
+    [InlineData("accounts")]
+    public void Invalid_publisher_source_handles_are_not_served(string handle)
     {
         var adapter = new InstagramSourceAdapter();
         adapter.Serves(Source(handle)).Should().BeFalse();

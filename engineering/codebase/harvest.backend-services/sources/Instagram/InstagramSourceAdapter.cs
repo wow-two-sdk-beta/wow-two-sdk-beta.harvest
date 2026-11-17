@@ -16,6 +16,7 @@ public sealed class InstagramSourceAdapter(IOptions<InstagramOptions>? options =
     {
         InstagramOptions settings = options?.Value ?? new();
         bool configured = Serves(source) && InstagramConfiguration.IsValid(settings);
+        string? sourceProfile = InstagramPublishers.TryReadSourceProfile(source.Handle, out _, out string profile) ? profile : null;
         return new()
         {
             DisplayName = "Instagram professional publishers",
@@ -25,7 +26,7 @@ public sealed class InstagramSourceAdapter(IOptions<InstagramOptions>? options =
             ScopeSchema = JsonSerializer.SerializeToElement(new
             {
                 schema = "harvest.scope.v1", type = "object",
-                properties = new { url = new { type = "string", format = "uri", title = "Publisher profile URL",
+                properties = new { url = new { type = "string", format = "uri", title = "Publisher profile URL", @const = sourceProfile,
                     description = "Save the public Instagram profile URL of an approved professional publisher." } },
                 required = new[] { "url" }, additionalProperties = false,
                 limits = new
@@ -41,8 +42,8 @@ public sealed class InstagramSourceAdapter(IOptions<InstagramOptions>? options =
     public Result ValidatePipeline(SourceModel source, PipelineScope scope, PipelineLimits limits)
     {
         if (!Serves(source) || !InstagramPublishers.TryReadProfile(scope.Url, out _, out var profile)
-            || new Uri(profile).IdnHost != source.Handle || scope.RestrictToPath || scope.Parameters.Count > 0)
-            return Result.Fail(RegistrationErrors.Invalid("Instagram pipelines require a public publisher profile URL on the source host, without query overrides or path restriction."));
+            || !InstagramPublishers.MatchesSource(source.Handle, profile) || scope.RestrictToPath || scope.Parameters.Count > 0)
+            return Result.Fail(RegistrationErrors.Invalid("Instagram pipelines require the source's public publisher profile URL, without query overrides or path restriction."));
         if (limits.PageSize is < 1 or > 50 || limits.MaxPages is < 1 or > PipelineConstants.MaxPagesCap)
             return Result.Fail(RegistrationErrors.Invalid("Instagram page size must be 1–50 and the run page limit 1–100."));
         return Result.Ok();
@@ -55,10 +56,13 @@ public sealed class InstagramSourceAdapter(IOptions<InstagramOptions>? options =
     /// <inheritdoc />
     public SourceFamily Family => SourceFamily.Instagram;
     /// <inheritdoc />
-    public bool Serves(SourceModel source) => source.Family == Family && source.Handle is "www.instagram.com" or "instagram.com";
+    public bool Serves(SourceModel source) => source.Family == Family
+        && (InstagramPublishers.IsLegacyDomain(source.Handle) || InstagramPublishers.TryReadSourceProfile(source.Handle, out _, out _));
     /// <inheritdoc />
     public AdapterDescriptor Describe(SourceModel source) => new()
     {
+        SourceUrl = InstagramPublishers.TryReadSourceProfile(source.Handle, out _, out string profile) ? profile : null,
+        HostKey = InstagramPublishers.IsLegacyDomain(source.Handle) ? null : "www.instagram.com",
         Steps = [new() { Key = "enumerate", Role = StepRole.Enumerate, Requires = new() { MinDelay = TimeSpan.FromSeconds(5) } }],
         Plans = new Dictionary<WorkKind, IReadOnlyList<string>>
         {

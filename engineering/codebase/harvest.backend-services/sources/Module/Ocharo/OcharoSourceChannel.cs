@@ -6,6 +6,9 @@ public sealed record OcharoSourceChannel
     /// <summary>The stable channel ID within its publisher group.</summary>
     public required string Id { get; init; }
 
+    /// <summary>The concrete publisher account's display name, when its channel provisions a distinct source.</summary>
+    public string? DisplayName { get; init; }
+
     /// <summary>The public URL cited by the source review.</summary>
     public required string Url { get; init; }
 

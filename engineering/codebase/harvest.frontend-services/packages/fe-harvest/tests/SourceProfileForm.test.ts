@@ -1,8 +1,11 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { defineComponent, h } from 'vue';
+import { defineComponent, h, shallowRef } from 'vue';
 import HarvestConsoleProvider from '../src/admin/harvestConsole/HarvestConsoleProvider.vue';
 import SourceSettingsTab from '../src/admin/harvestConsole/SourceSettingsTab.vue';
+import SourcePipelinesTab from '../src/admin/harvestConsole/SourcePipelinesTab.vue';
+import SourceHeader from '../src/admin/harvestConsole/SourceHeader.vue';
+import SourceProfileForm from '../src/admin/harvestConsole/SourceProfileForm.vue';
 import { sourceProfileSchema } from '../src/admin/harvestConsole/SourceProfileSchema';
 import type { PipelineModel, SourceOverviewModel } from '../src/contracts';
 import { createHarvestClient } from '../src/kit';
@@ -58,14 +61,18 @@ function mountProfiles(
     canRun?: boolean;
     workerEnabled?: boolean;
     permissionDenied?: boolean;
+    publisher?: { name: string; handle: string };
+    surface?: 'settings' | 'pipelines';
   } = {},
 ) {
   let pipelines = [...initial];
   const shownSource = {
     ...source,
+    ...options.publisher,
     ...(options.sourcePaused ? { sourceState: 'paused' as const } : {}),
     ...(options.permissionDenied ? { permission: 'denied' as const } : {}),
   };
+  const fixedUrl = options.publisher ? `https://www.instagram.com/${options.publisher.handle}/` : undefined;
   const runs: { id: string; pipelineId: string; kind: string; status: string; queuedAtUtc: string }[] = [];
   const writes: { path: string; method: string; body: Record<string, unknown> }[] = [];
   const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -110,7 +117,9 @@ function mountProfiles(
           configuration: {
             displayName: 'Instagram',
             readiness: options.ready === false ? 'configurationRequired' : 'ready',
-            scopeSchema: schema,
+            scopeSchema: fixedUrl
+              ? { ...schema, properties: { url: { ...schema.properties.url, const: fixedUrl } } }
+              : schema,
           },
         },
       });
@@ -118,7 +127,15 @@ function mountProfiles(
       path === '/api/containers'
         ? [{ id: 'pool-1', kind: 'pool' }]
         : path === '/api/sources'
-          ? [{ id: source.sourceId, state: 'active', family: 'instagram', handle: source.handle }]
+          ? [
+              {
+                id: source.sourceId,
+                state: 'active',
+                family: 'instagram',
+                handle: shownSource.handle,
+                name: shownSource.name,
+              },
+            ]
           : path === '/api/sources/overview'
             ? [shownSource]
             : path === '/api/pipelines'
@@ -139,7 +156,12 @@ function mountProfiles(
           localWorkerEnabled: options.workerEnabled ?? true,
           ...(options.canRun === false ? { permissions: ['pipelines:manage', 'sources:manage'] } : {}),
         },
-        { default: () => h(SourceSettingsTab, { source: shownSource }) },
+        {
+          default: () => [
+            ...(options.publisher ? [h(SourceHeader, { source: shownSource })] : []),
+            h(options.surface === 'pipelines' ? SourcePipelinesTab : SourceSettingsTab, { source: shownSource }),
+          ],
+        },
       ),
   });
   const wrapper = mount(Root, { attachTo: document.body });
@@ -275,5 +297,113 @@ describe('stored source profiles', () => {
     expect(
       sourceProfileSchema({ ...schema, limits: { pageSize: { minimum: 1, maximum: 50, default: 51 } } }),
     ).toBeUndefined();
+  });
+
+  it.each([
+    { name: 'Teplo Fest', handle: 'teplofest' },
+    { name: 'Teplo Store', handle: 'teplostore_2022' },
+  ])('shows $name with its own profile, capture and limits in Pipelines', async (publisher) => {
+    const url = `https://www.instagram.com/${publisher.handle}/`;
+    const pipeline = { ...existing, name: publisher.name, scope: { ...existing.scope, url }, schedules: [] };
+    const other = { ...existing, id: 'other-pipeline', sourceId: 'another-source', name: 'Another publisher' };
+    const { wrapper, writes } = mountProfiles([pipeline, other], { publisher, surface: 'pipelines' });
+    await flushPromises();
+    expect(wrapper.get('h1').text()).toContain(publisher.name);
+    expect(wrapper.get('a[target="_blank"]').attributes('href')).toBe(url);
+    expect(wrapper.find('input[type="url"]').exists()).toBe(false);
+    expect(wrapper.find('form[aria-label="Add profile"]').exists()).toBe(false);
+    expect(wrapper.find('form[aria-label="Create pipeline"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain('Another publisher');
+    expect(wrapper.text()).not.toContain('Harvest now');
+    const limits = wrapper.get('form[aria-label="Profile limits"]');
+    await limits.get('input[type="number"]').setValue('7');
+    await limits.trigger('submit');
+    await flushPromises();
+    expect(writes[0]).toEqual({
+      path: '/api/pipelines/profile-1',
+      method: 'PUT',
+      body: {
+        name: publisher.name,
+        scope: pipeline.scope,
+        schedules: [],
+        limits: { pageSize: 7, maxPages: 4 },
+      },
+    });
+    await wrapper.get(`[aria-label="Capture ${publisher.name} now"]`).trigger('click');
+    await flushPromises();
+    expect(writes[1]).toEqual({
+      path: '/api/runs',
+      method: 'POST',
+      body: { pipelineId: pipeline.id, kind: 'capture' },
+    });
+  });
+
+  it('creates only the bound publisher pipeline when no pipeline exists', async () => {
+    const publisher = { name: 'Teplo Store', handle: 'teplostore_2022' };
+    const { wrapper, writes } = mountProfiles([], { publisher, surface: 'pipelines' });
+    await flushPromises();
+    const form = wrapper.get('form[aria-label="Create pipeline"]');
+    expect(form.find('input[type="url"]').exists()).toBe(false);
+    await form.trigger('submit');
+    await flushPromises();
+    expect(writes).toHaveLength(1);
+    expect(writes[0]?.body).toMatchObject({
+      sourceId: source.sourceId,
+      scope: { url: 'https://www.instagram.com/teplostore_2022/', restrictToPath: false, parameters: {} },
+      limits: { pageSize: 25, maxPages: 4 },
+      schedules: [],
+    });
+    expect(wrapper.find('form[aria-label="Create pipeline"]').exists()).toBe(false);
+  });
+
+  it('keeps fixed publisher settings read-only and links to its pipeline controls', async () => {
+    const { wrapper } = mountProfiles([], { publisher: { name: 'Teplo Fest', handle: 'teplofest' } });
+    await flushPromises();
+    expect(wrapper.find('input[type="url"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('Manage publisher pipeline');
+    expect(wrapper.text()).not.toContain('Add profile');
+  });
+
+  it('does not capture a mismatched profile under a fixed publisher source', async () => {
+    const { wrapper, writes } = mountProfiles([existing], {
+      publisher: { name: 'Teplo Store', handle: 'teplostore_2022' },
+      surface: 'pipelines',
+    });
+    await flushPromises();
+    const capture = wrapper.get('[aria-label="Capture Saved publisher now"]');
+    expect((capture.element as HTMLButtonElement).disabled).toBe(true);
+    await capture.trigger('click');
+    expect(writes).toEqual([]);
+  });
+
+  it('resets unsaved bounds and free URL drafts when switching publisher sources', async () => {
+    const draft = shallowRef({ sourceId: 'legacy', schema: sourceProfileSchema(schema)! });
+    const wrapper = mount(HarvestConsoleProvider, {
+      props: { isOperator: true },
+      slots: { default: () => h(SourceProfileForm, draft.value) },
+    });
+    wrappers.push(wrapper);
+    await wrapper.get('input[type="url"]').setValue('https://www.instagram.com/another/');
+    for (const handle of ['teplofest', 'teplostore_2022']) {
+      const numbers = wrapper.findAll('input[type="number"]');
+      await numbers[0]!.setValue('7');
+      await numbers[1]!.setValue('2');
+      draft.value = {
+        sourceId: handle,
+        schema: sourceProfileSchema({
+          ...schema,
+          properties: { url: { ...schema.properties.url, const: `https://www.instagram.com/${handle}/` } },
+        })!,
+      };
+      await flushPromises();
+      expect(wrapper.find('input[type="url"]').exists()).toBe(false);
+      expect(wrapper.findAll('input[type="number"]').map((field) => (field.element as HTMLInputElement).value)).toEqual(
+        ['25', '4'],
+      );
+      expect(wrapper.text()).toContain(`https://www.instagram.com/${handle}/`);
+    }
+    draft.value = { sourceId: 'another-legacy', schema: sourceProfileSchema(schema)! };
+    await flushPromises();
+    expect((wrapper.get('input[type="url"]').element as HTMLInputElement).value).toBe('');
   });
 });

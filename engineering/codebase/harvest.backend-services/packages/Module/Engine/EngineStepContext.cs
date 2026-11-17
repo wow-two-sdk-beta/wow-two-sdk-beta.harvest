@@ -1,5 +1,6 @@
 using WoW.Two.Sdk.Beta.Be.Harvest.Capabilities.Challenges;
 using WoW.Two.Sdk.Beta.Be.Harvest.Capabilities.Rendering;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Capabilities;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
@@ -21,6 +22,8 @@ internal sealed class EngineStepContext(
     public SourceModel Source { get; } = source;
     public PipelineScope Scope { get; } = scope;
     public PipelineLimits Limits { get; init; } = new();
+    internal AdapterDescriptor? Adapter { get; init; }
+    internal IHostFetchStore? HostRequests { get; init; }
     public HttpClient Http { get; } = http;
     public IChallengeDetector Challenges { get; } = challenges;
     public TimeProvider Clock { get; } = clock;
@@ -28,7 +31,11 @@ internal sealed class EngineStepContext(
     internal List<StepSignal> Signals { get; } = [];
 
     public bool AllowsDestination(Uri destination) =>
-        !Scope.RestrictToPath || RunPlanner.InScope(destination.AbsoluteUri, Source, Scope);
+        !Scope.RestrictToPath || RunPlanner.InScope(destination.AbsoluteUri, Source, Scope, Adapter);
+
+    public Task<ISourceRequestLease> AcquireRequestAsync(CancellationToken cancellationToken = default) =>
+        SourceRequestGate.AcquireAsync(HostRequests ?? throw new InvalidOperationException("Durable request pacing is not registered."),
+            Plan.HostKey, Clock, cancellationToken, Plan.Requirements.MinDelay);
 
     public Task<T> RunOperationAsync<T>(string key, Func<Task<T>> execute, Func<T, StepOperationResult>? describe = null)
         => trace.RunAsync(key, execute, describe);

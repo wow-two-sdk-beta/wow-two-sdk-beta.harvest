@@ -3,6 +3,24 @@ namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Instagram;
 /// <summary>Validates professional publisher names and the profile scopes saved in the registry.</summary>
 public static class InstagramPublishers
 {
+    /// <summary>Identifies the domain handles used by legacy multi-publisher sources.</summary>
+    public static bool IsLegacyDomain(string handle) => handle is "www.instagram.com" or "instagram.com";
+
+    /// <summary>Resolves a publisher source's username and public entry URL independently of the provider transport.</summary>
+    public static bool TryReadSourceProfile(string handle, out string username, out string profile)
+    {
+        username = profile = string.Empty;
+        if (IsLegacyDomain(handle) || Normalize([handle]) is not { Count: 1 } names) return false;
+        username = names[0];
+        profile = $"https://www.instagram.com/{username}/";
+        return true;
+    }
+
+    /// <summary>Checks a canonical profile against its publisher identity, retaining legacy domain-source compatibility.</summary>
+    public static bool MatchesSource(string handle, string profile) => IsLegacyDomain(handle)
+        ? new Uri(profile).IdnHost == handle
+        : TryReadSourceProfile(handle, out _, out string sourceProfile) && profile == sourceProfile;
+
     /// <summary>Returns trimmed, lowercase, unique usernames in stable order; any invalid or reserved name rejects the set.</summary>
     public static IReadOnlyList<string> Normalize(IEnumerable<string>? usernames)
     {

@@ -133,6 +133,9 @@ internal sealed class ModuleRunBroker(
                 $"The reading pace must be {SourceConstants.MinReadingDelayMs}–{SourceConstants.MaxReadingDelayMs} ms."));
         if (await registry.GetSourceAsync(sourceId, cancellationToken) is not Result<SourceModel>.Success { Value: var source })
             return Result<SourceHealthModel>.Fail(RegistrationErrors.SourceNotFound(sourceId));
+        var descriptor = adapters.LastOrDefault(adapter => adapter.Serves(source))?.Describe(source);
+        if (SourceAddress.Resolve(source, descriptor) is not { } address)
+            return Result<SourceHealthModel>.Fail(AppErrorFactory.Validation("The adapter's source address is invalid."));
         await using NpgsqlConnection connection = await database.OpenConnectionAsync(cancellationToken);
         var now = clock.GetUtcNow();
         // The host's row is shared by every source and container on the host; the planner creates it the same way.
@@ -140,10 +143,10 @@ internal sealed class ModuleRunBroker(
             """
             INSERT INTO harvest_host_state(host_key,min_delay_ms,next_allowed_at,updated_at) VALUES(@host,@delay,@now,@now)
             ON CONFLICT(host_key) DO UPDATE SET min_delay_ms=EXCLUDED.min_delay_ms,updated_at=EXCLUDED.updated_at
-            """, cancellationToken, ("host", source.Handle), ("delay", minDelayMs), ("now", now));
-        var hosts = await SourceHealthSql.ReadHostsAsync(connection, [source.Handle], cancellationToken);
+            """, cancellationToken, ("host", address.HostKey), ("delay", minDelayMs), ("now", now));
+        var hosts = await SourceHealthSql.ReadHostsAsync(connection, [address.HostKey], cancellationToken);
         var refusals = await SourceHealthSql.ReadRefusalsAsync(connection, [source.Id], cancellationToken);
-        return Result<SourceHealthModel>.Ok(SourceOverviewRules.Health(source.Handle, hosts.GetValueOrDefault(source.Handle),
+        return Result<SourceHealthModel>.Ok(SourceOverviewRules.Health(address.HostKey, hosts.GetValueOrDefault(address.HostKey),
             refusals.GetValueOrDefault(source.Id), now));
     }
 }
