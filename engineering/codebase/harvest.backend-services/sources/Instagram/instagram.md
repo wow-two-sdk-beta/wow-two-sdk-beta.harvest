@@ -19,7 +19,7 @@ Only connection details belong in host configuration:
 
 Register one source per account: family `instagram`, handle `USERNAME`, posture `official`, filtered/window coverage
 and check policy `none`. Registry declarations supply publisher names and groups. Teplo Fest and Teplo Store are
-separate sources under Teplo, backed by the same provider implementation. Each source has a persisted pipeline
+separate sources under Teplo Store, backed by the same provider implementation. Each source has a persisted pipeline
 with `scope.url=https://www.instagram.com/USERNAME/`,
 `restrictToPath=false`, `limits.pageSize` (1–50 posts, default 25) and `limits.maxPages` (default 4). Scope parameters
 are not request settings and are rejected. The API validates the profile and its limits before saving. Adding or

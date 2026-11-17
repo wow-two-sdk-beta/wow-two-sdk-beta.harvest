@@ -255,10 +255,10 @@ operator setup (`HarvestSources:Audience` `internal` only):
   (installed opt-in integration; credentials and publisher access required), `planned`, `manual`, `reference`. Rank
   measures relevance, not readiness; only owned channels with an installed collector can be provisioned.
 - Setup takes `{ enableSchedules: false, includeInstagram: false, groupIds?: string[] }`. Without `groupIds` it keeps
-  the original five website scopes and, when asked, the three Instagram routes; explicit IDs select every eligible
+  the original five website scopes and, when asked, the registry's default Instagram routes; explicit IDs select every eligible
   channel in those groups. An unknown group, or a group with no eligible channel, fails before any row is written.
-  CAEx is selectable explicitly and has no link-check schedule. The two Teplo event channels share one Instagram
-  source with distinct pipelines, subscriptions and event families.
+  CAEx is selectable explicitly and has no link-check schedule. Instagram accounts have separate publisher sources
+  and pipelines. Teplo Fest and Teplo Store belong to the Teplo Store group; their event-family metadata remains distinct.
 - Setup creates missing identities and keeps existing rows, cadences and keys. New website captures run every 6 hours
   when enabled, plus a daily link check for individual-link sources; Instagram schedules start disabled. Sources stay
   private to the tenant, non-pool-shareable, AI-disabled, robots-obeying and window-complete; differing existing

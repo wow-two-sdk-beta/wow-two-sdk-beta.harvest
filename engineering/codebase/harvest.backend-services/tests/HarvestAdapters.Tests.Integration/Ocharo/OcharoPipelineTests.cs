@@ -54,7 +54,7 @@ public sealed class OcharoPipelineTests
         (storeSource.Handle, storeSource.Name).Should().Be(("teplostore_2022", "Teplo Store"));
         storeSource.GroupId.Should().Be(festSource.GroupId);
         Value(await registry.ListSourceGroupsAsync(setup.ContainerId)).Single(group => group.Id == festSource.GroupId)
-            .Name.Should().Be("Teplo");
+            .Name.Should().Be("Teplo Store");
         var festPipeline = Value(await registry.GetPipelineAsync(fest.PipelineId));
         var storePipeline = Value(await registry.GetPipelineAsync(store.PipelineId));
         festPipeline.Schedules.Concat(storePipeline.Schedules).Should().OnlyContain(schedule => !schedule.Enabled);

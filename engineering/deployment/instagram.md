@@ -27,7 +27,7 @@ through the normal SCFD registry; fixed provider transport safety bounds are cod
 Register one source per Instagram account in a private test container with `family=instagram`, `handle=teplofest`,
 `posture=official`, `coverage=filtered`, `completeness=window`, `checkPolicy=none`, `aiAllowed=false` and
 `poolShareable=false`. The registry declares the publisher name, group and account URL. Teplo Fest (`teplofest`)
-and Teplo Store (`teplostore_2022`) are distinct sources under the Teplo group, using the same Instagram adapter
+and Teplo Store (`teplostore_2022`) are distinct sources under the Teplo Store group, using the same Instagram adapter
 and Meta connection. A source's Pipelines view manages only its declared publisher profile. Its ordinary pipeline
 row uses `POST /api/pipelines`, for example (replace the identifiers):
 
@@ -74,7 +74,7 @@ Teplo Fest completed one request/page with one unchanged post and no duplicate; 
 post and history IDs were preserved when correcting the old single-account domain source. Teplo Store completed
 one request/page and saved one new post under its own source and pipeline. Both runs had zero failures, and both
 pipelines retained page size one, max pages one and no schedules. The gallery showed both named sources under
-Teplo, with only the source count beneath its filter pills. Credentials remained in the protected local config.
+Teplo Store, with only the source count beneath its filter pills. Credentials remained in the protected local config.
 
 Legacy domain sources remain readable for compatibility. A domain source containing multiple accounts must not
 be renamed to one publisher: provision the declared sources separately and reconcile historical provenance first.

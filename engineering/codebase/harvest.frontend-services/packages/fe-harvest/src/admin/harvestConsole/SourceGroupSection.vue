@@ -8,7 +8,7 @@ import { plural, type GalleryView } from './SourceWords';
 /**
  * A group's sources under a minimal separator — its name, how many it shows and a fold control, then a rule — as a
  * three-column grid of cards or one bordered list of rows. The group's figures live on its tile above, not here. With
- * a single group on the page the separator goes too (`isBare`): the sources stand alone, never folded.
+ * a lone ungrouped section the separator goes too (`isBare`): the sources stand alone, never folded.
  */
 defineOptions({ name: 'SourceGroupSection' });
 const props = defineProps<{
@@ -17,7 +17,7 @@ const props = defineProps<{
   sources: readonly SourceOverviewModel[];
   view: GalleryView;
   isExpanded: boolean;
-  /** Draws the sources with no separator and no fold, for a page with only one group. */
+  /** Draws the sources with no separator and no fold, for a lone ungrouped section. */
   isBare?: boolean;
   trendMax?: number;
 }>();

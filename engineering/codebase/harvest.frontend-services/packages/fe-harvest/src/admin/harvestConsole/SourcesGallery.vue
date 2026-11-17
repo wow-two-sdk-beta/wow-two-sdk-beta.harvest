@@ -43,7 +43,7 @@ const Filters = [
  * description, read methods, one pill and a 14-day chart, a click scrolling to its sources — then a collapsible section
  * per group, as a three-column grid of cards or a bordered list of rows. Search and the state filters narrow both;
  * a narrowed page keeps only the groups with a match. Sources in no group come last, under `Other`. A page with a single
- * group shows its sources alone: the tile and the separator would only repeat them.
+ * named group keeps its heading above the sources; only a lone ungrouped section omits the separator.
  */
 defineOptions({ name: 'SourcesGallery' });
 const props = withDefaults(
@@ -95,7 +95,7 @@ const eligible = computed(() =>
 const all = computed(() =>
   galleryGroupsOf(groups.value, eligible.value).filter((group) => !activeOnly.value || group.sources.length > 0),
 );
-/** Whether one group holds every source, so its tile and separator would only repeat the sources. */
+/** Whether one group holds every source, so its summary tile would only repeat the sources. */
 const single = computed(() => all.value.length <= 1);
 const query = computed(() => search.value.trim().toLowerCase());
 /** Whether search or a state filter narrows the page. */
@@ -273,7 +273,7 @@ watch(overviewState, () => void restoreView());
           :view="props.view"
           :trend-max="trendMax"
           :is-expanded="!collapsed.has(entry.group.key)"
-          :is-bare="single"
+          :is-bare="single && !entry.group.group"
           @toggle="toggle(entry.group.key)"
         />
       </div>

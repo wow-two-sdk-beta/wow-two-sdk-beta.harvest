@@ -67,7 +67,7 @@ public sealed class OcharoRegistryTests
             ("teplomarket_", "Teplo Market"), ("teplofest", "Teplo Fest"), ("teplostore_2022", "Teplo Store"),
         });
         var group = Value(await registry.ListSourceGroupsAsync(setup.ContainerId)).Should().ContainSingle().Subject;
-        group.Name.Should().Be("Teplo");
+        group.Name.Should().Be("Teplo Store");
         sources.Should().OnlyContain(source => source.GroupId == group.Id);
         Value(await registry.ListPipelinesAsync(setup.ContainerId)).Should()
             .OnlyContain(pipeline => pipeline.Schedules.All(schedule => !schedule.Enabled));
