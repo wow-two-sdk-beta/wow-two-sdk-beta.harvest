@@ -29,6 +29,8 @@ calls the adapter's brokers.
 - network and extraction run outside transactions; completion locks the run and validates the current claim before writes
 - capture persistence is idempotent if a worker dies after ingest but before frontier completion; negative checks deduplicate by run
 - item limits apply across multi-item pages; frontier, request, byte, page and runtime limits stop remaining work
+- `maxPages` bounds the pages a run whose plan reads listings admits, listing and detail pages alike; admitted pages
+  finish within the other budgets and the run ends `page_limit`; a refresh or staged harvest counts listing pages only
 - request/byte budgets are evaluated at step boundaries; one fetch includes robots and redirect transport attempts
 - cancellation fences running claims; a late result cannot overwrite cancellation or a replacement owner's result
 - a refusal terminates the run as partial and pauses its lane; the same run never changes route or automatically retries it

@@ -38,12 +38,15 @@ internal static partial class AfishaUrls
         return IsHost(uri.IdnHost) && ArticlePath().IsMatch(uri.AbsolutePath);
     }
 
-    internal static bool IsCategory(Uri uri)
+    internal static bool IsCategory(Uri uri) => Section(uri) is not null;
+
+    /// <summary>Names the harvested section a category listing URL belongs to, or null for any other URL.</summary>
+    internal static string? Section(Uri uri)
     {
         if (!IsHost(uri.IdnHost))
-            return false;
+            return null;
         Match match = CategoryPath().Match(uri.AbsolutePath);
-        return match.Success && Sections.ContainsKey(match.Groups[1].Value);
+        return match.Success && Sections.ContainsKey(match.Groups[1].Value) ? match.Groups[1].Value : null;
     }
 
     internal static string Identity(Uri url)

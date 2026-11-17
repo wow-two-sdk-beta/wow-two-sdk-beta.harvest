@@ -219,20 +219,19 @@ internal static class RunPlanner
         if (step.Optional && change?.Enabled != true)
             return EnqueueResult.Skipped;
         string address = frozen.Kind == WorkKind.Process ? target.Target : DiscoveryStore.Address(target.Target);
-        if (step.Role == StepRole.Enumerate && frozen.Pipeline.Limits.MaxPages is { } listingLimit)
+        if (frozen.Pipeline.Limits.MaxPages is { } pageLimit && PageSteps(frozen) is var pageSteps
+            && pageSteps.Contains(step.Key, StringComparer.Ordinal))
         {
             // Admission runs under the run's row lock. Count the whole frontier, including work still queued.
-            string[] listingSteps = [.. frozen.Adapter.Steps.Where(candidate => candidate.Role == StepRole.Enumerate)
-                .Select(candidate => candidate.Key)];
             await using NpgsqlCommand count = EngineSql.Command(connection, transaction,
                 """
                 SELECT CASE WHEN EXISTS(SELECT 1 FROM harvest_work_item WHERE run_id=@run AND step=@step AND target=@target)
-                    THEN -1 ELSE (SELECT count(*)::int FROM harvest_work_item WHERE run_id=@run AND step=ANY(@listing)) END
-                """, ("run", runId), ("step", step.Key), ("target", address), ("listing", listingSteps));
+                    THEN -1 ELSE (SELECT count(*)::int FROM harvest_work_item WHERE run_id=@run AND step=ANY(@pages)) END
+                """, ("run", runId), ("step", step.Key), ("target", address), ("pages", pageSteps));
             int admitted = (int)(await count.ExecuteScalarAsync(ct))!;
             if (admitted < 0)
                 return EnqueueResult.Skipped;
-            if (admitted >= listingLimit)
+            if (admitted >= pageLimit)
                 return EnqueueResult.PageLimit;
         }
         StepCapabilityPolicy? policy = frozen.Source.CapabilityPolicy.Steps.GetValueOrDefault(step.Key);
@@ -256,6 +255,19 @@ internal static class RunPlanner
             ("plan", StoreJson.Write(plan)), ("target", address),
             ("payload", target.Payload?.GetRawText()), ("priority", (short)(target.Priority ?? WorkPriority.Fresh)), ("now", now));
         return added == 0 ? EnqueueResult.Skipped : EnqueueResult.Enqueued;
+    }
+
+    /// <summary>Names the steps whose pages count against <see cref="PipelineLimits.MaxPages"/>.</summary>
+    /// <remarks>A run whose plan reads listings counts its listing pages and the detail pages they admit alike, so the
+    /// limit bounds every page it reads. Any other run, such as a refresh or a staged harvest of saved listings, counts
+    /// listing pages only.</remarks>
+    internal static string[] PageSteps(FrozenRun frozen)
+    {
+        IReadOnlyList<string> plan = frozen.Adapter.Plans.GetValueOrDefault(frozen.Kind) ?? [];
+        bool readsListings = frozen.Adapter.Steps.Any(step => step.Role == StepRole.Enumerate && plan.Contains(step.Key));
+        return [.. frozen.Adapter.Steps
+            .Where(step => step.Role == StepRole.Enumerate || (readsListings && step.Role == StepRole.Detail))
+            .Select(step => step.Key)];
     }
 
     internal enum EnqueueResult { Skipped, Enqueued, PageLimit }

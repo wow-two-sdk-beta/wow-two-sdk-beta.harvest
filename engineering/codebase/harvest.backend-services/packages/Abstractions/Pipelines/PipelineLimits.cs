@@ -3,7 +3,7 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 /// <summary>Represents a pipeline's per-run limits; a null keeps the adapter's default.</summary>
 public sealed record PipelineLimits
 {
-    /// <summary>Gets the most listing pages a filtered run reads, 1–100.</summary>
+    /// <summary>Gets the most pages a filtered run reads, 1–100: listing and detail pages alike when its plan reads listings, otherwise listing pages only.</summary>
     public int? MaxPages { get; init; }
 
     /// <summary>Gets the most items a filtered run captures, 1–2,000.</summary>

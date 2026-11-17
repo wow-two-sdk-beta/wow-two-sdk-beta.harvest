@@ -7,6 +7,8 @@ The package references Harvest's contract and AngleSharp, and performs no networ
 The host binds these types with `AddHarvestWebBroker<AfishaSourceAdapter, AfishaCaptureReader>()`.
 Afisha category pages are moving windows; they never prove complete enumeration. Discovery follows visible public
 links, not Afisha's robots-disallowed `/api`, `/_next` or search endpoints. No browser script is evaluated.
+A section's listing leads only to its own category's listing pages, never to the sibling sections its navigation links;
+the `/ru` home page leads to every section.
 
 Article identity is its canonical URL. Source JSON-LD and embedded event schedules establish event dates; the
 article's publication date remains separate. Event projections retain ticket/participation evidence without treating

@@ -132,6 +132,9 @@ public sealed partial class AfishaCaptureReader : ICaptureReader, IFetchDestinat
 
     private static IReadOnlyList<DiscoveredUrl> Discover(IDocument html, Uri basis)
     {
+        // A section's listing leads only to its own category: its navigation links every sibling section, and
+        // following them would crawl each sibling inside this section's run. The locale home page leads to every section.
+        string? section = AfishaUrls.Section(basis);
         var targets = new Dictionary<string, DiscoveredUrl>(StringComparer.Ordinal);
         foreach (IElement anchor in html.QuerySelectorAll("a[href]"))
         {
@@ -143,7 +146,8 @@ public sealed partial class AfishaCaptureReader : ICaptureReader, IFetchDestinat
                 string identity = AfishaUrls.Identity(url);
                 targets.TryAdd(identity, new DiscoveredUrl { Url = identity });
             }
-            else if (AfishaUrls.IsCategory(url) && !string.Equals(url.AbsolutePath.TrimEnd('/'), basis.AbsolutePath.TrimEnd('/'), StringComparison.Ordinal))
+            else if (AfishaUrls.Section(url) is { } category && (section is null || category == section)
+                && !string.Equals(url.AbsolutePath.TrimEnd('/'), basis.AbsolutePath.TrimEnd('/'), StringComparison.Ordinal))
             {
                 string listing = AfishaUrls.Identity(url);
                 targets.TryAdd(listing, new DiscoveredUrl { Url = listing, IsListing = true });

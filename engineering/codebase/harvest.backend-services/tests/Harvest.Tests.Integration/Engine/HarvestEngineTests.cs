@@ -267,28 +267,56 @@ public sealed class HarvestEngineTests
     }
 
     [Fact]
-    public async Task ListingPageLimit_ShouldCompleteDetailsFromAdmittedListings()
+    public async Task PageLimit_ShouldCountListingAndDetailPagesAlike_AndFinishWhatItAdmitted()
     {
         await using var host = await EngineHost.StartAsync();
-        var registration = await host.RegisterAsync(limits: new() { MaxPages = 2 });
+        var registration = await host.RegisterAsync(limits: new() { MaxPages = 3 });
         host.Fetcher.Set("https://mstar.uz/sitemap.xml",
-            "<sitemapindex><sitemap><loc>https://mstar.uz/first.xml</loc></sitemap>"
-            + "<sitemap><loc>https://mstar.uz/excluded.xml</loc></sitemap></sitemapindex>", "application/xml");
+            "<sitemapindex><sitemap><loc>https://mstar.uz/first.xml</loc></sitemap></sitemapindex>", "application/xml");
         host.Fetcher.Set("https://mstar.uz/first.xml",
-            "<urlset><url><loc>https://mstar.uz/events/1</loc></url><url><loc>https://mstar.uz/events/2</loc></url></urlset>",
-            "application/xml");
-        host.Fetcher.Set("https://mstar.uz/events/1", Event("mstar.uz", 1));
-        host.Fetcher.Set("https://mstar.uz/events/2", Event("mstar.uz", 2));
+            "<urlset><url><loc>https://mstar.uz/events/1</loc></url><url><loc>https://mstar.uz/events/2</loc></url>"
+            + "<url><loc>https://mstar.uz/events/3</loc></url></urlset>", "application/xml");
+        foreach (int index in new[] { 1, 2, 3 })
+            host.Fetcher.Set($"https://mstar.uz/events/{index}", Event("mstar.uz", index));
         using var scope = host.Services.CreateScope();
         var runs = scope.ServiceProvider.GetRequiredService<IRunBroker>();
         var queued = EngineHost.Data(await runs.StartAsync(registration.PipelineId));
 
-        (await host.DrainAsync()).Should().Be(4);
+        (await host.DrainAsync()).Should().Be(3);
         var run = EngineHost.Data(await runs.GetAsync(queued.Id));
         run.Status.Should().Be(RunStatus.Partial);
         run.CompletionReason.Should().Be(RunReason.PageLimit);
-        run.NewPosts.Should().Be(2);
-        host.Fetcher.Calls.Should().NotContain("https://mstar.uz/excluded.xml");
+        run.Pages.Should().Be(3);
+        run.NewPosts.Should().Be(1);
+        host.Fetcher.Calls.Should().Equal("https://mstar.uz/sitemap.xml", "https://mstar.uz/first.xml", "https://mstar.uz/events/1");
+    }
+
+    [Fact]
+    public async Task PageLimit_ShouldLeaveARefreshOfKnownLinksToItsOtherBudgets()
+    {
+        await using var host = await EngineHost.StartAsync();
+        var registration = await host.RegisterAsync(limits: new() { MaxPages = 3 });
+        host.Fetcher.Set("https://mstar.uz/sitemap.xml",
+            "<urlset><url><loc>https://mstar.uz/events/1</loc></url><url><loc>https://mstar.uz/events/2</loc></url></urlset>",
+            "application/xml");
+        foreach (int index in new[] { 1, 2 })
+            host.Fetcher.Set($"https://mstar.uz/events/{index}", Event("mstar.uz", index));
+        using var scope = host.Services.CreateScope();
+        var runs = scope.ServiceProvider.GetRequiredService<IRunBroker>();
+        EngineHost.Data(await runs.StartAsync(registration.PipelineId));
+        (await host.DrainAsync()).Should().Be(3);
+        (await host.ScalarAsync<int>("SELECT (limits->>'maxPages')::int FROM harvest_pipelines WHERE id=@id",
+            ("id", registration.PipelineId))).Should().Be(3);
+        await host.ExecuteAsync("UPDATE harvest_pipelines SET limits=jsonb_set(limits,'{maxPages}','1') WHERE id=@id",
+            ("id", registration.PipelineId));
+        host.Clock.Advance(TimeSpan.FromMinutes(1));
+
+        var refresh = EngineHost.Data(await runs.StartAsync(registration.PipelineId, WorkKind.Refresh));
+
+        (await host.DrainAsync()).Should().Be(2);
+        var run = EngineHost.Data(await runs.GetAsync(refresh.Id));
+        run.Status.Should().Be(RunStatus.Completed);
+        run.Pages.Should().Be(2);
     }
 
     [Fact]

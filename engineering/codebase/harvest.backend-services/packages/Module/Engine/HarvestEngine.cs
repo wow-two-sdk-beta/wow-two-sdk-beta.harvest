@@ -395,6 +395,7 @@ public sealed class HarvestEngine(
             await using NpgsqlCommand count = EngineSql.Command(connection, transaction,
                 "SELECT count(*)::int FROM harvest_work_item WHERE run_id=@run", ("run", claim.Item.RunId));
             int existing = (int)(await count.ExecuteScalarAsync(ct))!;
+            bool pageLimit = false;
             foreach (StepTarget target in result.Next)
             {
                 if (existing >= max)
@@ -406,16 +407,17 @@ public sealed class HarvestEngine(
                 }
                 RunPlanner.EnqueueResult queued = await RunPlanner.EnqueueAsync(connection, transaction, claim.Frozen,
                     claim.Item.RunId, target, now, ct);
-                if (queued == RunPlanner.EnqueueResult.PageLimit)
-                    await EngineSql.ExecuteAsync(connection, transaction,
-                        "UPDATE harvest_runs SET completion_reason=coalesce(completion_reason,'page_limit'),enumeration_complete=false WHERE id=@id",
-                        ct, ("id", claim.Item.RunId));
+                pageLimit |= queued == RunPlanner.EnqueueResult.PageLimit;
                 if (queued == RunPlanner.EnqueueResult.Enqueued)
                 {
                     existing++;
                     discovered++;
                 }
             }
+            if (pageLimit)
+                await EngineSql.ExecuteAsync(connection, transaction,
+                    "UPDATE harvest_runs SET completion_reason=coalesce(completion_reason,'page_limit'),enumeration_complete=false WHERE id=@id",
+                    ct, ("id", claim.Item.RunId));
         }
 
         bool ok = result.Outcome is FetchOutcome.Ok or FetchOutcome.Gone;

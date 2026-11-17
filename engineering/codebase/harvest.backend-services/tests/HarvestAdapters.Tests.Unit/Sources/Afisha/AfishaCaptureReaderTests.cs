@@ -289,10 +289,29 @@ public sealed class AfishaCaptureReaderTests
 
         result.Complete.Should().BeFalse();
         result.Captures.Should().BeEmpty();
-        result.Discovered.Should().HaveCount(3);
-        result.Discovered.Should().Contain(item => item.Url == Article && !item.IsListing);
-        result.Discovered.Should().Contain(item => item.Url == "https://www.afisha.uz/ru/exhibitions" && item.IsListing);
+        result.Discovered.Should().HaveCount(2).And.OnlyContain(item => !item.IsListing);
+        result.Discovered.Should().Contain(item => item.Url == Article);
         result.Discovered.Should().NotContain(item => item.Url.Contains("page=2", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Read_ShouldFollowNoSiblingSectionListing_FromASectionListing()
+    {
+        const string html =
+            """
+            <html><body>
+            <nav><a href="/ru">Главная</a><a href="/ru/fashion">Мода</a><a href="/ru/exhibitions">Выставки</a>
+            <a href="/ru/concerts/">Концерты</a></nav>
+            <main><a href="/ru/fashion/2026/10/14/fashline-26">Runway</a></main>
+            </body></html>
+            """;
+
+        CaptureReadResult fashion = await Read(html, "https://www.afisha.uz/ru/fashion");
+        CaptureReadResult home = await Read(html, "https://www.afisha.uz/ru");
+
+        fashion.Discovered.Should().ContainSingle().Which.Url.Should().Be(Article);
+        home.Discovered.Where(item => item.IsListing).Select(item => item.Url).Should().BeEquivalentTo(
+            "https://www.afisha.uz/ru/fashion", "https://www.afisha.uz/ru/exhibitions", "https://www.afisha.uz/ru/concerts");
     }
 
     [Fact]

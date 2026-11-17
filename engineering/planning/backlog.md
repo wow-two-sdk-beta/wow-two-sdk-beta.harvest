@@ -58,7 +58,6 @@ ChatGPT builds these in the pull order of wow-two-ws `system/sessions/events-int
 |---|---|---|
 | S07 Commit the work in slices and verify v0.2.7 on dev | engineering | spec in `tasks-scfd.md` |
 | S36 Leftovers: the console reads `processorLabels`; a stage-editor gate test | fix | spec in `tasks-scfd.md`; backend shipped, see v0.2 Iteration 4 |
-| S37 Keep each Afisha crawl inside its section and its page limit | fix | spec in `tasks-scfd.md` |
 | S39 Clear the v0.2.7 review's small findings | engineering | spec in `tasks-scfd.md` |
 | S38 Decide what the marketplace collectors keep about people | decision | spec in `tasks-scfd.md` · needs the developer |
 | S18 Run ANONS, Craftfair, Uzexpocentre and CAEx for Ocharo | product | spec in `tasks-scfd.md` |
