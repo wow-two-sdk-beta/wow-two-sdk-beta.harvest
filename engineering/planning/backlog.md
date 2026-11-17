@@ -61,7 +61,6 @@ ChatGPT builds these in the pull order of wow-two-ws `system/sessions/events-int
 | S39 Leftovers: Settings says "Harvested by stages"; drop `RequiresGrant` / `AwaitingSourceAccess` | engineering | spec in `tasks-scfd.md`; left to the Codex OLX/AI work, which holds those files |
 | S38 Decide what the marketplace collectors keep about people | decision | spec in `tasks-scfd.md` · needs the developer |
 | S18 Run ANONS, Craftfair, Uzexpocentre and CAEx for Ocharo | product | spec in `tasks-scfd.md` |
-| S08 Carry Ocharo's filter key in the golden contract pages | fix | spec in `tasks-scfd.md` |
 | S09 Let one subscription follow many sections | feature | spec in `tasks-scfd.md` |
 | E02 Tighten ocharo-fashion-v1 against off-topic event matches | fix | spec in `tasks-events-path.md` |
 | E03 Deliver post.unmatched when a seen post stops matching | fix | spec in `tasks-events-path.md` |

@@ -17,6 +17,7 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Posts;
 using WoW.Two.Sdk.Beta.Be.Harvest.Readers;
 using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
+using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Ocharo;
 using WoW.Two.Sdk.Beta.Be.Identity.ApiKeys;
 
 namespace Harvest.Tests.E2E.Contract;
@@ -30,6 +31,7 @@ public sealed class EventContractPagesTests
     private const string WriteSwitch = "HARVEST_WRITE_CONTRACT";
     private const string Schema = "wow2.event.v1";
     private const string SourceHost = "afisha.example.test";
+    private const string Catalog = "ocharo-fashion";
     private static readonly DateTimeOffset Start = new(2026, 11, 10, 9, 0, 0, TimeSpan.Zero);
 
     [Fact]
@@ -52,7 +54,8 @@ public sealed class EventContractPagesTests
         var wire = host.Services.GetRequiredService<IOptions<JsonOptions>>().Value.JsonSerializerOptions;
         var normalizer = new ContractNormalizer(wire);
 
-        // The subscription every page comes from: the event schema, no filter, live from now on.
+        // The subscription every page comes from: the event schema under Ocharo's filter and catalog, as `ocharo setup`
+        // provisions it, live from now on. Every post below passes the filter unless a case says otherwise.
         string tenantId = await CreateAsync(client, "/api/tenants", new { slug = "events-contract", name = "Events contract" });
         string containerId = await CreateAsync(client, "/api/containers", new { kind = "private", tenantId });
         string sourceId = await CreateAsync(client, "/api/sources", new
@@ -63,11 +66,13 @@ public sealed class EventContractPagesTests
         Tick();
         string subscriptionId = await CreateAsync(client, "/api/subscriptions", new
         {
-            tenantId, containerId, pipelineId, backfill = "none", schema = Schema,
-            context = new Dictionary<string, string> { ["catalog"] = "events" },
+            tenantId, containerId, pipelineId, backfill = "none", schema = Schema, filterKey = OcharoFashionFilter.FilterKey,
+            context = new Dictionary<string, string> { ["catalog"] = Catalog },
         });
         var subscription = await GetAsync(client, $"/api/subscriptions/{subscriptionId}");
         Data(subscription).GetProperty("createdAtUtc").GetDateTimeOffset().Should().Be(Start.AddMinutes(1), "the module must read the fixed clock");
+        Data(subscription).GetProperty("filterKey").GetString().Should().Be(OcharoFashionFilter.FilterKey);
+        Data(subscription).GetProperty("context").GetProperty("catalog").GetString().Should().Be(Catalog);
         files.Add(new("subscription.json", ["subscription"], normalizer.Normalize(subscription)));
 
         var container = Guid.Parse(containerId);
@@ -84,6 +89,7 @@ public sealed class EventContractPagesTests
             return saved.Post;
         }
 
+        var delivered = new HashSet<Guid>();
         async Task<(byte[] Bytes, JsonElement Page)> PullAsync(string? cursor, int expected)
         {
             var path = $"/api/subscriptions/{subscriptionId}/events" + (cursor is null ? string.Empty : "?cursor=" + Uri.EscapeDataString(cursor));
@@ -96,16 +102,20 @@ public sealed class EventContractPagesTests
                 if (count == expected || attempt == 100)
                 {
                     count.Should().Be(expected, Encoding.UTF8.GetString(bytes));
+                    delivered.UnionWith(Events(page).Select(item => item.GetProperty("postId").GetGuid()));
                     return (bytes, page);
                 }
                 await Task.Delay(100);
             }
         }
 
-        // 01: a rich event, new.
+        // 01: a rich event, new. A concert saved before it is a post the filter rejects: it never appears, on this page
+        // or any later one, although the page that carries the later event is readable past it.
+        var rejected = await SaveAsync(Simple(Tick(), "chamber-concert", "Концерт камерной музыки"));
         var rich = await SaveAsync(Rich(Tick(), "150000"));
         var (newBytes, newPage) = await PullAsync(null, 1);
         var created = Events(newPage).Single();
+        created.GetProperty("postId").GetGuid().Should().Be(rich.Id, "the filter rejects the concert saved before it");
         created.GetProperty("type").GetString().Should().Be(DeliveryEventTypes.PostNew);
         var createdData = created.GetProperty("data");
         createdData.GetProperty("classification").ValueKind.Should().Be(JsonValueKind.Null);
@@ -140,12 +150,12 @@ public sealed class EventContractPagesTests
         Tick();
         (await posts.ObserveLinkAsync(container, source, new LinkObservation
         {
-            ExternalKey = EventUrl("jazz-night"), Signal = LinkSignal.StrongNegative, Reason = "direct_410", HttpStatus = 410,
+            ExternalKey = EventUrl(RichSlug), Signal = LinkSignal.StrongNegative, Reason = "direct_410", HttpStatus = 410,
         })).ValueOrThrow().State.Should().Be(PostState.Gone);
         Tick();
         (await posts.ObserveLinkAsync(container, source, new LinkObservation
         {
-            ExternalKey = EventUrl("jazz-night"), Signal = LinkSignal.Present, Reason = "seen_again", HttpStatus = 200,
+            ExternalKey = EventUrl(RichSlug), Signal = LinkSignal.Present, Reason = "seen_again", HttpStatus = 200,
         })).ValueOrThrow().State.Should().Be(PostState.Live);
         Tick();
         var merge = (await posts.MergeAsync(container, rich.Id, mirror.Id)).ValueOrThrow();
@@ -164,11 +174,12 @@ public sealed class EventContractPagesTests
             normalizer.Normalize(lifecycleBytes)));
 
         // 06: classification, set from the test because no production step writes it yet.
+        // Each title passes the filter; the verdict is the classifier's, which can still call one irrelevant.
         var verdicts = new (string Slug, string Title, PostClassification Classification)[]
         {
             ("runway-main", "Tashkent Fashion Week: показ коллекции весна-лето", Classification(ClassificationVerdict.Relevant, 0.9, "A designer collection shown on a runway.", "runway")),
-            ("book-fair", "Книжная ярмарка в Национальной библиотеке", Classification(ClassificationVerdict.Irrelevant, 0.95, "A book fair, not a fashion event.", null)),
-            ("open-day", "День открытых дверей в колледже дизайна", Classification(ClassificationVerdict.Uncertain, 0.5, "A design school open day; a show is not announced.", null)),
+            ("furniture-fair", "Ярмарка мебели ручной работы", Classification(ClassificationVerdict.Irrelevant, 0.95, "A furniture fair, not a fashion event.", null)),
+            ("open-day", "День открытых дверей: выставка работ студентов-дизайнеров", Classification(ClassificationVerdict.Uncertain, 0.5, "A design school open day; a show is not announced.", null)),
             ("textile-expo", "Выставка текстиля с показом тканей", Classification(ClassificationVerdict.Relevant, 0.3, "A textile fair that may include a runway segment.", "runway")),
         };
         foreach (var (slug, title, classification) in verdicts)
@@ -181,10 +192,10 @@ public sealed class EventContractPagesTests
         files.Add(new("06-classification.json", ["relevant:runway:0.9", "irrelevant", "uncertain", "relevant:0.3"], normalizer.Normalize(classifiedBytes)));
 
         // 07: an afisha place before and after the city fix, through the real RulesPostExtractor.
-        await SaveAsync(Afisha(Tick(), "youth-palace-before", "Вечер камерной музыки", """
+        await SaveAsync(Afisha(Tick(), "youth-palace-before", "Показ мод выпускников колледжа", """
             {"@type":"Place","name":"Дворец творчества молодёжи","address":"Ташкент, просп. Мустакиллик, 2","geo":{"@type":"GeoCoordinates","latitude":"41.3153000","longitude":"69.2727000"}}
             """));
-        await SaveAsync(Afisha(Tick(), "youth-palace-after", "Концерт молодёжного оркестра", """
+        await SaveAsync(Afisha(Tick(), "youth-palace-after", "Ярмарка вышивки и текстиля", """
             {"@type":"Place","name":"Дворец творчества молодёжи","address":{"@type":"PostalAddress","addressLocality":"Ташкент","streetAddress":"просп. Мустакиллик, 2"},"geo":{"@type":"GeoCoordinates","latitude":"41.3153000","longitude":"69.2727000"}}
             """));
         var (placeBytes, placePage) = await PullAsync(Next(classifiedPage), 2);
@@ -201,16 +212,19 @@ public sealed class EventContractPagesTests
         purged.TryGetProperty("data", out _).Should().BeFalse("a row without a payload serves no data");
         files.Add(new("08-purged.json", ["post.purged"], normalizer.Normalize(purgedBytes)));
 
+        delivered.Should().NotContain(rejected.Id, "a post the subscription's filter rejects is never delivered");
         files.Add(new("manifest.json", [], Manifest(files)));
         ContractFolder.WriteOrVerify(files, Environment.GetEnvironmentVariable(WriteSwitch) == "1");
     }
 
-    private static Capture Rich(DateTimeOffset at, string price) => EventCapture(at, "jazz-night", """
-        {"@context":"https://schema.org","@type":"Event","name":"Вечер живого джаза","description":"Квартет играет стандарты и авторские пьесы. Справки: +998 71 205 14 14.","startDate":"2026-12-05T19:00:00+05:00","endDate":"2026-12-06","inLanguage":"ru","location":{"@type":"Place","name":"Дворец Истиклол","address":{"@type":"PostalAddress","addressLocality":"Ташкент","streetAddress":"ул. Амира Темура, 107"},"geo":{"@type":"GeoCoordinates","latitude":41.3139,"longitude":69.2803}},"organizer":{"@type":"Organization","name":"Tashkent Jazz Club","url":"https://jazz.example.test/"},"offers":{"@type":"Offer","price":"PRICE","priceCurrency":"UZS","url":"https://HOST/events/jazz-night/tickets"},"image":"https://HOST/media/jazz-night.jpg"}
-        """.Replace("PRICE", price).Replace("HOST", SourceHost), published: Start.AddDays(-2), links: [new() { Url = $"https://{SourceHost}/venues/istiqlol", Text = "Дворец Истиклол" }]);
+    private const string RichSlug = "designers-show";
 
-    private static Capture Mirror(DateTimeOffset at) => EventCapture(at, "jazz-night-copy", """
-        {"@context":"https://schema.org","@type":"Event","name":"Вечер живого джаза (копия анонса)","description":"Повтор анонса на другой странице.","startDate":"2026-12-05T19:00:00+05:00","location":{"@type":"Place","name":"Дворец Истиклол"}}
+    private static Capture Rich(DateTimeOffset at, string price) => EventCapture(at, RichSlug, """
+        {"@context":"https://schema.org","@type":"Event","name":"Показ коллекций молодых дизайнеров","description":"Дизайнеры показывают одежду из атласа и адраса. Справки: +998 71 000 00 00.","startDate":"2026-12-05T19:00:00+05:00","endDate":"2026-12-06","inLanguage":"ru","location":{"@type":"Place","name":"Дворец Истиклол","address":{"@type":"PostalAddress","addressLocality":"Ташкент","streetAddress":"ул. Амира Темура, 107"},"geo":{"@type":"GeoCoordinates","latitude":41.3139,"longitude":69.2803}},"organizer":{"@type":"Organization","name":"Tashkent Designers Club","url":"https://designers.example.test/"},"offers":{"@type":"Offer","price":"PRICE","priceCurrency":"UZS","url":"https://HOST/events/SLUG/tickets"},"image":"https://HOST/media/SLUG.jpg"}
+        """.Replace("PRICE", price).Replace("HOST", SourceHost).Replace("SLUG", RichSlug), published: Start.AddDays(-2), links: [new() { Url = $"https://{SourceHost}/venues/istiqlol", Text = "Дворец Истиклол" }]);
+
+    private static Capture Mirror(DateTimeOffset at) => EventCapture(at, RichSlug + "-copy", """
+        {"@context":"https://schema.org","@type":"Event","name":"Показ коллекций молодых дизайнеров (копия анонса)","description":"Повтор анонса на другой странице.","startDate":"2026-12-05T19:00:00+05:00","location":{"@type":"Place","name":"Дворец Истиклол"}}
         """);
 
     private static Capture Simple(DateTimeOffset at, string slug, string title) => EventCapture(at, slug, """

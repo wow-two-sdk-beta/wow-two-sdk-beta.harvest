@@ -9,6 +9,9 @@ Golden pages of SCFD's pull wire. `wow2.event.v1/` holds `GET api/subscriptions/
 - Regenerate, only for a deliberate wire change:
   `HARVEST_WRITE_CONTRACT=1 dotnet test tests/Harvest.Tests.E2E --filter FullyQualifiedName~EventContractPagesTests`,
   run from `harvest.backend-services/`
+- The subscription is Ocharo's: `wow2.event.v1`, filter `ocharo-fashion-v1`, context `catalog=ocharo-fashion`, as
+  `ocharo setup` provisions it; `subscription.json` carries the `filterKey` Events requires. Every post on a page
+  passes the filter, and a concert saved before `01` shows a rejected post never appears.
 - Pages chain: each pull sends the previous page's `next`; `04-empty` returns the cursor it was sent. No `02` exists.
 - Stable values: a fixed clock (`2026-11-10T09:00Z`, one minute per write); every Guid becomes
   `00000000-0000-7000-8000-0000000000NN` by first appearance, one numbering across the folder in file order;

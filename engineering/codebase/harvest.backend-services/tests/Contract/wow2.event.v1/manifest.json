@@ -3,21 +3,21 @@
   "files": [
     {
       "name": "subscription.json",
-      "sha256": "0faa965f0e9b787ecc05c4167bbb2e3305faa6d4f58d5ea7df431de6e2b350ab",
+      "sha256": "8d1149a214133eaeec7461c42d2b84a2687c41bda08cea6a14a707d2e04f7b72",
       "cases": [
         "subscription"
       ]
     },
     {
       "name": "01-new.json",
-      "sha256": "2fd46c808cf67995b3614eafe0ee4c503eb718163e2d1f76d456d94cdb20769d",
+      "sha256": "51970368dbae0f0b62ef616b3712662c82bf8f3782c410934bc59950142042d7",
       "cases": [
         "post.new"
       ]
     },
     {
       "name": "03-changed.json",
-      "sha256": "1e80a36ac33f3e5bafbfc4a42ca9cff501080f8eac840e9ec9c66079b9e8fad4",
+      "sha256": "34189685053de4cd9c1b727c9b3eacfe531a0dcc8bdc5e8f860ac1bb6bb5b809",
       "cases": [
         "post.changed"
       ]
@@ -31,7 +31,7 @@
     },
     {
       "name": "05-lifecycle.json",
-      "sha256": "47b4fd18f90c289fc876566ad0670c32b48ce56d8afd4a6062a5fce62d8a0024",
+      "sha256": "384af5d41183e5decac6edd831abfcbd4ab84db301d7e47b19f52136c08dff34",
       "cases": [
         "post.new",
         "link.state:gone",
@@ -44,7 +44,7 @@
     },
     {
       "name": "06-classification.json",
-      "sha256": "52df68ea4deb6e8a1756940f20e21ac581bc8b5b8b6e7074803b35a0d95c24df",
+      "sha256": "40e23152cb1d34f4adfefbe36762e27e7417011d3143d43533921751571c712f",
       "cases": [
         "relevant:runway:0.9",
         "irrelevant",
@@ -54,7 +54,7 @@
     },
     {
       "name": "07-afisha-place.json",
-      "sha256": "ef238f55b13c80061b770d6d3041e633faf8580eef8f2bcc33a9244ca112ad63",
+      "sha256": "a2bcabfe2e351bf66194a64d794985bdfdf67fe76aa011dbf200a4940874f862",
       "cases": [
         "place:before-city-fix",
         "place:after-city-fix"
@@ -62,7 +62,7 @@
     },
     {
       "name": "08-purged.json",
-      "sha256": "1ef1732a73edb0dc5cb2875830b4e4bfbf6cf7997c7de8961b11425ae83f0867",
+      "sha256": "b13055bbe8fbc6bfd65fb1949e229487af0b6c5cf226544be3ec9461cbb92c15",
       "cases": [
         "post.purged"
       ]
