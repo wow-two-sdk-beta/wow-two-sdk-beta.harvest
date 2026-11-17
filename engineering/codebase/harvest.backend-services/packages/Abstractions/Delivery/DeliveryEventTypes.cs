@@ -37,7 +37,12 @@ public static class DeliveryEventTypes
     /// <see cref="LinkState"/> with state <c>relisted</c>.</summary>
     public const string PostRelisted = "post.relisted";
 
+    /// <summary>Holds the type of a post the subscription holds whose newest revision no longer passes its filter or
+    /// section. It comes once; later revisions that still fail are withheld, lifecycle events still come, and the next
+    /// revision that passes again arrives as <see cref="PostChanged"/>.</summary>
+    public const string PostUnmatched = "post.unmatched";
+
     /// <summary>Gets every type, in the order above.</summary>
     public static IReadOnlyList<string> All { get; } =
-        [PostNew, PostChanged, PostExtracted, LinkState, PipelineRun, PipelineHealth, PostMerged, PostUnmerged, PostPurged, PostRelisted];
+        [PostNew, PostChanged, PostExtracted, LinkState, PipelineRun, PipelineHealth, PostMerged, PostUnmerged, PostPurged, PostRelisted, PostUnmatched];
 }

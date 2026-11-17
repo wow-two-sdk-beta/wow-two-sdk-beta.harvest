@@ -10,14 +10,18 @@ internal sealed class DeliveryPostFilters(IEnumerable<IDeliveryPostFilter> filte
 
     internal bool Contains(string key) => byKey.ContainsKey(key) || DeliveryTagFilter.IsValid(key);
 
-    internal bool Matches(string? key, PostEnvelope envelope)
+    internal bool Matches(string? key, PostEnvelope envelope) => Evaluate(key, envelope) == true;
+
+    /// <summary>Tells whether the post passes, fails, or cannot be judged because the filter is absent or threw.</summary>
+    internal bool? Evaluate(string? key, PostEnvelope envelope)
     {
         if (key is null) return true;
-        if (!byKey.TryGetValue(key, out var filter)) return DeliveryTagFilter.Matches(key, envelope);
+        if (!byKey.TryGetValue(key, out var filter)) return DeliveryTagFilter.IsValid(key) ? DeliveryTagFilter.Matches(key, envelope) : null;
         try { return filter.Matches(envelope); }
-        catch (Exception) { return false; }
+        catch (Exception) { return null; }
     }
 
     internal static bool IsLifecycle(string type) => type is DeliveryEventTypes.LinkState or DeliveryEventTypes.PostMerged
-        or DeliveryEventTypes.PostUnmerged or DeliveryEventTypes.PostPurged or DeliveryEventTypes.PostRelisted;
+        or DeliveryEventTypes.PostUnmerged or DeliveryEventTypes.PostPurged or DeliveryEventTypes.PostRelisted
+        or DeliveryEventTypes.PostUnmatched;
 }

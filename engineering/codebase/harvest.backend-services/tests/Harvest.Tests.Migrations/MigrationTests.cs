@@ -15,7 +15,7 @@ public sealed class MigrationTests : IAsyncLifetime
     /// <summary>Holds every migration of the set, in order.</summary>
     private static readonly string[] Migrations =
         ["001-baseline", "002-drop-escalation", "003-fetching", "004-posts-delivery", "005-subscription-filter", "006-source-groups",
-            "007-source-assets", "008-pipeline-stages", "009-step-operations"];
+            "007-source-assets", "008-pipeline-stages", "009-step-operations", "010-post-unmatched"];
 
     /// <summary>Holds the escalation columns 002 drops.</summary>
     private const string EscalationColumns =
@@ -110,7 +110,7 @@ public sealed class MigrationTests : IAsyncLifetime
         Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None));
 
         Unwrap(await Runner.RollbackAsync(targetOrdinal: 5, CancellationToken.None)).Should()
-            .Equal("009-step-operations", "008-pipeline-stages", "007-source-assets", "006-source-groups");
+            .Equal("010-post-unmatched", "009-step-operations", "008-pipeline-stages", "007-source-assets", "006-source-groups");
         (await ColumnCountAsync("table_name = 'harvest_sources' AND column_name IN ('group_id', 'display_name')")).Should().Be(0);
         (await ScalarAsync<bool>("SELECT to_regclass('harvest_source_groups') IS NULL AND to_regclass('harvest_post_revisions') IS NULL")).Should().BeTrue();
 
@@ -154,7 +154,8 @@ public sealed class MigrationTests : IAsyncLifetime
                   ('{{queued}}','{{pool}}','{{legacy}}','discover','manual',now(),now(),'queued','{}');
             """);
 
-        Unwrap(await Runner.RollbackAsync(targetOrdinal: 7, CancellationToken.None)).Should().Equal("009-step-operations", "008-pipeline-stages");
+        Unwrap(await Runner.RollbackAsync(targetOrdinal: 7, CancellationToken.None)).Should()
+            .Equal("010-post-unmatched", "009-step-operations", "008-pipeline-stages");
 
         (await ScalarAsync<string>("SELECT string_agg(pipeline_id::text, ',') FROM harvest_schedules WHERE kind = 'discover'"))
             .Should().Be(legacy.ToString());

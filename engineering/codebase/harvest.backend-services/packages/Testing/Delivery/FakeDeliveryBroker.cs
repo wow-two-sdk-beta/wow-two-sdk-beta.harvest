@@ -117,11 +117,24 @@ public sealed class FakeDeliveryBroker : IDeliveryBroker
 
     private void Append(Entry entry, PostModel post, string type, Guid? runId, Guid? linkId, string reason)
     {
+        // The module's rule: a passing revision goes out; a held post keeps its lifecycle events; its first failing
+        // revision goes out once as post.unmatched and later failing ones wait for a pass; an undecided filter keeps
+        // state changes only.
         var previous = entry.Events.LastOrDefault(item => item.PostId == post.Id);
-        var followsLifecycle = previous is not null && (type is DeliveryEventTypes.LinkState or DeliveryEventTypes.PostMerged
-            or DeliveryEventTypes.PostUnmerged or DeliveryEventTypes.PostPurged or DeliveryEventTypes.PostRelisted
-            || previous.Data?.GetProperty("state").GetString() != post.State.ToString().ToLowerInvariant());
-        if (!followsLifecycle && !Matches(entry.Subscription.FilterKey, post.Base)) return;
+        var revision = entry.Events.LastOrDefault(item => item.PostId == post.Id && item.Type is DeliveryEventTypes.PostNew
+            or DeliveryEventTypes.PostChanged or DeliveryEventTypes.PostExtracted or DeliveryEventTypes.PostUnmatched);
+        var lifecycle = type is DeliveryEventTypes.LinkState or DeliveryEventTypes.PostMerged or DeliveryEventTypes.PostUnmerged
+            or DeliveryEventTypes.PostPurged or DeliveryEventTypes.PostRelisted or DeliveryEventTypes.PostUnmatched;
+        var verdict = Evaluate(entry.Subscription.FilterKey, post.Base);
+        string? delivered = verdict == true ? type
+            : previous is null ? null
+            : lifecycle ? type
+            : revision?.Type == DeliveryEventTypes.PostUnmatched ? null
+            : verdict == false ? DeliveryEventTypes.PostUnmatched
+            : previous.Data?.GetProperty("state").GetString() != post.State.ToString().ToLowerInvariant() ? type
+            : null;
+        if (delivered is null) return;
+        type = delivered;
         var itemId = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{post.Id:N}:{post.Revision}:{type}"))).ToLowerInvariant();
         if (entry.Events.Any(item => item.ItemId == itemId && item.Type == type)) return;
         entry.Events.Add(new DeliveryEvent
@@ -132,12 +145,12 @@ public sealed class FakeDeliveryBroker : IDeliveryBroker
         });
     }
 
-    private bool Matches(string? key, PostEnvelope envelope)
+    private bool? Evaluate(string? key, PostEnvelope envelope)
     {
         if (key is null) return true;
-        if (!postFilters.TryGetValue(key, out var filter)) return DeliveryTagFilter.Matches(key, envelope);
+        if (!postFilters.TryGetValue(key, out var filter)) return DeliveryTagFilter.IsValid(key) ? DeliveryTagFilter.Matches(key, envelope) : null;
         try { return filter.Matches(envelope); }
-        catch (Exception) { return false; }
+        catch (Exception) { return null; }
     }
 
     private static JsonElement? Render(JsonElement? data, string? schema)

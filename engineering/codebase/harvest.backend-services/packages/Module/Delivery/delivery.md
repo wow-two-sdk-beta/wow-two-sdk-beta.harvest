@@ -17,8 +17,11 @@
   `Context`. Null accepts all posts; unknown keys fail subscription validation
 - capture and backfill snapshots apply the filter; absent or throwing filters withhold new snapshots while raw
   posts and captures remain available. Stored filter keys survive restarts
-- known posts retain lifecycle events and rollup-state changes even after a filter stops matching, including a
-  `post.changed` that restores a gone post; new post identities always require a match
+- known posts retain lifecycle events after a filter stops matching; new post identities always require a match
+- a known post's first revision that fails its filter or section goes out as `post.unmatched`; later failing
+  revisions, a `post.changed` that restores a gone post included, wait until one passes and goes out as its own type
+  (`DeliveryEventWriter.Deliverable`). An absent or throwing filter decides nothing: no `post.unmatched`, and
+  rollup-state changes of a post not yet unmatched still go out
 - a pull cursor binds its subscription and reads `(tx, id)` below `pg_snapshot_xmin(pg_current_snapshot())`;
   transactions that commit late cannot be skipped, and long-running transactions can delay visibility
 - an empty poll preserves its cursor; an older cursor replays the same event identifiers and revision snapshots

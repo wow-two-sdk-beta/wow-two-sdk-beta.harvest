@@ -66,6 +66,14 @@
       "cases": [
         "post.purged"
       ]
+    },
+    {
+      "name": "10-unmatched.json",
+      "sha256": "87fb455fb61af1e86d4fa2c5c95e660d0476139eb7f43e9a28a1225b60738fee",
+      "cases": [
+        "post.new",
+        "post.unmatched"
+      ]
     }
   ]
 }

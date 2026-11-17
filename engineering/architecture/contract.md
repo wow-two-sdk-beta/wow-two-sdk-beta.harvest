@@ -167,6 +167,10 @@ the step contract. Every type references the BCL and the kernel only.
 - re-extracting a historical capture does not advance its last-seen time to the ingestion time
 - merges retain an undo record; undo restores moved links and prevents the separated posts from being auto-merged again
 - delivery stores immutable revision snapshots; `wow2.event.v1` selects the event projection while retaining post identity and provenance
+- a post the subscription holds whose newest revision fails its filter or section arrives once as `post.unmatched`
+  (that revision's identity, number and payload); later failing revisions, a restore from gone included, are withheld,
+  lifecycle events (`link.state`, `post.merged`, `post.unmerged`, `post.purged`) still arrive, and the next passing
+  revision arrives as `post.changed`. An absent or throwing filter decides nothing and sends no `post.unmatched`
 - pull cursors contain the subscription and `(transaction, row id)` position, and read only below PostgreSQL's snapshot horizon
 - a transaction committed late therefore cannot be skipped by an identity-only cursor; an old cursor replays stable event IDs
 - module and HTTP forms share `RunBrokerConformance` and `PostDeliveryBrokerConformance` with the consumer fakes

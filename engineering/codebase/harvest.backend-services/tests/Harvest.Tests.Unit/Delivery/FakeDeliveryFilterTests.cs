@@ -71,7 +71,7 @@ public sealed class FakeDeliveryFilterTests
     }
 
     [Fact]
-    public async Task Capture_ShouldPreserveGoneRestoreAndMerge_WhenAKnownPostStopsMatching()
+    public async Task Capture_ShouldSendUnmatchedThenOnlyLifecycle_WhenAKnownPostStopsMatching()
     {
         var host = await CreateAsync(new TitleFilter());
         var subscription = Value(await host.Delivery.SubscribeAsync(Declaration(host)));
@@ -89,11 +89,12 @@ public sealed class FakeDeliveryFilterTests
 
         var page = Value(await host.Delivery.PullAsync(subscription.Id));
 
-        page.Data.Select(item => item.Type).Should().Equal(DeliveryEventTypes.PostNew, DeliveryEventTypes.LinkState,
-            DeliveryEventTypes.PostChanged, DeliveryEventTypes.PostMerged);
+        // The restore from gone is a failing revision of an unmatched post, so it waits for a revision that passes.
+        page.Data.Select(item => item.Type).Should().Equal(DeliveryEventTypes.PostNew, DeliveryEventTypes.PostUnmatched,
+            DeliveryEventTypes.LinkState, DeliveryEventTypes.PostMerged);
         page.Data.Should().OnlyContain(item => item.PostId == known.Post.Id);
-        page.Data[1].Data!.Value.GetProperty("state").GetString().Should().Be("gone");
-        page.Data[2].Data!.Value.GetProperty("state").GetString().Should().Be("live");
+        page.Data[1].Data!.Value.GetProperty("base").GetProperty("title").GetString().Should().Be("Concert");
+        page.Data[2].Data!.Value.GetProperty("state").GetString().Should().Be("gone");
         page.Data[3].Data!.Value.GetProperty("mergedInto").GetGuid().Should().Be(survivor.Post.Id);
     }
 

@@ -37,6 +37,32 @@ public sealed class PullDeliveryTests
     }
 
     [Fact]
+    public async Task Pull_ShouldSendUnmatched_WhenAMatchedPostIsReExtractedIntoAnArticle()
+    {
+        await using var host = await PostHost.StartAsync();
+        var subscription = PostHost.Value(await host.Delivery.SubscribeAsync(Declaration(host) with { FilterKey = "tag:fashion" }));
+        var capture = PostStoreTests.Capture(host, "fair", "Fashion fair for garment makers.");
+        var saved = PostHost.Value(await host.Posts.SaveCaptureAsync(host.ContainerId, host.SourceId, null, capture,
+            PostStoreTests.Envelope("Fashion fair", capture.ContentProjection) with { SourceTags = ["fashion"] }));
+        host.Clock.Advance(TimeSpan.FromHours(1));
+        var article = capture with { CapturedAtUtc = host.Clock.GetUtcNow(), ContentProjection = "A report on last year's fair." };
+        PostHost.Value(await host.Posts.SaveCaptureAsync(host.ContainerId, host.SourceId, null, article,
+            PostStoreTests.Envelope("Fair report", article.ContentProjection) with { Kind = PostKind.News }));
+        host.Clock.Advance(TimeSpan.FromHours(1));
+        var corrected = article with { CapturedAtUtc = host.Clock.GetUtcNow(), ContentProjection = "A corrected report on last year's fair." };
+        PostHost.Value(await host.Posts.SaveCaptureAsync(host.ContainerId, host.SourceId, null, corrected,
+            PostStoreTests.Envelope("Fair report", corrected.ContentProjection) with { Kind = PostKind.News }));
+
+        var page = await host.PullUntilAsync(subscription.Id, page => page.Data.Count >= 2);
+
+        page.Data.Select(item => item.Type).Should().Equal(DeliveryEventTypes.PostNew, DeliveryEventTypes.PostUnmatched);
+        page.Data.Should().OnlyContain(item => item.PostId == saved.Post.Id);
+        page.Data[1].Revision.Should().Be(2);
+        page.Data[1].Reason.Should().Be("ingest");
+        (await host.ScalarAsync<long>("SELECT count(*) FROM harvest_subscription_event WHERE type='post.unmatched'")).Should().Be(1);
+    }
+
+    [Fact]
     public async Task Subscribe_ShouldBackfillLivePosts_WhenJoiningAfterCapture()
     {
         await using var host = await PostHost.StartAsync();

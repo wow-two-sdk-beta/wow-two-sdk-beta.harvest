@@ -17,6 +17,8 @@ Golden pages of SCFD's pull wire. `wow2.event.v1/` holds `GET api/subscriptions/
   `00000000-0000-7000-8000-0000000000NN` by first appearance, one numbering across the folder in file order;
   `itemId` is recomputed by the writer's rule `sha256("{postId:N}:{revision}:{type}")`; a cursor keeps
   `base64("{subscription:N}:{tx}:{row}")` with the transaction id as its ordinal. Nothing else is touched.
-- `05-lifecycle` carries every type a step emits today; `post.relisted`, `pipeline.run` and `pipeline.health` have no
-  producer yet. `08-purged` is a reserved type inserted with the writer's columns, no payload, revision + 1.
+- `05-lifecycle` carries the post and link lifecycle a step emits; `post.relisted`, `pipeline.run` and
+  `pipeline.health` have no producer yet. `08-purged` is a reserved type inserted with the writer's columns, no
+  payload, revision + 1. `10-unmatched` is a delivered post whose next revision the filter rejects: `post.new`, then
+  `post.unmatched` at revision 2 carrying that revision.
 - Events copies `wow2.event.v1/` unchanged and records the tag and commit it copied from.

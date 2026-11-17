@@ -245,6 +245,7 @@ Choose scheduled Capture or scheduled Discover and Harvest per section. Check an
 
 Migration `008-pipeline-stages` applies once to the shared schema. It does no source backfill.
 Migration `009-step-operations` stores attempt operations for the run audit; both belong to this release.
+Migration `010-post-unmatched` admits the `post.unmatched` delivery type; its rollback deletes those log rows.
 Deployed hosts verify the migration level at boot. Development hosts apply pending migrations.
 Roll out historical data backfills separately in indexed batches for the sources that need them.
 

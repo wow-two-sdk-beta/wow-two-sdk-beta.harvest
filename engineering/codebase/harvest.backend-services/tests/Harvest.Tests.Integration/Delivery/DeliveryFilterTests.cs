@@ -170,11 +170,13 @@ public sealed class DeliveryFilterTests
             PostStoreTests.Envelope("Another concert", survivorCapture.ContentProjection)));
         PostHost.Value(await filtered.Posts.MergeAsync(host.ContainerId, survivor.Post.Id, original.Post.Id));
 
-        var page = await host.PullUntilAsync(subscription.Id, page => page.Data.Count == 3);
+        var page = await host.PullUntilAsync(subscription.Id, page => page.Data.Count == 4);
 
-        page.Data.Select(item => item.Type).Should().Equal(DeliveryEventTypes.PostNew, DeliveryEventTypes.LinkState, DeliveryEventTypes.PostMerged);
+        page.Data.Select(item => item.Type).Should().Equal(DeliveryEventTypes.PostNew, DeliveryEventTypes.PostUnmatched,
+            DeliveryEventTypes.LinkState, DeliveryEventTypes.PostMerged);
         page.Data.Should().OnlyContain(item => item.PostId == original.Post.Id);
-        page.Data[2].Data!.Value.GetProperty("mergedInto").GetGuid().Should().Be(survivor.Post.Id);
+        page.Data[1].Revision.Should().Be(2);
+        page.Data[3].Data!.Value.GetProperty("mergedInto").GetGuid().Should().Be(survivor.Post.Id);
     }
 
     [Fact]

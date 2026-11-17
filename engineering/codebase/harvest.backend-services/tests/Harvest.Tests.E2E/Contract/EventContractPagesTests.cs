@@ -212,6 +212,17 @@ public sealed class EventContractPagesTests
         purged.TryGetProperty("data", out _).Should().BeFalse("a row without a payload serves no data");
         files.Add(new("08-purged.json", ["post.purged"], normalizer.Normalize(purgedBytes)));
 
+        // 10: a delivered post whose next revision the filter rejects — the page announced a concert instead — arrives
+        // once as post.unmatched with that revision; Events holds the event it made.
+        var market = await SaveAsync(Simple(Tick(), "makers-market", "Маркет ремесленников и дизайнеров"));
+        (await SaveAsync(Simple(Tick(), "makers-market", "Концерт в арт-пространстве"))).Id.Should().Be(market.Id);
+        var (unmatchedBytes, unmatchedPage) = await PullAsync(Next(purgedPage), 2);
+        Events(unmatchedPage).Select(item => item.GetProperty("type").GetString()).Should().Equal(DeliveryEventTypes.PostNew, DeliveryEventTypes.PostUnmatched);
+        Events(unmatchedPage).Should().OnlyContain(item => item.GetProperty("postId").GetGuid() == market.Id);
+        Events(unmatchedPage).Select(item => item.GetProperty("revision").GetInt32()).Should().Equal(1, 2);
+        Events(unmatchedPage)[1].GetProperty("data").GetProperty("title").GetString().Should().Be("Концерт в арт-пространстве");
+        files.Add(new("10-unmatched.json", ["post.new", "post.unmatched"], normalizer.Normalize(unmatchedBytes)));
+
         delivered.Should().NotContain(rejected.Id, "a post the subscription's filter rejects is never delivered");
         files.Add(new("manifest.json", [], Manifest(files)));
         ContractFolder.WriteOrVerify(files, Environment.GetEnvironmentVariable(WriteSwitch) == "1");

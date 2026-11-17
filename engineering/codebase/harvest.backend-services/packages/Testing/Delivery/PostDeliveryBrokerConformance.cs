@@ -64,6 +64,29 @@ public abstract class PostDeliveryBrokerConformance
         empty.Data.Should().BeEmpty(); empty.Next.Should().Be(second.Next);
     }
 
+    /// <summary>A held post re-extracted into an article that its filter rejects sends one <c>post.unmatched</c>; further
+    /// failing revisions are withheld, and the revision that passes again arrives as <c>post.changed</c>.</summary>
+    [Fact]
+    public async Task Pull_ShouldSendUnmatchedOnce_WhenAHeldPostStopsMatching()
+    {
+        var context = await ContextAsync();
+        var subscription = Value(await Delivery.SubscribeAsync(Declaration(context) with { FilterKey = "tag:fashion" }));
+        var capture = Capture("unmatched");
+        var saved = Value(await Posts.SaveCaptureAsync(context.Container, context.Source, null, capture,
+            Envelope("Fashion fair") with { SourceTags = ["fashion"] }));
+        foreach (var (second, title, tagged) in new[] { (1, "Fair report", false), (2, "Fair report, corrected", false), (3, "Fashion fair, new dates", true) })
+            Value(await Posts.SaveCaptureAsync(context.Container, context.Source, null,
+                capture with { ContentProjection = title, CapturedAtUtc = capture.CapturedAtUtc.AddSeconds(second) },
+                Envelope(title) with { Kind = tagged ? PostKind.Event : PostKind.News, SourceTags = tagged ? ["fashion"] : [] }));
+
+        var page = await PollAsync(subscription.Id, page => page.Data.Count >= 3);
+
+        page.Data.Select(item => item.Type).Should().Equal(DeliveryEventTypes.PostNew, DeliveryEventTypes.PostUnmatched, DeliveryEventTypes.PostChanged);
+        page.Data.Should().OnlyContain(item => item.PostId == saved.Post.Id);
+        page.Data.Select(item => item.Revision).Should().Equal(1, 2, 4);
+        page.Data[1].Data!.Value.GetProperty("base").GetProperty("title").GetString().Should().Be("Fair report");
+    }
+
     /// <summary>Source-local links with the same declared origin resolve to one post with field provenance.</summary>
     [Fact]
     public async Task SaveCapture_ShouldShareOnePost_WhenOriginsAgree()
