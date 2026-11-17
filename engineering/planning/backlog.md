@@ -60,7 +60,6 @@ ChatGPT builds these in the pull order of wow-two-ws `system/sessions/events-int
 | Item | Type | Notes |
 |---|---|---|
 | S07 Commit the work in slices and verify v0.2.7 on dev | engineering | spec in `tasks-scfd.md`; the commits are accepted, and its dev acceptance runs as v0.2 Verification checks |
-| S36 Leftovers: tenant-private stage-editor permission parity and a gate test | fix | spec in `tasks-scfd.md`; backend and console labels shipped. The stage card still requires operator access as well as `pipelines:manage`; finish the UI permission path and regression. |
 | S39 Leftovers: Settings says "Harvested by stages"; drop `RequiresGrant` / `AwaitingSourceAccess` | engineering | spec in `tasks-scfd.md`; open tasks in v0.2 |
 | S38 Decide what the marketplace collectors keep about people | decision | spec in `tasks-scfd.md` · needs the developer |
 | Craftfair challenge-detector posture | decision | `GenericChallengeDetector` reads Craftfair's complete 200 listing as `javascript_interstitial` because Cloudflare's passive JS-detection script is on the page; the detector changes only on the developer's posture call (#50), before S18 runs Craftfair · needs the developer |

@@ -49,11 +49,6 @@ const MonthDays = [
 const SavedReading = 'saved-reading@1';
 const SharedRentalTerms = 'rental-terms@2';
 const MaxPromptVersion = 2_147_483_647;
-const ProcessorLabels: Readonly<Record<string, string>> = {
-  [SavedReading]: 'Saved reading',
-  'rental-terms@1': 'Rental terms',
-  [SharedRentalTerms]: 'Rental terms with evidence',
-};
 const DefaultTimeZone = 'Asia/Tashkent';
 const BrowserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const TimeZones = Intl.supportedValuesOf?.('timeZone') ?? [];
@@ -99,7 +94,7 @@ const draft = ref(fieldsOf(props.stage));
 const processorChoices = computed(() =>
   (props.stage.processorKeys ?? []).map((key) => ({
     value: key,
-    label: props.stage.processorLabels?.[key] ?? ProcessorLabels[key] ?? key,
+    label: props.stage.processorLabels?.[key] ?? key,
   })),
 );
 const showsModel = computed(() => props.stage.kind === 'process' && draft.value.processor !== SavedReading);

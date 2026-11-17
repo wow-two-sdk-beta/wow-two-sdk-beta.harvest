@@ -48,14 +48,17 @@ beforeEach(() => {
   } as unknown as HarvestConsole;
 });
 
-async function openProcessSettings(options: PipelineStageOptions) {
+async function openProcessSettings(
+  options: PipelineStageOptions,
+  processorLabels: Readonly<Record<string, string>> = { 'rental-terms@2': 'Extract OLX rental terms' },
+) {
   const stage: PipelineStageModel = {
     kind: 'process',
     available: true,
     options,
     runs: [],
     processorKeys: ['saved-reading@1', 'rental-terms@1', 'rental-terms@2'],
-    processorLabels: { 'rental-terms@2': 'Extract OLX rental terms' },
+    processorLabels,
   };
   const wrapper = mount(PipelineStageSettings, {
     props: { pipelineId: 'olx-rentals', stage },
@@ -102,6 +105,21 @@ describe('stage model processing settings', () => {
       }),
     );
     expect(session.updateSource).not.toHaveBeenCalled();
+  });
+
+  it('names a processor by the label the server sends, never by one the console knows', async () => {
+    const dialog = await openProcessSettings(
+      { batchSize: 10, processor: 'saved-reading@1' },
+      { 'saved-reading@1': 'Read the saved capture' },
+    );
+    expect(dialog.text()).toContain('Read the saved capture');
+    expect(dialog.text()).not.toContain('Saved reading');
+  });
+
+  it('shows the key of a processor the server sends no label for', async () => {
+    const dialog = await openProcessSettings({ batchSize: 10, processor: 'rental-terms@1' }, {});
+    expect(dialog.text()).toContain('rental-terms@1');
+    expect(dialog.text()).not.toContain('Rental terms');
   });
 
   it('omits model and prompt settings for the saved-reading processor', async () => {

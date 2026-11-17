@@ -622,7 +622,12 @@ export function createDemoHarvestClient(): HarvestClient {
               schedule,
               options: schedule?.stage ?? { batchSize: kind === 'discover' ? 5 : 20 },
               operationKeys: operations[kind],
-              ...(kind === 'process' ? { processorKeys: ['saved-reading@1', 'rental-terms@1'] } : {}),
+              ...(kind === 'process'
+                ? {
+                    processorKeys: ['saved-reading@1', 'rental-terms@1'],
+                    processorLabels: { 'saved-reading@1': 'Saved reading', 'rental-terms@1': 'Rental terms' },
+                  }
+                : {}),
               ...(kind === 'discover' && pipeline.scope.url
                 ? { catalog: { label: 'Source catalog', url: pipeline.scope.url } }
                 : {}),

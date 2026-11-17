@@ -23,9 +23,8 @@ const props = withDefaults(
 );
 const emit = defineEmits<{ changed: [run?: RunModel] }>();
 const session = useHarvestConsole();
-const canEdit = computed(
-  () => props.stage.available && session.canOperate.value && session.canWrite('pipelines:manage'),
-);
+/** Stage settings follow the server's rule: `pipelines:manage` over a container the session may change. */
+const canEdit = computed(() => props.stage.available && session.canWrite('pipelines:manage'));
 const canRun = computed(
   () => props.stage.available && !props.stage.readinessError && session.canWrite('pipelines:run'),
 );

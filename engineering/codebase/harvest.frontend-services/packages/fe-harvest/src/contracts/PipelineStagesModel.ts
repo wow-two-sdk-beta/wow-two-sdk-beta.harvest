@@ -28,6 +28,7 @@ export interface PipelineStageModel {
   readonly runs: readonly RunModel[];
   readonly operationKeys?: readonly string[];
   readonly processorKeys?: readonly string[];
+  /** The server's display name for each key in `processorKeys`; the console shows the key when one is missing. */
   readonly processorLabels?: Readonly<Record<string, string>>;
 }
 
