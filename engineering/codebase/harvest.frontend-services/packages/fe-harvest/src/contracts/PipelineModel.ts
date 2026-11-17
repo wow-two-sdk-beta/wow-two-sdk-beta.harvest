@@ -1,4 +1,5 @@
 import type { AiMode, PipelinePauseReason, PipelineState, ScheduleMode, WorkKind } from './RegistrationEnums';
+import type { PipelineStageOptions } from './PipelineStagesModel';
 
 /** Mirrors `ScheduleModel`: one cadence row; durations travel as ISO 8601 (`PT1H`), times of day as `HH:mm:ss`. */
 export interface ScheduleModel {
@@ -12,6 +13,7 @@ export interface ScheduleModel {
   readonly window?: { readonly start: string; readonly end: string };
   readonly enabled: boolean;
   readonly nextDueAtUtc?: string;
+  readonly stage?: PipelineStageOptions;
 }
 
 /** Replaces the saved target and cadence; run history and source identity remain intact. */

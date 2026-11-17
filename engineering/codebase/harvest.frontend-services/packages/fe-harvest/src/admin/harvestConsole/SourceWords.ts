@@ -85,14 +85,14 @@ export function timingOf(startsAt?: string, endsAt?: string, now = new Date()): 
 /**
  * Formats elapsed time for an icon-led label. Counts completed units from minutes through calendar months and years.
  */
-export function ageOf(value?: string, now = new Date()) {
+export function ageOf(value?: string, now = new Date(), compact = false) {
   const date = instant(value);
   if (!date) return '—';
   const minutes = Math.floor((now.getTime() - date.getTime()) / 60_000);
   if (minutes < 1) return 'just now';
   if (minutes < 60) return `${minutes} min`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return plural(hours, 'hour');
+  if (hours < 24) return compact ? `${hours} h` : plural(hours, 'hour');
   const months = differenceInMonths(date, now);
   if (months >= 12) return plural(Math.floor(months / 12), 'year');
   if (months > 0) return plural(months, 'month');
@@ -106,18 +106,19 @@ export function agoOf(value?: string, now = new Date()) {
 }
 
 /** A harvest's next scheduled time, rounded up to the next minute, hour or day. */
-export function nextHarvestWords(value?: string, now = new Date()) {
+export function nextHarvestWords(value?: string, now = new Date(), compact = false) {
   const due = instant(value);
-  if (!due) return 'No harvest scheduled';
+  if (!due) return compact ? 'Not scheduled' : 'No harvest scheduled';
   const remaining = due.getTime() - now.getTime();
-  if (remaining <= 0) return 'Next harvest due';
+  if (remaining <= 0) return compact ? 'Due' : 'Next harvest due';
   const minutes = Math.ceil(remaining / 60_000);
-  if (minutes < 60) return `Next harvest in ${minutes} min`;
+  const prefix = compact ? '' : 'Next harvest in ';
+  if (minutes < 60) return `${prefix}${minutes} min`;
   if (minutes < 1440) {
-    const hours = plural(Math.floor(minutes / 60), 'hour');
-    return `Next harvest in ${hours}${minutes % 60 ? ` ${minutes % 60} min` : ''}`;
+    const hours = compact ? `${Math.floor(minutes / 60)} h` : plural(Math.floor(minutes / 60), 'hour');
+    return `${prefix}${hours}${minutes % 60 ? ` ${minutes % 60} min` : ''}`;
   }
-  return `Next harvest in ${plural(Math.floor(minutes / 1440), 'day')}`;
+  return `${prefix}${plural(Math.floor(minutes / 1440), 'day')}`;
 }
 
 const monthShort = new Intl.DateTimeFormat(Locale, { month: 'short', timeZone: 'UTC' });

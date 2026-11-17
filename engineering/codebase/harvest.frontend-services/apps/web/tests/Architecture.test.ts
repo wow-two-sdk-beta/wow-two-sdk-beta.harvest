@@ -1,7 +1,10 @@
+// @vitest-environment node
 import { ESLint } from 'eslint';
 import { describe, expect, it } from 'vitest';
 
 const eslint = new ESLint();
+// Load the parser/plugins before timing assertions about the layer rules themselves.
+await eslint.calculateConfigForFile('src/application/system/Invalid.ts');
 
 describe('application boundaries', () => {
   it('rejects a presentation import from application orchestration', async () => {

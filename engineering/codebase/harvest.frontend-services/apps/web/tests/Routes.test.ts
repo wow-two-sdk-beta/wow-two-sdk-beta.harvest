@@ -20,6 +20,7 @@ afterEach(() => {
 
 /** The demo's Afisha.uz, the one harvested source. */
 const Afisha = '/sources/00000000-0000-4000-8000-000000000200';
+const FashionPipeline = '/pipelines/00000000-0000-4000-8000-000000000005';
 
 /** Mounts the demo console at `path`, routed as in the browser but over memory history. */
 async function renderAt(path: string) {
@@ -39,6 +40,8 @@ const places = [
   [`${Afisha}/posts`, 'Afisha.uz', 'Afisha.uz', 'Posts'],
   [`${Afisha}/activity`, 'Afisha.uz', 'Afisha.uz', 'Runs'],
   [`${Afisha}/settings`, 'Afisha.uz', 'Afisha.uz', 'Reading'],
+  ['/pipelines', 'Pipelines', 'Pipelines', 'Pipelines'],
+  [FashionPipeline, 'Fashion', 'Fashion', 'Section pipelines'],
   ['/subscribers', 'Subscribers', 'Subscribers', 'Subscribers'],
   ['/access', 'Access', 'Access', 'This session'],
 ] as const;
@@ -54,14 +57,7 @@ describe('console routes', () => {
     expect(wrapper.get('[data-app-frame-brand]').text()).toContain('test');
   });
 
-  it.each([
-    '/pipelines',
-    '/pipelines/00000000-0000-4000-8000-000000000005',
-    '/runs',
-    '/posts',
-    '/subscriptions',
-    '/hosts',
-  ])('sends the removed page %s to Sources', async (path) => {
+  it.each(['/runs', '/posts', '/subscriptions', '/hosts'])('sends the removed page %s to Sources', async (path) => {
     const router = createWebRouter(RouterHistoryMode.Memory);
     await router.push(path);
     expect(router.currentRoute.value.name).toBe('sources');
@@ -72,13 +68,226 @@ describe('console routes', () => {
     const { wrapper } = await renderAt(Afisha);
     await vi.waitFor(() => expect(wrapper.find('[aria-label="Open source"]').exists()).toBe(true));
     const menu = wrapper.get('nav[aria-label="Console"]').text();
-    for (const word of ['Overview', 'Home', 'Collect', 'Sources', 'Deliver', 'Subscribers', 'System', 'Access'])
+    for (const word of [
+      'Overview',
+      'Home',
+      'Collect',
+      'Sources',
+      'Pipelines',
+      'Deliver',
+      'Subscribers',
+      'System',
+      'Access',
+    ])
       expect(menu).toContain(word);
-    for (const word of ['Pipelines', 'Runs', 'Hosts', 'Posts', 'Subscriptions']) expect(menu).not.toContain(word);
+    for (const word of ['Runs', 'Hosts', 'Posts', 'Subscriptions']) expect(menu).not.toContain(word);
     expect(wrapper.get('[aria-label="Open source"]').text()).toContain('Afisha');
     expect(wrapper.get('[aria-label="Open source"]').text()).toContain('Afisha.uz');
     expect(wrapper.get('[data-app-frame-bar]').text()).toContain('Afisha');
     expect(wrapper.find('[aria-label="Workspace"]').exists()).toBe(false);
+  });
+
+  it('opens a pipeline from the directory and links to a specific run audit', async () => {
+    const { router, wrapper } = await renderAt('/pipelines');
+    const pipeline = `a[href="${FashionPipeline}"]`;
+    await vi.waitFor(() => expect(wrapper.find(pipeline).exists()).toBe(true));
+    await wrapper.get(pipeline).trigger('click');
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe(FashionPipeline));
+    await vi.waitFor(() =>
+      expect(wrapper.find('[aria-label="Section pipelines"] a[aria-label="Open Process pipeline"]').exists()).toBe(
+        true,
+      ),
+    );
+    const views = () => wrapper.get('nav[aria-label="Pipeline views"]');
+    expect(views().get('[aria-current="page"]').text()).toBe('Overview');
+    await views().get(`a[href="${FashionPipeline}/discoveries"]`).trigger('click');
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe(`${FashionPipeline}/discoveries`));
+    await views().get(`a[href="${FashionPipeline}/logs"]`).trigger('click');
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe(`${FashionPipeline}/logs`));
+    await vi.waitFor(() => expect(wrapper.find('[aria-label="Run history"] a').exists()).toBe(true));
+    const run = wrapper.get('[aria-label="Run history"] a');
+    const href = run.attributes('href');
+    expect(href).toMatch(new RegExp(`^${FashionPipeline}/runs/[0-9a-f-]+$`));
+    await run.trigger('click');
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe(href));
+    await vi.waitFor(() => expect(wrapper.get('[aria-label="Run monitor"]').text()).toContain('Selected run'));
+    expect(wrapper.get('[data-app-frame-bar]').text()).toContain('Run audit');
+    const sidebar = () => wrapper.get('nav[aria-label="Console"]');
+    expect(sidebar().get('[aria-current="page"]').text()).toBe('Fashion');
+    expect(wrapper.get(`[aria-label="Run monitor"] a[href="${FashionPipeline}/logs"]`).text()).toBe('Follow live');
+    await sidebar().get('a[href="/subscribers"]').trigger('click');
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/subscribers'));
+    expect(sidebar().get('[aria-current="page"]').attributes('href')).toBe('/subscribers');
+    await sidebar().get('a[aria-label="Open Fashion pipelines"]').trigger('click');
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe(FashionPipeline));
+    const node = '[aria-label="Section pipelines"] a[aria-label="Open Harvest pipeline"]';
+    await vi.waitFor(() => expect(wrapper.find(node).exists()).toBe(true));
+    await wrapper.get(node).trigger('click');
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe(`${FashionPipeline}/stages/harvest`));
+    await vi.waitFor(() =>
+      expect(wrapper.find('[aria-label="Pipeline steps"] [data-operation="save-capture"]').exists()).toBe(true),
+    );
+    await wrapper.get('button[data-operation="save-capture"]').trigger('click');
+    expect(wrapper.get('[aria-label="Step details"]').text()).toContain('Save capture');
+    expect(wrapper.find('[aria-label="Section pipelines"]').exists()).toBe(false);
+    await sidebar().get('a[href="/subscribers"]').trigger('click');
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/subscribers'));
+    await sidebar().get('a[aria-label="Open Harvest pipeline for Fashion"]').trigger('click');
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe(`${FashionPipeline}/stages/harvest`));
+  });
+
+  it('opens stage details from the source card and edits its schedule in a dialog', async () => {
+    const { router, wrapper } = await renderAt(`${Afisha}/pipelines`);
+    const link = 'a[aria-label="Open Discover pipeline"]';
+    await vi.waitFor(() => expect(wrapper.find(link).exists()).toBe(true));
+    expect(wrapper.find('details').exists()).toBe(false);
+    expect(wrapper.get(link).attributes('href')).toBe(`${FashionPipeline}/stages/discover`);
+    await wrapper.get(link).trigger('click');
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('pipeline-stage'));
+    await vi.waitFor(() => expect(wrapper.get('h1').text()).toBe('Discover pipeline'));
+    expect(wrapper.get('[data-app-frame-bar]').text()).toContain('Discover');
+    const settings = 'button[aria-label="Schedule for Discover"]';
+    await vi.waitFor(() => expect(wrapper.find(settings).exists()).toBe(true));
+    expect(wrapper.get(settings).element.closest('article')?.querySelector('input[type="number"]')).toBeNull();
+    await wrapper.get(settings).trigger('click');
+    await vi.waitFor(() =>
+      expect(document.body.querySelector('[role="dialog"]')?.textContent).toContain('Discover schedule'),
+    );
+    const dialog = document.body.querySelector('[role="dialog"]')!;
+    expect(dialog.textContent).toContain('Fixed interval');
+    expect(dialog.textContent).toContain('Every (minutes)');
+    expect(dialog.textContent).toContain('Enable scheduled runs');
+    expect(dialog.querySelector('input[type="date"]')).toBeNull();
+    expect(dialog.querySelector('[aria-label="Time zone"]')).toBeNull();
+    expect(dialog.textContent).not.toContain('Catalog URL');
+    expect(dialog.textContent).not.toContain('Cron expression');
+    const choice = (label: string) => dialog.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
+    const choose = async (label: string, value: string) => {
+      choice(label).click();
+      const option = () =>
+        [...document.body.querySelectorAll<HTMLElement>('[role="option"]')].find(
+          (entry) => entry.textContent?.trim() === value,
+        );
+      await vi.waitFor(() => expect(option()).toBeDefined());
+      option()!.click();
+      await vi.waitFor(() => expect(choice(label).textContent).toContain(value));
+    };
+    await choose('Schedule', 'Calendar');
+    await choose('Repeat', 'Monthly');
+    await choose('Day of each month', 'Last day');
+    expect(choice('Time zone').textContent).toContain('Asia/Tashkent');
+    await choose('Time zone', 'UTC');
+    const date = dialog.querySelector('input[type="date"]') as HTMLInputElement;
+    date.value = '2026-12-01';
+    date.dispatchEvent(new Event('input', { bubbles: true }));
+    dialog.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await vi.waitFor(() =>
+      expect(wrapper.get(settings).element.closest('article')?.textContent).toContain(
+        'Last day of each month at 09:00 (UTC) · From 2026-12-01 · Off',
+      ),
+    );
+  });
+
+  it('edits and saves the Harvest batch on its card within the field limits', async () => {
+    const { wrapper } = await renderAt(`${Afisha}/pipelines`);
+    const field = 'input[aria-label="Batch size for Harvest"]';
+    await vi.waitFor(() => expect(wrapper.find(field).exists()).toBe(true));
+    const batch = wrapper.get<HTMLInputElement>(field);
+    const original = batch.element.value;
+    expect([batch.element.min, batch.element.max, batch.element.step]).toEqual(['1', '50', '1']);
+    for (const invalid of ['0', '51', '1.5', '2234234234234234']) {
+      await batch.setValue(invalid);
+      expect(batch.element.value).toBe(original);
+    }
+    await batch.setValue('');
+    await batch.trigger('blur');
+    expect(batch.element.value).toBe(original);
+    await batch.setValue('50');
+    const form = batch.element.closest('form')!;
+    expect(form.querySelector('button[type="submit"]')?.textContent).toContain('Apply');
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await vi.waitFor(() => expect(form.querySelector('button[type="submit"]')).toBeNull());
+    expect(batch.element.value).toBe('50');
+  });
+
+  it('shows a week of new posts by default and can show the full two-week series', async () => {
+    const { wrapper } = await renderAt(Afisha);
+    const panel = '[aria-label="New posts"]';
+    await vi.waitFor(() => expect(wrapper.find(panel).exists()).toBe(true));
+    expect(wrapper.get(panel).get('[role="group"]').findAll('button')).toHaveLength(7);
+    await wrapper.get('button[aria-label="New posts period"]').trigger('click');
+    const option = () =>
+      Array.from(document.querySelectorAll<HTMLElement>('[role="option"]')).find(
+        (entry) => entry.textContent?.trim() === 'Last 14 days',
+      );
+    await vi.waitFor(() => expect(option()).toBeDefined());
+    option()!.click();
+    await vi.waitFor(() => expect(wrapper.get(panel).get('[role="group"]').findAll('button')).toHaveLength(14));
+  });
+
+  it('starts a stage from its source card without leaving the source page', async () => {
+    const path = `${Afisha}/pipelines`;
+    const { router, wrapper } = await renderAt(path);
+    const run = 'button[aria-label="Run discover now"]';
+    await vi.waitFor(() => expect(wrapper.get<HTMLButtonElement>(run).element.disabled).toBe(false));
+    await wrapper.get(run).trigger('click');
+    await vi.waitFor(() =>
+      expect(wrapper.get(run).element.closest('article')?.textContent).toMatch(/queued|running|completed/i),
+    );
+    expect(router.currentRoute.value.path).toBe(path);
+  });
+
+  it('lets the operator disable an on-demand stage and pause its subscribed pipeline', async () => {
+    const { router, wrapper } = await renderAt(`${FashionPipeline}/stages/process`);
+    const stageButton = (label: string) => `button[aria-label="${label} process stage"]`;
+    const run = 'button[aria-label="Run process now"]';
+    await vi.waitFor(() => expect(wrapper.find(stageButton('Disable')).exists()).toBe(true));
+    await wrapper.get(stageButton('Disable')).trigger('click');
+    await vi.waitFor(() => expect(wrapper.find(stageButton('Enable')).exists()).toBe(true));
+    expect(wrapper.get<HTMLButtonElement>(run).element.disabled).toBe(true);
+    await wrapper.get(stageButton('Enable')).trigger('click');
+    await vi.waitFor(() => expect(wrapper.get<HTMLButtonElement>(run).element.disabled).toBe(false));
+    await router.push(FashionPipeline);
+    const control = (label: string) => wrapper.findAll('button').find((button) => button.text() === label);
+    await vi.waitFor(() => expect(control('Pause pipeline')).toBeDefined());
+    await control('Pause pipeline')!.trigger('click');
+    await vi.waitFor(() => expect(control('Resume pipeline')).toBeDefined());
+    await control('Resume pipeline')!.trigger('click');
+    await vi.waitFor(() => expect(control('Pause pipeline')).toBeDefined());
+  });
+
+  it('limits the Process batch when a model is selected', async () => {
+    const { wrapper } = await renderAt(`${FashionPipeline}/stages/process`);
+    const settings = 'button[aria-label="Schedule for Process"]';
+    await vi.waitFor(() => expect(wrapper.find(settings).exists()).toBe(true));
+    const batch = wrapper.get<HTMLInputElement>('input[aria-label="Batch size for Process"]');
+    expect(batch.element.max).toBe('100');
+    await batch.setValue('40');
+    const form = batch.element.closest('form')!;
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await vi.waitFor(() => expect(form.querySelector('button[type="submit"]')).toBeNull());
+    await wrapper.get(settings).trigger('click');
+    await vi.waitFor(() =>
+      expect(document.body.querySelector('[role="dialog"]')?.textContent).toContain('Process schedule'),
+    );
+    const dialog = document.body.querySelector('[role="dialog"]')!;
+    expect(dialog.querySelector('input[placeholder="Local processor"]')).toBeNull();
+    (dialog.querySelector('button[aria-label="Processor"]') as HTMLButtonElement).click();
+    const processor = () =>
+      [...document.body.querySelectorAll<HTMLElement>('[role="option"]')].find(
+        (item) => item.textContent?.trim() === 'Rental terms',
+      );
+    await vi.waitFor(() => expect(processor()).toBeDefined());
+    processor()!.click();
+    await flushPromises();
+    const model = dialog.querySelector('input[placeholder="Local processor"]') as HTMLInputElement;
+    model.value = 'test-model';
+    model.dispatchEvent(new Event('input', { bubbles: true }));
+    await flushPromises();
+    expect(dialog.textContent).toContain('The model will run with a batch of 20 posts.');
+    dialog.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await vi.waitFor(() => expect(batch.element.max).toBe('20'));
+    expect(batch.element.value).toBe('20');
   });
 
   it('ends the bar with the account menu and collapses the sidebar to a remembered rail', async () => {
@@ -150,6 +359,8 @@ describe('a post’s page', () => {
     expect(wrapper.get('nav[aria-label="Console"] [aria-current="page"]').text()).toContain('Afisha.uz');
     expect(wrapper.get('[data-app-frame-bar]').text()).toContain('Post');
     await vi.waitFor(() => expect(wrapper.get('[aria-label="Post"]').text()).toContain('Revision 2'));
-    expect(wrapper.get('[aria-label="Post"]').text()).toContain('Дворец творчества молодёжи');
+    expect(wrapper.get('[aria-label="Capture"]').text()).toContain('First seen');
+    expect(wrapper.get('[aria-label="Captured text"]').text()).toContain('Показ осенних коллекций');
+    expect(wrapper.get('[aria-label="Post"]').text()).not.toContain('Дворец творчества молодёжи');
   });
 });

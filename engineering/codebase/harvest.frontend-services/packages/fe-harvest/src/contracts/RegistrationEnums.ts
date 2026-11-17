@@ -30,6 +30,7 @@ export type ConsentBasis = 'owner' | 'submitter' | 'none';
 export type SourceState = 'active' | 'paused' | 'unavailable' | 'previewUnavailable' | 'quotaExhausted' | 'retired';
 export type PipelineState = 'proposed' | 'pendingApproval' | 'active' | 'paused' | 'archived';
 export type PipelinePauseReason = 'operator' | 'budgetHard' | 'permission' | 'idle';
-export type WorkKind = 'capture' | 'discover' | 'refresh' | 'sweep' | 'check' | 'metrics' | 'link' | 'intake';
+export type WorkKind =
+  'capture' | 'discover' | 'refresh' | 'sweep' | 'check' | 'metrics' | 'link' | 'intake' | 'harvest' | 'process';
 export type ScheduleMode = 'manual' | 'interval' | 'cron' | 'adaptive';
 export type AiMode = 'off' | 'gaps' | 'full';

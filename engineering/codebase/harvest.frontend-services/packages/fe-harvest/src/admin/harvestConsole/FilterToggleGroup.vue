@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ToggleGroup, ToggleInput } from '@wow-two-beta/fe/presentation/forms';
+import { Tooltip } from '@wow-two-beta/fe/presentation/overlays';
 import PillIcon from './PillIcon.vue';
 import type { GlyphName } from './PostGlyphs';
 
@@ -25,21 +26,35 @@ const value = defineModel<string | null>({ required: true });
     v-bind="{ 'aria-label': props.label }"
     @update:model-value="value = typeof $event === 'string' ? $event : null"
   >
-    <ToggleInput
+    <Tooltip
       v-for="item in props.items"
       :key="item.key"
-      :value="item.key"
-      variant="solid"
-      tone="neutral"
-      class="min-h-9 min-w-9 gap-1.5 px-2.5 text-sm"
-      v-bind="{ 'aria-label': `${item.label} ${item.count}` }"
+      :content="`${item.label} ${item.count}`"
+      :is-disabled="value === item.key"
+      :open-delay="150"
+      placement="bottom"
     >
-      <PillIcon :name="item.icon" :size="15" />
-      <span v-if="item.code" class="text-xs font-semibold uppercase" aria-hidden="true">{{ item.code }}</span>
-      <span class="inline-flex items-center gap-1.5 whitespace-nowrap" v-bind="{ 'data-toggle-label': '' }">
-        {{ item.label }}
-        <span class="tabular-nums opacity-75">{{ item.count }}</span>
-      </span>
-    </ToggleInput>
+      <ToggleInput
+        :value="item.key"
+        variant="solid"
+        tone="neutral"
+        class="min-h-9 min-w-9 gap-1.5 px-2.5 text-sm"
+        :class="{
+          '[@media(hover:hover)]:data-[pressed=false]:aspect-square [@media(hover:hover)]:data-[pressed=false]:px-0':
+            !item.code,
+        }"
+        v-bind="{ 'aria-label': `${item.label} ${item.count}` }"
+      >
+        <PillIcon :name="item.icon" :size="15" />
+        <span v-if="item.code" class="text-xs font-semibold uppercase" aria-hidden="true">{{ item.code }}</span>
+        <span
+          class="inline-flex items-center gap-1.5 whitespace-nowrap"
+          :class="value !== item.key && '[@media(hover:hover)]:hidden'"
+        >
+          {{ item.label }}
+          <span class="tabular-nums opacity-75">{{ item.count }}</span>
+        </span>
+      </ToggleInput>
+    </Tooltip>
   </ToggleGroup>
 </template>

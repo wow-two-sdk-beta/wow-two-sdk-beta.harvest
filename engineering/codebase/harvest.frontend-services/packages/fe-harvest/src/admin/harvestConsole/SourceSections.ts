@@ -8,6 +8,7 @@ export interface SourceSection {
   readonly name?: string;
   readonly url: string;
   readonly locale?: string;
+  readonly restrictToPath?: boolean;
 }
 
 function isSourceSection(value: unknown): value is SourceSection {
@@ -18,7 +19,8 @@ function isSourceSection(value: unknown): value is SourceSection {
     typeof section.url === 'string' &&
     /^https?:\/\//i.test(section.url) &&
     URL.canParse(section.url) &&
-    (section.locale === undefined || typeof section.locale === 'string')
+    (section.locale === undefined || typeof section.locale === 'string') &&
+    (section.restrictToPath === undefined || typeof section.restrictToPath === 'boolean')
   );
 }
 
@@ -53,8 +55,11 @@ export function sameSection(url: string, sectionUrl: string) {
   if (!URL.canParse(url)) return false;
   const current = new URL(url);
   const section = new URL(sectionUrl);
+  current.searchParams.sort();
+  section.searchParams.sort();
   return (
-    current.hostname === section.hostname &&
-    current.pathname.replace(/\/+$/, '') === section.pathname.replace(/\/+$/, '')
+    current.origin === section.origin &&
+    current.pathname.replace(/\/+$/, '') === section.pathname.replace(/\/+$/, '') &&
+    current.search === section.search
   );
 }

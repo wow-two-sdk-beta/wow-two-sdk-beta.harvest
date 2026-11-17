@@ -1,4 +1,5 @@
-import type { SourceFamily, WorkKind } from './RegistrationEnums';
+import type { SourceListingSummary } from './ListingModels';
+import type { SourcePermission, SourceFamily, SourceState, WorkKind } from './RegistrationEnums';
 
 /** How a source is doing, as the overview decides it: a run in flight, a host or harvest problem, harvesting, or idle. */
 export type SourceOverviewState = 'harvesting' | 'healthy' | 'needsAttention' | 'idle';
@@ -30,6 +31,10 @@ export interface SourceSectionOverviewModel {
   readonly url?: string;
   /** The pipeline is not paused and has an enabled capture schedule. */
   readonly harvesting: boolean;
+  /** The configured stage that a manual source run should queue. */
+  readonly harvestKind?: WorkKind;
+  /** The work kind of the earliest enabled schedule. */
+  readonly nextWorkKind?: WorkKind;
   readonly paused: boolean;
   /** The enabled capture schedule's interval, ISO-8601 (`PT6H`); omitted when off. */
   readonly captureEvery?: string;
@@ -74,10 +79,14 @@ export interface SourceOverviewModel {
   /** Omitted when the source belongs to no group. */
   readonly groupId?: string;
   readonly state: SourceOverviewState;
+  /** Source master gate and access; optional when connected to an older host. */
+  readonly sourceState?: SourceState;
+  readonly permission?: SourcePermission;
   /** The newest capture run across the source's sections; omitted when none ran. */
   readonly lastHarvest?: SourceHarvestModel;
   /** The earliest next capture among enabled schedules of unpaused sections. */
   readonly nextHarvestAt?: string;
+  readonly postCount?: number;
   /** New posts per UTC day over 14 days, oldest first; the last entry is today. */
   readonly newPostsDaily: readonly number[];
   readonly sections: readonly SourceSectionOverviewModel[];
@@ -104,6 +113,8 @@ export interface SourceUpdate {
   readonly name?: string;
   readonly groupId?: string | null;
   readonly clearGroup?: boolean;
+  /** Pauses the source without changing individual pipeline choices. */
+  readonly paused?: boolean;
 }
 
 /** Sets the gap between two page reads of a source's host, 1000 to 60000 ms. */
@@ -137,6 +148,10 @@ export interface SourcePostModel {
   readonly imageUrl?: string;
   /** The post's images in order, as the source published them, at most 12; omitted by an older host. */
   readonly imageUrls?: readonly string[];
+  /** Housing facts when SCFD recognizes the listing's source fields. */
+  readonly listing?: SourceListingSummary;
+  readonly publisherCategory?: string;
+  readonly eventTiming?: 'upcoming' | 'ongoing' | 'finished' | 'endUnknown' | 'undated';
 }
 
 /** Mirrors `PostRevisionModel`: one revision of a post and the top-level fields that changed. */

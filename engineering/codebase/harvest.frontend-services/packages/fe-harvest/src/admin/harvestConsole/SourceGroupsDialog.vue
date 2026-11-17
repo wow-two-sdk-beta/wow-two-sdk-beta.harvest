@@ -44,7 +44,8 @@ async function create() {
       <ModalHeader>
         <ModalTitle>Groups</ModalTitle>
         <ModalDescription>
-          A group is a publisher: its website, Telegram and Instagram, or a store's branches.
+          A group collects a publisher’s channels or branches in this workspace. Each source keeps its own posts and
+          schedules.
         </ModalDescription>
         <ModalClose />
       </ModalHeader>

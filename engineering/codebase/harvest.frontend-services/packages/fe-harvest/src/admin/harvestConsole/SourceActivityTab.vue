@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { Button } from '@wow-two-beta/fe/presentation/actions';
+import { Tooltip } from '@wow-two-beta/fe/presentation/overlays';
+import ConsoleLink from './ConsoleLink.vue';
 import type { SourceOverviewModel } from '../../contracts';
 import FilterToggleGroup from './FilterToggleGroup.vue';
 import HarvestPill from './HarvestPill.vue';
@@ -7,7 +10,7 @@ import WorkerOffNotice from './WorkerOffNotice.vue';
 import { isFailedRun } from './ConsoleFormat';
 import { useHarvestConsole } from './HarvestConsole';
 import { sectionGlyphOf } from './PostGlyphs';
-import { runFoundWords, runKindWords, runProblem, statusWords, whenOf } from './SourceWords';
+import { ageOf, dateTimeOf, runFoundWords, runKindWords, runProblem, statusWords } from './SourceWords';
 
 /**
  * A source's runs, newest first: when, which section, what ran, how it ended and what it found. A failure's kind is a
@@ -26,6 +29,10 @@ const pipelineIds = computed(
       ...session.pipelines.value.filter((item) => item.sourceId === props.source.sourceId).map((item) => item.id),
     ]),
 );
+const states = computed(() => [...pipelineIds.value].map((id) => session.runStateOf(id)));
+const loading = computed(() => states.value.some((state) => state === 'loading'));
+const unavailable = computed(() => states.value.some((state) => state === 'unavailable'));
+const stale = computed(() => states.value.some((state) => state === 'stale'));
 const runs = computed(() => session.runs.value.filter((run) => pipelineIds.value.has(run.pipelineId)));
 const sections = computed(() =>
   [...new Set(runs.value.map((run) => run.pipelineId))].map((id) => ({
@@ -54,16 +61,29 @@ const rows = computed(() => shown.value.map((run) => ({ run, problem: runProblem
 <template>
   <div class="flex min-w-0 flex-col gap-4">
     <WorkerOffNotice />
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <p class="text-sm text-muted-foreground">{{ runs.length }} recent runs · latest activity from each pipeline</p>
+      <Button v-if="unavailable || stale" variant="outline" @click="session.retryRuns([...pipelineIds])">
+        Retry activity
+      </Button>
+    </div>
+    <p v-if="unavailable || stale" class="text-sm text-muted-foreground" role="status">
+      Some activity could not be refreshed. Previously loaded runs remain visible.
+    </p>
+    <p v-if="loading && !runs.length" class="text-sm text-muted-foreground" role="status">Loading activity…</p>
     <FilterToggleGroup
       :model-value="filter"
       label="Filter runs"
       :items="filters"
       @update:model-value="filter = $event ?? 'all'"
     />
-    <p v-if="!shown.length" class="rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+    <p
+      v-if="!shown.length && !loading && !unavailable"
+      class="rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground"
+    >
       {{ runs.length ? 'No run matches.' : 'No harvests yet. They appear here as soon as one is queued.' }}
     </p>
-    <div v-else class="@container rounded-2xl border border-border bg-card">
+    <div v-if="shown.length" class="@container rounded-2xl border border-border bg-card">
       <table class="w-full text-sm @max-[46rem]:block @min-[46rem]:table-fixed" role="table" aria-label="Runs">
         <thead class="@max-[46rem]:sr-only" role="rowgroup">
           <tr class="border-b border-border text-left text-[13px] text-muted-foreground">
@@ -84,14 +104,29 @@ const rows = computed(() => shown.value.map((run) => ({ run, problem: runProblem
                 class="whitespace-nowrap @min-[46rem]:px-4 @max-[46rem]:text-xs @max-[46rem]:text-muted-foreground"
                 role="cell"
               >
-                {{ whenOf(run.finishedAtUtc ?? run.queuedAtUtc) }}
+                <Tooltip :content="dateTimeOf(run.finishedAtUtc ?? run.queuedAtUtc)" :open-delay="200">
+                  <ConsoleLink
+                    :to="{ kind: 'source', id: props.source.sourceId, run: run.id }"
+                    class="rounded-full font-medium text-primary underline-offset-2 hover:underline"
+                    v-bind="{ 'aria-label': `Open ${runKindWords(run.kind)} run audit` }"
+                  >
+                    <HarvestPill tone="outline">
+                      <time :datetime="run.finishedAtUtc ?? run.queuedAtUtc">
+                        {{ ageOf(run.finishedAtUtc ?? run.queuedAtUtc, undefined, true) }}
+                      </time>
+                    </HarvestPill>
+                  </ConsoleLink>
+                </Tooltip>
               </td>
-              <td
-                class="min-w-0 truncate font-semibold @min-[46rem]:px-3 @max-[46rem]:order-3"
-                role="cell"
-                :title="session.sectionLabel(run.pipelineId)"
-              >
-                {{ session.sectionLabel(run.pipelineId) }}
+              <td class="min-w-0 truncate font-semibold @min-[46rem]:px-3 @max-[46rem]:order-3" role="cell">
+                <Tooltip :content="session.sectionLabel(run.pipelineId)" :open-delay="200">
+                  <ConsoleLink
+                    :to="{ kind: 'pipeline', id: run.pipelineId }"
+                    class="block truncate rounded hover:text-primary hover:underline"
+                  >
+                    {{ session.sectionLabel(run.pipelineId) }}
+                  </ConsoleLink>
+                </Tooltip>
               </td>
               <td
                 class="@min-[46rem]:px-3 @max-[46rem]:order-4 @max-[46rem]:text-end @max-[46rem]:text-xs @max-[46rem]:text-muted-foreground"
@@ -117,7 +152,11 @@ const rows = computed(() => shown.value.map((run) => ({ run, problem: runProblem
                   <span class="truncate">{{ problem.label }}</span>
                   <span aria-hidden="true" :class="expanded === run.id ? 'rotate-90' : ''">›</span>
                 </button>
-                <span v-else class="block truncate" :title="found">{{ problem?.label ?? found }}</span>
+                <Tooltip v-else :content="found" :open-delay="200">
+                  <span tabindex="0" class="block truncate rounded focus-visible:outline-2 focus-visible:outline-ring">
+                    {{ problem?.label ?? found }}
+                  </span>
+                </Tooltip>
               </td>
             </tr>
             <tr

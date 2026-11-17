@@ -26,6 +26,9 @@ const emit = defineEmits<{ toggle: [] }>();
 
 <template>
   <section :id="props.group.elementId" :aria-labelledby="`${props.group.elementId}-title`" class="min-w-0 scroll-mt-4">
+    <h3 v-if="props.isBare" :id="`${props.group.elementId}-title`" tabindex="-1" class="sr-only">
+      {{ props.group.name }}
+    </h3>
     <header v-if="!props.isBare" class="mb-3 flex min-w-0 items-center gap-2">
       <button
         type="button"
@@ -44,7 +47,9 @@ const emit = defineEmits<{ toggle: [] }>();
         >
           <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
         </svg>
-        <h3 :id="`${props.group.elementId}-title`" class="truncate text-lg font-semibold">{{ props.group.name }}</h3>
+        <h3 :id="`${props.group.elementId}-title`" tabindex="-1" class="truncate text-lg font-semibold">
+          {{ props.group.name }}
+        </h3>
         <span class="shrink-0 text-sm tabular-nums text-muted-foreground">
           {{ plural(props.sources.length, 'source') }}
         </span>

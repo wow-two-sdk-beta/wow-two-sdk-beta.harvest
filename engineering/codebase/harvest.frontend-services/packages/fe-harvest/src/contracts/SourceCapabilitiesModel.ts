@@ -1,4 +1,5 @@
 import type { WorkKind } from './RegistrationEnums';
+import type { SourcePostFilterDefinition } from './SourcePostQuery';
 
 /** Safe, runtime-local adapter discovery; readiness never promises remote access. */
 export interface SourceCapabilitiesModel {
@@ -11,5 +12,8 @@ export interface SourceCapabilitiesModel {
     readonly readiness: 'ready' | 'configurationRequired' | 'unavailable';
     readonly message?: string;
     readonly scopeSchema: Readonly<Record<string, unknown>>;
+    readonly sourceFieldsSchema?: Readonly<Record<string, unknown>>;
+    readonly postFilters?: readonly SourcePostFilterDefinition[];
+    readonly postView?: { readonly showPhotos?: boolean; readonly showSourceText?: boolean };
   };
 }

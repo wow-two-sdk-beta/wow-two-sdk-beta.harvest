@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { Tooltip } from '@wow-two-beta/fe/presentation/overlays';
 import HarvestPill from './HarvestPill.vue';
 import NewPostsBars from './NewPostsBars.vue';
 import SourceIcon from './SourceIcon.vue';
+import PillIcon from './PillIcon.vue';
+import { sourceTypeLabel } from './SourcePresentation';
 import { groupFamiliesOf, groupHarvestPill, groupTrendOf, type GalleryGroup } from './SourceGroups';
 import { plural } from './SourceWords';
 
@@ -12,7 +15,7 @@ import { plural } from './SourceWords';
  * card is one button that scrolls to the group's sources below; a group has no page of its own.
  */
 defineOptions({ name: 'SourceGroupTile' });
-const props = defineProps<{ group: GalleryGroup }>();
+const props = defineProps<{ group: GalleryGroup; matchingCount?: number }>();
 const emit = defineEmits<{ open: [] }>();
 const pill = computed(() => groupHarvestPill(props.group.sources));
 const trend = computed(() => groupTrendOf(props.group.sources));
@@ -25,26 +28,37 @@ const trend = computed(() => groupTrendOf(props.group.sources));
   >
     <div class="flex min-w-0 items-baseline gap-2">
       <h3 class="min-w-0 flex-1 truncate text-[15px] font-semibold">
-        <button
-          type="button"
-          class="outline-none after:absolute after:inset-0 after:rounded-2xl after:content-['']"
-          :aria-controls="props.group.elementId"
-          :title="`Show the sources of ${props.group.name}`"
-          @click="emit('open')"
-        >
-          {{ props.group.name }}
-        </button>
+        <Tooltip :content="`Show the sources of ${props.group.name}`" :open-delay="200">
+          <button
+            type="button"
+            class="inline-flex max-w-full items-center gap-1.5 outline-none after:absolute after:inset-0 after:rounded-2xl after:content-['']"
+            :aria-controls="props.group.elementId"
+            @click="emit('open')"
+          >
+            <PillIcon name="group" />
+            <span class="truncate">{{ props.group.name }}</span>
+          </button>
+        </Tooltip>
       </h3>
       <span class="shrink-0 text-xs tabular-nums text-muted-foreground">
-        {{ plural(props.group.sources.length, 'source') }}
+        {{
+          props.matchingCount === undefined
+            ? plural(props.group.sources.length, 'source')
+            : `${props.matchingCount} of ${plural(props.group.sources.length, 'source')} match`
+        }}
       </span>
     </div>
     <p class="line-clamp-2 min-h-[2lh] text-[13px] leading-snug text-muted-foreground">
       {{ props.group.description ?? 'No description yet.' }}
     </p>
     <ul class="flex min-h-7 flex-wrap items-center gap-1.5" aria-label="How its sources are read">
-      <li v-for="family in groupFamiliesOf(props.group.sources)" :key="family">
-        <SourceIcon :family="family" size="sm" />
+      <li
+        v-for="family in groupFamiliesOf(props.group.sources)"
+        :key="family"
+        class="inline-flex items-center gap-1 text-xs text-muted-foreground"
+      >
+        <SourceIcon :family="family" size="sm" decorative />
+        {{ sourceTypeLabel(family) }}
       </li>
     </ul>
     <div class="mt-auto flex min-w-0 flex-wrap items-end justify-between gap-x-3 gap-y-2 pt-1">
@@ -53,5 +67,8 @@ const trend = computed(() => groupTrendOf(props.group.sources));
         <NewPostsBars :values="trend" fill />
       </span>
     </div>
+    <p v-if="props.matchingCount !== undefined" class="text-xs text-muted-foreground">
+      Activity for all available sources in this group
+    </p>
   </article>
 </template>

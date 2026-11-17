@@ -26,20 +26,20 @@ it('opens the demo console without a key or backend and resets its state', async
   try {
     await vi.waitFor(() => expect(wrapper.text()).toContain('Afisha, from an adapter release'));
     expect(wrapper.get('[aria-label="Demo mode"]').text()).toContain('synthetic data');
-    expect(state()).toContain('healthy');
+    expect(state()).toContain('Idle');
     expect(wrapper.find('input[type="password"]').exists()).toBe(false);
     await wrapper.get('[aria-label="Reading"] input').trigger('click');
     await flushPromises();
-    await vi.waitFor(() => expect(state()).toContain('idle'));
+    await vi.waitFor(() => expect(state()).toContain('Disabled'));
     const notices = () => document.body.querySelector('[role="region"][aria-label="Notifications"]');
-    expect(notices()?.textContent).toContain('Afisha.uz is paused.');
-    expect(wrapper.text()).not.toContain('Afisha.uz is paused.');
+    expect(notices()?.textContent).toContain('Afisha.uz is disabled.');
+    expect(wrapper.text()).not.toContain('Afisha.uz is disabled.');
     await router.push('/sources');
-    expect(notices()?.textContent).toContain('Afisha.uz is paused.');
+    expect(notices()?.textContent).toContain('Afisha.uz is disabled.');
     await router.push(AfishaSettings);
     const reset = wrapper.findAll('button').find((button) => button.text() === 'Reset demo')!;
     await reset.trigger('click');
-    await vi.waitFor(() => expect(state()).toContain('healthy'));
+    await vi.waitFor(() => expect(state()).toContain('Idle'));
     expect(fetch).not.toHaveBeenCalled();
   } finally {
     wrapper.unmount();

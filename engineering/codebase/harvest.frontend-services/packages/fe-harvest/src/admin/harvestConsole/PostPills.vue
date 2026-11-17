@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { Tooltip } from '@wow-two-beta/fe/presentation/overlays';
 import HarvestPill from './HarvestPill.vue';
 import PillIcon from './PillIcon.vue';
 import { useHarvestConsole } from './HarvestConsole';
@@ -19,6 +20,7 @@ const props = withDefaults(
   defineProps<{
     kind: string;
     pipelineId?: string;
+    publisherCategory?: string | null;
     language?: string;
     /** The source's name and family, to add a pill for it. */
     sourceName?: string;
@@ -31,6 +33,7 @@ const props = withDefaults(
   }>(),
   {
     pipelineId: undefined,
+    publisherCategory: undefined,
     language: undefined,
     sourceName: undefined,
     family: 'site',
@@ -42,6 +45,9 @@ const props = withDefaults(
 );
 const session = useHarvestConsole();
 const section = computed(() => (props.pipelineId ? session.sectionParts(props.pipelineId) : undefined));
+const category = computed(() =>
+  props.publisherCategory === undefined ? section.value?.name : props.publisherCategory,
+);
 const language = computed(() => props.language ?? section.value?.locale);
 const shows = (label: PostLabel) => !props.hidden?.has(label);
 const tone = computed(() => (props.onImage ? 'glass' : 'outline'));
@@ -53,14 +59,20 @@ const tone = computed(() => (props.onImage ? 'glass' : 'outline'));
       <PillIcon :name="kindGlyphOf(props.kind)" />
       {{ props.kind }}
     </HarvestPill>
-    <HarvestPill v-if="section && shows('section')" :tone="tone" shrinkable>
-      <PillIcon :name="sectionGlyphOf(section.name)" />
-      <span class="truncate">{{ section.name.toLowerCase() }}</span>
+    <HarvestPill v-if="category && shows('section')" :tone="tone" shrinkable>
+      <PillIcon :name="sectionGlyphOf(category)" />
+      <span class="truncate">{{ category.toLowerCase() }}</span>
     </HarvestPill>
-    <HarvestPill v-if="language && shows('language')" :tone="tone" v-bind="{ title: languageName(language) }">
-      <PillIcon name="language" />
-      {{ (props.compact ? language : languageName(language)).toLowerCase() }}
-    </HarvestPill>
+    <Tooltip v-if="language && shows('language')" :content="languageName(language)" :open-delay="200">
+      <HarvestPill
+        :tone="tone"
+        v-bind="{ tabindex: 0, 'aria-label': languageName(language) }"
+        class="relative z-10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      >
+        <PillIcon name="language" />
+        {{ (props.compact ? language : languageName(language)).toLowerCase() }}
+      </HarvestPill>
+    </Tooltip>
     <HarvestPill v-if="props.sourceName" :tone="tone" shrinkable>
       <PillIcon :name="readMethodGlyphOf(readMethodOf(props.family))" />
       <span class="truncate">{{ props.sourceName.toLowerCase() }}</span>

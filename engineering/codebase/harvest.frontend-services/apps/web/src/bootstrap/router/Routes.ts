@@ -1,6 +1,7 @@
 import type { RouteLocationNormalizedLoaded } from 'vue-router';
 import { createAppRouter, lazyPage, lazyRoute, RouterHistoryMode, type RouteConfig } from '@wow-two-beta/fe/router';
-import type { SourceTab } from '@wow-two-beta/fe-harvest/admin';
+import type { PipelineTab, SourceTab } from '@wow-two-beta/fe-harvest/admin';
+import type { PipelineStageKind } from '@wow-two-beta/fe-harvest/contracts';
 import ConsoleSession from '../ConsoleSession.vue';
 
 /** The group a `#group-{id}` hash names, or nothing. @internal */
@@ -23,14 +24,29 @@ function sourceTab(path: string, id: string, title: string, tab: SourceTab) {
 }
 
 /** The pages iteration 1 removed; their old addresses open Sources. @internal */
-const RemovedPages = ['pipelines', 'pipelines/:id', 'runs', 'posts', 'subscriptions', 'hosts'];
+const RemovedPages = ['runs', 'posts', 'subscriptions', 'hosts'];
 
-/**
- * Holds the route table: one console layout route, and a page per place in the operator's flow — Home; Sources and one
- * source with its tabs (`/sources/:id`, `/posts`, `/activity`, `/settings`) and one of its posts
- * (`/sources/:id/posts/:postId`); Subscribers; Access. Each title matches its
- * sidebar label. The Pipelines, Runs, Hosts, Posts and Subscriptions pages are gone; their paths redirect to Sources.
- */
+const PipelinePath = 'pipelines/:id';
+const StagePath = `${PipelinePath}/stages/:stage(discover|harvest|process)`;
+
+function pipelinePage(path: string, id: string, title: string, tab: PipelineTab = 'overview') {
+  return {
+    path,
+    id,
+    handle: { title },
+    lazy: lazyPage(
+      () => import('../../presentation/console/pages/PipelinePage.vue'),
+      (route) => ({
+        pipelineId: String(route.params['id'] ?? ''),
+        tab,
+        ...(typeof route.params['stage'] === 'string' ? { stage: route.params['stage'] as PipelineStageKind } : {}),
+        ...(typeof route.params['runId'] === 'string' ? { runId: route.params['runId'] } : {}),
+      }),
+    ),
+  };
+}
+
+/** The operator's pages and their direct links within the console layout. */
 export const routes: RouteConfig = [
   {
     path: '/',
@@ -67,7 +83,31 @@ export const routes: RouteConfig = [
         ),
       },
       sourceTab('sources/:id/activity', 'source-activity', 'Activity', 'activity'),
+      sourceTab('sources/:id/pipelines', 'source-pipelines', 'Pipelines', 'pipelines'),
+      {
+        path: 'sources/:id/pipelines/:runId',
+        id: 'source-run',
+        handle: { title: 'Run audit' },
+        lazy: lazyPage(
+          () => import('../../presentation/console/pages/RunPage.vue'),
+          (route) => ({ sourceId: String(route.params['id'] ?? ''), runId: String(route.params['runId'] ?? '') }),
+        ),
+      },
       sourceTab('sources/:id/settings', 'source-settings', 'Settings', 'settings'),
+      {
+        path: 'pipelines',
+        id: 'pipelines',
+        handle: { title: 'Pipelines', description: 'Monitor runs and open a pipeline to inspect its stages.' },
+        lazy: lazyRoute(() => import('../../presentation/console/pages/PipelinesPage.vue')),
+      },
+      pipelinePage(PipelinePath, 'pipeline', 'Pipeline'),
+      pipelinePage(`${PipelinePath}/logs`, 'pipeline-logs', 'Logs', 'logs'),
+      pipelinePage(`${PipelinePath}/discoveries`, 'pipeline-discoveries', 'Discoveries', 'discoveries'),
+      pipelinePage(`${PipelinePath}/runs/:runId`, 'pipeline-run', 'Run audit', 'logs'),
+      pipelinePage(StagePath, 'pipeline-stage', 'Stage details'),
+      pipelinePage(`${StagePath}/logs`, 'pipeline-stage-logs', 'Logs', 'logs'),
+      pipelinePage(`${StagePath}/discoveries`, 'pipeline-stage-discoveries', 'Discoveries', 'discoveries'),
+      pipelinePage(`${StagePath}/runs/:runId`, 'pipeline-stage-run', 'Run audit', 'logs'),
       {
         path: 'subscribers',
         id: 'subscribers',

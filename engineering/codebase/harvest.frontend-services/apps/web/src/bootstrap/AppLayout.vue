@@ -13,6 +13,8 @@ export interface ConsoleAccount {
 /** The tabs of a source's page, as the trail names them. @internal */
 const SourceTabLabels: Readonly<Record<string, string>> = {
   'source-posts': 'Posts',
+  'source-pipelines': 'Pipelines',
+  'source-run': 'Run audit',
   'source-activity': 'Activity',
   'source-settings': 'Settings',
 };
@@ -26,7 +28,7 @@ import { RoutePageHeader } from '@wow-two-beta/fe/router';
 import { ContainerSwitch, OtherGroupKey, groupElementId, useHarvestConsole } from '@wow-two-beta/fe-harvest/admin';
 import ConsoleNav from '../presentation/shell/ConsoleNav.vue';
 import GalleryViewSwitch from '../presentation/shell/GalleryViewSwitch.vue';
-import { destinationOf, isSourceRoute } from '../presentation/shell/ConsoleDestinations';
+import { destinationOf, isPipelineRoute, isSourceRoute } from '../presentation/shell/ConsoleDestinations';
 import scfdLogo from '../presentation/console/assets/scfd-logo.png';
 
 /**
@@ -50,6 +52,7 @@ const frame = useTemplateRef<{ scrollToTop(): void }>('frame');
 
 const routeName = computed(() => String(route.name ?? ''));
 const isSource = computed(() => isSourceRoute(routeName.value));
+const isPipeline = computed(() => isPipelineRoute(routeName.value));
 /** The galleries carry the Cards | Rows switch: Sources and a source's Posts. */
 const hasViewSwitch = computed(() => routeName.value === 'sources' || routeName.value === 'source-posts');
 
@@ -59,8 +62,34 @@ const crumbs = computed(() => {
   if (!place) return [];
   const page = place.destination;
   const head = [{ label: place.section.label }];
-  if (!isSource.value) return [...head, { label: page.label }];
   const id = String(route.params['id'] ?? '');
+  if (isPipeline.value) {
+    const pipeline = session.pipelineOf(id);
+    const label = pipeline ? session.pipelineLabel(pipeline) : 'Pipeline';
+    const stage = typeof route.params['stage'] === 'string' ? route.params['stage'] : undefined;
+    const detail = routeName.value.endsWith('-run')
+      ? 'Run audit'
+      : routeName.value.endsWith('-logs')
+        ? 'Logs'
+        : routeName.value.endsWith('-discoveries')
+          ? 'Discoveries'
+          : '';
+    const stageLabel = stage ? stage.charAt(0).toUpperCase() + stage.slice(1) : '';
+    return [
+      ...head,
+      { label: page.label, href: router.resolve({ name: page.route }).href },
+      stage || detail ? { label, href: router.resolve({ name: 'pipeline', params: { id } }).href } : { label },
+      ...(stage
+        ? [
+            detail
+              ? { label: stageLabel, href: router.resolve({ name: 'pipeline-stage', params: { id, stage } }).href }
+              : { label: stageLabel },
+          ]
+        : []),
+      ...(detail ? [{ label: detail }] : []),
+    ];
+  }
+  if (!isSource.value) return [...head, { label: page.label }];
   const source = session.overviewOf(id);
   const group = source ? session.groupOf(source.groupId) : undefined;
   const groupKey = group?.id ?? OtherGroupKey;
@@ -139,7 +168,7 @@ watch(
       <div v-if="$slots.notice" class="mb-6"><slot name="notice"></slot></div>
     </template>
     <div class="space-y-6 pb-10">
-      <RoutePageHeader v-if="!isSource" size="lg" />
+      <RoutePageHeader v-if="!isSource && !isPipeline" size="lg" />
       <slot></slot>
     </div>
   </AppFrame>

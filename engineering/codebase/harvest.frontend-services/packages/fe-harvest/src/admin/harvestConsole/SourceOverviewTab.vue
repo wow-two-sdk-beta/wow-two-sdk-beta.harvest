@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { computed } from 'vue';
-import type { SourceOverviewModel } from '../../contracts';
+import { computed, ref } from 'vue';
+import { Button } from '@wow-two-beta/fe/presentation/actions';
+import type { SourceOverviewModel, SourceSectionOverviewModel } from '../../contracts';
+import ChoicePicker from './ChoicePicker.vue';
 import ConsoleLink from './ConsoleLink.vue';
 import HarvestPill from './HarvestPill.vue';
 import NewPostsBars from './NewPostsBars.vue';
 import PillIcon from './PillIcon.vue';
+import { WorkLabels } from './PipelineActivity';
+import { isAutomaticSchedule, scheduleWords } from './PipelineSchedule';
 import { useHarvestConsole } from './HarvestConsole';
 import { sameSection } from './SourceSections';
 import {
@@ -24,32 +28,52 @@ import {
 /**
  * A source's Overview: the sections being harvested — how often, the last harvest and the next, their posts and who
  * follows them — with every other section the adapter lists folded into one closed line; then the source's health
- * (reading pace, pause, failures in a row, last refusal) and its 14-day chart of new posts. Schedules change on Settings.
+ * (reading pace, pause, failures in a row, last refusal) and the chart of new posts.
  */
 defineOptions({ name: 'SourceOverviewTab' });
 const props = defineProps<{ source: SourceOverviewModel }>();
 const session = useHarvestConsole();
+const periods = [
+  { value: '7', label: 'Last 7 days' },
+  { value: '14', label: 'Last 14 days' },
+] as const;
+const period = ref<'7' | '14'>('7');
+const trend = computed(() => props.source.newPostsDaily.slice(-Number(period.value)));
 
-const harvested = computed(() => props.source.sections.filter((section) => section.harvesting));
-const activeSections = computed(() =>
-  harvested.value.map((section) => {
-    const summary = section.lastRun;
-    if (!summary?.kind || summary.kind === 'capture') return { section, last: summary };
-    const run = session.runsOf(section.pipelineId).find((item) => item.kind === 'capture');
-    return {
-      section,
-      last: run
-        ? {
-            at: run.finishedAtUtc ?? run.queuedAtUtc,
-            status: run.status,
-            reason: run.completionReason,
-            newPosts: run.newPosts ?? run.captured,
-            found: run.discovered,
-          }
-        : undefined,
-    };
+const sourcePaused = computed(
+  () => (props.source.sourceState ?? session.sourceOf(props.source.sourceId)?.state) === 'paused',
+);
+function collectionSchedules(section: SourceSectionOverviewModel) {
+  return (session.pipelineOf(section.pipelineId)?.schedules ?? []).filter((schedule) =>
+    schedule.kind === 'capture'
+      ? schedule.enabled
+      : (schedule.kind === 'discover' || schedule.kind === 'harvest' || schedule.kind === 'process') &&
+        schedule.stage?.disabled !== true,
+  );
+}
+const harvested = computed(() =>
+  props.source.sections.filter((section) => {
+    const pipeline = session.pipelineOf(section.pipelineId);
+    return (
+      !section.paused &&
+      (!pipeline || pipeline.state === 'active') &&
+      (section.harvestKind || section.harvesting || collectionSchedules(section).length > 0)
+    );
   }),
 );
+const activeSections = computed(() => harvested.value.map((section) => ({ section, last: section.lastRun })));
+function sectionCadence(section: SourceSectionOverviewModel) {
+  const automatic = collectionSchedules(section).filter(isAutomaticSchedule);
+  if (automatic.length)
+    return automatic.map((schedule) =>
+      schedule.kind === 'capture' && schedule.mode === 'interval'
+        ? harvestWords(schedule.every)
+        : `${WorkLabels[schedule.kind]} · ${scheduleWords(schedule)}`,
+    );
+  // Older hosts may supply overview rows without the registered schedules.
+  if (section.harvesting) return [section.captureEvery ? harvestWords(section.captureEvery) : 'Scheduled'];
+  return ['Manual'];
+}
 /** The adapter's sections nobody harvests, and sections whose harvest is off, as one folded list. */
 const others = computed(() => {
   const adapter = session.sectionsOf(props.source.sourceId);
@@ -71,7 +95,7 @@ const others = computed(() => {
         };
       }),
     ...props.source.sections
-      .filter((section) => !section.harvesting && !inAdapter(section.url))
+      .filter((section) => !harvested.value.includes(section) && !inAdapter(section.url))
       .map((section) => ({
         key: section.pipelineId,
         label: session.sectionLabel(section.pipelineId),
@@ -96,12 +120,23 @@ const refusal = computed(() => {
 
 <template>
   <div class="@container/overview">
+    <div
+      v-if="session.capabilityErrors.value[props.source.sourceId]"
+      class="mb-4 flex flex-wrap items-center gap-3 text-sm"
+      role="status"
+    >
+      <p>{{ session.capabilityErrors.value[props.source.sourceId] }}</p>
+      <Button variant="outline" @click="session.retryCapabilities(props.source.sourceId)">Retry sections</Button>
+    </div>
     <div class="grid min-w-0 gap-5 @min-[67rem]/overview:grid-cols-[minmax(0,1fr)_minmax(18rem,30%)]">
       <section
         class="@container/sections min-w-0 self-start rounded-2xl border border-border bg-card"
         aria-label="Sections being harvested"
       >
-        <h2 class="px-4 pt-5 pb-3 text-lg font-semibold sm:px-6">Sections being harvested</h2>
+        <h2 class="px-4 pt-5 pb-3 text-lg font-semibold sm:px-6">Configured sections</h2>
+        <p v-if="sourcePaused" class="px-4 pb-3 text-sm text-muted-foreground sm:px-6" role="status">
+          This source is disabled. These section settings are preserved.
+        </p>
         <table class="block w-full text-sm @min-[43rem]/sections:table" role="table">
           <thead class="@max-[43rem]/sections:sr-only" role="rowgroup">
             <tr class="border-b border-border text-left text-[13px] text-muted-foreground">
@@ -141,7 +176,7 @@ const refusal = computed(() => {
                 <span aria-hidden="true" class="block text-xs text-muted-foreground @min-[43rem]/sections:hidden">
                   Harvests
                 </span>
-                {{ harvestWords(section.captureEvery) }}
+                <span v-for="cadence in sectionCadence(section)" :key="cadence" class="block">{{ cadence }}</span>
                 <span v-if="checkWords(section.checkEvery)" class="block text-[13px] text-muted-foreground">
                   {{ checkWords(section.checkEvery) }}
                 </span>
@@ -203,7 +238,7 @@ const refusal = computed(() => {
             </tr>
             <tr v-if="!harvested.length" class="border-b border-border">
               <td colspan="6" class="px-4 py-4 text-muted-foreground sm:px-6">
-                No section is harvested yet. An operator turns one on in Settings.
+                No section has a harvest action enabled. An operator can configure one in Settings.
               </td>
             </tr>
           </tbody>
@@ -262,21 +297,34 @@ const refusal = computed(() => {
           <dl class="mt-3 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-3 gap-y-2.5 text-sm sm:gap-x-6">
             <dt class="text-muted-foreground">Reading pace</dt>
             <dd class="font-semibold">{{ paceWords(props.source.health.minDelayMs) }}</dd>
-            <dt class="text-muted-foreground">Paused</dt>
+            <dt class="text-muted-foreground">Host pause</dt>
             <dd class="font-semibold">{{ paused }}</dd>
             <dt class="text-muted-foreground">Failures in a row</dt>
             <dd class="font-semibold tabular-nums">{{ props.source.health.consecutiveFailures }}</dd>
             <dt class="text-muted-foreground">Last refusal</dt>
-            <dd class="font-semibold" :title="props.source.health.lastRefusal?.message">{{ refusal }}</dd>
+            <dd class="min-w-0 wrap-anywhere font-semibold">
+              {{ refusal }}
+              <span
+                v-if="props.source.health.lastRefusal?.message"
+                class="mt-1 block text-sm font-normal text-muted-foreground"
+              >
+                {{ props.source.health.lastRefusal.message }}
+              </span>
+            </dd>
           </dl>
         </section>
-        <section class="rounded-2xl border border-border bg-card p-6" aria-label="New posts, 14 days">
-          <h2 class="text-lg font-semibold">New posts, 14 days</h2>
+        <section class="min-w-0 rounded-2xl border border-border bg-card p-6" aria-label="New posts">
+          <div class="flex flex-wrap items-center justify-between gap-2.5">
+            <h2 class="text-lg font-semibold">New posts</h2>
+            <div class="w-36 max-w-full">
+              <ChoicePicker v-model="period" :choices="periods" label="New posts period" />
+            </div>
+          </div>
           <div class="mt-4">
-            <NewPostsBars :values="props.source.newPostsDaily" :height="96" :bar-width="8" fill show-readout />
+            <NewPostsBars :key="period" :values="trend" :height="96" :bar-width="8" fill show-readout />
           </div>
           <div class="mt-2 flex justify-between text-[13px] text-muted-foreground">
-            <span>{{ trendStartOf(props.source.newPostsDaily.length || 14) }}</span>
+            <span>{{ trendStartOf(trend.length || Number(period)) }}</span>
             <span>today</span>
           </div>
         </section>

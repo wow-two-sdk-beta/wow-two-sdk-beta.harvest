@@ -17,8 +17,10 @@ export const Glyphs = {
   history: 'M3 12a9 9 0 1 0 3-6.7M3 4v5h5M12 7.5V12l3 2',
   clock: 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18 M12 7v5l3 2',
   all: 'M5 6h14M5 12h14M5 18h14',
+  active: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18 M8 12l2.5 2.5L16 9',
   attention: 'M12 3 2.5 20h19z M12 9v4 M12 16h.01',
   external: 'M7 17 17 7M8 7h9v9',
+  arrowRight: 'M5 12h14 M13 6l6 6-6 6',
   site: 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18 M12 3a4 9 0 1 0 0 18a4 9 0 1 0 0-18 M3 12h18',
   telegram: 'M21 4 3 11l6 2 2 6 3-4 5 4z m-12 9 8-6',
   instagram:

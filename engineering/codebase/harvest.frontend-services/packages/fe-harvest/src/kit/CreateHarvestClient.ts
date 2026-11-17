@@ -21,12 +21,47 @@ import type {
   SourceReadingUpdate,
   SourceHealthModel,
   SourcePostModel,
+  SourcePostPage,
+  SourcePostQuery,
   PostRevisionModel,
 } from '../contracts';
 import { createRegistryClient, type RegistryClient, type RegistryClientOptions } from './CreateRegistryClient';
+import type { ScheduleModel } from '../contracts/PipelineModel';
+import type {
+  DiscoveryState,
+  PipelineDiscoveryModel,
+  PipelineStageModel,
+  RunAttemptModel,
+} from '../contracts/PipelineStagesModel';
+
+/** Reads and configures the standalone discovery, harvest and processing stages. */
+export interface PipelineStagesClient {
+  list(pipelineId: string, signal?: AbortSignal): Promise<Result<readonly PipelineStageModel[], ApiFailure>>;
+  save(
+    pipelineId: string,
+    body: Omit<ScheduleModel, 'id' | 'nextDueAtUtc'>,
+    signal?: AbortSignal,
+  ): Promise<Result<boolean, ApiFailure>>;
+  discoveries(
+    pipelineId: string,
+    offset: number,
+    limit: number,
+    state?: DiscoveryState,
+    signal?: AbortSignal,
+  ): Promise<Result<readonly PipelineDiscoveryModel[], ApiFailure>>;
+  run(runId: string, signal?: AbortSignal): Promise<Result<RunModel, ApiFailure>>;
+  audit(
+    runId: string,
+    offset: number,
+    limit: number,
+    signal?: AbortSignal,
+    newestFirst?: boolean,
+  ): Promise<Result<readonly RunAttemptModel[], ApiFailure>>;
+}
 
 /** Exposes console operations under the same contract for an embedded or remote Harvest. */
 export interface HarvestClient extends RegistryClient {
+  readonly pipelineStages?: PipelineStagesClient;
   getSourceCapabilities(id: string, signal?: AbortSignal): Promise<Result<SourceCapabilitiesModel, ApiFailure>>;
   listTenants(signal?: AbortSignal): Promise<Result<readonly TenantModel[], ApiFailure>>;
   registerTenant(body: { slug: string; name: string }, signal?: AbortSignal): Promise<Result<TenantModel, ApiFailure>>;
@@ -85,6 +120,12 @@ export interface HarvestClient extends RegistryClient {
     limit?: number,
     signal?: AbortSignal,
   ): Promise<Result<readonly SourcePostModel[], ApiFailure>>;
+  /** Searches saved posts before paging, with counts over the entire matching source. */
+  querySourcePosts(
+    sourceId: string,
+    query: SourcePostQuery,
+    signal?: AbortSignal,
+  ): Promise<Result<SourcePostPage, ApiFailure>>;
   /** Reads one post with its links, inside the container that holds it. */
   getPost(postId: string, containerId: string, signal?: AbortSignal): Promise<Result<PostModel, ApiFailure>>;
   /** Reads a post's revisions, newest first; empty for a post older than revision tracking. */
@@ -145,7 +186,7 @@ function sourceCapabilities(value: unknown): Result<SourceCapabilitiesModel, Api
     return ResultExtensions.fail(ApiFailureFactory.create('protocol'));
   const row = value as Partial<SourceCapabilitiesModel>;
   const configuration = row.configuration;
-  const kinds = ['capture', 'discover', 'refresh', 'sweep', 'check', 'metrics', 'link', 'intake'];
+  const kinds = ['capture', 'discover', 'harvest', 'process', 'refresh', 'sweep', 'check', 'metrics', 'link', 'intake'];
   return typeof row.sourceId === 'string' &&
     Array.isArray(row.workKinds) &&
     row.workKinds.every((kind) => kinds.includes(kind)) &&
@@ -156,6 +197,37 @@ function sourceCapabilities(value: unknown): Result<SourceCapabilitiesModel, Api
     typeof configuration.scopeSchema === 'object' &&
     !Array.isArray(configuration.scopeSchema)
     ? ResultExtensions.ok(row as SourceCapabilitiesModel)
+    : ResultExtensions.fail(ApiFailureFactory.create('protocol'));
+}
+
+function postPage(value: unknown): Result<SourcePostPage, ApiFailure> {
+  const page = value as Partial<SourcePostPage> | null;
+  const countOf = (value: unknown): value is number =>
+    typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+  const valid =
+    page &&
+    keyed<SourcePostModel>('postId')(page.items).ok &&
+    (page.nextCursor == null || typeof page.nextCursor === 'string') &&
+    countOf(page.total) &&
+    countOf(page.searchTotal) &&
+    countOf(page.defaultPageSize) &&
+    page.defaultPageSize > 0 &&
+    countOf(page.maxPageSize) &&
+    page.maxPageSize >= page.defaultPageSize &&
+    Array.isArray(page.facets) &&
+    page.facets.every(
+      (facet) =>
+        facet &&
+        typeof facet.key === 'string' &&
+        typeof facet.label === 'string' &&
+        Array.isArray(facet.options) &&
+        facet.options.every(
+          (option: { value?: unknown; label?: unknown; count?: unknown }) =>
+            option && typeof option.value === 'string' && typeof option.label === 'string' && countOf(option.count),
+        ),
+    );
+  return valid
+    ? ResultExtensions.ok(page as SourcePostPage)
     : ResultExtensions.fail(ApiFailureFactory.create('protocol'));
 }
 
@@ -174,6 +246,36 @@ export function createHarvestClient(options: RegistryClientOptions = {}): Harves
   const signalOf = (signal?: AbortSignal) => (signal === undefined ? {} : { signal });
   return {
     ...createRegistryClient(options),
+    pipelineStages: {
+      list: (id, signal) =>
+        api.get(`/api/pipelines/${encodeURIComponent(id)}/stages`, {
+          ...signalOf(signal),
+          decode: list<PipelineStageModel>,
+        }),
+      save: (id, body, signal) =>
+        api.put(`/api/pipelines/${encodeURIComponent(id)}/stages`, {
+          body,
+          ...signalOf(signal),
+          decode: (value) =>
+            typeof value === 'boolean'
+              ? ResultExtensions.ok(value)
+              : ResultExtensions.fail(ApiFailureFactory.create('protocol')),
+        }),
+      discoveries: (id, offset, limit, state, signal) =>
+        api.get(`/api/pipelines/${encodeURIComponent(id)}/discoveries`, {
+          query: { offset: String(offset), limit: String(limit), ...(state === undefined ? {} : { state }) },
+          ...signalOf(signal),
+          decode: list<PipelineDiscoveryModel>,
+        }),
+      run: (id, signal) =>
+        api.get(`/api/runs/${encodeURIComponent(id)}`, { ...signalOf(signal), decode: object<RunModel> }),
+      audit: (id, offset, limit, signal, newestFirst) =>
+        api.get(`/api/runs/${encodeURIComponent(id)}/audit`, {
+          query: { offset: String(offset), limit: String(limit), ...(newestFirst ? { newestFirst: 'true' } : {}) },
+          ...signalOf(signal),
+          decode: list<RunAttemptModel>,
+        }),
+    },
     getSourceCapabilities: (id, signal) =>
       api.get(`/api/sources/${encodeURIComponent(id)}/capabilities`, {
         ...signalOf(signal),
@@ -256,6 +358,12 @@ export function createHarvestClient(options: RegistryClientOptions = {}): Harves
         query: { limit: String(limit) },
         ...signalOf(signal),
         decode: keyed<SourcePostModel>('postId'),
+      }),
+    querySourcePosts: (sourceId, body, signal) =>
+      api.post(`/api/sources/${encodeURIComponent(sourceId)}/posts/query`, {
+        body,
+        ...signalOf(signal),
+        decode: postPage,
       }),
     getPost: (postId, containerId, signal) =>
       api.get(`/api/posts/${encodeURIComponent(postId)}`, {

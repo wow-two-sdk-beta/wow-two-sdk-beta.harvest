@@ -10,6 +10,7 @@ import type {
   SourceHealthModel,
   SourceModel,
   SourceOverviewModel,
+  SourcePostQuery,
   SourceSectionOverviewModel,
 } from '@wow-two-beta/fe-harvest/contracts';
 
@@ -272,6 +273,7 @@ export function createDemoHarvestClient(): HarvestClient {
             ],
           },
           prices: [{ raw: '150 000 сум', currency: 'UZS', role: 'ticket', free: false }],
+          text: 'Показ осенних коллекций ташкентских дизайнеров.',
           postedAt: { value: '2026-10-14T09:00:00Z', precision: 'day' },
           ...images(
             poster('#1f4d3a', '#7fae8f', 'Fashion Show Line'),
@@ -403,7 +405,14 @@ export function createDemoHarvestClient(): HarvestClient {
     const sectionRows: SourceSectionOverviewModel[] = own.map((pipeline) => {
       const captureEvery = enabledEvery(pipeline, 'capture');
       const checkEvery = enabledEvery(pipeline, 'check');
-      const harvesting = pipeline.state !== 'paused' && !!captureEvery;
+      const readable = source.state === 'active' && pipeline.state === 'active';
+      const harvesting = readable && !!captureEvery;
+      const harvestKind = readable
+        ? (pipeline.schedules.find((row) => row.kind === 'capture' && row.enabled)?.kind ??
+          (['harvest', 'discover', 'process'] as const).find((kind) =>
+            pipeline.schedules.some((row) => row.kind === kind && !row.stage?.disabled),
+          ))
+        : undefined;
       const last = ownRuns.find((row) => row.pipelineId === pipeline.id);
       const lastCapture = ownRuns.find((row) => row.pipelineId === pipeline.id && row.kind === 'capture');
       const maxPages = Number(pipeline.limits['maxPages']);
@@ -412,6 +421,7 @@ export function createDemoHarvestClient(): HarvestClient {
         name: pipeline.name ?? source.handle,
         ...(pipeline.scope.url ? { url: pipeline.scope.url } : {}),
         harvesting,
+        ...(harvestKind ? { harvestKind } : {}),
         paused: pipeline.state === 'paused',
         ...(captureEvery ? { captureEvery } : {}),
         ...(checkEvery ? { checkEvery } : {}),
@@ -455,6 +465,8 @@ export function createDemoHarvestClient(): HarvestClient {
       handle: source.handle,
       ...(source.groupId ? { groupId: source.groupId } : {}),
       state,
+      sourceState: source.state,
+      permission: source.permission,
       ...(lastHarvest ? { lastHarvest: harvestOf(lastHarvest) } : {}),
       ...(nextHarvestAt ? { nextHarvestAt } : {}),
       newPostsDaily: [...(demo.history ?? Array.from({ length: 13 }, () => 0)), fresh],
@@ -462,6 +474,90 @@ export function createDemoHarvestClient(): HarvestClient {
       health: host,
     };
   };
+
+  const sourcePosts = (itemId: string) =>
+    posts
+      .filter((row) => pipelines.some((pipeline) => pipeline.id === row.pipelineId && pipeline.sourceId === itemId))
+      .map(({ post: row, pipelineId, startsAt, endsAt }) => ({
+        postId: row.id,
+        title: row.base.title,
+        kind: row.base.kind ?? 'post',
+        state: row.state,
+        revision: row.revision,
+        firstSeenAt: row.firstSeenAtUtc,
+        lastChangedAt: row.lastChangedAtUtc,
+        pipelineId,
+        ...(startsAt ? { startsAt } : {}),
+        ...(endsAt ? { endsAt } : {}),
+        ...(row.base.postedAt ? { postedAt: row.base.postedAt.value } : {}),
+        url: row.links[0]?.url,
+        ...(row.base.media?.some((item) => item.kind === 'image')
+          ? { imageUrl: row.base.media.find((item) => item.kind === 'image')!.url }
+          : {}),
+      }));
+
+  function queryPosts(sourceId: string, query: SourcePostQuery) {
+    const search = query.search?.trim().toLowerCase() ?? '';
+    const active = Object.entries(query.filters ?? {});
+    const searched = sourcePosts(sourceId).filter(
+      (post) => (!query.postId || post.postId === query.postId) && (post.title ?? '').toLowerCase().includes(search),
+    );
+    const ageDays = (firstSeenAt: string) => (Date.now() - Date.parse(firstSeenAt)) / 86_400_000;
+    const choices = [
+      {
+        key: 'section',
+        label: 'Harvest section',
+        options: pipelines
+          .filter((p) => p.sourceId === sourceId)
+          .map((p) => ({ value: p.id, label: p.name ?? 'Section' })),
+      },
+      {
+        key: 'kind',
+        label: 'Post type',
+        options: [...new Set(searched.map((post) => post.kind))].map((kind) => ({
+          value: kind,
+          label: kind === 'event' ? 'Events' : 'Others',
+        })),
+      },
+      {
+        key: 'harvested',
+        label: 'First harvested',
+        options: [
+          { value: '1', label: 'Last 24 hours' },
+          { value: '7', label: 'Last 7 days' },
+          { value: '30', label: 'Last 30 days' },
+        ],
+      },
+    ];
+    function match(post: (typeof searched)[number], key: string, value: string) {
+      if (key === 'section') return post.pipelineId === value;
+      if (key === 'kind') return post.kind === value;
+      return key === 'harvested' && ageDays(post.firstSeenAt) <= Number(value);
+    }
+    const hits = searched.filter((post) => active.every(([key, value]) => match(post, key, value)));
+    const offset = Number(query.cursor ?? 0);
+    const limit = query.limit ?? 30;
+    const end = offset + limit;
+    return {
+      items: hits.slice(offset, end),
+      nextCursor: end < hits.length ? String(end) : null,
+      total: hits.length,
+      searchTotal: searched.length,
+      defaultPageSize: 30,
+      maxPageSize: 90,
+      facets: choices.map((facet) => ({
+        ...facet,
+        options: facet.options.map((option) => ({
+          ...option,
+          count: searched.filter(
+            (post) =>
+              match(post, facet.key, option.value) &&
+              active.every(([key, value]) => key === facet.key || match(post, key, value)),
+          ).length,
+        })),
+      })),
+    };
+  }
 
   const reply = (data: unknown) => Response.json({ data });
   const missing = () => Response.json({ title: 'Not found in this demo workspace' }, { status: 404 });
@@ -482,29 +578,7 @@ export function createDemoHarvestClient(): HarvestClient {
       if (resource === 'sources' && itemId === 'overview') return reply(inContainer ? sources.map(overviewOf) : []);
       if (resource === 'sources' && itemId === 'groups') return reply(inContainer ? groups : []);
       if (resource === 'sources' && itemId && path[3] === 'posts')
-        return reply(
-          posts
-            .filter((row) =>
-              pipelines.some((pipeline) => pipeline.id === row.pipelineId && pipeline.sourceId === itemId),
-            )
-            .map(({ post: row, pipelineId, startsAt, endsAt }) => ({
-              postId: row.id,
-              title: row.base.title,
-              kind: row.base.kind ?? 'post',
-              state: row.state,
-              revision: row.revision,
-              firstSeenAt: row.firstSeenAtUtc,
-              lastChangedAt: row.lastChangedAtUtc,
-              pipelineId,
-              ...(startsAt ? { startsAt } : {}),
-              ...(endsAt ? { endsAt } : {}),
-              ...(row.base.postedAt ? { postedAt: row.base.postedAt.value } : {}),
-              url: row.links[0]?.url,
-              ...(row.base.media?.some((item) => item.kind === 'image')
-                ? { imageUrl: row.base.media.find((item) => item.kind === 'image')!.url }
-                : {}),
-            })),
-        );
+        return reply(sourcePosts(itemId).slice(0, Number(url.searchParams.get('limit') ?? 200)));
       if (resource === 'sources' && itemId && path[3] === 'capabilities') {
         const demo = demoOf(itemId);
         return demo
@@ -517,6 +591,7 @@ export function createDemoHarvestClient(): HarvestClient {
                 displayName: demo.group,
                 readiness: 'ready',
                 message: 'This in-memory demo never executes a real harvest.',
+                postView: { showPhotos: true, showSourceText: demo.group === 'Afisha' },
                 scopeSchema: {
                   schema: 'harvest.scope.v1',
                   type: 'object',
@@ -530,6 +605,34 @@ export function createDemoHarvestClient(): HarvestClient {
           : missing();
       }
       if (resource === 'sources') return reply(inContainer ? sources : []);
+      if (resource === 'pipelines' && itemId && path[3] === 'stages') {
+        const pipeline = pipelines.find((row) => row.id === itemId);
+        if (!pipeline) return missing();
+        return reply(
+          (['discover', 'harvest', 'process'] as const).map((kind) => {
+            const schedule = pipeline.schedules.find((row) => row.kind === kind);
+            const operations = {
+              discover: ['fetch', 'parse-response', 'paginate', 'save-discoveries'],
+              harvest: ['fetch', 'parse-response', 'normalize-capture', 'save-capture'],
+              process: ['load-capture', 'deserialize-capture', 'process-capture', 'save-result'],
+            };
+            return {
+              kind,
+              available: pipeline.state === 'active',
+              schedule,
+              options: schedule?.stage ?? { batchSize: kind === 'discover' ? 5 : 20 },
+              operationKeys: operations[kind],
+              ...(kind === 'process' ? { processorKeys: ['saved-reading@1', 'rental-terms@1'] } : {}),
+              ...(kind === 'discover' && pipeline.scope.url
+                ? { catalog: { label: 'Source catalog', url: pipeline.scope.url } }
+                : {}),
+              runs: runs.filter((run) => run.pipelineId === itemId && run.kind === kind),
+            };
+          }),
+        );
+      }
+      if (resource === 'pipelines' && itemId && path[3] === 'discoveries')
+        return pipelines.some((pipeline) => pipeline.id === itemId) ? reply([]) : missing();
       if (resource === 'pipelines') return reply(inContainer ? pipelines : []);
       if (resource === 'posts' && itemId && path[3] === 'revisions') return reply(revisions.get(itemId) ?? []);
       if (resource === 'posts' && itemId) {
@@ -539,6 +642,10 @@ export function createDemoHarvestClient(): HarvestClient {
       if (resource === 'posts') return reply(inContainer ? posts.map((row) => row.post) : []);
       if (resource === 'hosts') return reply([]);
       if (resource === 'runs') {
+        if (itemId) {
+          const row = runs.find((run) => run.id === itemId);
+          return row ? reply(path[3] === 'audit' ? [] : row) : missing();
+        }
         const visible = runs.filter((row) => row.pipelineId === url.searchParams.get('pipelineId'));
         for (const row of visible) {
           if (!['queued', 'running'].includes(row.status)) continue;
@@ -551,7 +658,7 @@ export function createDemoHarvestClient(): HarvestClient {
               : { status: 'completed', finishedAtUtc: now(), captured: 0, discovered: 12, unchanged: 12, pages: 2 },
           );
         }
-        return reply(itemId ? runs.find((row) => row.id === itemId) : visible);
+        return reply(visible);
       }
       if (resource === 'subscriptions' && itemId && path[3] === 'events') {
         if (!subscriptions.some((row) => row.id === itemId)) return missing();
@@ -564,6 +671,8 @@ export function createDemoHarvestClient(): HarvestClient {
       }
       if (resource === 'subscriptions') return reply(subscriptions);
     }
+    if (method === 'POST' && resource === 'sources' && itemId && path[3] === 'posts' && path[4] === 'query')
+      return demoOf(itemId) ? reply(queryPosts(itemId, body)) : missing();
     if (method === 'POST' && resource === 'sources' && itemId === 'groups') {
       const name = String(body.name ?? '').trim();
       const existing = groups.find((group) => group.name.toLowerCase() === name.toLowerCase());
@@ -591,6 +700,10 @@ export function createDemoHarvestClient(): HarvestClient {
       if (typeof body.name === 'string' && body.name.trim()) current.name = body.name.trim();
       if (body.clearGroup) delete current.groupId;
       else if (typeof body.groupId === 'string') current.groupId = body.groupId;
+      if (typeof body.paused === 'boolean') {
+        current.state = body.paused ? 'paused' : 'active';
+        current.stateSinceUtc = now();
+      }
       sources[index] = current;
       return reply(current);
     }
@@ -629,6 +742,24 @@ export function createDemoHarvestClient(): HarvestClient {
     if (resource === 'pipelines' && itemId) {
       const index = pipelines.findIndex((row) => row.id === itemId);
       if (index < 0) return missing();
+      if (method === 'PUT' && path[3] === 'stages') {
+        const current = pipelines[index]!;
+        const schedule = body as Omit<ScheduleModel, 'id'>;
+        const prior = current.schedules.find((row) => row.kind === schedule.kind);
+        const disabled = schedule.stage?.disabled ?? prior?.stage?.disabled;
+        pipelines[index] = {
+          ...current,
+          schedules: [
+            ...current.schedules.filter((row) => row.kind !== schedule.kind),
+            {
+              ...schedule,
+              id: prior?.id ?? id(),
+              ...(schedule.stage && disabled !== undefined ? { stage: { ...schedule.stage, disabled } } : {}),
+            },
+          ],
+        };
+        return reply(true);
+      }
       if (method === 'PUT') {
         const limits = body.limits as { maxPages?: number } | undefined;
         pipelines[index] = {
@@ -644,14 +775,22 @@ export function createDemoHarvestClient(): HarvestClient {
         return reply(pipelines[index]);
       }
       if (method === 'POST' && path[3] === 'pause') {
-        pipelines[index] = { ...pipelines[index]!, state: body.paused ? 'paused' : 'active' };
+        const current = { ...pipelines[index]! };
+        delete current.pauseReason;
+        pipelines[index] = body.paused
+          ? { ...current, state: 'paused', pauseReason: 'operator' }
+          : { ...current, state: 'active' };
         return reply(pipelines[index]);
       }
     }
     if (method === 'POST' && resource === 'runs' && !itemId) {
       const pipeline = pipelines.find((row) => row.id === body.pipelineId);
       if (!pipeline) return missing();
+      if (sources.find((row) => row.id === pipeline.sourceId)?.state !== 'active')
+        return Response.json({ title: 'Enable this source first' }, { status: 409 });
       if (pipeline.state !== 'active') return Response.json({ title: 'Turn this section on first' }, { status: 409 });
+      if (pipeline.schedules.some((row) => row.kind === body.kind && row.stage?.disabled))
+        return Response.json({ title: 'This stage is disabled.' }, { status: 409 });
       const row: RunModel = {
         id: id(),
         containerId: pipeline.containerId,

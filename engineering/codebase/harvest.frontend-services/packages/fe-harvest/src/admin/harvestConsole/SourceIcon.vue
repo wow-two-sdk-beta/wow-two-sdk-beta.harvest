@@ -14,19 +14,27 @@ export const ReadMethodPaths: Record<ReadMethod, string> = {
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { Tooltip } from '@wow-two-beta/fe/presentation/overlays';
 import { imageSrcOf, ReadMethodWords, readMethodOf } from './SourceWords';
 
 /**
  * How a source is read — its website, Telegram, Instagram or a branch — as a glyph on a soft tile. `bare` drops the
- * tile, for a menu row; the title names the method for pointers and assistive technology.
+ * tile for a menu row. Set `decorative` when nearby text already identifies the source type.
  */
 defineOptions({ name: 'SourceIcon' });
 const props = withDefaults(
-  defineProps<{ family: string; faviconUrl?: string; size?: 'xs' | 'sm' | 'md' | 'lg'; bare?: boolean }>(),
+  defineProps<{
+    family: string;
+    faviconUrl?: string;
+    size?: 'xs' | 'sm' | 'md' | 'lg';
+    bare?: boolean;
+    decorative?: boolean;
+  }>(),
   {
     faviconUrl: undefined,
     size: 'md',
     bare: false,
+    decorative: false,
   },
 );
 const method = computed(() => readMethodOf(props.family));
@@ -45,36 +53,39 @@ const Sizes = {
 </script>
 
 <template>
-  <span
-    class="inline-flex shrink-0 items-center justify-center text-primary"
-    :class="props.bare ? '' : ['bg-primary-soft', Sizes[props.size].tile]"
-    :title="ReadMethodWords[method]"
-    v-bind="{ 'data-read-method': method }"
-  >
-    <img
-      v-if="favicon"
-      :key="favicon"
-      :src="favicon"
-      :width="Sizes[props.size].glyph"
-      :height="Sizes[props.size].glyph"
-      alt=""
-      class="object-contain"
-      @error="failed = favicon"
-    />
-    <svg
-      v-else
-      :width="Sizes[props.size].glyph"
-      :height="Sizes[props.size].glyph"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.7"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
+  <Tooltip :content="ReadMethodWords[method]" :is-disabled="props.decorative" :open-delay="200">
+    <span
+      class="inline-flex shrink-0 items-center justify-center text-primary"
+      :class="props.bare ? '' : ['bg-primary-soft', Sizes[props.size].tile]"
+      :tabindex="props.decorative ? undefined : 0"
+      :aria-hidden="props.decorative || undefined"
+      v-bind="{ 'data-read-method': method }"
     >
-      <path :d="ReadMethodPaths[method]" />
-    </svg>
-    <span class="sr-only">{{ ReadMethodWords[method] }}</span>
-  </span>
+      <img
+        v-if="favicon"
+        :key="favicon"
+        :src="favicon"
+        :width="Sizes[props.size].glyph"
+        :height="Sizes[props.size].glyph"
+        alt=""
+        class="object-contain"
+        @error="failed = favicon"
+      />
+      <svg
+        v-else
+        :width="Sizes[props.size].glyph"
+        :height="Sizes[props.size].glyph"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path :d="ReadMethodPaths[method]" />
+      </svg>
+      <span v-if="!props.decorative" class="sr-only">{{ ReadMethodWords[method] }}</span>
+    </span>
+  </Tooltip>
 </template>
