@@ -8,6 +8,14 @@ DELETE FROM harvest_work_item WHERE run_id IN (SELECT id FROM harvest_runs WHERE
 DELETE FROM harvest_runs WHERE kind IN ('harvest','process');
 DELETE FROM harvest_schedules WHERE kind IN ('harvest','process');
 
+-- Older code runs every discover row as legacy discovery: drop the staged schedules and the staged runs still pending.
+DELETE FROM harvest_enumerations WHERE run_id IN (
+    SELECT id FROM harvest_runs WHERE kind = 'discover' AND jsonb_typeof(frozen -> 'stage') = 'object'
+      AND status IN ('queued','running','paused'));
+DELETE FROM harvest_runs WHERE kind = 'discover' AND jsonb_typeof(frozen -> 'stage') = 'object'
+    AND status IN ('queued','running','paused');
+DELETE FROM harvest_schedules WHERE kind = 'discover' AND stage_options IS NOT NULL;
+
 ALTER TABLE harvest_runs
     DROP CONSTRAINT ck_harvest_runs_kind,
     ADD CONSTRAINT ck_harvest_runs_kind

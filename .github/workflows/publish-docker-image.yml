@@ -49,5 +49,5 @@ jobs:
       # Independent frontend package and standalone demo checks.
       frontends: |
         [{"name": "Frontend", "dir": "engineering/codebase/harvest.frontend-services",
-          "scripts": ["lint", "test", "build", "check:package"],
+          "scripts": ["typecheck", "lint", "format:check", "test", "build", "check:package"],
           "paths": ["engineering/codebase/harvest.frontend-services/**"]}]

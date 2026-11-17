@@ -133,6 +133,36 @@ public sealed class MigrationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Rollback_ShouldDropStagedDiscovery_WhichOlderCodeWouldRunAsLegacyDiscovery()
+    {
+        Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None));
+        Guid pool = Guid.NewGuid(), source = Guid.NewGuid(), staged = Guid.NewGuid(), legacy = Guid.NewGuid();
+        Guid pending = Guid.NewGuid(), finished = Guid.NewGuid(), queued = Guid.NewGuid();
+        await ExecuteAsync($$"""
+            INSERT INTO harvest_containers(id,kind,created_at) VALUES('{{pool}}','pool',now());
+            INSERT INTO harvest_sources(id,container_id,family,handle,coverage,completeness,posture,state_since,created_at)
+            VALUES('{{source}}','{{pool}}','site','www.afisha.uz','whole','complete','own_fetch',now(),now());
+            INSERT INTO harvest_pipelines(id,container_id,source_id,scope_key,state,state_since,created_at)
+            VALUES('{{staged}}','{{pool}}','{{source}}','staged','active',now(),now()),
+                  ('{{legacy}}','{{pool}}','{{source}}','legacy','active',now(),now());
+            INSERT INTO harvest_schedules(id,container_id,pipeline_id,kind,mode,created_at,stage_options)
+            VALUES(gen_random_uuid(),'{{pool}}','{{staged}}','discover','manual',now(),'{"batchSize":5}'),
+                  (gen_random_uuid(),'{{pool}}','{{legacy}}','discover','manual',now(),NULL);
+            INSERT INTO harvest_runs(id,container_id,pipeline_id,kind,trigger,scheduled_for,queued_at,status,frozen)
+            VALUES('{{pending}}','{{pool}}','{{staged}}','discover','manual',now(),now(),'queued',jsonb_build_object('stage', jsonb_build_object('batchSize', 5))),
+                  ('{{finished}}','{{pool}}','{{staged}}','discover','manual',now()-interval '1 day',now(),'completed',jsonb_build_object('stage', jsonb_build_object('batchSize', 5))),
+                  ('{{queued}}','{{pool}}','{{legacy}}','discover','manual',now(),now(),'queued','{}');
+            """);
+
+        Unwrap(await Runner.RollbackAsync(targetOrdinal: 7, CancellationToken.None)).Should().Equal("009-step-operations", "008-pipeline-stages");
+
+        (await ScalarAsync<string>("SELECT string_agg(pipeline_id::text, ',') FROM harvest_schedules WHERE kind = 'discover'"))
+            .Should().Be(legacy.ToString());
+        (await ScalarAsync<string>("SELECT string_agg(id::text, ',' ORDER BY queued_at, id) FROM harvest_runs WHERE kind = 'discover'"))
+            .Split(',').Should().BeEquivalentTo(finished.ToString(), queued.ToString());
+    }
+
+    [Fact]
     public async Task ApplyPending_ShouldKeepGroupsInTheirContainerAndUniqueWhateverTheCase_WhenSourceGroupsExist()
     {
         Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None));

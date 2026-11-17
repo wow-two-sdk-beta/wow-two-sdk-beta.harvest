@@ -58,7 +58,7 @@ ChatGPT builds these in the pull order of wow-two-ws `system/sessions/events-int
 |---|---|---|
 | S07 Commit the work in slices and verify v0.2.7 on dev | engineering | spec in `tasks-scfd.md` |
 | S36 Leftovers: the console reads `processorLabels`; a stage-editor gate test | fix | spec in `tasks-scfd.md`; backend shipped, see v0.2 Iteration 4 |
-| S39 Clear the v0.2.7 review's small findings | engineering | spec in `tasks-scfd.md` |
+| S39 Leftovers: Settings says "Harvested by stages"; drop `RequiresGrant` / `AwaitingSourceAccess` | engineering | spec in `tasks-scfd.md`; left to the Codex OLX/AI work, which holds those files |
 | S38 Decide what the marketplace collectors keep about people | decision | spec in `tasks-scfd.md` · needs the developer |
 | S18 Run ANONS, Craftfair, Uzexpocentre and CAEx for Ocharo | product | spec in `tasks-scfd.md` |
 | S08 Carry Ocharo's filter key in the golden contract pages | fix | spec in `tasks-scfd.md` |
