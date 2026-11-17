@@ -11,6 +11,7 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Module.Persistence.Rows;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
 using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
+using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 using WoW.Two.Sdk.Beta.Be.Harvest.Tenants;
 using WoW.Two.Sdk.Beta.Be.Identity.ApiKeys;
 
@@ -19,10 +20,22 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Registration;
 /// <summary>Integrates the registry over the module's store: validates, normalizes and writes the registry tables.</summary>
 /// <remarks>Duplicates are checked before the insert for a readable error, and the unique indexes catch the race.</remarks>
 internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider time, SourceSectionRegistration sections,
-    IServiceProviderIsKeyedService keyedServices) : IRegistrationBroker
+    IServiceProviderIsKeyedService keyedServices, IEnumerable<ISourceAdapter> adapters) : IRegistrationBroker
 {
     /// <summary>Holds PostgreSQL's unique-violation state.</summary>
     private const string UniqueViolation = "23505";
+
+    private async Task<Result> ValidateSourcePipelineAsync(SourceRow source, PipelineScope scope, PipelineLimits limits,
+        CancellationToken ct)
+    {
+        var checkPolicy = source.CheckPolicyId is { } id
+            ? await db.CheckPolicies.AsNoTracking().Where(policy => policy.Id == id).Select(policy => policy.Key).SingleOrDefaultAsync(ct)
+            : null;
+        SourceModel model = source.ToModel(checkPolicy);
+        return adapters.LastOrDefault(adapter => adapter.Serves(model)) is ISourcePipelineValidator validator
+            ? validator.ValidatePipeline(model, scope, limits) : Result.Ok();
+    }
+
 
     /// <summary>Mints Harvest-shaped secrets with core's factory, independent of any key scheme the host registers.</summary>
     private static readonly ApiKeySecretFactory Secrets = new(Options.Create(new ApiKeyOptions
@@ -393,6 +406,9 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
         var (scopeKey, scopeError) = RegistrationRules.CanonicalScopeKey(declaration.Scope);
         if (scopeError is not null)
             return Result<PipelineModel>.Fail(scopeError);
+        if (await ValidateSourcePipelineAsync(source, declaration.Scope ?? new(), declaration.Limits, cancellationToken)
+            is Result.Failure { Error: var adapterError })
+            return Result<PipelineModel>.Fail(adapterError);
         if (await db.Pipelines.AnyAsync(
                 row => row.ContainerId == declaration.ContainerId && row.SourceId == declaration.SourceId && row.ScopeKey == scopeKey,
                 cancellationToken))
@@ -473,6 +489,9 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
         var (limits, limitsError) = RegistrationRules.MergeLimits(StoreJson.Read(pipeline.Limits, new PipelineLimits()), update.Limits);
         if (limitsError is not null)
             return Result<PipelineModel>.Fail(limitsError);
+        if (await ValidateSourcePipelineAsync(source, update.Scope, limits, cancellationToken)
+            is Result.Failure { Error: var adapterError })
+            return Result<PipelineModel>.Fail(adapterError);
         if (await db.Pipelines.AnyAsync(row => row.Id != pipelineId && row.ContainerId == pipeline.ContainerId
                 && row.SourceId == pipeline.SourceId && row.ScopeKey == scopeKey, cancellationToken))
             return Result<PipelineModel>.Fail(RegistrationErrors.PipelineExists(scopeKey!));

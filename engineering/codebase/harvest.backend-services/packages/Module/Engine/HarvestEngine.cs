@@ -122,7 +122,7 @@ public sealed class HarvestEngine(
         }
         using HttpClient http = clients.CreateClient();
         var context = new EngineStepContext(claim.Plan, claim.Frozen.Source, http, challenges, clock,
-            renderers.FirstOrDefault(), claim.Frozen.Pipeline.Scope, trace);
+            renderers.FirstOrDefault(), claim.Frozen.Pipeline.Scope, trace) { Limits = claim.Frozen.Pipeline.Limits };
         StepResult result;
         var readings = new List<(Capture Capture, PostEnvelope Envelope)>();
         try

@@ -9,10 +9,12 @@ namespace HarvestSources.Api.Ocharo;
 /// <summary>Answers <c>ocharo setup</c>: the same idempotent setup as <c>POST api/ocharo/sources/setup</c>, run on the
 /// deployed host's services, so a platform job provisions Ocharo's tenant and subscriptions with no operator token.</summary>
 /// <remarks>
-///   - <c>ocharo setup [--group &lt;id&gt;]... [--tenant &lt;slug&gt;] [--schedules] [--run]</c>; each <c>--group</c>
+///   - <c>ocharo setup [--group &lt;id&gt;]... [--tenant &lt;slug&gt;] [--instagram] [--schedules] [--run]</c>; each <c>--group</c>
 ///     selects a publisher from the registry, and none selects every publisher with a collector; <c>--tenant</c> names
 ///     the owning tenant, <c>ocharo</c> by default, such as a second tenant for an isolation check
-///   - <c>--schedules</c> enables the registry cadences, on existing pipelines too, keeping a tuned interval; <c>--run</c> queues one bounded capture run per pipeline
+///   - <c>--instagram</c> includes the registry's supported Instagram routes, keeping their schedules off; it cannot
+///     be combined with <c>--refresh</c>, because Instagram captures recent media and does not refresh known posts
+///   - <c>--schedules</c> enables the other registry cadences, on existing pipelines too, keeping a tuned interval; <c>--run</c> queues one bounded capture run per pipeline
 ///     for the running worker; <c>--refresh</c> queues one refresh run per pipeline, which re-reads every known post so
 ///     a changed reader emits new revisions
 ///   - stderr carries the report; the last stdout line is one JSON object with the tenant, container, subscriptions
@@ -27,7 +29,7 @@ public static class OcharoSetupVerb
     /// <summary>Holds the verb's name, the first process argument.</summary>
     public const string Name = "ocharo";
 
-    private const string Usage = "Usage: ocharo setup [--group <id>]... [--tenant <slug>] [--schedules] [--run] [--refresh]\n"
+    private const string Usage = "Usage: ocharo setup [--group <id>]... [--tenant <slug>] [--instagram] [--schedules] [--run] [--refresh]\n"
         + "       ocharo status [--group <id>]... [--tenant <slug>]";
 
     /// <summary>Runs the verb over the host's services.</summary>
@@ -42,9 +44,14 @@ public static class OcharoSetupVerb
     {
         if (arguments is ["status", ..])
             return await StatusAsync(services, arguments, output, error, ct);
-        if (!TryParse(arguments, out var groups, out var tenant, out var schedules, out var kinds))
+        if (!TryParse(arguments, out var groups, out var tenant, out var schedules, out var includeInstagram, out var kinds))
         {
             await error.WriteLineAsync(Usage);
+            return 2;
+        }
+        if (includeInstagram && kinds.Contains(WorkKind.Refresh))
+        {
+            await error.WriteLineAsync("ocharo setup: --instagram cannot be combined with --refresh. Use --run for a bounded recent-media capture.");
             return 2;
         }
 
@@ -55,7 +62,7 @@ public static class OcharoSetupVerb
             return 1;
         }
 
-        var setup = await provisioner.EnsureAsync(schedules, ct, includeInstagram: false, groups.Count == 0 ? null : groups, tenant);
+        var setup = await provisioner.EnsureAsync(schedules, ct, includeInstagram, groups.Count == 0 ? null : groups, tenant);
         if (setup is not Result<OcharoSetup>.Success { Value: var value })
         {
             await error.WriteLineAsync("ocharo setup refused: " + ((Result<OcharoSetup>.Failure)setup).Error.Message);
@@ -177,11 +184,12 @@ public static class OcharoSetupVerb
     private static string Snake<TEnum>(TEnum value) where TEnum : struct, Enum => JsonNamingPolicy.SnakeCaseLower.ConvertName(value.ToString());
 
     private static bool TryParse(IReadOnlyList<string> arguments, out List<string> groups, out string tenant, out bool schedules,
-        out List<WorkKind> kinds)
+        out bool includeInstagram, out List<WorkKind> kinds)
     {
         groups = [];
         tenant = OcharoSourceProvisioner.DefaultTenantSlug;
         schedules = false;
+        includeInstagram = false;
         kinds = [];
         if (arguments is not ["setup", ..])
             return false;
@@ -197,6 +205,9 @@ public static class OcharoSetupVerb
                     break;
                 case "--schedules":
                     schedules = true;
+                    break;
+                case "--instagram":
+                    includeInstagram = true;
                     break;
                 case "--run" when !kinds.Contains(WorkKind.Capture):
                     kinds.Add(WorkKind.Capture);

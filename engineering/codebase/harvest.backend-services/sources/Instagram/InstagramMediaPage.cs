@@ -12,7 +12,7 @@ public sealed record InstagramMediaPage
     public IReadOnlyList<JsonElement> Media { get; init; } = [];
     /// <summary>Gets the opaque cursor, extracted independently of the provider's next URL.</summary>
     public string? After { get; init; }
-    /// <summary>Gets the actual credential-free Graph request URL for transport provenance.</summary>
+    /// <summary>Gets the Graph endpoint for transport provenance, without query fields, credentials or cursors.</summary>
     public string? RequestUrl { get; init; }
     /// <summary>Gets the actual HTTP status, absent for a fixture or an unavailable capability.</summary>
     public int? HttpStatus { get; init; }

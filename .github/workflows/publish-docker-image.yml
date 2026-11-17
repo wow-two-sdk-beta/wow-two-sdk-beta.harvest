@@ -43,6 +43,7 @@ jobs:
                     "engineering/deployment/deploy.yml"]},
          {"name": "Release scripts", "timeout": 10,
           "run": ["bash engineering/scripts/test-next-version.sh",
+                  "bash engineering/scripts/test-verify-release-packages.sh",
                   "command -v shellcheck >/dev/null || sudo apt-get install --yes --no-install-recommends shellcheck",
                   "shellcheck engineering/scripts/*.sh"],
           "paths": ["engineering/scripts/**"]}]

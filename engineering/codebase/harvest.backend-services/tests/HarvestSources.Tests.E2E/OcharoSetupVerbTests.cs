@@ -38,6 +38,47 @@ public sealed class OcharoSetupVerbTests
     }
 
     [Fact]
+    public async Task Instagram_is_explicit_idempotent_and_keeps_schedules_off_when_capture_is_queued()
+    {
+        await using var host = await StartAsync();
+
+        (await Run(host.Services, ["setup", "--group", "teplo"])).Exit.Should().Be(1);
+        var first = await Run(host.Services, ["setup", "--group", "teplo", "--instagram", "--schedules", "--run"]);
+        var again = await Run(host.Services, ["setup", "--group", "teplo", "--instagram", "--schedules"]);
+
+        first.Exit.Should().Be(0, first.Error);
+        again.Exit.Should().Be(0, again.Error);
+        using var firstJson = JsonDocument.Parse(first.Output.TrimEnd().Split('\n')[^1]);
+        using var againJson = JsonDocument.Parse(again.Output.TrimEnd().Split('\n')[^1]);
+        var subscriptions = firstJson.RootElement.GetProperty("subscriptions").EnumerateArray().ToArray();
+        subscriptions.Should().HaveCount(2).And.OnlyContain(item => item.GetProperty("groupId").GetString() == "teplo");
+        firstJson.RootElement.GetProperty("runs").GetArrayLength().Should().Be(2);
+        againJson.RootElement.GetProperty("runs").GetArrayLength().Should().Be(0);
+        againJson.RootElement.GetProperty("subscriptions").EnumerateArray().Select(item => item.GetProperty("pipelineId").GetGuid())
+            .Should().BeEquivalentTo(subscriptions.Select(item => item.GetProperty("pipelineId").GetGuid()));
+        using var scope = host.Services.CreateScope();
+        var registry = scope.ServiceProvider.GetRequiredService<IRegistrationBroker>();
+        foreach (JsonElement subscription in subscriptions)
+        {
+            var pipeline = Assert.IsType<Result<PipelineModel>.Success>(
+                await registry.GetPipelineAsync(subscription.GetProperty("pipelineId").GetGuid())).Value;
+            pipeline.Schedules.Should().OnlyContain(schedule => !schedule.Enabled);
+        }
+    }
+
+    [Fact]
+    public async Task Instagram_refresh_is_rejected_before_resolving_or_mutating_services()
+    {
+        await using var services = new ServiceCollection().BuildServiceProvider();
+
+        var result = await Run(services, ["setup", "--instagram", "--run", "--refresh"]);
+
+        result.Exit.Should().Be(2);
+        result.Error.Should().Contain("--instagram cannot be combined with --refresh");
+        result.Output.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task Setup_with_refresh_queues_one_refresh_run_per_pipeline()
     {
         await using var host = await StartAsync();

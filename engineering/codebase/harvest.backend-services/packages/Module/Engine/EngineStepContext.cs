@@ -19,6 +19,8 @@ internal sealed class EngineStepContext(
 {
     public ResolvedPlan Plan { get; } = plan;
     public SourceModel Source { get; } = source;
+    public PipelineScope Scope { get; } = scope;
+    public PipelineLimits Limits { get; init; } = new();
     public HttpClient Http { get; } = http;
     public IChallengeDetector Challenges { get; } = challenges;
     public TimeProvider Clock { get; } = clock;
@@ -26,7 +28,7 @@ internal sealed class EngineStepContext(
     internal List<StepSignal> Signals { get; } = [];
 
     public bool AllowsDestination(Uri destination) =>
-        !scope.RestrictToPath || RunPlanner.InScope(destination.AbsoluteUri, Source, scope);
+        !Scope.RestrictToPath || RunPlanner.InScope(destination.AbsoluteUri, Source, Scope);
 
     public Task<T> RunOperationAsync<T>(string key, Func<Task<T>> execute, Func<T, StepOperationResult>? describe = null)
         => trace.RunAsync(key, execute, describe);

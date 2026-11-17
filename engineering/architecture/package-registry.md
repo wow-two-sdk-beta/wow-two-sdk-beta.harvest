@@ -29,13 +29,13 @@ Not packable (`Directory.Build.props` by path: XML docs and warnings as errors, 
 | `HarvestAdapters.Olx` | saved-filter catalogs, stable ad identities, listing fields and availability evidence | Abstractions, AngleSharp |
 | `HarvestAdapters.BirBir` | apartment rental discovery, stable ad identity and typed listing fields | Abstractions, AngleSharp |
 | `HarvestAdapters.Joymee` | rental catalog discovery, JSON detail captures and typed listing fields | Abstractions |
-| `HarvestAdapters.Instagram` | official Business Discovery recent-media client and source broker | Abstractions, core |
+| `HarvestAdapters.Instagram` | persisted publisher validation, capture broker and pipeline mapping over the reusable core Instagram client | Abstractions, core |
 | `HarvestAdapters.Integrations` | proxy/IP lease, supplied sessions, 2Captcha client | Abstractions, core |
 | `HarvestAdapters.Module` | Ocharo registry, source composition, filtering and explicit setup; the marketplace | the source projects, Module, core |
 
 ## Pins
 
-- Core pin: `BackendSdkVersion` `10.0.111-beta`; Identity `10.0.30-beta` supplies API-key auth and the BFF client.
+- Core pin: `BackendSdkVersion` `10.0.113-beta`; Identity `10.0.30-beta` supplies API-key auth and the BFF client.
 - The Client takes client-credentials tokens through the be sdk's `Http.Auth`; `Harvest.Tests.Unit` uses Identity's
   `FakeTokenIssuer`.
 - The console uses the frontend SDK's `AuthProvider`, BFF strategy, request scope and CSRF transport.

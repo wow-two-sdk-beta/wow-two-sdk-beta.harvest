@@ -16,30 +16,31 @@ public static partial class InstagramCaptureReader
     /// <param name="capturedAt">The capture clock.</param>
     public static Capture? Read(JsonElement record, string username, string profileUrl, DateTimeOffset capturedAt)
     {
-        string? id = InstagramBusinessDiscoveryClient.Text(record, "id");
-        string? rawUrl = InstagramBusinessDiscoveryClient.Text(record, "permalink");
+        string? id = InstagramConfiguration.Text(record, "id");
+        string? rawUrl = InstagramConfiguration.Text(record, "permalink");
         if (id is null || !MediaId().IsMatch(id) || !Uri.TryCreate(rawUrl, UriKind.Absolute, out var uri)
             || uri.Scheme != "https" || !uri.IsDefaultPort || uri.UserInfo.Length > 0
             || uri.IdnHost is not ("www.instagram.com" or "instagram.com") || !Permalink().IsMatch(uri.AbsolutePath))
             return null;
         string url = new UriBuilder(uri) { Query = "", Fragment = "" }.Uri.AbsoluteUri;
-        string caption = InstagramBusinessDiscoveryClient.Text(record, "caption") ?? "";
-        string type = InstagramBusinessDiscoveryClient.Text(record, "media_type") ?? "UNKNOWN";
+        string caption = InstagramConfiguration.Text(record, "caption") ?? "";
+        string type = InstagramConfiguration.Text(record, "media_type") ?? "UNKNOWN";
         string title = caption.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim() ?? $"@{username} · {id}";
         if (title.Length > 240) title = title[..240];
         bool announcement = Announcement().IsMatch(caption) && !Retrospective().IsMatch(caption);
         var children = new List<string>();
         var media = new List<CaptureMedia>();
-        AddMedia(record, media);
+        if (type != "CAROUSEL_ALBUM") AddMedia(record, media);
         if (record.TryGetProperty("children", out JsonElement gallery) && gallery.ValueKind == JsonValueKind.Object
             && gallery.TryGetProperty("data", out JsonElement data) && data.ValueKind == JsonValueKind.Array)
             foreach (var child in data.EnumerateArray().Take(20))
             {
-                if (InstagramBusinessDiscoveryClient.Text(child, "id") is { } childId && MediaId().IsMatch(childId))
+                if (InstagramConfiguration.Text(child, "id") is { } childId && MediaId().IsMatch(childId))
                     children.Add(childId);
                 AddMedia(child, media);
             }
-        string? publishedText = InstagramBusinessDiscoveryClient.Text(record, "timestamp");
+        if (media.Count == 0) AddMedia(record, media);
+        string? publishedText = InstagramConfiguration.Text(record, "timestamp");
         DateTimeOffset? published = DateTimeOffset.TryParse(publishedText, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed)
             ? parsed.ToUniversalTime() : null;
         // Stable content identity ignores engagement counts and expiring CDN URL signatures.
@@ -73,12 +74,15 @@ public static partial class InstagramCaptureReader
 
     private static void AddMedia(JsonElement node, List<CaptureMedia> media)
     {
-        string? value = InstagramBusinessDiscoveryClient.Text(node, "media_url");
+        string? value = InstagramConfiguration.Text(node, "media_url");
+        bool thumbnail = value is null;
+        value ??= InstagramConfiguration.Text(node, "thumbnail_url");
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.Scheme != "https" || !uri.IsDefaultPort || uri.UserInfo.Length > 0
             || !(uri.IdnHost.EndsWith(".cdninstagram.com", StringComparison.OrdinalIgnoreCase) || uri.IdnHost.EndsWith(".fbcdn.net", StringComparison.OrdinalIgnoreCase))
             || uri.Query.Contains("access_token", StringComparison.OrdinalIgnoreCase))
             return;
-        media.Add(new() { Url = uri.AbsoluteUri, Kind = InstagramBusinessDiscoveryClient.Text(node, "media_type") == "VIDEO" ? MediaKind.Video : MediaKind.Image, Position = media.Count });
+        if (media.Any(item => item.Url == uri.AbsoluteUri)) return;
+        media.Add(new() { Url = uri.AbsoluteUri, Kind = !thumbnail && InstagramConfiguration.Text(node, "media_type") == "VIDEO" ? MediaKind.Video : MediaKind.Image, Position = media.Count });
     }
 
     [GeneratedRegex(@"^[0-9]{1,40}$", RegexOptions.CultureInvariant)]

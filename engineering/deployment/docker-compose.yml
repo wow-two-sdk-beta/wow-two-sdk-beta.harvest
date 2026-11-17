@@ -46,7 +46,9 @@ services:
       HarvestIntegrations__OlxProxy__Username: ${HARVEST_OLX_PROXY_USERNAME:-}
       HarvestIntegrations__OlxProxy__Password: ${HARVEST_OLX_PROXY_PASSWORD:-}
       HarvestIntegrations__Captcha__Enabled: "false"
-      HarvestInstagram__Enabled: "false"
+      HarvestInstagram__AccessToken: ${HARVEST_INSTAGRAM_ACCESS_TOKEN:-}
+      HarvestInstagram__ProfessionalAccountId: ${HARVEST_INSTAGRAM_PROFESSIONAL_ACCOUNT_ID:-}
+      HarvestInstagram__ApiVersion: ${HARVEST_INSTAGRAM_API_VERSION:-}
     depends_on:
       database:
         condition: service_healthy

@@ -1,28 +1,51 @@
 using Microsoft.Extensions.Options;
+using System.Text.Json;
+using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
+using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
 using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 
 namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Instagram;
 
 /// <summary>Declares bounded recent-media collection for saved professional publisher profile URLs.</summary>
-public sealed class InstagramSourceAdapter(IOptions<InstagramOptions>? options = null) : ISourceAdapter, ISourceConfigurationProvider
+public sealed class InstagramSourceAdapter(IOptions<InstagramOptions>? options = null) : ISourceAdapter, ISourceConfigurationProvider, ISourcePipelineValidator
 {
     /// <inheritdoc />
     public SourceConfigurationModel DescribeConfiguration(SourceModel source)
     {
         InstagramOptions settings = options?.Value ?? new();
-        bool configured = InstagramBusinessDiscoveryClient.HasValidConfiguration(settings)
-            && settings.AllowedUsernames is { Length: > 0 }
-            && settings.AllowedUsernames.All(name => name is not null && InstagramBusinessDiscoveryClient.Username().IsMatch(name));
+        bool configured = Serves(source) && InstagramConfiguration.IsValid(settings);
         return new()
         {
             DisplayName = "Instagram professional publishers",
             Readiness = configured ? SourceReadiness.Ready : SourceReadiness.ConfigurationRequired,
             Message = configured ? "Local API configuration is present; publisher access is checked during execution."
-                : "An operator must enable the API connection, credentials, API version and publisher allowlist.",
-            ScopeSchema = SourceScopeSchemas.WebUrl("Save the profile URL of a publisher approved by this runtime."),
+                : "An operator must configure the Meta connection's token, professional account ID and API version.",
+            ScopeSchema = JsonSerializer.SerializeToElement(new
+            {
+                schema = "harvest.scope.v1", type = "object",
+                properties = new { url = new { type = "string", format = "uri", title = "Publisher profile URL",
+                    description = "Save the public Instagram profile URL of an approved professional publisher." } },
+                required = new[] { "url" }, additionalProperties = false,
+                limits = new
+                {
+                    pageSize = new { minimum = 1, maximum = 50, @default = 25, title = "Posts per page" },
+                    maxPages = new { minimum = 1, maximum = PipelineConstants.MaxPagesOnUpdate, @default = 4, title = "Pages per run" },
+                },
+            }),
         };
+    }
+
+    /// <inheritdoc />
+    public Result ValidatePipeline(SourceModel source, PipelineScope scope, PipelineLimits limits)
+    {
+        if (!Serves(source) || !InstagramPublishers.TryReadProfile(scope.Url, out _, out var profile)
+            || new Uri(profile).IdnHost != source.Handle || scope.RestrictToPath || scope.Parameters.Count > 0)
+            return Result.Fail(RegistrationErrors.Invalid("Instagram pipelines require a public publisher profile URL on the source host, without query overrides or path restriction."));
+        if (limits.PageSize is < 1 or > 50 || limits.MaxPages is < 1 or > PipelineConstants.MaxPagesCap)
+            return Result.Fail(RegistrationErrors.Invalid("Instagram page size must be 1–50 and the run page limit 1–100."));
+        return Result.Ok();
     }
 
     /// <summary>The stable private adapter key.</summary>
@@ -39,7 +62,7 @@ public sealed class InstagramSourceAdapter(IOptions<InstagramOptions>? options =
         Steps = [new() { Key = "enumerate", Role = StepRole.Enumerate, Requires = new() { MinDelay = TimeSpan.FromSeconds(5) } }],
         Plans = new Dictionary<WorkKind, IReadOnlyList<string>>
         {
-            [WorkKind.Capture] = ["enumerate"], [WorkKind.Discover] = ["enumerate"], [WorkKind.Sweep] = ["enumerate"],
+            [WorkKind.Capture] = ["enumerate"], [WorkKind.Sweep] = ["enumerate"],
         },
     };
 }

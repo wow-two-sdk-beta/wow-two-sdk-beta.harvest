@@ -37,7 +37,7 @@ public sealed class OcharoPipelineTests
         services.AddHarvestEngine();
         services.AddOcharoEventSources();
         services.AddHarvestInstagram();
-        services.AddSingleton<IInstagramMediaClient, InstagramFixtureClient>();
+        services.AddSingleton<IInstagramMediaBroker, InstagramFixtureClient>();
         await using var provider = services.BuildServiceProvider(validateScopes: true);
         await provider.MigrateHarvestOnStartupAsync("instagram-fixture");
         await using var scope = provider.CreateAsyncScope();
@@ -106,9 +106,9 @@ public sealed class OcharoPipelineTests
         fetcher.Calls.Should().NotContain(url => url.Contains("/api/"));
     }
 
-    private sealed class InstagramFixtureClient : IInstagramMediaClient
+    private sealed class InstagramFixtureClient : IInstagramMediaBroker
     {
-        public Task<InstagramMediaPage> ReadAsync(string username, string? after = null, CancellationToken cancellationToken = default) =>
+        public Task<InstagramMediaPage> ReadAsync(string username, int pageSize = 25, string? after = null, CancellationToken cancellationToken = default) =>
             Task.FromResult(new InstagramMediaPage
             {
                 Outcome = FetchOutcome.Ok, Usage = new() { Requests = 1, Bytes = 200 },

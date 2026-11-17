@@ -12,6 +12,24 @@ namespace HarvestAdapters.Tests.Unit.Instagram;
 public sealed class InstagramCaptureTests
 {
     [Fact]
+    public void Carousel_uses_children_once_and_preserves_available_video_previews()
+    {
+        var record = JsonSerializer.SerializeToElement(new
+        {
+            id = "123", permalink = "https://www.instagram.com/p/Carousel/", media_type = "CAROUSEL_ALBUM",
+            media_url = "https://scontent.cdninstagram.com/first.jpg",
+            children = new { data = new object[]
+            {
+                new { id = "124", media_type = "IMAGE", media_url = "https://scontent.cdninstagram.com/first.jpg" },
+                new { id = "125", media_type = "VIDEO", thumbnail_url = "https://scontent.cdninstagram.com/preview.jpg" },
+            } },
+        });
+        var capture = InstagramCaptureReader.Read(record, "publisher", "https://www.instagram.com/publisher/", DateTimeOffset.UtcNow)!;
+        capture.Media.Select(media => media.Url).Should().Equal("https://scontent.cdninstagram.com/first.jpg", "https://scontent.cdninstagram.com/preview.jpg");
+        capture.Media.Select(media => media.Position).Should().Equal(0, 1);
+    }
+
+    [Fact]
     public async Task Captions_preserve_post_time_without_inventing_event_dates_and_need_Ocharo_review()
     {
         var capture = InstagramCaptureReader.Read(Media("Open call for designers: Fashion Week Tashkent. Applications open.", 5),

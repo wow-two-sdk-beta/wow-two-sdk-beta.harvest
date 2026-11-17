@@ -21,8 +21,15 @@ export interface PipelineUpdate {
   readonly name?: string;
   readonly scope: PipelineModel['scope'];
   readonly schedules: readonly Omit<ScheduleModel, 'id' | 'nextDueAtUtc'>[];
-  /** The page limit, 1 to 50; omitted, the saved limits stay. */
-  readonly limits?: { readonly maxPages: number };
+  /** Only supplied values change; omitted values keep their saved limits. */
+  readonly limits?: Pick<PipelineLimits, 'maxPages' | 'pageSize'>;
+}
+
+/** Stored run bounds; adapters may impose narrower ranges through their scope schema. */
+export interface PipelineLimits {
+  readonly maxPages?: number;
+  readonly pageSize?: number;
+  readonly [key: string]: number | string | undefined;
 }
 
 /** Mirrors `PipelineModel`: a standing harvest of a source, identified by container, source and scope key. */
@@ -42,7 +49,7 @@ export interface PipelineModel {
   readonly pauseReason?: PipelinePauseReason;
   readonly pinned: boolean;
   readonly ai: AiMode;
-  readonly limits: Readonly<Record<string, number | string>>;
+  readonly limits: PipelineLimits;
   readonly steps: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
   readonly schedules: readonly ScheduleModel[];
   readonly createdAtUtc: string;

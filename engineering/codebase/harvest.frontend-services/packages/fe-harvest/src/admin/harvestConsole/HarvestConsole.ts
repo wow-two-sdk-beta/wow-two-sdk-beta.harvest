@@ -670,6 +670,45 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
     return mutate((api, signal) => api.updatePipeline(id, update, signal), 'Section saved.');
   }
 
+  /** Saves a custom URL as a pinned pipeline without starting or scheduling a harvest. */
+  async function declareCustomPipeline(sourceId: string, url: string, limits: PipelineUpdate['limits']) {
+    if (!canOperate.value || !canWrite('pipelines:manage') || !containerId.value) return undefined;
+    const profileUrl = url.trim();
+    let name = profileUrl;
+    try {
+      const path = new URL(profileUrl).pathname.replace(/^\/+|\/+$/g, '');
+      if (path) name = decodeURIComponent(path);
+    } catch {
+      // Registration still validates the original URL; its label falls back to the supplied address.
+    }
+    let created: PipelineModel | undefined;
+    await mutate(async (api, signal) => {
+      const result = await api.declarePipeline(
+        {
+          containerId: containerId.value,
+          sourceId,
+          name: name.slice(0, 200),
+          scope: { url: profileUrl, restrictToPath: false, parameters: {} },
+          limits,
+          pinned: true,
+          ai: 'off',
+          schedules: [],
+        },
+        signal,
+      );
+      if (result.ok && !signal.aborted) created = result.value;
+      return result;
+    }, 'Profile saved. No harvest is scheduled.');
+    return created;
+  }
+
+  /** Changes run bounds without changing the saved identity, scope or schedules. */
+  function savePipelineLimits(id: string, limits: NonNullable<PipelineUpdate['limits']>) {
+    const pipeline = pipelineOf(id);
+    if (!pipeline || !canOperate.value || !canWrite('pipelines:manage')) return Promise.resolve(false);
+    return savePipeline(id, { ...updateOf(pipeline), limits });
+  }
+
   function startRun(pipelineId: string, kind: WorkKind = 'capture') {
     return mutate((api, signal) => api.startRun(pipelineId, kind, signal), 'Harvest queued.');
   }
@@ -1006,7 +1045,9 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
     createPool,
     registerTenant,
     declarePipeline,
+    declareCustomPipeline,
     savePipeline,
+    savePipelineLimits,
     startRun,
     cancelRun,
     setPipelinePaused,

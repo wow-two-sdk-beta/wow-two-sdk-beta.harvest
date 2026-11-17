@@ -1,5 +1,6 @@
 using WoW.Two.Sdk.Beta.Be.Harvest.Capabilities.Challenges;
 using WoW.Two.Sdk.Beta.Be.Harvest.Capabilities.Rendering;
+using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Steps;
@@ -15,6 +16,12 @@ public interface IStepContext
 
     /// <summary>Gets the source the step reads.</summary>
     SourceModel Source { get; }
+
+    /// <summary>Gets the pipeline's saved publisher or filter scope, frozen when the run was queued.</summary>
+    PipelineScope Scope => new();
+
+    /// <summary>Gets the pipeline's run limits, frozen when the run was queued.</summary>
+    PipelineLimits Limits => new();
 
     /// <summary>Gets a direct client under Harvest's user agent with the run's anonymous cookie jar; the caller does not
     /// dispose it.</summary>

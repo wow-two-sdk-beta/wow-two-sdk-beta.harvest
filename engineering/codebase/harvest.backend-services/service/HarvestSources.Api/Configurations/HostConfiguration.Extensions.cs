@@ -36,11 +36,7 @@ public static partial class HostConfiguration
         builder.Services.AddHarvestIntegrations();
         builder.Services.AddValidatedSettings<HarvestIntegrationOptions>(builder.Configuration, "HarvestIntegrations", static _ => { });
         builder.Services.AddHarvestInstagram();
-        builder.Services.AddValidatedSettings<InstagramOptions>(builder.Configuration, "HarvestInstagram", rules => rules
-            .Validate(options => !options.Enabled || options.PageSize is >= 1 and <= 50
-                && options.MaximumPages is >= 1 and <= 20 && options.MaximumResponseBytes is >= 1024 and <= 8 * 1024 * 1024
-                && options.Timeout > TimeSpan.Zero && options.Timeout <= TimeSpan.FromMinutes(1),
-                "Enabled Instagram collection requires valid page, byte and timeout limits."));
+        builder.Services.AddValidatedSettings<InstagramOptions>(builder.Configuration, "HarvestInstagram", static _ => { });
         return builder;
     }
 

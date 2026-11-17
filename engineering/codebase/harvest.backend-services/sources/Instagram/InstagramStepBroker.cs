@@ -1,43 +1,46 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using Microsoft.Extensions.Options;
+using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Readers;
 using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 
 namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Instagram;
 
 /// <summary>Enumerates approved profile media. Continuation targets are internal work identifiers, never fetched web URLs.</summary>
-public sealed class InstagramStepBroker(IInstagramMediaClient client, IOptions<InstagramOptions> options) : IStepBroker
+public sealed class InstagramStepBroker(IInstagramMediaBroker broker) : IStepBroker
 {
     /// <inheritdoc />
     public string AdapterKey => InstagramSourceAdapter.AdapterKey;
     /// <inheritdoc />
     public string StepKey => "enumerate";
     /// <inheritdoc />
-    public IReadOnlyList<string> OperationKeys => ["prepare-authentication", "fetch", "deserialize-response", "paginate"];
+    public IReadOnlyList<string> OperationKeys => ["prepare-authentication", "fetch", "map-response", "paginate"];
     /// <inheritdoc />
     public async Task<StepResult> ExecuteAsync(StepItem item, IStepContext context, CancellationToken cancellationToken = default)
     {
-        if (!Uri.TryCreate(item.Target, UriKind.Absolute, out var uri) || uri.Scheme != "https" || !uri.IsDefaultPort
-            || uri.UserInfo.Length > 0 || uri.IdnHost is not ("www.instagram.com" or "instagram.com"))
-            return new() { Outcome = FetchOutcome.NotApproved, Message = "Use an HTTPS Instagram publisher profile URL." };
-        string[] segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (segments.Length != 1 || !InstagramBusinessDiscoveryClient.Username().IsMatch(segments[0])
-            || segments[0] is "p" or "reel" or "explore" or "stories" or "accounts")
-            return new() { Outcome = FetchOutcome.Unrecognized, Message = "A publisher profile URL is required, rather than a post, hashtag or story URL." };
-        string username = segments[0].ToLowerInvariant();
-        string profile = $"https://{uri.IdnHost}/{username}/";
+        if (!InstagramPublishers.TryReadProfile(context.Scope.Url, out string username, out string profile)
+            || context.Scope.Parameters.Count > 0 || context.Scope.RestrictToPath
+            || !Uri.TryCreate(item.Target, UriKind.Absolute, out var uri) || uri.Fragment.Length > 0
+            || !InstagramPublishers.TryReadProfile(uri.GetLeftPart(UriPartial.Path), out _, out string targetProfile)
+            || targetProfile != profile)
+            return new() { Outcome = FetchOutcome.NotApproved, Message = "The request must match the publisher profile saved in this pipeline." };
+        int pageSize = context.Limits.PageSize ?? 25;
+        int maximumPages = context.Limits.MaxPages ?? 4;
+        if (pageSize is < 1 or > 50 || maximumPages is < 1 or > PipelineConstants.MaxPagesCap)
+            return new() { Outcome = FetchOutcome.NotApproved, Message = "The saved Instagram pipeline has invalid page bounds." };
         string? after = null;
         int pageNumber = 0;
+        if (item.Payload is { ValueKind: not JsonValueKind.Object })
+            return new() { Outcome = FetchOutcome.UnexpectedContent, Message = "Invalid Instagram continuation state." };
         if (item.Payload is { ValueKind: JsonValueKind.Object } payload)
         {
-            after = InstagramBusinessDiscoveryClient.Text(payload, "after");
+            after = InstagramConfiguration.Text(payload, "after");
             if (!payload.TryGetProperty("page", out var number) || number.ValueKind != JsonValueKind.Number
-                || !number.TryGetInt32(out pageNumber) || pageNumber < 1 || pageNumber >= options.Value.MaximumPages || after is null)
+                || !number.TryGetInt32(out pageNumber) || pageNumber < 1 || pageNumber >= maximumPages || after is null)
                 return new() { Outcome = FetchOutcome.UnexpectedContent, Message = "Invalid Instagram continuation state." };
         }
-        InstagramMediaPage result = await client.ReadTracedAsync(username, after, context, cancellationToken);
+        InstagramMediaPage result = await broker.ReadTracedAsync(username, pageSize, after, context, cancellationToken);
         context.Observe(new() { Outcome = result.Outcome, Bytes = result.Usage.Bytes, RetryAfter = result.RetryAfter });
         if (result.Outcome != FetchOutcome.Ok)
             return new() { Outcome = result.Outcome, Usage = result.Usage, RetryAfter = result.RetryAfter, Message = result.Message };
@@ -46,7 +49,7 @@ public sealed class InstagramStepBroker(IInstagramMediaClient client, IOptions<I
             {
                 RequestUrl = result.RequestUrl ?? profile, FinalUrl = result.RequestUrl ?? profile, HttpStatus = result.HttpStatus,
             })];
-        bool truncated = result.After is not null && pageNumber + 1 >= options.Value.MaximumPages;
+        bool truncated = result.After is not null && pageNumber + 1 >= maximumPages;
         StepTarget[] NextPage()
         {
             if (result.After is not { } cursor || truncated)

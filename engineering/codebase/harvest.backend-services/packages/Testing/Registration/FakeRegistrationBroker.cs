@@ -443,6 +443,7 @@ public sealed partial class FakeRegistrationBroker(TimeProvider? time = null) : 
                 return Fail<PipelineModel>(RegistrationErrors.Invalid("The pipeline is malformed."));
             var limits = update.Limits is not { } stated ? pipeline.Limits : pipeline.Limits with
             {
+                PageSize = stated.PageSize ?? pipeline.Limits.PageSize,
                 MaxPages = stated.MaxPages ?? pipeline.Limits.MaxPages,
                 MaxItems = stated.MaxItems ?? pipeline.Limits.MaxItems,
                 MaxRequests = stated.MaxRequests ?? pipeline.Limits.MaxRequests,
@@ -638,7 +639,8 @@ public sealed partial class FakeRegistrationBroker(TimeProvider? time = null) : 
         && policy.MonthUsd is not < 0;
 
     private static bool IsValid(PipelineLimits limits) =>
-        limits.MaxPages is null or (>= 1 and <= PipelineConstants.MaxPagesCap)
+        limits.PageSize is null or (>= 1 and <= 1000)
+        && limits.MaxPages is null or (>= 1 and <= PipelineConstants.MaxPagesCap)
         && limits.MaxItems is null or (>= 1 and <= PipelineConstants.MaxItemsCap)
         && limits.MaxRequests is not <= 0 && limits.MaxBytes is not <= 0 && limits.MaxProbes is not <= 0
         && (limits.MaxDuration is not { } duration || duration > TimeSpan.Zero);

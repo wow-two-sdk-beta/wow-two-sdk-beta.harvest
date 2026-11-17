@@ -13,6 +13,7 @@ import {
   paceWords,
   runFoundWords,
   runProblem,
+  siteUrlOf,
   timingOf,
 } from '../src/admin/harvestConsole/SourceWords';
 import type { RunModel, SourceHarvestModel } from '../src/contracts';
@@ -35,6 +36,12 @@ const run = (change: Partial<RunModel>): RunModel => ({
 });
 
 describe('source words', () => {
+  it('opens Instagram domain sources and individual profiles at their own addresses', () => {
+    expect(siteUrlOf('instagram', 'www.instagram.com')).toBe('https://www.instagram.com/');
+    expect(siteUrlOf('instagram', 'instagram.com')).toBe('https://instagram.com/');
+    expect(siteUrlOf('instagram', '@publisher')).toBe('https://www.instagram.com/publisher');
+  });
+
   it('splits a run problem into a short label and its own sentence', () => {
     expect(runProblem(run({ status: 'failed', fetchOutcome: 'timeout', message: 'the host did not answer' }))).toEqual({
       label: 'timed out',

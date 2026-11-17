@@ -63,7 +63,11 @@ services:
         HarvestIntegrations:OlxProxy:Server: {}
         HarvestIntegrations:OlxProxy:Username: { secret: true }
         HarvestIntegrations:OlxProxy:Password: { secret: true }
-        HarvestInstagram:Enabled: { type: boolean, default: false }
+        # Connection settings only. Publishers, pauses, schedules and page bounds live in SCFD tables.
+        HarvestInstagram:AccessToken: { secret: true }
+        HarvestInstagram:ProfessionalAccountId: {}
+        HarvestInstagram:ApiVersion: {}
+        HarvestInstagram:BaseAddress: { type: url, default: "https://graph.facebook.com/" }
     needs: [postgres]
     # The bundle services harvest starts after: none, since PostgreSQL is a platform service under needs.
     dependsOn: []

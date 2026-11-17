@@ -218,6 +218,8 @@ internal static partial class RegistrationRules
     /// <summary>Validates per-run limits: the filtered caps and positive budgets.</summary>
     public static AppError? ValidateLimits(PipelineLimits limits)
     {
+        if (limits.PageSize is < 1 or > 1000)
+            return RegistrationErrors.Invalid("PageSize must be 1–1000.");
         if (limits.MaxPages is { } pages && pages is < 1 or > PipelineConstants.MaxPagesCap)
             return RegistrationErrors.Invalid($"MaxPages must be 1–{PipelineConstants.MaxPagesCap}.");
         if (limits.MaxItems is { } items && items is < 1 or > PipelineConstants.MaxItemsCap)
@@ -242,6 +244,7 @@ internal static partial class RegistrationRules
 
         var merged = stored with
         {
+            PageSize = update.PageSize ?? stored.PageSize,
             MaxPages = update.MaxPages ?? stored.MaxPages,
             MaxItems = update.MaxItems ?? stored.MaxItems,
             MaxRequests = update.MaxRequests ?? stored.MaxRequests,

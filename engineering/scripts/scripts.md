@@ -7,6 +7,7 @@ Release helpers `publish-packages.yml` calls; each runs from anywhere in the rep
 | `next-version.sh be\|fe` | prints the next version: `10.y.z-beta` from the newest `be-v*` tag; `0.0.z` from the higher of the newest `fe-v*` tag and npm |
 | `test-next-version.sh` | tests the version logic in throwaway repositories (CI: the delivery workflow's release-scripts check) |
 | `verify-release-packages.sh <dir> <version> <commit>` | one nupkg and snupkg per `packages/*` project: id, version, MIT, README, commit, assembly; be sdk floor = the `BackendSdkVersion` pin; family at one version |
+| `test-verify-release-packages.sh` | verifies that only Harvest dependencies share the release version, while the core pin and independent provider packages retain their own versions |
 | `verify-published-packages.sh <version>` | polls nuget.org until every id shows the version |
 | `pack-smoke.sh <dir> <version>` | restores the packed family in a throwaway consumer and compiles both forms and the test kit |
 | `unlist-packages.sh <version> \| <id>@<version> …` | unlists a family version, or the named versions, on nuget.org with the trusted-publishing key; skips any never published |

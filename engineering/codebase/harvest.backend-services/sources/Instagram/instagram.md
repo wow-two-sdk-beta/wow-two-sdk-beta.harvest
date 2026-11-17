@@ -1,42 +1,42 @@
 # Harvest Instagram
 
-Opt-in source for Meta's Instagram Business Discovery API (Facebook Login). Collects recent media from explicitly
-allowlisted professional publishers into the Harvest engine. Defaults are disabled and make no provider calls.
+The core SDK `IInstagramClient` handles Meta Business Discovery requests. SCFD's `IInstagramMediaBroker` maps the
+provider's results into Harvest outcomes; `InstagramStepBroker` reads the frozen pipeline scope and bounds, then
+normalizes posts and advances the cursor. The generic engine owns persistence, revisions, delivery and backoff.
 
 ```csharp
 services.AddHarvestInstagram().Bind(configuration.GetSection("HarvestInstagram"));
 ```
 
-Runtime settings:
+Only connection details belong in host configuration:
 
 | Setting | Meaning |
 |---|---|
-| `Enabled` | Explicit activation, default `false` |
-| `AccessToken` | Approved Facebook Login token; secret store/environment only |
-| `ProfessionalAccountId` | Your Page-linked professional Instagram account ID |
-| `ApiVersion` | A currently supported version in `vN.0` form; deliberately has no default |
-| `AllowedUsernames` | Exact publisher allowlist; empty permits no accounts |
-| `PageSize` | 1–50, default 25 |
-| `MaximumPages` | Recent pages per run, 1–20, default 4 |
-| `MaximumResponseBytes` | 1 KiB–8 MiB, default 2,000,000 |
-| `Timeout` | Request deadline, default 30 seconds, maximum one minute |
+| `AccessToken` | Approved Facebook Login token; protected host secret only |
+| `ProfessionalAccountId` | The querying Page-linked professional Instagram account ID |
+| `ApiVersion` | Explicit supported Graph version in `vN.0` form |
+| `BaseAddress` | Guarded HTTPS Graph origin; default `https://graph.facebook.com/` |
 
 Register family `instagram`, handle `www.instagram.com`, posture `official`, filtered/window coverage and check
-policy `none`. Each publisher is a separate pipeline with scope URL `https://www.instagram.com/USERNAME/`.
-Capture/discover/sweep are supported; refresh, deletion checking, stories, hashtags and personal accounts are not.
-Ocharo setup can add its reviewed profiles with `{"includeInstagram":true,"enableSchedules":false}`.
+policy `none`. A publisher is a persisted pipeline with `scope.url=https://www.instagram.com/USERNAME/`,
+`restrictToPath=false`, `limits.pageSize` (1–50 posts, default 25) and `limits.maxPages` (default 4). Scope parameters
+are not request settings and are rejected. The API validates the profile and its limits before saving. Adding or
+editing a publisher needs no host restart. The console creates profiles without schedules; Run starts one capture.
+Source/pipeline pauses and schedules are ordinary registry records. No host allowlist or Instagram enable flag exists.
 
-The client uses a fixed guarded HTTPS origin, authorization headers, bounded JSON, and no automatic retries.
-Pagination reads cursors and rebuilds the request; provider `paging.next` URLs are never followed or stored.
-Frontier URLs containing `__harvest_cursor` are internal same-origin work identifiers, not observed Instagram links.
-Credentials, API request URLs, paging URLs and engagement counters are excluded from durable capture bodies.
-Media identity and caption edits drive revisions; rotating CDN signatures and counters do not.
+Pipeline settings are frozen when a run starts. Targets must match that saved profile; a later settings edit affects
+subsequent runs. Cursor-only pages continue without `paging.next`; an empty page ends pagination. Page/request/item,
+byte and duration budgets use the generic engine. Provider transport retains fixed defensive byte/depth/time bounds.
+The client performs one transport attempt; explicit authentication/rate-limit failures feed the engine's backoff.
 
-Missing credentials and ineligible publishers produce explicit outcomes. Empty or bounded listings never establish
-deletion. Caption announcements enter Ocharo's review stream with unknown event dates; publication timestamps remain
-publication timestamps. Images/videos are referenced, not downloaded or read with OCR. CDN URLs can expire.
+Capture/sweep are supported; refresh, deletion checking, stories, hashtags, personal and private accounts
+are not. An account's public visibility alone does not establish Business Discovery eligibility. Ocharo is an optional
+consumer preset (`ocharo setup --instagram`) and does not control the generic profile registry.
 
-Transport metadata keeps the actual Graph request URL and HTTP status for provenance; that URL contains no access
-token. Public source links always use the canonical Instagram permalink.
+Capture bodies/provenance exclude credentials, cursors, paging URLs and raw provider errors. Public links use the
+canonical post permalink. Caption edits create revisions; engagement counts and rotating CDN signatures do not.
+Carousel covers are not duplicated, and available video thumbnails remain usable. Publication timestamps are never
+invented event dates; caption classification needs review. CDN references may expire and image text is not read.
 
-See the repository's [account review and setup](../../../../research/instagram-source-review.md).
+See [test setup and acceptance](../../../../deployment/instagram.md) and
+[account review](../../../../research/instagram-source-review.md).

@@ -44,8 +44,7 @@ for project in "${projects[@]}"; do
 
   # A package reaches the be sdk directly or through a family package (Formats only through Abstractions).
   sdk=$(grep -oE 'dependency id="WoW2\.Sdk\.Beta\.Be(\.Abstractions|\.Testing[A-Za-z.]*)?" version="[^"]+"' <<< "$nuspec" || true)
-  family=$(grep -oE 'dependency id="WoW2\.Sdk\.Beta\.Be\.[A-Za-z]+\.[A-Za-z.]+" version="[^"]+"' <<< "$nuspec" \
-    | grep -v 'WoW2\.Sdk\.Beta\.Be\.Testing' || true)
+  family=$(grep -oE 'dependency id="WoW2\.Sdk\.Beta\.Be\.Harvest\.[A-Za-z.]+" version="[^"]+"' <<< "$nuspec" || true)
   [ -n "$sdk" ] || [ -n "$family" ] || fail "$id: no be sdk or family dependency"
   if [ -n "$sdk" ] && grep -v "version=\"$core\"" <<< "$sdk" | grep -q .; then fail "$id: be sdk floor is not the pin $core"; fi
   if [ -n "$family" ] && grep -v "version=\"$version\"" <<< "$family" | grep -q .; then
