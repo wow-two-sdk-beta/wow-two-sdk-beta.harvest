@@ -27,6 +27,8 @@ Not packable (`Directory.Build.props` by path: XML docs and warnings as errors, 
 | `HarvestAdapters.Craftfair` | artisan events, application deadline/status evidence | Abstractions, AngleSharp |
 | `HarvestAdapters.Uzexpocentre` | printed-year calendar rows and carried table cells | Abstractions, AngleSharp |
 | `HarvestAdapters.Olx` | saved-filter catalogs, stable ad identities, listing fields and availability evidence | Abstractions, AngleSharp |
+| `HarvestAdapters.BirBir` | apartment rental discovery, stable ad identity and typed listing fields | Abstractions, AngleSharp |
+| `HarvestAdapters.Joymee` | rental catalog discovery, JSON detail captures and typed listing fields | Abstractions |
 | `HarvestAdapters.Instagram` | official Business Discovery recent-media client and source broker | Abstractions, core |
 | `HarvestAdapters.Integrations` | proxy/IP lease, supplied sessions, 2Captcha client | Abstractions, core |
 | `HarvestAdapters.Module` | Ocharo registry, source composition, filtering and explicit setup; the marketplace | the source projects, Module, core |

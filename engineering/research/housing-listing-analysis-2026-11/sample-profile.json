@@ -1,0 +1,1844 @@
+{
+  "archiveOlx": {
+    "attributes": {
+      "floorExceedsBuildingFloors": 3,
+      "keys": {
+        "В квартире есть": {
+          "presentNonEmpty": 641,
+          "types": {
+            "str": 641
+          }
+        },
+        "Высота потолков": {
+          "presentNonEmpty": 373,
+          "types": {
+            "str": 373
+          }
+        },
+        "Год постройки": {
+          "presentNonEmpty": 151,
+          "types": {
+            "str": 151
+          }
+        },
+        "Год постройки/сдачи": {
+          "presentNonEmpty": 143,
+          "types": {
+            "str": 143
+          }
+        },
+        "Жилая площадь": {
+          "presentNonEmpty": 320,
+          "types": {
+            "str": 320
+          }
+        },
+        "Количество комнат": {
+          "presentNonEmpty": 931,
+          "types": {
+            "str": 931
+          }
+        },
+        "Комиссионные": {
+          "presentNonEmpty": 931,
+          "types": {
+            "str": 931
+          }
+        },
+        "Меблирована": {
+          "presentNonEmpty": 931,
+          "types": {
+            "str": 931
+          }
+        },
+        "Общая площадь": {
+          "presentNonEmpty": 931,
+          "types": {
+            "str": 931
+          }
+        },
+        "Планировка": {
+          "presentNonEmpty": 604,
+          "types": {
+            "str": 604
+          }
+        },
+        "Площадь кухни": {
+          "presentNonEmpty": 194,
+          "types": {
+            "str": 194
+          }
+        },
+        "Ремонт": {
+          "presentNonEmpty": 789,
+          "types": {
+            "str": 789
+          }
+        },
+        "Рядом есть": {
+          "presentNonEmpty": 658,
+          "types": {
+            "str": 658
+          }
+        },
+        "Санузел": {
+          "presentNonEmpty": 692,
+          "types": {
+            "str": 692
+          }
+        },
+        "Тип жилья": {
+          "presentNonEmpty": 511,
+          "types": {
+            "str": 511
+          }
+        },
+        "Тип строения": {
+          "presentNonEmpty": 686,
+          "types": {
+            "str": 686
+          }
+        },
+        "Этаж": {
+          "presentNonEmpty": 931,
+          "types": {
+            "str": 931
+          }
+        },
+        "Этажность дома": {
+          "presentNonEmpty": 931,
+          "types": {
+            "str": 931
+          }
+        }
+      },
+      "livingAreaExceedsTotalArea": 2,
+      "livingPlusKitchenExceedsTotalArea": 124,
+      "numeric": {
+        "Высота потолков": {
+          "parsedMagnitudes": {
+            "max": "2850",
+            "min": "2",
+            "n": 373,
+            "p50NearestRank": "3",
+            "p95NearestRank": "320"
+          },
+          "rawNonEmpty": 373
+        },
+        "Жилая площадь": {
+          "parsedMagnitudes": {
+            "max": "88888",
+            "min": "3.80",
+            "n": 320,
+            "p50NearestRank": "60",
+            "p95NearestRank": "150"
+          },
+          "rawNonEmpty": 320
+        },
+        "Количество комнат": {
+          "parsedMagnitudes": {
+            "max": "25",
+            "min": "1",
+            "n": 931,
+            "p50NearestRank": "2",
+            "p95NearestRank": "4"
+          },
+          "rawNonEmpty": 931
+        },
+        "Общая площадь": {
+          "parsedMagnitudes": {
+            "max": "88888",
+            "min": "3.80",
+            "n": 931,
+            "p50NearestRank": "64",
+            "p95NearestRank": "150"
+          },
+          "rawNonEmpty": 931
+        },
+        "Площадь кухни": {
+          "parsedMagnitudes": {
+            "max": "88888",
+            "min": "2.60",
+            "n": 194,
+            "p50NearestRank": "12",
+            "p95NearestRank": "35"
+          },
+          "rawNonEmpty": 194
+        },
+        "Этаж": {
+          "parsedMagnitudes": {
+            "max": "43",
+            "min": "1",
+            "n": 931,
+            "p50NearestRank": "4",
+            "p95NearestRank": "12"
+          },
+          "rawNonEmpty": 931
+        },
+        "Этажность дома": {
+          "parsedMagnitudes": {
+            "max": "8888",
+            "min": "1",
+            "n": 931,
+            "p50NearestRank": "9",
+            "p95NearestRank": "17"
+          },
+          "rawNonEmpty": 931
+        }
+      },
+      "valueCounts": {
+        "Год постройки": {
+          "1960 - 1979": 5,
+          "1980 - 1989": 13,
+          "1990 - 2000": 15,
+          "2001 - 2010": 2,
+          "2011 - 2014": 3,
+          "2015": 3,
+          "2016": 28,
+          "2017": 81,
+          "старше 1960": 1
+        },
+        "Год постройки/сдачи": {
+          "1960 - 1979": 9,
+          "1980 - 1989": 25,
+          "1990 - 2000": 15,
+          "2001 - 2010": 1,
+          "2011 - 2014": 3,
+          "2016": 1,
+          "2018": 5,
+          "2020": 3,
+          "2021": 2,
+          "2022": 5,
+          "2023": 22,
+          "2024": 15,
+          "2025": 37
+        },
+        "Комиссионные": {
+          "Да": 351,
+          "Нет": 580
+        },
+        "Меблирована": {
+          "Да": 729,
+          "Нет": 202
+        },
+        "Планировка": {
+          "Малосемейка": 3,
+          "Многоуровневая": 11,
+          "Пентхаус": 1,
+          "Раздельная": 477,
+          "Смежная": 36,
+          "Смежно-раздельная": 33,
+          "Студия": 43
+        },
+        "Ремонт": {
+          "Авторский проект": 227,
+          "Евроремонт": 376,
+          "Предчистовая отделка": 16,
+          "Средний": 98,
+          "Требует ремонта": 26,
+          "Черновая отделка": 46
+        },
+        "Санузел": {
+          "2 санузла и более": 145,
+          "Раздельный": 346,
+          "Совмещенный": 201
+        },
+        "Тип жилья": {
+          "Вторичный рынок": 236,
+          "Новостройки": 275
+        },
+        "Тип строения": {
+          "Блочный": 11,
+          "Деревянный": 3,
+          "Кирпичный": 452,
+          "Монолитный": 107,
+          "Панельный": 113
+        }
+      }
+    },
+    "captureDatesUtc": [
+      "2026-03-02"
+    ],
+    "currencyDisplay": {
+      "UZS label": 26,
+      "у.е.": 905
+    },
+    "fields": {
+      "author_name": {
+        "presentNonEmpty": 931,
+        "types": {
+          "str": 931
+        }
+      },
+      "description": {
+        "presentNonEmpty": 931,
+        "types": {
+          "str": 931
+        }
+      },
+      "external_id": {
+        "presentNonEmpty": 931,
+        "types": {
+          "str": 931
+        }
+      },
+      "is_negotiable": {
+        "presentNonEmpty": 931,
+        "types": {
+          "bool": 931
+        }
+      },
+      "parameters": {
+        "presentNonEmpty": 931,
+        "types": {
+          "list": 931
+        }
+      },
+      "phone": {
+        "presentNonEmpty": 0,
+        "types": {
+          "NoneType": 931
+        }
+      },
+      "posted_at": {
+        "presentNonEmpty": 931,
+        "types": {
+          "str": 931
+        }
+      },
+      "price": {
+        "presentNonEmpty": 931,
+        "types": {
+          "str": 931
+        }
+      },
+      "scraped_at": {
+        "presentNonEmpty": 931,
+        "types": {
+          "str": 931
+        }
+      },
+      "subregion": {
+        "presentNonEmpty": 931,
+        "types": {
+          "str": 931
+        }
+      },
+      "title": {
+        "presentNonEmpty": 931,
+        "types": {
+          "str": 931
+        }
+      }
+    },
+    "lengths": {
+      "description": {
+        "max": "8948",
+        "min": "40",
+        "n": 931,
+        "p50NearestRank": "249",
+        "p95NearestRank": "774"
+      },
+      "external_id": {
+        "max": "147",
+        "min": "5",
+        "n": 931,
+        "p50NearestRank": "5",
+        "p95NearestRank": "5"
+      },
+      "title": {
+        "max": "70",
+        "min": "16",
+        "n": 931,
+        "p50NearestRank": "54",
+        "p95NearestRank": "70"
+      }
+    },
+    "negotiableTrue": 401,
+    "providerSellerClass": {
+      "Бизнес": 765,
+      "Частное лицо": 166
+    }
+  },
+  "freshJoymee": {
+    "captureDatesUtc": [
+      "2026-11-15"
+    ],
+    "mappedTextLengths": {
+      "text": {
+        "max": "992",
+        "min": "16",
+        "n": 64,
+        "p50NearestRank": "193",
+        "p95NearestRank": "586"
+      }
+    },
+    "nativeAttributes": {
+      "floorExceedsBuildingFloors": 0,
+      "keys": {
+        "Количество комнат": {
+          "presentNonEmpty": 64,
+          "types": {
+            "str": 64
+          }
+        },
+        "Общая площадь, м²": {
+          "presentNonEmpty": 64,
+          "types": {
+            "str": 64
+          }
+        },
+        "Тип объекта": {
+          "presentNonEmpty": 64,
+          "types": {
+            "str": 64
+          }
+        },
+        "Тип сделки": {
+          "presentNonEmpty": 64,
+          "types": {
+            "str": 64
+          }
+        },
+        "Этаж": {
+          "presentNonEmpty": 64,
+          "types": {
+            "str": 64
+          }
+        },
+        "Этажность дома": {
+          "presentNonEmpty": 64,
+          "types": {
+            "str": 64
+          }
+        }
+      },
+      "livingAreaExceedsTotalArea": 0,
+      "livingPlusKitchenExceedsTotalArea": 0,
+      "numeric": {
+        "Количество комнат": {
+          "parsedMagnitudes": {
+            "max": "4",
+            "min": "1",
+            "n": 64,
+            "p50NearestRank": "2",
+            "p95NearestRank": "3"
+          },
+          "rawNonEmpty": 64
+        },
+        "Общая площадь, м²": {
+          "parsedMagnitudes": {
+            "max": "100.00",
+            "min": "26.00",
+            "n": 64,
+            "p50NearestRank": "53.00",
+            "p95NearestRank": "75.00"
+          },
+          "rawNonEmpty": 64
+        },
+        "Этаж": {
+          "parsedMagnitudes": {
+            "max": "13",
+            "min": "1",
+            "n": 64,
+            "p50NearestRank": "4",
+            "p95NearestRank": "9"
+          },
+          "rawNonEmpty": 64
+        },
+        "Этажность дома": {
+          "parsedMagnitudes": {
+            "max": "16",
+            "min": "2",
+            "n": 64,
+            "p50NearestRank": "5",
+            "p95NearestRank": "14"
+          },
+          "rawNonEmpty": 64
+        }
+      },
+      "valueCounts": {}
+    },
+    "nativeFields": {
+      "attributes": {
+        "presentNonEmpty": 64,
+        "types": {
+          "dict": 64
+        }
+      },
+      "city": {
+        "presentNonEmpty": 64,
+        "types": {
+          "str": 64
+        }
+      },
+      "description": {
+        "presentNonEmpty": 64,
+        "types": {
+          "str": 64
+        }
+      },
+      "district": {
+        "presentNonEmpty": 64,
+        "types": {
+          "str": 64
+        }
+      },
+      "imageUrls": {
+        "presentNonEmpty": 64,
+        "types": {
+          "list": 64
+        }
+      },
+      "postedAtText": {
+        "presentNonEmpty": 64,
+        "types": {
+          "str": 64
+        }
+      },
+      "priceText": {
+        "presentNonEmpty": 64,
+        "types": {
+          "str": 64
+        }
+      },
+      "sellerName": {
+        "presentNonEmpty": 64,
+        "types": {
+          "str": 64
+        }
+      },
+      "title": {
+        "presentNonEmpty": 64,
+        "types": {
+          "str": 64
+        }
+      }
+    },
+    "nativeKeys": {},
+    "nativeLengths": {
+      "description": {
+        "max": "999",
+        "min": "16",
+        "n": 64,
+        "p50NearestRank": "198",
+        "p95NearestRank": "588"
+      },
+      "descriptionHtml": null,
+      "title": {
+        "max": "92",
+        "min": "8",
+        "n": 64,
+        "p50NearestRank": "19",
+        "p95NearestRank": "56"
+      }
+    },
+    "normalizedBaseKeys": {
+      "contacts": {
+        "presentNonEmpty": 16,
+        "types": {
+          "list": 64
+        }
+      },
+      "dates": {
+        "presentNonEmpty": 0,
+        "types": {
+          "list": 64
+        }
+      },
+      "extraction": {
+        "presentNonEmpty": 64,
+        "types": {
+          "dict": 64
+        }
+      },
+      "extras": {
+        "presentNonEmpty": 64,
+        "types": {
+          "dict": 64
+        }
+      },
+      "fieldSources": {
+        "presentNonEmpty": 64,
+        "types": {
+          "dict": 64
+        }
+      },
+      "flags": {
+        "presentNonEmpty": 0,
+        "types": {
+          "list": 64
+        }
+      },
+      "kind": {
+        "presentNonEmpty": 64,
+        "types": {
+          "str": 64
+        }
+      },
+      "language": {
+        "presentNonEmpty": 64,
+        "types": {
+          "dict": 64
+        }
+      },
+      "links": {
+        "presentNonEmpty": 0,
+        "types": {
+          "list": 64
+        }
+      },
+      "media": {
+        "presentNonEmpty": 64,
+        "types": {
+          "list": 64
+        }
+      },
+      "postedAt": {
+        "presentNonEmpty": 64,
+        "types": {
+          "dict": 64
+        }
+      },
+      "prices": {
+        "presentNonEmpty": 64,
+        "types": {
+          "list": 64
+        }
+      },
+      "schema": {
+        "presentNonEmpty": 64,
+        "types": {
+          "str": 64
+        }
+      },
+      "sourceTags": {
+        "presentNonEmpty": 0,
+        "types": {
+          "list": 64
+        }
+      },
+      "tags": {
+        "presentNonEmpty": 0,
+        "types": {
+          "list": 64
+        }
+      },
+      "text": {
+        "presentNonEmpty": 64,
+        "types": {
+          "str": 64
+        }
+      },
+      "title": {
+        "presentNonEmpty": 64,
+        "types": {
+          "str": 64
+        }
+      }
+    },
+    "photosPerAd": {
+      "max": "10",
+      "min": "2",
+      "n": 64,
+      "p50NearestRank": "8",
+      "p95NearestRank": "10"
+    },
+    "priceCurrencies": {
+      "USD": 63,
+      "UZS": 1
+    },
+    "rows": 64,
+    "schemas": {
+      "joymee.ad.v1": 64
+    }
+  },
+  "freshJoymeeRawShape": {
+    "codeCounts": {
+      "advertiser_type": {
+        "1": 7,
+        "2": 57
+      },
+      "advertiser_type_locked": {
+        "false": 64
+      },
+      "category": {
+        "4": 64
+      },
+      "deal_type": {
+        "2": 64
+      },
+      "detail.apartment_type": {
+        "1": 45,
+        "2": 19
+      },
+      "detail.repair": {
+        "3": 4,
+        "4": 49,
+        "5": 5,
+        "6": 6
+      },
+      "mortgage_available": {
+        "false": 64
+      },
+      "pricing.currency": {
+        "1": 1,
+        "2": 63
+      },
+      "property_type": {
+        "1": 64
+      },
+      "seller.is_verified": {
+        "false": 15,
+        "true": 49
+      }
+    },
+    "retainedBodyCount": 64,
+    "sourceStringLengths": [
+      {
+        "key": "address_line",
+        "max": 38,
+        "min": 32,
+        "present": 64
+      },
+      {
+        "key": "description",
+        "max": 999,
+        "min": 16,
+        "present": 64
+      },
+      {
+        "key": "district.name",
+        "max": 21,
+        "min": 14,
+        "present": 64
+      },
+      {
+        "key": "pricing.price",
+        "max": 10,
+        "min": 6,
+        "present": 64
+      },
+      {
+        "key": "region.name",
+        "max": 15,
+        "min": 15,
+        "present": 64
+      },
+      {
+        "key": "slug",
+        "max": 39,
+        "min": 19,
+        "present": 32
+      },
+      {
+        "key": "title",
+        "max": 92,
+        "min": 8,
+        "present": 64
+      }
+    ],
+    "structuralPaths": [
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "address_line",
+        "type": "string"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "ads_at",
+        "type": "string"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "advertiser_type",
+        "type": "number"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "advertiser_type_locked",
+        "type": "boolean"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "audio",
+        "type": "null"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "category",
+        "type": "number"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "country",
+        "type": "object"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "country.id",
+        "type": "number"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "country.name",
+        "type": "string"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "deal_type",
+        "type": "number"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "description",
+        "type": "string"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "detail",
+        "type": "object"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "detail.apartment_type",
+        "type": "number"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "detail.area_m2",
+        "type": "string"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "detail.floor_number",
+        "type": "number"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "detail.floors_count",
+        "type": "number"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "detail.repair",
+        "type": "number"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "detail.room_quantity",
+        "type": "number"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "district",
+        "type": "object"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "district.id",
+        "type": "number"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "district.name",
+        "type": "string"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "id",
+        "type": "number"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "is_liked",
+        "type": "boolean"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "location",
+        "type": "object"
+      },
+      {
+        "captures": 9,
+        "occurrences": 9,
+        "path": "location.latitude",
+        "type": "null"
+      },
+      {
+        "captures": 55,
+        "occurrences": 55,
+        "path": "location.latitude",
+        "type": "number"
+      },
+      {
+        "captures": 9,
+        "occurrences": 9,
+        "path": "location.longitude",
+        "type": "null"
+      },
+      {
+        "captures": 55,
+        "occurrences": 55,
+        "path": "location.longitude",
+        "type": "number"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "media",
+        "type": "array"
+      },
+      {
+        "captures": 64,
+        "occurrences": 525,
+        "path": "media.[]",
+        "type": "object"
+      },
+      {
+        "captures": 64,
+        "occurrences": 525,
+        "path": "media.[].file",
+        "type": "object"
+      },
+      {
+        "captures": 64,
+        "occurrences": 525,
+        "path": "media.[].file.id",
+        "type": "number"
+      },
+      {
+        "captures": 64,
+        "occurrences": 525,
+        "path": "media.[].file.url",
+        "type": "string"
+      },
+      {
+        "captures": 64,
+        "occurrences": 525,
+        "path": "media.[].is_cover",
+        "type": "boolean"
+      },
+      {
+        "captures": 64,
+        "occurrences": 525,
+        "path": "media.[].order",
+        "type": "number"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "mortgage_available",
+        "type": "boolean"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "phone_number",
+        "type": "string"
+      },
+      {
+        "captures": 52,
+        "occurrences": 52,
+        "path": "previous_price",
+        "type": "null"
+      },
+      {
+        "captures": 12,
+        "occurrences": 12,
+        "path": "previous_price",
+        "type": "string"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "pricing",
+        "type": "object"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "pricing.currency",
+        "type": "number"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "pricing.currency_display",
+        "type": "string"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "pricing.price",
+        "type": "string"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "pricing.price_from",
+        "type": "null"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "pricing.price_to",
+        "type": "null"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "property_type",
+        "type": "number"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "region",
+        "type": "object"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "region.id",
+        "type": "number"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "region.name",
+        "type": "string"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "seller",
+        "type": "object"
+      },
+      {
+        "captures": 11,
+        "occurrences": 11,
+        "path": "seller.avatar",
+        "type": "null"
+      },
+      {
+        "captures": 53,
+        "occurrences": 53,
+        "path": "seller.avatar",
+        "type": "string"
+      },
+      {
+        "captures": 8,
+        "occurrences": 8,
+        "path": "seller.bio",
+        "type": "null"
+      },
+      {
+        "captures": 56,
+        "occurrences": 56,
+        "path": "seller.bio",
+        "type": "string"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "seller.first_name",
+        "type": "string"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "seller.id",
+        "type": "number"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "seller.is_verified",
+        "type": "boolean"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "seller.last_name",
+        "type": "string"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "seller.my_review",
+        "type": "null"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "seller.rating_avg",
+        "type": "number"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "seller.review_count",
+        "type": "number"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "seller.username",
+        "type": "string"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "slug",
+        "type": "string"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "stats",
+        "type": "object"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "stats.calls",
+        "type": "number"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "stats.comments",
+        "type": "number"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "stats.likes",
+        "type": "number"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "stats.shares",
+        "type": "number"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "stats.views",
+        "type": "number"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "status",
+        "type": "number"
+      },
+      {
+        "captures": 64,
+        "occurrences": 64,
+        "path": "title",
+        "type": "string"
+      }
+    ]
+  },
+  "method": "Unique provider ad IDs; the single non-token historical OLX row is profiled but excluded from the verified distinct count. Character counts use Unicode code points. Parsed numeric summaries express nearest-rank p50 and p95.",
+  "previousOlx": {
+    "captureDatesUtc": [
+      "2026-11-13",
+      "2026-11-14"
+    ],
+    "mappedTextLengths": {
+      "text": {
+        "max": "482",
+        "min": "86",
+        "n": 10,
+        "p50NearestRank": "108",
+        "p95NearestRank": "482"
+      }
+    },
+    "nativeAttributes": {
+      "floorExceedsBuildingFloors": 0,
+      "keys": {
+        "Бизнес": {
+          "presentNonEmpty": 9,
+          "types": {
+            "str": 9
+          }
+        },
+        "В квартире есть": {
+          "presentNonEmpty": 8,
+          "types": {
+            "str": 8
+          }
+        },
+        "Высота потолков": {
+          "presentNonEmpty": 4,
+          "types": {
+            "str": 4
+          }
+        },
+        "Год постройки": {
+          "presentNonEmpty": 2,
+          "types": {
+            "str": 2
+          }
+        },
+        "Жилая площадь": {
+          "presentNonEmpty": 7,
+          "types": {
+            "str": 7
+          }
+        },
+        "Количество комнат": {
+          "presentNonEmpty": 10,
+          "types": {
+            "str": 10
+          }
+        },
+        "Комиссионные": {
+          "presentNonEmpty": 10,
+          "types": {
+            "str": 10
+          }
+        },
+        "Меблирована": {
+          "presentNonEmpty": 10,
+          "types": {
+            "str": 10
+          }
+        },
+        "Общая площадь": {
+          "presentNonEmpty": 10,
+          "types": {
+            "str": 10
+          }
+        },
+        "Планировка": {
+          "presentNonEmpty": 6,
+          "types": {
+            "str": 6
+          }
+        },
+        "Площадь кухни": {
+          "presentNonEmpty": 4,
+          "types": {
+            "str": 4
+          }
+        },
+        "Ремонт": {
+          "presentNonEmpty": 8,
+          "types": {
+            "str": 8
+          }
+        },
+        "Рядом есть": {
+          "presentNonEmpty": 7,
+          "types": {
+            "str": 7
+          }
+        },
+        "Санузел": {
+          "presentNonEmpty": 9,
+          "types": {
+            "str": 9
+          }
+        },
+        "Тип строения": {
+          "presentNonEmpty": 7,
+          "types": {
+            "str": 7
+          }
+        },
+        "Частное лицо": {
+          "presentNonEmpty": 1,
+          "types": {
+            "str": 1
+          }
+        },
+        "Этаж": {
+          "presentNonEmpty": 10,
+          "types": {
+            "str": 10
+          }
+        },
+        "Этажность дома": {
+          "presentNonEmpty": 10,
+          "types": {
+            "str": 10
+          }
+        }
+      },
+      "livingAreaExceedsTotalArea": 0,
+      "livingPlusKitchenExceedsTotalArea": 3,
+      "numeric": {
+        "Высота потолков": {
+          "parsedMagnitudes": {
+            "max": "300",
+            "min": "3",
+            "n": 4,
+            "p50NearestRank": "4",
+            "p95NearestRank": "300"
+          },
+          "rawNonEmpty": 4
+        },
+        "Жилая площадь": {
+          "parsedMagnitudes": {
+            "max": "70",
+            "min": "30",
+            "n": 7,
+            "p50NearestRank": "56",
+            "p95NearestRank": "70"
+          },
+          "rawNonEmpty": 7
+        },
+        "Количество комнат": {
+          "parsedMagnitudes": {
+            "max": "4",
+            "min": "1",
+            "n": 10,
+            "p50NearestRank": "2",
+            "p95NearestRank": "4"
+          },
+          "rawNonEmpty": 10
+        },
+        "Общая площадь": {
+          "parsedMagnitudes": {
+            "max": "140",
+            "min": "35",
+            "n": 10,
+            "p50NearestRank": "62",
+            "p95NearestRank": "140"
+          },
+          "rawNonEmpty": 10
+        },
+        "Площадь кухни": {
+          "parsedMagnitudes": {
+            "max": "10",
+            "min": "8",
+            "n": 4,
+            "p50NearestRank": "9",
+            "p95NearestRank": "10"
+          },
+          "rawNonEmpty": 4
+        },
+        "Этаж": {
+          "parsedMagnitudes": {
+            "max": "8",
+            "min": "2",
+            "n": 10,
+            "p50NearestRank": "4",
+            "p95NearestRank": "8"
+          },
+          "rawNonEmpty": 10
+        },
+        "Этажность дома": {
+          "parsedMagnitudes": {
+            "max": "14",
+            "min": "4",
+            "n": 10,
+            "p50NearestRank": "5",
+            "p95NearestRank": "14"
+          },
+          "rawNonEmpty": 10
+        }
+      },
+      "valueCounts": {
+        "Год постройки": {
+          "2011 - 2014": 1,
+          "2017": 1
+        },
+        "Комиссионные": {
+          "Да": 6,
+          "Нет": 4
+        },
+        "Меблирована": {
+          "Да": 9,
+          "Нет": 1
+        },
+        "Планировка": {
+          "Раздельная": 5,
+          "Студия": 1
+        },
+        "Ремонт": {
+          "Авторский проект": 3,
+          "Евроремонт": 5
+        },
+        "Санузел": {
+          "2 санузла и более": 3,
+          "Раздельный": 3,
+          "Совмещенный": 3
+        },
+        "Тип строения": {
+          "Кирпичный": 6,
+          "Панельный": 1
+        }
+      }
+    },
+    "nativeFields": {
+      "attributes": {
+        "presentNonEmpty": 10,
+        "types": {
+          "dict": 10
+        }
+      },
+      "category": {
+        "presentNonEmpty": 10,
+        "types": {
+          "dict": 10
+        }
+      },
+      "createdTime": {
+        "presentNonEmpty": 10,
+        "types": {
+          "str": 10
+        }
+      },
+      "descriptionHtml": {
+        "presentNonEmpty": 10,
+        "types": {
+          "str": 10
+        }
+      },
+      "externalId": {
+        "presentNonEmpty": 10,
+        "types": {
+          "str": 10
+        }
+      },
+      "id": {
+        "presentNonEmpty": 10,
+        "types": {
+          "int": 10
+        }
+      },
+      "isActive": {
+        "presentNonEmpty": 10,
+        "types": {
+          "bool": 10
+        }
+      },
+      "isBusiness": {
+        "presentNonEmpty": 10,
+        "types": {
+          "bool": 10
+        }
+      },
+      "isJob": {
+        "presentNonEmpty": 10,
+        "types": {
+          "bool": 10
+        }
+      },
+      "itemCondition": {
+        "presentNonEmpty": 0,
+        "types": {
+          "str": 10
+        }
+      },
+      "lastRefreshTime": {
+        "presentNonEmpty": 10,
+        "types": {
+          "str": 10
+        }
+      },
+      "location": {
+        "presentNonEmpty": 10,
+        "types": {
+          "dict": 10
+        }
+      },
+      "map": {
+        "presentNonEmpty": 10,
+        "types": {
+          "dict": 10
+        }
+      },
+      "originalProduct": {
+        "presentNonEmpty": 10,
+        "types": {
+          "dict": 10
+        }
+      },
+      "params": {
+        "presentNonEmpty": 10,
+        "types": {
+          "list": 10
+        }
+      },
+      "photos": {
+        "presentNonEmpty": 10,
+        "types": {
+          "list": 10
+        }
+      },
+      "postedAtText": {
+        "presentNonEmpty": 10,
+        "types": {
+          "str": 10
+        }
+      },
+      "price": {
+        "presentNonEmpty": 10,
+        "types": {
+          "dict": 10
+        }
+      },
+      "priceText": {
+        "presentNonEmpty": 10,
+        "types": {
+          "str": 10
+        }
+      },
+      "salary": {
+        "presentNonEmpty": 0,
+        "types": {
+          "NoneType": 10
+        }
+      },
+      "sellerName": {
+        "presentNonEmpty": 10,
+        "types": {
+          "str": 10
+        }
+      },
+      "status": {
+        "presentNonEmpty": 10,
+        "types": {
+          "str": 10
+        }
+      },
+      "title": {
+        "presentNonEmpty": 10,
+        "types": {
+          "str": 10
+        }
+      },
+      "url": {
+        "presentNonEmpty": 10,
+        "types": {
+          "str": 10
+        }
+      },
+      "validToTime": {
+        "presentNonEmpty": 10,
+        "types": {
+          "str": 10
+        }
+      }
+    },
+    "nativeKeys": {
+      "location": {
+        "cityId": {
+          "presentNonEmpty": 10,
+          "types": {
+            "int": 10
+          }
+        },
+        "cityName": {
+          "presentNonEmpty": 10,
+          "types": {
+            "str": 10
+          }
+        },
+        "cityNormalizedName": {
+          "presentNonEmpty": 10,
+          "types": {
+            "str": 10
+          }
+        },
+        "districtId": {
+          "presentNonEmpty": 10,
+          "types": {
+            "int": 10
+          }
+        },
+        "districtName": {
+          "presentNonEmpty": 10,
+          "types": {
+            "str": 10
+          }
+        },
+        "pathName": {
+          "presentNonEmpty": 10,
+          "types": {
+            "str": 10
+          }
+        },
+        "regionId": {
+          "presentNonEmpty": 10,
+          "types": {
+            "int": 10
+          }
+        },
+        "regionName": {
+          "presentNonEmpty": 10,
+          "types": {
+            "str": 10
+          }
+        },
+        "regionNormalizedName": {
+          "presentNonEmpty": 10,
+          "types": {
+            "str": 10
+          }
+        }
+      },
+      "map": {
+        "lat": {
+          "presentNonEmpty": 10,
+          "types": {
+            "float": 10
+          }
+        },
+        "lon": {
+          "presentNonEmpty": 10,
+          "types": {
+            "float": 10
+          }
+        },
+        "radius": {
+          "presentNonEmpty": 10,
+          "types": {
+            "int": 10
+          }
+        },
+        "show_detailed": {
+          "presentNonEmpty": 10,
+          "types": {
+            "bool": 10
+          }
+        },
+        "zoom": {
+          "presentNonEmpty": 10,
+          "types": {
+            "int": 10
+          }
+        }
+      },
+      "price": {
+        "budget": {
+          "presentNonEmpty": 10,
+          "types": {
+            "bool": 10
+          }
+        },
+        "displayValue": {
+          "presentNonEmpty": 10,
+          "types": {
+            "str": 10
+          }
+        },
+        "exchange": {
+          "presentNonEmpty": 10,
+          "types": {
+            "bool": 10
+          }
+        },
+        "free": {
+          "presentNonEmpty": 10,
+          "types": {
+            "bool": 10
+          }
+        },
+        "regularPrice": {
+          "presentNonEmpty": 10,
+          "types": {
+            "dict": 10
+          }
+        }
+      }
+    },
+    "nativeLengths": {
+      "description": null,
+      "descriptionHtml": {
+        "max": "574",
+        "min": "86",
+        "n": 10,
+        "p50NearestRank": "130",
+        "p95NearestRank": "574"
+      },
+      "title": {
+        "max": "70",
+        "min": "17",
+        "n": 10,
+        "p50NearestRank": "46",
+        "p95NearestRank": "70"
+      }
+    },
+    "normalizedBaseKeys": {
+      "author": {
+        "presentNonEmpty": 10,
+        "types": {
+          "dict": 10
+        }
+      },
+      "contacts": {
+        "presentNonEmpty": 0,
+        "types": {
+          "list": 10
+        }
+      },
+      "dates": {
+        "presentNonEmpty": 0,
+        "types": {
+          "list": 10
+        }
+      },
+      "extraction": {
+        "presentNonEmpty": 10,
+        "types": {
+          "dict": 10
+        }
+      },
+      "extras": {
+        "presentNonEmpty": 10,
+        "types": {
+          "dict": 10
+        }
+      },
+      "fieldSources": {
+        "presentNonEmpty": 10,
+        "types": {
+          "dict": 10
+        }
+      },
+      "flags": {
+        "presentNonEmpty": 0,
+        "types": {
+          "list": 10
+        }
+      },
+      "kind": {
+        "presentNonEmpty": 10,
+        "types": {
+          "str": 10
+        }
+      },
+      "language": {
+        "presentNonEmpty": 10,
+        "types": {
+          "dict": 10
+        }
+      },
+      "links": {
+        "presentNonEmpty": 0,
+        "types": {
+          "list": 10
+        }
+      },
+      "location": {
+        "presentNonEmpty": 10,
+        "types": {
+          "dict": 10
+        }
+      },
+      "media": {
+        "presentNonEmpty": 10,
+        "types": {
+          "list": 10
+        }
+      },
+      "postedAt": {
+        "presentNonEmpty": 10,
+        "types": {
+          "dict": 10
+        }
+      },
+      "prices": {
+        "presentNonEmpty": 10,
+        "types": {
+          "list": 10
+        }
+      },
+      "schema": {
+        "presentNonEmpty": 10,
+        "types": {
+          "str": 10
+        }
+      },
+      "sourceTags": {
+        "presentNonEmpty": 0,
+        "types": {
+          "list": 10
+        }
+      },
+      "tags": {
+        "presentNonEmpty": 0,
+        "types": {
+          "list": 10
+        }
+      },
+      "text": {
+        "presentNonEmpty": 10,
+        "types": {
+          "str": 10
+        }
+      },
+      "title": {
+        "presentNonEmpty": 10,
+        "types": {
+          "str": 10
+        }
+      }
+    },
+    "photosPerAd": {
+      "max": "11",
+      "min": "1",
+      "n": 10,
+      "p50NearestRank": "5",
+      "p95NearestRank": "11"
+    },
+    "priceCurrencies": {
+      "USD": 10
+    },
+    "rows": 10,
+    "schemas": {
+      "olx.ad.v1": 10
+    }
+  },
+  "researchContainer": {
+    "aiEnabledPipelines": 0,
+    "enabledSchedules": 0,
+    "kind": "private",
+    "subscriptions": 0
+  },
+  "sample": {
+    "archiveCanonicalTokenCount": 930,
+    "archiveDistinctRawIds": 931,
+    "archiveLiveOverlap": 1,
+    "archiveRows": 931,
+    "freshJoymee": 64,
+    "freshOlx": 0,
+    "legacyIdsExcludedFromDistinct": 1,
+    "olxLiveOverlap": 0,
+    "previousOlx": 10,
+    "rowsProfiled": 1005,
+    "verifiedDistinctAds": 1003
+  }
+}

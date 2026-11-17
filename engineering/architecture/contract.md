@@ -23,7 +23,7 @@
 | `GetContainerAsync(id)` · `ListContainersAsync(tenantId?)` | one · a tenant's or every container | `NotFound` |
 | `RegisterSourceAsync(SourceRegistration)` | `SourceModel`; handle normalized per family, permissive posture defaults | `NotFound` container · `Validation` handle, authority, retention class, check policy, capability policy · `Conflict` handle |
 | `GetSourceAsync(id)` · `ListSourcesAsync(containerId)` | one · by family and handle | `NotFound` |
-| `UpdateSourceAsync(id, SourceUpdate)` | `SourceModel` with its display `name` and `groupId`; an omitted value keeps what is stored, a blank name clears it, `clearGroup` ungroups | `NotFound` source, group · `Validation` name over 200, a group of another container, a group with `clearGroup` |
+| `UpdateSourceAsync(id, SourceUpdate)` | `SourceModel` with its display `name`, `groupId` and optional master `paused` state; an omitted value keeps what is stored, a blank name clears it, `clearGroup` ungroups | `NotFound` source, group · `Validation` name over 200, a group of another container, a group with `clearGroup` · `Conflict` master-pause change on an unavailable or retired source |
 | `DeclareSourceGroupAsync(SourceGroupDeclaration)` | `SourceGroupModel`; a name the container holds in any case returns that group unchanged | `NotFound` container · `Validation` blank or long name, description over 1000 |
 | `ListSourceGroupsAsync(containerId)` | the container's groups, by name | `NotFound` |
 | `DeclarePipelineAsync(PipelineDeclaration)` | `PipelineModel` with its schedule rows; `active` over an open or granted source, else `pendingApproval` | `NotFound` container, source · `Validation` source of another container, denied source, filtered source without scope, schedules, step overrides, limits · `Conflict` same `(container, source, scope key)` |
@@ -34,6 +34,11 @@
   for the whole source, else the normalized URL (sorted query, no fragment) and the parameters sorted by name.
 - Posture switches ship permissive (`permission` open, `aiAllowed`, `poolShareable`, `robotsPolicy` obey); a ban or a
   takedown is one row's update. `posture` is required and gates nothing.
+- `paused: true` persists `SourceState.Paused`; `false` resumes an active/paused source without changing permission,
+  individual pipeline states or schedule rows. The source update shares the scheduler transaction lock. Pausing
+  prevents new manual/scheduled runs and claims of queued work; an already executing request may finish. Display-name
+  and group changes with `paused` omitted preserve the source state. The existing source-management route and access
+  policy apply; this is not a pipeline bulk-enable operation.
 - Schedules: one row per kind of `capture` · `discover` · `refresh` · `check` · `metrics` (a sweep is three rows);
   `interval` ≥ 5 min, `cron` five or six fields, `adaptive` min and max, IANA zone (default `Asia/Tashkent`), optional
   daily window. `nextDueAtUtc` stays null until the scheduler computes it.
@@ -179,14 +184,24 @@ stores. Groups and display names are `IRegistrationBroker`'s; the reading pace i
 
 | Member | Returns | Failures |
 |---|---|---|
-| `ListOverviewAsync(containerId)` | one `SourceOverviewModel` per registered source, by name: `state`, `lastHarvest`, `nextHarvestAt`, `newPostsDaily` (14 UTC days, today last), `sections` (one per pipeline), `health` | `NotFound` container |
+| `ListOverviewAsync(containerId)` | one `SourceOverviewModel` per registered source, by name: operational `state`, persisted `sourceState`, `permission`, `lastHarvest` with its work `kind`, `nextHarvestAt`, `newPostsDaily` (14 UTC days, today last), `sections` (one per pipeline), `health` | `NotFound` container |
 | `ListSourcePostsAsync(sourceId, limit = 200)` | `SourcePostModel` newest first: title, kind, state, revision, first seen, last changed, the section that first captured it, stated start, URL, the first image's source URL (never a `fileRef`) | `NotFound` source · `Validation` limit outside 1–500 |
+| `QuerySourcePostsAsync(sourceId, query)` | `SourcePostPage` with matching items, an optional continuation cursor, counts and facets over the full query | `NotFound` source · `Validation` unsupported filters, limits or cursor |
 | `ListPostRevisionsAsync(containerId, postId)` | `PostRevisionModel` newest first: `revision`, `at`, `changed`; empty for a post from before `006` | `NotFound` post in the container |
 
-- `state`: `harvesting` while a run is queued or running; else `needsAttention` when the host is paused, has failed 3
-  or more times in a row, or the last harvest failed; else `healthy` when a section harvests; else `idle`.
-- A section harvests when its pipeline is active and has an enabled capture schedule. Rules in full:
-  `packages/Module/Sources/sources.md`.
+- For an active source with open/granted permission, operational `state` is `harvesting` while a run is queued or
+  running; else `needsAttention` when the host is paused, has failed 3 or more times in a row, or the last collection
+  or processing run failed; else `healthy` when a section has automatic work; else `idle`. A master-paused source is
+  `idle`; another unreadable source needs attention. `sourceState` and `permission` distinguish these causes without
+  inferring enablement from operational health.
+- A section's `harvesting` requires a readable source, an active pipeline and an enabled, non-manual Capture,
+  Discover, Harvest or Process schedule whose stage is not disabled. `nextDueAt` and `nextWorkKind` identify the
+  earliest such due schedule. `lastHarvest.kind` identifies the latest source collection/processing run.
+- `sections[].harvestKind` selects the available manual action: enabled legacy Capture, then a configured,
+  non-disabled Harvest, Discover or Process stage. Stage automation may be off while manual execution remains
+  available. An unreadable source or inactive pipeline has no manual kind. Nullable kind fields are omitted on the
+  wire. Older servers lacking `sourceState` cannot support the console's master source control; the client withholds
+  those writes instead of treating an ignored `paused` field as a successful update.
 - The post resolve writes `harvest_post_revisions` on create (`changed = {created}`) and on each revision rise, naming
   the top-level `base` fields that changed (never `extraction`, `fieldSources`, `flags`).
 - Routes: `GET api/sources/overview?containerId`, `GET api/sources/{id}/posts?limit`,
@@ -201,6 +216,22 @@ stores. Groups and display names are `IRegistrationBroker`'s; the reading pace i
 
 - Conformance: `SourceOverviewBrokerConformance` runs against all three; groups, names and `maxPages` join
   `RegistrationBrokerConformance`, the reading pace `RunBrokerConformance`.
+
+### Stages, discoveries and Posts queries
+
+Every route checks container access and returns 404 for an item the caller cannot see. Successful payloads use
+the standard `data` envelope.
+
+| Route | Access | Request and response |
+|---|---|---|
+| `GET /api/pipelines/{id}/stages` | `pipelines:read` and container read | `PipelineStageModel[]` with effective options, schedule, catalog when available, operation keys, recent runs and registered processor keys for Process |
+| `PUT /api/pipelines/{id}/stages` | Operator, `sources:manage` and container write | A `ScheduleDeclaration` with stage options for Discover, Harvest or Process. Returns whether settings were saved |
+| `GET /api/pipelines/{id}/discoveries` | `pipelines:read` and container read | Optional `state` (`pending`, `captured`, `failed`, `gone`), `offset` and `limit` (default 50, maximum 200). Returns `PipelineDiscoveryModel[]` |
+| `GET /api/runs/{id}/audit` | `pipelines:read` and the run's container read | Optional `offset`, `limit` (default 100, maximum 200) and `newestFirst`. Returns `RunAttemptModel[]` with outcomes, retry times, HTTP statuses and recorded operations |
+| `POST /api/sources/{id}/posts/query` | `posts:read` and container read | `SourcePostQuery` accepts title search, facet selections, optional post ID, cursor and limit (default 30, maximum 90). `SourcePostPage` returns items, `nextCursor`, `total`, `searchTotal`, counted facets and page size bounds |
+
+Search, filter and count operations run before pagination. A cursor continues the same source, search and filter
+selection. Facet counts apply the search and all selections except the facet being counted.
 
 ---
 
@@ -242,8 +273,8 @@ operator setup (`HarvestSources:Audience` `internal` only):
 
 ### Marketplace sources
 
-- `AddHarvestListingSources` composes the `olx-uz` and `domtut-uz` adapters, the `marketplace-listing-v1` delivery filter (listings
-  only) and `MarketplaceProvisioner`; registration creates no rows. Listing posts skip the fashion-event filter.
+- `AddHarvestListingSources` composes the OLX, Domtut new-build and Joymee readers, the `marketplace-listing-v1` delivery filter
+  and marketplace setup and imports. Listing posts skip the fashion-event filter.
 - A marketplace profile (`MarketplaceProfiles`) names a consumer's tenant, private container, saved searches, cadence,
   run budget and key name. Setup applies it idempotently, like Ocharo's, through the `marketplace setup|status` verb
   and operator routes (`internal` only):
@@ -253,6 +284,7 @@ operator setup (`HarvestSources:Audience` `internal` only):
 | GET | `/api/marketplace/profiles` | operator `tenants:manage` | the reviewed profiles; a read neither provisions nor fetches |
 | POST | `/api/marketplace/{profile}/setup` | operator `tenants:manage` | `{ profile, tenantId, containerId, searches: [{ key, url, sourceId, pipelineId, subscriptionId }], consumerKey? }` |
 | GET | `/api/marketplace/{profile}/status` | operator `tenants:manage` | each search's pipeline with its schedules, its subscription and the active key count |
+| POST | `/api/marketplace/{profile}/searches/{search}/listings` | operator `tenants:manage` | imports one authorized rental into its tenant's subscription |
 
 - Setup takes `{ enableSchedules: false, issueKey: false, rotateKey: false }`. One pipeline and one `wow2.post.v1`
   subscription per search, context `catalog` and `search`. The consumer's tenant key holds `events:read` only;
@@ -265,6 +297,18 @@ operator setup (`HarvestSources:Audience` `internal` only):
 - Domtut reads the server-rendered new-build catalog (`/catalog-nedvijimosty`) and complex pages, keyed by the page's
   numeric post ID; its `/filter/` searches, rent included, are JavaScript shells and are not fetched. A redirect to
   `/404`, which robots.txt disallows, stays inconclusive. `sources/Domtut/domtut.md`
+- Haven's `birbir-collection` uses a separate site pipeline and private subscription with the BirBir collector.
+  Its source capabilities declare `sourceFieldsSchema`, the JSON Schema for the `birbir.ad.v1` listing envelope.
+  Setup can register the public site source with open permission. Marketplace status sets `awaitingSourceAccess`
+  when a profile declares `RequiresGrant` and the source lacks the grant. The BirBir collection profile uses
+  the open source path. [BirBir reader](../codebase/harvest.backend-services/sources/BirBir/birbir.md)
+- Haven's `birbir-apartments-rent` and `domtut-apartments-rent` searches are restricted to imports. Setup reports
+  `importOnly: true` and creates no schedules for them. Import requests carry `externalId`, `url` and `title`;
+  `description`, `priceText`, `city`, `district`, `sellerName`, `publishedAt`, `attributes` and `imageUrls` are optional.
+  Use content supplied or licensed for the private Haven tenant. A repeat with identical content reuses its capture.
+- `joymee-apartments-rent` reads the public Joymee JSON catalog and confirms the listing is an active Tashkent
+  apartment for long-term rent on each detail response. Delivery carries the public website URL in `joymee.ad.v1`.
+  Joymee captures run on an interval when enabled. Link availability checks are disabled for this reader.
 
 ---
 

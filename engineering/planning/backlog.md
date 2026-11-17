@@ -10,6 +10,12 @@ Shape: wow-two-ws/conventions/planning/version-track/version-track.md
 | Item | Type | Notes |
 |---|---|---|
 | Post card composition | engineering | review date layout first, then isolate the card from list state and adopt the SDK primitives that preserve card links and controls |
+| Adaptive pagination in the frontend SDK | engineering | extract the cursor loader and scroll-velocity prefetch after reviewing both SCFD views. Reuse the SDK virtual windowing, test slow networks and keyboard navigation, and expose page-size bounds to consumers. |
+| Afisha publisher category coverage | feature | review categories beyond Fashion, Exhibitions and Concerts against saved publisher evidence. Keep publisher category, event timing and harvest section available as facets. |
+| Wire Files image compaction | engineering | request a Files compaction preset when mirroring post images. Consume durable Files variant-ready events idempotently and associate variant references with the current original. Serve variants through the authorized media route with original bytes as the fallback. |
+| Listing Posts filters | feature | extend the OLX room-count pilot with rent or sale, property type, district and price. Price comparisons use a known currency and billing period. The listing integration lane owns those additions. |
+| Extract shared pipeline tooling to the SDKs | engineering | validate the stage and run contracts with SCFD and Haven. Move common scheduling, queue and audit contracts into the backend SDK. Move the stage flow, live run monitor and history into the frontend SDK. Keep adapter plans and settings in the apps. |
+| Extract the photo gallery to the frontend SDK | engineering | move the preview grid and overflow tile alongside the shared lightbox after reviewing SCFD and Haven together. |
 
 ## Events integration
 
@@ -21,7 +27,6 @@ Picks for `system/sessions/events-integration` in wow-two-ws (P1 = this goal, P2
 | Issuer per environment | docs | events-integration #17, P1: dev trusts Ocharo's Identity (#4); a separate SCFD issuer comes later |
 | Operating controls past v0.1 | feature | events-integration #33, P2: request allowance reserved in transport, retention purge that emits the reserved `post.purged`, freshness and consumer-lag readout, resync control, backup/restore test |
 | Post card place line | feature | venue and city on a post card; needs the posts list read to carry the place, which the AI integration's extraction is to supply (console live edits, 2026-11-13) |
-| Posts quick filters | feature | Upcoming, Ongoing, Finished and Removed with counts above the list, built apart from the card; with them a card drops a label an exact single-value filter already states, and never its dates, age or place under a search or range (analysis: v0.2 version track, entry 25) |
 | Console iteration 2 | feature | events-integration #32, #33, #37, #45: the client's sign-in with Sources and Following; Home's questions (a page-limit partial counts as failed today); the Subscribers page's design; a source's AI card and outgoing-server line once they exist |
 | Account name in the bar | engineering | fe sdk `AppFrame` 0.0.45: `AccountMenu`'s trigger shows initials only, with no prop for the name beside them; the fe sdk lane owns it |
 | Capture view and branch sources | feature | a post's "See the capture" needs a route that shows a stored capture; a store's branch needs a `branch` source family, which the console's icon map already names |
@@ -51,12 +56,6 @@ ChatGPT builds these in the pull order of wow-two-ws `system/sessions/events-int
 
 | Item | Type | Notes |
 |---|---|---|
-| S01 Fix StoreBootTests and add ListingReplay to the solution | fix | spec in `tasks-scfd.md` |
-| S02 Clear fe-harvest lint errors and Prettier drift | fix | spec in `tasks-scfd.md` |
-| S03 Move the rental-terms prompt out of the generic engine | engineering | spec in `tasks-scfd.md` |
-| S04 Give each section one schedule path | fix | spec in `tasks-scfd.md` |
-| S05 Test stage validation, discoveries and the run audit | engineering | spec in `tasks-scfd.md` |
-| S06 Record Codex's work in the docs | engineering | spec in `tasks-scfd.md` |
 | S07 Commit the work in slices and verify v0.2.7 on dev | engineering | spec in `tasks-scfd.md` |
 | S18 Run ANONS, Craftfair, Uzexpocentre and CAEx for Ocharo | product | spec in `tasks-scfd.md` |
 | S08 Carry Ocharo's filter key in the golden contract pages | fix | spec in `tasks-scfd.md` |
@@ -110,7 +109,7 @@ ChatGPT builds these in the pull order of wow-two-ws `system/sessions/events-int
 
 | Item | Type | Notes |
 |---|---|---|
-| Adaptive cadence tuning and idle lifecycle | feature | current adaptive schedules use their minimum interval |
+| Adaptive scheduling and batch sizing | feature | tune each stage from content volume, queue age, yield and refusals. Respect operator bounds and shared host budgets. Store each decision in the run audit. Current adaptive schedules use their minimum interval. |
 | Full-sweep absence inference | feature | current deletion evidence comes from direct known-link checks |
 | Per-request budget enforcement within a step | engineering | current request/byte budgets stop at step boundaries, including robots and redirect usage |
 | Consumer JSON Schema registration and validation | feature | deterministic event projection is available; arbitrary schema validation remains separate |

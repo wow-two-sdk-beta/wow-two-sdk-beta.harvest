@@ -14,5 +14,6 @@ their public/private split no longer exists.
 | [Afisha field audit](afisha-field-audit.md) | extraction correction, native/mapped/AI layers, contacts and availability evidence | 2026-10-27 |
 | [Instagram sources and setup](instagram-source-review.md) | reviewed fashion/craft publishers, official API configuration, coverage limits | 2026-10-27 |
 | [OLX source verification](olx-source-review.md) | ListingShelf port, saved filters, ad identity, availability, bounded live-run evidence | 2026-10-27 |
+| [Housing listing data and shared SCFD model](housing-listing-analysis-2026-11/housing-listing-analysis-2026-11.md) | OLX and Joymee sample, source coverage, canonical fields and typing | 2026-11-15 |
 | [OLX egress](olx-egress-options.md) | candidate proxy providers for the two OLX origins, terms and trial order | 2026-11-05 |
 | [Provider configuration](integration-providers.md) | proxy/IP lease bridge, supplied account sessions, bounded 2Captcha v2 client | 2026-10-27 |

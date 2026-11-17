@@ -1,0 +1,12 @@
+{
+  "date": "2026-11-15",
+  "method": "Blind Codex-agent feasibility trial on synthetic listing text. No expected results were sent to the model. This measures sample-only extraction; the SCFD provider and integration evaluation are separate.",
+  "scores": {
+    "casesMatched": 12,
+    "totalCases": 12,
+    "fieldsMatched": 96,
+    "totalFields": 96,
+    "evidenceQuotes": 17,
+    "exactQuotes": 17
+  }
+}

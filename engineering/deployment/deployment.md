@@ -116,7 +116,7 @@ Wheelhouse Run, with no listener and no operator token.
 - It creates or reuses tenant `ocharo`, the private container `ocharo-events`, one pipeline per harvest channel of each
   selected publisher and one `wow2.event.v1` subscription per pipeline (filter `ocharo-fashion-v1`, context
   `catalog=ocharo-fashion`). Repeating the verb keeps every existing row.
-- Afisha's adapter registers Fashion, Exhibitions and Concerts in Russian and Uzbek when the source is created. Host
+- Afisha's adapter registers Russian Fashion, Exhibitions and Concerts when the source is created. Host
   startup fills missing sections for existing sources. Only the selected Ocharo channels receive the setup cadence and
   subscription.
 - Schedules stay off unless `--schedules` is given; the flag also switches on the registry cadences of existing
@@ -156,21 +156,25 @@ bytes through the source's authorized API and uses the source URL while an image
 `haven` marketplace profile on the target's own settings through Wheelhouse Run, with no listener and no operator token.
 A profile is data (`sources/Module/Marketplace/MarketplaceProfiles.cs`); another product adds a profile, not a verb.
 
-- It creates or reuses tenant `haven`, the private container `haven-listings`, one source per marketplace site (OLX:
-  `www.olx.uz`; private, AI off, robots obeyed, `web-direct` checks) and one pipeline per saved search: Tashkent apartments and houses for
-  long-term rent and Tashkent daily rent, each read newest first. Each pipeline gets one `wow2.post.v1` subscription
+- It creates or reuses tenant `haven`, the private container `haven-listings`, sources by marketplace and intake mode, and
+  one pipeline per saved search. OLX reads Tashkent apartments and houses for long-term rent and Tashkent daily rent.
+  Joymee reads Tashkent apartments for long-term rent. The BirBir collection pipeline starts with the apartment
+  rental category and setup registers the public site source with open permission. BirBir and Domtut also accept
+  authorized rental imports.
+  Each pipeline gets one `wow2.post.v1` subscription
   with filter `marketplace-listing-v1` (listings only) and context `catalog=haven-rent-res`, `search=<key>`. Repeating
   the verb keeps every existing row.
-- Schedules stay off unless `--schedules` is given: capture every 2 h and a daily link check, keeping an interval an
-  operator tuned. A run reads at most 60 ads (`maxItems`). The 64-page budget applies to catalog pages.
-- `--run` queues one bounded capture run per search for the running worker.
+- `--schedules` enables capture every 2 h for OLX, Joymee and BirBir, plus OLX's daily link check, keeping tuned intervals.
+  A run reads at most 60 ads. The 64-page budget applies to catalog pages.
+- `--run` queues one bounded capture per active collection pipeline. BirBir has separate direct collection and
+  import sections. The BirBir and Domtut import subscriptions report `importOnly: true`.
 - Haven's credential is a tenant API key named `haven-supply` with `events:read` only, sent as `X-Api-Key`.
   `--issue-key` issues it when the tenant holds no active one; `--rotate-key` revokes the active ones and issues a new
   one. The secret appears once, in the last stdout line, never on stderr; move it into Haven's target setting without
   printing it. Picked over an OAuth client: an OAuth client needs a release of the issuer's Identity (Ocharo's on dev)
   and a `ClientGrantsJson` redeploy here, and production has no SCFD issuer yet.
 - The last stdout line is one JSON object: `profile`, `tenantId`, `containerId`, `searches` (`key`, `url`, `sourceId`,
-  `pipelineId`, `subscriptionId`), `consumerKey` (`id`, `prefix`, `secret` only when issued) and `runs`.
+  `pipelineId`, `subscriptionId`, `importOnly`, `canCapture`), `consumerKey` (`id`, `prefix`, `secret` only when issued) and `runs`.
 - Haven Supply reads one subscription per search, each with its own cursor; a pull page is
   `{ data: { data, next, hasMore } }` and each listing link carries `captureId`, `externalKey`, `capturedAtUtc` and
   `sourceFields` with schema `olx.ad.v1`. A post Haven already received also reaches it as `link.state` (`suspect`,
@@ -188,6 +192,11 @@ target is ready to take it.
 
 The HTTP form, `POST /api/marketplace/haven/setup` with `{ enableSchedules, issueKey, rotateKey }`, and
 `GET /api/marketplace/profiles` / `GET /api/marketplace/haven/status` take the operator key or token.
+
+Submit authorized BirBir or Domtut rentals to `POST /api/marketplace/haven/searches/{search}/listings` using the
+operator credential. The search key is `birbir-apartments-rent` or `domtut-apartments-rent`. Send the original
+`externalId`, listing `url` and `title`. The [marketplace contract](../architecture/contract.md#marketplace-sources)
+lists the optional listing fields. Set Haven's corresponding subscription variable from the setup output.
 
 ## Integrations
 
@@ -222,3 +231,45 @@ Provider setup and protocols: [integration-providers.md](../research/integration
 - Moving the dev SCFD from the former `harvestadapters` product to `harvest` keeps its database and Events'
   subscription IDs (events-integration #63). Provision subscriptions before enabling consumer jobs, and confirm bounded runs
   and tenant isolation on dev before enabling schedules.
+
+### Source stages
+
+Each registered section has independent Discover, Harvest, and Process schedules.
+Batch size bounds Harvest detail captures and Process saved captures. Discover ignores `BatchSize` and follows
+the declared catalog and run budgets.
+The console's Pipelines tab controls automatic scheduling and manual runs.
+Choose scheduled Capture or scheduled Discover and Harvest per section. Check and Process can run with either path.
+
+Migration `008-pipeline-stages` applies once to the shared schema. It does no source backfill.
+Migration `009-step-operations` stores attempt operations for the run audit; both belong to this release.
+Deployed hosts verify the migration level at boot. Development hosts apply pending migrations.
+Roll out historical data backfills separately in indexed batches for the sources that need them.
+
+An instance can seed missing stage settings under `Harvest:PipelineStages` in its mounted
+`appsettings.Target.json`. Select a section by `PipelineId` or by its container external reference,
+source handle, and section URL. Supply `Family` when a handle has both a site and an import source.
+Existing stage settings take precedence over the seed on restart.
+
+```json
+{
+  "Harvest": {
+    "PipelineStages": [{
+      "Container": "haven-listings",
+      "Source": "birbir.uz",
+      "Family": "Site",
+      "SectionUrl": "https://birbir.uz/ru/tashkent/cat/nedvizhimost/arenda/kvartiry",
+      "Schedules": [
+        { "Kind": "Discover", "Mode": "Interval", "Every": "00:30:00", "Enabled": false, "Stage": {} },
+        { "Kind": "Harvest", "Mode": "Interval", "Every": "00:15:00", "Enabled": false, "Stage": { "BatchSize": 30 } },
+        { "Kind": "Process", "Mode": "Manual", "Enabled": false, "Stage": { "BatchSize": 20 } }
+      ]
+    }]
+  }
+}
+```
+
+Process uses saved readings. Its `Processor` defaults to `saved-reading@1`. For rental terms, select
+`rental-terms@1`, set `Model` to a registered route and enable model processing on the source. Configure
+`Harvest:Processing:OpenAi:Models` with model IDs and provide `Harvest__Processing__OpenAi__ApiKey` through the
+environment or secret store. Existing model-only settings keep their registered processor and result identity.
+Stages can filter saved captures by title and publication time.
