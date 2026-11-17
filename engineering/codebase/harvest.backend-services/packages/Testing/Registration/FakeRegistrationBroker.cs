@@ -315,6 +315,8 @@ public sealed partial class FakeRegistrationBroker(TimeProvider? time = null) : 
                 source = source with { Name = displayName };
             if (update.Paused is { } paused && source.State != (paused ? SourceState.Paused : SourceState.Active))
                 source = source with { State = paused ? SourceState.Paused : SourceState.Active, StateSinceUtc = Clock.GetUtcNow() };
+            if (update.AiAllowed is { } aiAllowed)
+                source = source with { AiAllowed = aiAllowed };
             sources[index] = source;
             return Ok(source);
         }

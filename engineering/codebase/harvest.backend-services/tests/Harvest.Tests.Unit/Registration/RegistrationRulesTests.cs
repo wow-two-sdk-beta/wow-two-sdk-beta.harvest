@@ -184,14 +184,32 @@ public sealed class RegistrationRulesTests
         {
             nameof(PipelineStageOptions.TitleContains) => options with { TitleContains = "fixtures" },
             nameof(PipelineStageOptions.PublishedSinceUtc) => options with { PublishedSinceUtc = Now },
-            nameof(PipelineStageOptions.Model) => options with { Model = "fixture-model" },
+            nameof(PipelineStageOptions.Model) => options with { Processor = "fixture-processor@1", Model = "fixture-model" },
             _ => throw new ArgumentOutOfRangeException(nameof(setting)),
         };
         var schedule = new ScheduleDeclaration { Kind = kind, Mode = ScheduleMode.Manual, Stage = options };
 
-        var error = RegistrationRules.ValidateSchedules([schedule]);
+        var error = RegistrationRules.ValidateSchedules([schedule], _ => true);
         (error?.Message).Should().Be("These stage settings do not apply to this work kind.");
-        RegistrationRules.ValidateSchedules([schedule with { Kind = WorkKind.Process }]).Should().BeNull();
+        RegistrationRules.ValidateSchedules([schedule with { Kind = WorkKind.Process }], _ => true).Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(null, "fixture-model", "The saved-reading processor does not use a model; select a model processor.")]
+    [InlineData("saved-reading@1", "fixture-model", "The saved-reading processor does not use a model; select a model processor.")]
+    [InlineData("legacy-model", null, "Select a registered capture processor.")]
+    [InlineData("fixture-processor@1", "fixture-model", null)]
+    [InlineData("saved-reading@1", null, null)]
+    public void ValidateSchedules_ShouldRunAModelOnlyThroughARegisteredModelProcessor(string? processor, string? model, string? expected)
+    {
+        var schedule = new ScheduleDeclaration
+        {
+            Kind = WorkKind.Process, Mode = ScheduleMode.Manual,
+            Stage = new() { BatchSize = 1, Processor = processor, Model = model },
+        };
+
+        var error = RegistrationRules.ValidateSchedules([schedule], key => key == "fixture-processor@1");
+        (error?.Message).Should().Be(expected);
     }
 
     [Fact]

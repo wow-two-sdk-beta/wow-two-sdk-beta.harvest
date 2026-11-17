@@ -19,7 +19,7 @@ internal sealed class RentalTermsProcessor(IServiceProvider services) : ICapture
     {
         string? model = input.Model;
         string reason = input.Source.AiAllowed ? "The configured model route is unavailable."
-            : "Model processing is disabled for this source.";
+            : "Model processing is disabled for this source; marketplace setup --allow-ai opens it.";
         var chat = await input.Trace.RunOperationAsync("resolve-model",
             () => Task.FromResult(input.Source.AiAllowed && !string.IsNullOrWhiteSpace(model)
                 ? services.GetKeyedService<IChatClient>(model) : null),

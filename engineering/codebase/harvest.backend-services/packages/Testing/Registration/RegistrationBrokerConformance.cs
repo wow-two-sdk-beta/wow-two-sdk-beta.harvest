@@ -633,6 +633,21 @@ public abstract class RegistrationBrokerConformance
         Value(await Broker.ListSourcesAsync(container.Id)).Single().Should().Match<SourceModel>(value => value.Name == null && value.GroupId == null);
     }
 
+    /// <summary>The operator switches model access on and off; an update that omits it keeps the stored switch.</summary>
+    [Fact]
+    public async Task UpdateSource_ShouldSwitchModelAccess_AndKeepItWhenOmitted()
+    {
+        var (_, source) = await SourceAsync(SourceCoverage.Whole);
+
+        var closed = Value(await Broker.UpdateSourceAsync(source.Id, new SourceUpdate { AiAllowed = false }));
+        closed.AiAllowed.Should().BeFalse();
+        Value(await Broker.UpdateSourceAsync(source.Id, new SourceUpdate { Name = "Renamed" })).AiAllowed.Should().BeFalse();
+        var opened = Value(await Broker.UpdateSourceAsync(source.Id, new SourceUpdate { AiAllowed = true }));
+        opened.AiAllowed.Should().BeTrue();
+        opened.Name.Should().Be("Renamed");
+        Value(await Broker.GetSourceAsync(source.Id)).AiAllowed.Should().BeTrue();
+    }
+
     /// <summary>A group of another container, an unknown group or source, or a group set and cleared at once is refused.</summary>
     [Fact]
     public async Task UpdateSource_ShouldFail_WhenTheGroupOrSourceCannotTakeIt()

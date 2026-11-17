@@ -31,12 +31,126 @@ namespace HarvestAdapters.Tests.Integration.Marketplace;
 public sealed class RentalTermsProcessingTests
 {
     private const string Model = "fixture-chat";
+    private const string Processor = "rental-terms@1";
+    private const string ResultKey = "rental-terms@1:fixture-chat";
     private const string Text = "A 500 USD deposit is required.";
 
-    [Theory]
-    [InlineData("rental-terms@1", "rental-terms@1:fixture-chat")]
-    [InlineData(null, "saved-reading@1:fixture-chat")]
-    public async Task Process_ShouldStoreOnlyVerbatimRentalEvidence(string? processor, string resultKey)
+    [Fact]
+    public async Task Process_ShouldStoreOnlyVerbatimRentalEvidence()
+    {
+        await using var host = await StartAsync();
+        await using var scope = host.Provider.CreateAsyncScope();
+        var registry = scope.ServiceProvider.GetRequiredService<IRegistrationBroker>();
+        var tenant = Value(await registry.RegisterTenantAsync(new TenantRegistration { Slug = "rental-fixture", Name = "Rental fixture" }));
+        var container = Value(await registry.RegisterContainerAsync(new ContainerRegistration { Kind = ContainerKind.Private, TenantId = tenant.Id }));
+        var source = Value(await registry.RegisterSourceAsync(new SourceRegistration
+        {
+            ContainerId = container.Id, Family = SourceFamily.Site, Handle = "rentals.example",
+            Coverage = SourceCoverage.Whole, Completeness = SourceCompleteness.Complete,
+            Posture = SourcePosture.OwnFetch, AiAllowed = true,
+        }));
+        var pipeline = Value(await registry.DeclarePipelineAsync(ProcessPipeline(container.Id, source.Id, null)));
+
+        var stages = scope.ServiceProvider.GetRequiredService<PipelineStages>();
+        var process = (await stages.ListAsync(pipeline, source, CancellationToken.None)).Single(stage => stage.Kind == WorkKind.Process);
+        process.ProcessorKeys.Should().BeEquivalentTo(ICaptureProcessor.DefaultKey, Processor);
+        process.Options.Processor.Should().Be(Processor);
+
+        var capture = await SaveAsync(scope.ServiceProvider, host.Clock, container.Id, source.Id, "https://rentals.example/listing/one");
+        (await RunAsync(scope.ServiceProvider, pipeline.Id)).Should().Be(RunStatus.Completed);
+        host.Chat.Input.Should().Be(Text);
+        await ExpectTermsAsync(host.Connection, capture);
+    }
+
+    [Fact]
+    public async Task Process_ShouldRunRentalTermsOnAHavenSource_OnlyAfterSetupAllowsAi()
+    {
+        await using var host = await StartAsync();
+        await using var scope = host.Provider.CreateAsyncScope();
+        var registry = scope.ServiceProvider.GetRequiredService<IRegistrationBroker>();
+        var provisioner = scope.ServiceProvider.GetRequiredService<MarketplaceProvisioner>();
+        var setup = Value(await provisioner.EnsureAsync(MarketplaceProfiles.Haven));
+        var apartments = setup.Searches.Single(search => search.Key == "apartments-rent");
+        var imports = setup.Searches.Single(search => search.Key == "domtut-apartments-rent");
+        Value(await registry.GetSourceAsync(apartments.SourceId)).AiAllowed.Should().BeFalse("collected sources start closed to models");
+        const string listing = "https://www.olx.uz/d/obyavlenie/fixture-flat-ID00001.html";
+        var pipeline = Value(await registry.DeclarePipelineAsync(ProcessPipeline(setup.ContainerId, apartments.SourceId, listing)));
+        var capture = await SaveAsync(scope.ServiceProvider, host.Clock, setup.ContainerId, apartments.SourceId, listing);
+
+        await RunAsync(scope.ServiceProvider, pipeline.Id);
+        host.Chat.Input.Should().BeNull("a source closed to models never reaches the model");
+        (await StoredAsync(host.Connection, capture)).Should().BeNull();
+
+        Value(await provisioner.EnsureAsync(MarketplaceProfiles.Haven, allowAi: true));
+        Value(await provisioner.EnsureAsync(MarketplaceProfiles.Haven));
+        Value(await registry.GetSourceAsync(apartments.SourceId)).AiAllowed.Should().BeTrue("a later setup keeps the source open");
+        Value(await registry.GetSourceAsync(imports.SourceId)).AiAllowed.Should().BeFalse("imports keep their consent posture");
+        host.Clock.Advance(TimeSpan.FromMinutes(6));
+        (await RunAsync(scope.ServiceProvider, pipeline.Id)).Should().Be(RunStatus.Completed);
+        host.Chat.Input.Should().Be(Text);
+        await ExpectTermsAsync(host.Connection, capture);
+    }
+
+    private static PipelineDeclaration ProcessPipeline(Guid containerId, Guid sourceId, string? url) => new()
+    {
+        ContainerId = containerId, SourceId = sourceId, Name = "Fixture rental terms", Scope = new() { Url = url },
+        Schedules = [new()
+        {
+            Kind = WorkKind.Process, Mode = ScheduleMode.Manual,
+            Stage = new() { BatchSize = 1, Processor = Processor, Model = Model },
+        }],
+    };
+
+    private static async Task<Guid> SaveAsync(IServiceProvider services, TimeProvider clock, Guid containerId, Guid sourceId, string url)
+    {
+        var posts = services.GetRequiredService<IPostBroker>();
+        var saved = Value(await posts.SaveCaptureAsync(containerId, sourceId, null, new Capture
+        {
+            ExternalKey = "one", Url = url, RequestUrl = url, FinalUrl = url, CapturedAtUtc = clock.GetUtcNow(),
+            Body = "listing fixture"u8.ToArray(), ContentProjection = "listing fixture",
+        }, new PostEnvelope
+        {
+            Title = "Apartment", Text = Text, Language = new() { Code = "en" }, Kind = PostKind.Listing,
+            Extraction = new() { NormVersion = "fixture", RulesVersion = "fixture" },
+        }));
+        return saved.CaptureId ?? throw new Xunit.Sdk.XunitException("The fixture capture was not stored.");
+    }
+
+    private static async Task<RunStatus> RunAsync(IServiceProvider services, Guid pipelineId)
+    {
+        var runs = services.GetRequiredService<IRunBroker>();
+        var run = Value(await runs.StartAsync(pipelineId, WorkKind.Process));
+        var engine = services.GetRequiredService<HarvestEngine>();
+        while (await engine.ProcessNextAsync())
+        {
+        }
+        return Value(await runs.GetAsync(run.Id)).Status;
+    }
+
+    private static async Task<string?> StoredAsync(string connection, Guid capture)
+    {
+        await using var db = new NpgsqlConnection(connection);
+        await db.OpenAsync();
+        await using var command = new NpgsqlCommand("""
+            SELECT result::text FROM harvest_processing_results WHERE capture_id=@capture AND processor=@processor
+            """, db);
+        command.Parameters.AddWithValue("capture", capture);
+        command.Parameters.AddWithValue("processor", ResultKey);
+        return await command.ExecuteScalarAsync() as string;
+    }
+
+    private static async Task ExpectTermsAsync(string connection, Guid capture)
+    {
+        string stored = (await StoredAsync(connection, capture)).Should().BeOfType<string>().Which;
+        using var result = JsonDocument.Parse(stored);
+        var terms = result.RootElement.GetProperty("terms").EnumerateArray().ToArray();
+        terms.Should().ContainSingle();
+        terms[0].GetProperty("kind").GetString().Should().Be("deposit");
+        terms[0].GetProperty("value").GetString().Should().Be("500 USD");
+        terms[0].GetProperty("evidence").GetString().Should().Be("500 USD deposit");
+    }
+
+    private static async Task<Host> StartAsync()
     {
         string connection = await SourcePostgres.NewDatabaseAsync();
         var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
@@ -48,72 +162,19 @@ public sealed class RentalTermsProcessingTests
         services.AddHarvestEngine();
         services.AddHarvestListingSources();
         services.AddKeyedSingleton<IChatClient>(Model, chat);
-        await using var provider = services.BuildServiceProvider(validateScopes: true);
+        var provider = services.BuildServiceProvider(validateScopes: true);
         await provider.MigrateHarvestOnStartupAsync("rental-terms-fixture");
-
-        await using var scope = provider.CreateAsyncScope();
-        var registry = scope.ServiceProvider.GetRequiredService<IRegistrationBroker>();
-        var tenant = Value(await registry.RegisterTenantAsync(new TenantRegistration { Slug = "rental-fixture", Name = "Rental fixture" }));
-        var container = Value(await registry.RegisterContainerAsync(new ContainerRegistration { Kind = ContainerKind.Private, TenantId = tenant.Id }));
-        var source = Value(await registry.RegisterSourceAsync(new SourceRegistration
-        {
-            ContainerId = container.Id, Family = SourceFamily.Site, Handle = "rentals.example",
-            Coverage = SourceCoverage.Whole, Completeness = SourceCompleteness.Complete,
-            Posture = SourcePosture.OwnFetch, AiAllowed = true,
-        }));
-        var pipeline = Value(await registry.DeclarePipelineAsync(new PipelineDeclaration
-        {
-            ContainerId = container.Id, SourceId = source.Id, Name = "Fixture rentals",
-            Scope = new(),
-            Schedules = [new()
-            {
-                Kind = WorkKind.Process, Mode = ScheduleMode.Manual,
-                Stage = new() { BatchSize = 1, Processor = processor, Model = Model },
-            }],
-        }));
-
-        var stages = scope.ServiceProvider.GetRequiredService<PipelineStages>();
-        var process = (await stages.ListAsync(pipeline, source, CancellationToken.None)).Single(stage => stage.Kind == WorkKind.Process);
-        process.ProcessorKeys.Should().BeEquivalentTo(ICaptureProcessor.DefaultKey, "rental-terms@1");
-        process.Options.Processor.Should().Be("rental-terms@1");
-
-        const string url = "https://rentals.example/listing/one";
-        var posts = scope.ServiceProvider.GetRequiredService<IPostBroker>();
-        var capture = Value(await posts.SaveCaptureAsync(container.Id, source.Id, null, new Capture
-        {
-            ExternalKey = "one", Url = url, RequestUrl = url, FinalUrl = url, CapturedAtUtc = clock.GetUtcNow(),
-            Body = "listing fixture"u8.ToArray(), ContentProjection = "listing fixture",
-        }, new PostEnvelope
-        {
-            Title = "Apartment", Text = Text, Language = new() { Code = "en" }, Kind = PostKind.Listing,
-            Extraction = new() { NormVersion = "fixture", RulesVersion = "fixture" },
-        }));
-
-        var runs = scope.ServiceProvider.GetRequiredService<IRunBroker>();
-        var run = Value(await runs.StartAsync(pipeline.Id, WorkKind.Process));
-        var engine = scope.ServiceProvider.GetRequiredService<HarvestEngine>();
-        (await engine.ProcessNextAsync()).Should().BeTrue();
-        Value(await runs.GetAsync(run.Id)).Status.Should().Be(RunStatus.Completed);
-        chat.Input.Should().Be(Text);
-
-        await using var db = new NpgsqlConnection(connection);
-        await db.OpenAsync();
-        await using var command = new NpgsqlCommand("""
-            SELECT result::text FROM harvest_processing_results WHERE capture_id=@capture AND processor=@processor
-            """, db);
-        command.Parameters.AddWithValue("capture", capture.CaptureId);
-        command.Parameters.AddWithValue("processor", resultKey);
-        var stored = (await command.ExecuteScalarAsync()).Should().BeOfType<string>().Which;
-        using var result = JsonDocument.Parse(stored);
-        var terms = result.RootElement.GetProperty("terms").EnumerateArray().ToArray();
-        terms.Should().ContainSingle();
-        terms[0].GetProperty("kind").GetString().Should().Be("deposit");
-        terms[0].GetProperty("value").GetString().Should().Be("500 USD");
-        terms[0].GetProperty("evidence").GetString().Should().Be("500 USD deposit");
+        return new(provider, connection, clock, chat);
     }
 
     private static T Value<T>(Result<T> result) where T : notnull => result is Result<T>.Success { Value: var value }
         ? value : throw new Xunit.Sdk.XunitException(((Result<T>.Failure)result).Error.Message);
+
+    private sealed record Host(ServiceProvider Provider, string Connection, FakeTimeProvider Clock, ScriptedChatClient Chat)
+        : IAsyncDisposable
+    {
+        public ValueTask DisposeAsync() => Provider.DisposeAsync();
+    }
 
     private sealed class ScriptedChatClient : IChatClient
     {

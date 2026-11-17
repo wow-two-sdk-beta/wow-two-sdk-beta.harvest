@@ -11,4 +11,7 @@ public sealed record MarketplaceSetupRequest
 
     /// <summary>Revokes the consumer's active keys and issues one.</summary>
     public bool RotateKey { get; init; }
+
+    /// <summary>Opens the profile's collected sources to model processors such as <c>rental-terms@1</c>.</summary>
+    public bool AllowAi { get; init; }
 }

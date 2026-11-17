@@ -1,6 +1,6 @@
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 
-/// <summary>Represents a change to a source's name, group or master pause; omitted values keep what is stored.</summary>
+/// <summary>Represents a change to a source's name, group, master pause or model access; omitted values keep what is stored.</summary>
 public sealed record SourceUpdate
 {
     /// <summary>Gets the display name; a blank one clears it, so the source shows its handle again.</summary>
@@ -15,4 +15,8 @@ public sealed record SourceUpdate
     /// <summary>Gets whether the operator pauses the source, preserving every pipeline's own state and schedules.
     /// Only active or operator-paused sources may change this switch.</summary>
     public bool? Paused { get; init; }
+
+    /// <summary>Gets whether model processors and embeddings may read the source's text. A Process stage still selects
+    /// its processor and model route.</summary>
+    public bool? AiAllowed { get; init; }
 }

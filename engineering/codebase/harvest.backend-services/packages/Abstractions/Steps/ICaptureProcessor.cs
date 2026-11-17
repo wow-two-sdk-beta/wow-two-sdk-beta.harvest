@@ -6,9 +6,6 @@ public interface ICaptureProcessor
     /// <summary>The built-in model-free summary.</summary>
     public const string DefaultKey = "saved-reading@1";
 
-    /// <summary>The optional host registration for older model-only stage settings.</summary>
-    public const string LegacyModelKey = "legacy-model";
-
     /// <summary>Gets the stable key under which the host registers this processor.</summary>
     string Key { get; }
 

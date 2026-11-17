@@ -138,10 +138,6 @@ async function save() {
       ? props.stage.options.publishedSinceUtc
       : `${fields.publishedSince}T00:00:00Z`
     : undefined;
-  const keepsLegacyProcessor =
-    previous?.stage?.model === selectedModel.value &&
-    !previous.stage.processor &&
-    fields.processor === props.stage.options.processor;
   const stage: PipelineStageOptions = {
     batchSize: batchSize.value,
     ...(mode === 'cron' && fields.startsOn ? { startsOn: fields.startsOn } : {}),
@@ -149,7 +145,7 @@ async function save() {
       ? {
           ...(fields.titleContains.trim() ? { titleContains: fields.titleContains.trim() } : {}),
           ...(publishedSinceUtc ? { publishedSinceUtc } : {}),
-          ...(fields.processor && !keepsLegacyProcessor ? { processor: fields.processor } : {}),
+          ...(fields.processor ? { processor: fields.processor } : {}),
           ...(selectedModel.value ? { model: selectedModel.value } : {}),
         }
       : {}),

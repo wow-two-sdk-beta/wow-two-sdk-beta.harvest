@@ -318,6 +318,8 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
             row.State = paused ? SourceState.Paused : SourceState.Active;
             row.StateSince = Now();
         }
+        if (update.AiAllowed is { } aiAllowed)
+            row.AiAllowed = aiAllowed;
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 

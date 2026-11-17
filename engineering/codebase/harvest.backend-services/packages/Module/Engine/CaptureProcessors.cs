@@ -4,22 +4,19 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Engine;
 
-/// <summary>Resolves configured and pre-existing processor selections.</summary>
+/// <summary>Resolves a Process stage's processor and the key its results are stored under.</summary>
 internal static class CaptureProcessors
 {
-    internal static string ResolveKey(PipelineStageOptions? options) =>
-        options?.Processor ?? (string.IsNullOrWhiteSpace(options?.Model)
-            ? ICaptureProcessor.DefaultKey : ICaptureProcessor.LegacyModelKey);
+    internal static string ResolveKey(PipelineStageOptions? options) => options?.Processor ?? ICaptureProcessor.DefaultKey;
 
     internal static ICaptureProcessor? Resolve(IServiceProvider services, PipelineStageOptions? options) =>
         services.GetKeyedService<ICaptureProcessor>(ResolveKey(options));
 
+    /// <summary>Names a stored result by its processor, and by the model route when a model processor ran.</summary>
     internal static string ResultKey(PipelineStageOptions? options)
     {
         string key = ResolveKey(options);
-        if (key == ICaptureProcessor.LegacyModelKey)
-            key = ICaptureProcessor.DefaultKey;
-        return string.IsNullOrWhiteSpace(options?.Model) ? key : $"{key}:{options.Model}";
+        return key == ICaptureProcessor.DefaultKey || string.IsNullOrWhiteSpace(options?.Model) ? key : $"{key}:{options.Model}";
     }
 
     internal static string[] PublicKeys(IServiceProvider services) => services.GetKeyedServices<ICaptureProcessor>(KeyedService.AnyKey)

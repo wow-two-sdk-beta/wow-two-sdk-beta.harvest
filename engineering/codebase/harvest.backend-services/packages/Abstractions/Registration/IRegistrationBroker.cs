@@ -99,9 +99,9 @@ public interface IRegistrationBroker
     /// <returns>The sources; <c>NotFound</c> for an unknown container.</returns>
     Task<Result<IReadOnlyList<SourceModel>>> ListSourcesAsync(Guid containerId, CancellationToken cancellationToken = default);
 
-    /// <summary>Sets a source's display name and group.</summary>
+    /// <summary>Sets a source's display name, group, master pause and model access.</summary>
     /// <param name="sourceId">The source to change.</param>
-    /// <param name="update">The name and group to set; an omitted value keeps what is stored.</param>
+    /// <param name="update">The values to set; an omitted value keeps what is stored.</param>
     /// <param name="cancellationToken">The token that cancels the call.</param>
     /// <returns>The source; <c>NotFound</c> for an unknown source or group, <c>Validation</c> for a name over 200
     /// characters, a group of another container, or a group with <see cref="SourceUpdate.ClearGroup"/>.</returns>

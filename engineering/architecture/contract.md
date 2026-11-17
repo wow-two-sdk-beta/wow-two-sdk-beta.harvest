@@ -23,7 +23,7 @@
 | `GetContainerAsync(id)` · `ListContainersAsync(tenantId?)` | one · a tenant's or every container | `NotFound` |
 | `RegisterSourceAsync(SourceRegistration)` | `SourceModel`; handle normalized per family, permissive posture defaults | `NotFound` container · `Validation` handle, authority, retention class, check policy, capability policy · `Conflict` handle |
 | `GetSourceAsync(id)` · `ListSourcesAsync(containerId)` | one · by family and handle | `NotFound` |
-| `UpdateSourceAsync(id, SourceUpdate)` | `SourceModel` with its display `name`, `groupId` and optional master `paused` state; an omitted value keeps what is stored, a blank name clears it, `clearGroup` ungroups | `NotFound` source, group · `Validation` name over 200, a group of another container, a group with `clearGroup` · `Conflict` master-pause change on an unavailable or retired source |
+| `UpdateSourceAsync(id, SourceUpdate)` | `SourceModel` with its display `name`, `groupId`, optional master `paused` state and `aiAllowed` model access; an omitted value keeps what is stored, a blank name clears it, `clearGroup` ungroups | `NotFound` source, group · `Validation` name over 200, a group of another container, a group with `clearGroup` · `Conflict` master-pause change on an unavailable or retired source |
 | `DeclareSourceGroupAsync(SourceGroupDeclaration)` | `SourceGroupModel`; a name the container holds in any case returns that group unchanged | `NotFound` container · `Validation` blank or long name, description over 1000 |
 | `ListSourceGroupsAsync(containerId)` | the container's groups, by name | `NotFound` |
 | `DeclarePipelineAsync(PipelineDeclaration)` | `PipelineModel` with its schedule rows; `active` over an open or granted source, else `pendingApproval` | `NotFound` container, source · `Validation` source of another container, denied source, filtered source without scope, schedules, step overrides, limits · `Conflict` same `(container, source, scope key)` |
@@ -286,8 +286,9 @@ operator setup (`HarvestSources:Audience` `internal` only):
 | GET | `/api/marketplace/{profile}/status` | operator `tenants:manage` | each search's pipeline with its schedules, its subscription and the active key count |
 | POST | `/api/marketplace/{profile}/searches/{search}/listings` | operator `tenants:manage` | imports one authorized rental into its tenant's subscription |
 
-- Setup takes `{ enableSchedules: false, issueKey: false, rotateKey: false }`. One pipeline and one `wow2.post.v1`
-  subscription per search, context `catalog` and `search`. The consumer's tenant key holds `events:read` only;
+- Setup takes `{ enableSchedules: false, issueKey: false, rotateKey: false, allowAi: false }`; `allowAi` opens the
+  collected sources to model processors such as `rental-terms@1`, and a later setup without it keeps them open. One
+  pipeline and one `wow2.post.v1` subscription per search, context `catalog` and `search`. The consumer's tenant key holds `events:read` only;
   `consumerKey.secret` is present only in the response that issued it. Haven's profile and target steps:
   `engineering/deployment/deployment.md` § Provisioning Haven on a target.
 - OLX implements `IFetchDestinationPolicy` and `ILinkAvailabilityReader`: initial and redirected requests stay on

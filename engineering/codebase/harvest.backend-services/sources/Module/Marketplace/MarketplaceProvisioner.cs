@@ -20,14 +20,17 @@ public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDelive
     /// <summary>Creates what the profile names and is missing. Schedules start disabled unless requested; a request also
     /// switches on the profile's cadences of pipelines that already exist, keeping an operator-tuned interval.</summary>
     /// <remarks>Repeat calls reuse identities and issue no key unless <paramref name="keys"/> asks. Call setup through one
-    /// operator host at a time; the registry rejects conflicting creates.</remarks>
+    /// operator host at a time; the registry rejects conflicting creates. Collected sources start closed to models;
+    /// <paramref name="allowAi"/> opens them so a Process stage can run a model processor such as <c>rental-terms@1</c>,
+    /// and setup never closes them again. Import-only sources keep their submitter-consent posture.</remarks>
     /// <param name="profile">The profile to apply.</param>
     /// <param name="enableSchedules">Whether the capture and check cadences run.</param>
     /// <param name="keys">Whether to issue or rotate the consumer's key.</param>
+    /// <param name="allowAi">Whether the profile's collected sources may reach a model processor.</param>
     /// <param name="cancellationToken">The token that cancels setup.</param>
     /// <returns>The IDs, and a key secret only when this call issued one.</returns>
     public async Task<Result<MarketplaceSetup>> EnsureAsync(MarketplaceProfile profile, bool enableSchedules = false,
-        MarketplaceKeyAction keys = MarketplaceKeyAction.None, CancellationToken cancellationToken = default)
+        MarketplaceKeyAction keys = MarketplaceKeyAction.None, bool allowAi = false, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(profile);
         if (profile.Searches.Count == 0 || profile.Searches.Select(search => search.Key).Distinct(StringComparer.Ordinal).Count() != profile.Searches.Count)
@@ -58,7 +61,7 @@ public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDelive
             foreach (MarketplaceSearch search in profile.Searches)
             {
                 if (!sources.TryGetValue(search.Site, out var source))
-                    sources[search.Site] = source = await EnsureSourceAsync(container.Id, search.Site, cancellationToken);
+                    sources[search.Site] = source = await EnsureSourceAsync(container.Id, search.Site, allowAi, cancellationToken);
                 if (source is null)
                     continue;
                 bool canCapture = !search.Site.ImportOnly && source.State == SourceState.Active
@@ -149,14 +152,17 @@ public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDelive
     }
 
     /// <summary>Creates or reuses the container's source for a marketplace site, named and grouped for the console; an
-    /// operator's name or group is kept.</summary>
-    private async Task<SourceModel?> EnsureSourceAsync(Guid containerId, MarketplaceSite site, CancellationToken cancellationToken)
+    /// operator's name or group is kept, and a collected source opens to models when asked.</summary>
+    private async Task<SourceModel?> EnsureSourceAsync(Guid containerId, MarketplaceSite site, bool allowAi,
+        CancellationToken cancellationToken)
     {
         var sources = Value(await registry.ListSourcesAsync(containerId, cancellationToken));
         var family = Family(site);
         var source = sources.SingleOrDefault(item => item.Family == family && item.Handle == site.Handle);
         if (site.RequiresGrant && source?.Permission != SourcePermission.Granted)
             return null;
+
+        bool opensToAi = allowAi && !site.ImportOnly;
 
         source ??= Value(await registry.RegisterSourceAsync(new()
             {
@@ -165,23 +171,29 @@ public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDelive
                 Posture = site.ImportOnly ? SourcePosture.ConsentedIntake : SourcePosture.OwnFetch,
                 Permission = site.ImportOnly ? SourcePermission.Restricted : SourcePermission.Open,
                 ConsentBasis = site.ImportOnly ? ConsentBasis.Submitter : ConsentBasis.None,
-                AiAllowed = false, PoolShareable = false, RobotsPolicy = RobotsPolicy.Obey, CheckPolicy = site.CheckPolicy,
+                AiAllowed = opensToAi, PoolShareable = false, RobotsPolicy = RobotsPolicy.Obey, CheckPolicy = site.CheckPolicy,
             }, cancellationToken));
-        if (source.AiAllowed || source.PoolShareable || source.RobotsPolicy != RobotsPolicy.Obey)
+        if (source.PoolShareable || source.RobotsPolicy != RobotsPolicy.Obey || (site.ImportOnly && source.AiAllowed))
             throw new ProvisioningFailure(AppErrorFactory.Conflict(
                 $"The existing {site.Name} source has a different AI, sharing or robots posture. Review it before applying this profile."));
         if (site.ImportOnly && (source.Posture != SourcePosture.ConsentedIntake || source.Permission != SourcePermission.Restricted))
             throw new ProvisioningFailure(AppErrorFactory.Conflict($"The existing {site.Name} source is not restricted to imports."));
-        if (source.GroupId is not null && source.Name is not null)
+        bool opens = opensToAi && !source.AiAllowed;
+        if (source.GroupId is not null && source.Name is not null && !opens)
             return source;
 
-        var groups = Value(await registry.ListSourceGroupsAsync(containerId, cancellationToken));
-        SourceGroupModel group = groups.FirstOrDefault(item => string.Equals(item.Name, site.Group, StringComparison.OrdinalIgnoreCase))
-            ?? Value(await registry.DeclareSourceGroupAsync(new() { ContainerId = containerId, Name = site.Group }, cancellationToken));
+        Guid? groupId = null;
+        if (source.GroupId is null)
+        {
+            var groups = Value(await registry.ListSourceGroupsAsync(containerId, cancellationToken));
+            groupId = (groups.FirstOrDefault(item => string.Equals(item.Name, site.Group, StringComparison.OrdinalIgnoreCase))
+                ?? Value(await registry.DeclareSourceGroupAsync(new() { ContainerId = containerId, Name = site.Group }, cancellationToken))).Id;
+        }
         return Value(await registry.UpdateSourceAsync(source.Id, new()
         {
             Name = source.Name is null ? site.Name : null,
-            GroupId = source.GroupId is null ? group.Id : null,
+            GroupId = groupId,
+            AiAllowed = opens ? true : null,
         }, cancellationToken));
     }
 

@@ -17,7 +17,7 @@ public sealed class MarketplaceSetupVerbTests
     {
         await using var host = await StartAsync();
 
-        var first = await Run(host.Services, ["setup", "--profile", "haven", "--run"]);
+        var first = await Run(host.Services, ["setup", "--profile", "haven", "--run", "--allow-ai"]);
         var again = await Run(host.Services, ["setup", "--profile", "haven"]);
 
         first.Exit.Should().Be(0, first.Error);
@@ -95,6 +95,7 @@ public sealed class MarketplaceSetupVerbTests
     [InlineData("marketplace setup --profile nowhere")]
     [InlineData("marketplace setup --profile haven --issue-key --rotate-key")]
     [InlineData("marketplace status --profile haven --run")]
+    [InlineData("marketplace status --profile haven --allow-ai")]
     public async Task Setup_answers_its_usage_without_serving(string commandLine)
     {
         string[] args = commandLine.Split(' ');

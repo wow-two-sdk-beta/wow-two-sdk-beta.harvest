@@ -179,12 +179,12 @@ internal static partial class RegistrationRules
                     return RegistrationErrors.Invalid("These stage settings do not apply to this work kind.");
                 if (stage.TitleContains is { Length: > 200 } || stage.Model is { Length: > 100 } || stage.Processor is { Length: > 100 })
                     return RegistrationErrors.Invalid("A stage setting is too long.");
-                if (stage.Processor is { } processor
-                    && (processor == ICaptureProcessor.LegacyModelKey
-                        || processor != ICaptureProcessor.DefaultKey && hasProcessor?.Invoke(processor) != true))
+                if (stage.Processor is { } processor && processor != ICaptureProcessor.DefaultKey
+                    && hasProcessor?.Invoke(processor) != true)
                     return RegistrationErrors.Invalid("Select a registered capture processor.");
-                if (stage.Processor == ICaptureProcessor.DefaultKey && !string.IsNullOrWhiteSpace(stage.Model))
-                    return RegistrationErrors.Invalid("The saved-reading processor does not use a model.");
+                if ((stage.Processor ?? ICaptureProcessor.DefaultKey) == ICaptureProcessor.DefaultKey
+                    && !string.IsNullOrWhiteSpace(stage.Model))
+                    return RegistrationErrors.Invalid("The saved-reading processor does not use a model; select a model processor.");
             }
             if (!TimeZoneInfo.TryFindSystemTimeZoneById(schedule.TimeZone, out _))
                 return RegistrationErrors.Invalid($"'{schedule.TimeZone}' is not a known time zone.");

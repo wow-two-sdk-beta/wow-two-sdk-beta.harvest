@@ -152,7 +152,7 @@ bytes through the source's authorized API and uses the source URL while an image
 
 ## Provisioning Haven on a target
 
-`dotnet HarvestSources.Api.dll marketplace setup --profile haven [--schedules] [--run] [--issue-key]` applies the
+`dotnet HarvestSources.Api.dll marketplace setup --profile haven [--schedules] [--run] [--allow-ai] [--issue-key]` applies the
 `haven` marketplace profile on the target's own settings through Wheelhouse Run, with no listener and no operator token.
 A profile is data (`sources/Module/Marketplace/MarketplaceProfiles.cs`); another product adds a profile, not a verb.
 
@@ -166,6 +166,9 @@ A profile is data (`sources/Module/Marketplace/MarketplaceProfiles.cs`); another
   the verb keeps every existing row.
 - `--schedules` enables capture every 2 h for OLX, Joymee and BirBir, plus OLX's daily link check, keeping tuned intervals.
   A run reads at most 60 ads. The 64-page budget applies to catalog pages.
+- `--allow-ai` opens the OLX, Joymee and BirBir collection sources to model processors (`aiAllowed`), so a Process
+  stage can run `rental-terms@1`; the import sources stay closed. Setup creates collected sources closed and never
+  closes an opened one.
 - `--run` queues one bounded capture per active collection pipeline. BirBir has separate direct collection and
   import sections. The BirBir and Domtut import subscriptions report `importOnly: true`.
 - Haven's credential is a tenant API key named `haven-supply` with `events:read` only, sent as `X-Api-Key`.
@@ -268,8 +271,9 @@ Existing stage settings take precedence over the seed on restart.
 }
 ```
 
-Process uses saved readings. Its `Processor` defaults to `saved-reading@1`. For rental terms, select
-`rental-terms@1`, set `Model` to a registered route and enable model processing on the source. Configure
-`Harvest:Processing:OpenAi:Models` with model IDs and provide `Harvest__Processing__OpenAi__ApiKey` through the
-environment or secret store. Existing model-only settings keep their registered processor and result identity.
+Process uses saved readings. Its `Processor` defaults to `saved-reading@1`, which takes no model. For rental terms,
+select `rental-terms@1`, set `Model` to a registered route and open the source to models (`marketplace setup
+--allow-ai`, or `aiAllowed` on the source update). Configure `Harvest:Processing:OpenAi:Models` with model IDs and
+provide `Harvest__Processing__OpenAi__ApiKey` through the environment or secret store. A model processor's results are
+stored under `{processor}:{model}`; a model without a model processor is refused.
 Stages can filter saved captures by title and publication time.
