@@ -68,7 +68,7 @@ public sealed class RulesPostExtractorTests
         post.Flags.Should().Contain("source_warning:fixture_warning");
         post.Extras["source"].GetProperty("fields").GetProperty("customField").GetString().Should().Be("retained");
         post.FieldSources["sourceTags"].Tier.Should().Be(ExtractionTier.Deterministic);
-        post.Extraction.RulesVersion.Should().Be("rules@4");
+        post.Extraction.RulesVersion.Should().Be("rules@5");
     }
 
     [Theory]
@@ -112,7 +112,7 @@ public sealed class RulesPostExtractorTests
         post.Extraction.Ai.Should().BeNull();
         var mapped = post.Extras["event"];
         mapped.GetProperty("organizer").GetProperty("name").GetString().Should().Be("Mstar");
-        mapped.GetProperty("mapping").GetProperty("rules").GetString().Should().Be("rules@4");
+        mapped.GetProperty("mapping").GetProperty("rules").GetString().Should().Be("rules@5");
         mapped.GetProperty("mapping").GetProperty("parser").GetString().Should().Be("schema.org.event");
         mapped.GetProperty("place").GetProperty("mentions").EnumerateArray()
             .Should().Contain(mention => mention.GetProperty("kind").GetString() == "city", "enums travel as camelCase strings");

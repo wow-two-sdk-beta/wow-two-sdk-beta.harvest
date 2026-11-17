@@ -19,6 +19,7 @@ Golden pages of SCFD's pull wire. `wow2.event.v1/` holds `GET api/subscriptions/
   `base64("{subscription:N}:{tx}:{row}")` with the transaction id as its ordinal. Nothing else is touched.
 - `05-lifecycle` carries the post and link lifecycle a step emits; `post.relisted`, `pipeline.run` and
   `pipeline.health` have no producer yet. `08-purged` is a reserved type inserted with the writer's columns, no
-  payload, revision + 1. `10-unmatched` is a delivered post whose next revision the filter rejects: `post.new`, then
+  payload, revision + 1. `09-deadline` is a Craftfair-shaped call whose `deadlines` lists its closed application
+  deadline. `10-unmatched` is a delivered post whose next revision the filter rejects: `post.new`, then
   `post.unmatched` at revision 2 carrying that revision.
 - Events copies `wow2.event.v1/` unchanged and records the tag and commit it copied from.

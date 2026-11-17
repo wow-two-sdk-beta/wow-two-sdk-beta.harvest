@@ -20,4 +20,8 @@ public sealed record PostDate
 
     /// <summary>Gets whether the year was inferred rather than stated.</summary>
     public bool YearInferred { get; init; }
+
+    /// <summary>Gets, for a <see cref="DateRole.Deadline"/>, whether the call it closes is open, closed or unknown as the
+    /// source states it; null for other roles.</summary>
+    public CallStatus? Status { get; init; }
 }

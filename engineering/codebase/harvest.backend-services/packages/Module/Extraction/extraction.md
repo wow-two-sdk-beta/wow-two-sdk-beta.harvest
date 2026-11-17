@@ -15,7 +15,7 @@ Deterministic and rule tiers implement `IPostExtractor` without model or provide
 
 `AddHarvestExtraction()` registers `RulesPostExtractor`. Structured Event fields win; text rules fill missing dates,
 prices and contacts. Every filled field records its parser or rule in `FieldSources`, and each envelope records
-`norm@1` and `rules@4`.
+`norm@1` and `rules@5`.
 
 - `Extras.schemaOrg` retains the original Event node; `Extras.event` contains the deterministic `wow2.event.v1` payload
 - `EventSchemaMapper.Map(envelope)` exposes that event mapping for a subscription's schema selection
@@ -24,6 +24,12 @@ prices and contacts. Every filled field records its parser or rule in `FieldSour
 - `classification` `{ classifier, verdict: relevant | irrelevant | uncertain, confidence, reason, kind }` and the
   top-level `kind` come from `PostEnvelope.Classification`; both stay null until a model tier writes them (#55)
 - dates retain stated year/month/day/time precision and offset. Invalid or relative dates remain unresolved
+- an application deadline a named reader states in its namespace (`schemaOrg.craftfair.applicationDeadline`,
+  `schemaOrg.uzexpocentre.applicationDeadline`, `schemaOrg.afisha.applicationDeadlineEvidence.date`) becomes a
+  `DateRole.Deadline` date with its precision, raw text and `CallStatus` (Craftfair's status badge: `closed` or `open`,
+  else `unknown`) since `rules@5`; the namespace stays untouched (`ApplicationDeadlines`)
+- the mapping's `deadlines` lists `{ kind: application, value, precision, raw, status }` per stated deadline, `[]` when
+  none; an envelope from before `rules@5` reads them from its stored namespace
 - prices retain stated currency and amount, range or free status; absence never becomes zero
 - local Uzbek numbers gain `+998` only for an Uzbek source and a recognized local prefix; international numbers
   require a country code. Contacts remain normalized plain text

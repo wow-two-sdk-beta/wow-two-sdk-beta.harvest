@@ -57,6 +57,7 @@ public sealed class RulesPostExtractor : IPostExtractor
             {
                 if (ExtractionRules.Date(ReaderSupport.String(schemaOrg, "startDate"), DateRole.Start) is { } start) dates.Add(start);
                 if (ExtractionRules.Date(ReaderSupport.String(schemaOrg, "endDate"), DateRole.End) is { } end) dates.Add(end);
+                if (ApplicationDeadlines.Read(schemaOrg) is { } deadline) dates.Add(deadline);
                 if (dates.Count > 0) fieldSources["dates"] = Deterministic(parser);
             }
             if (schemaOrg.TryGetProperty("location", out var place)) location = Location(place);
@@ -145,7 +146,7 @@ public sealed class RulesPostExtractor : IPostExtractor
             Flags = capture.Warnings.Select(warning => "source_warning:" + warning)
                 .Concat(request.Ai != AiMode.Off ? ["ai_skipped:capability_unavailable"] : Array.Empty<string>())
                 .Distinct(StringComparer.Ordinal).ToArray(),
-            Extraction = new() { NormVersion = "norm@1", RulesVersion = "rules@4", TiersRun = [ExtractionTier.Deterministic, ExtractionTier.Rules] },
+            Extraction = new() { NormVersion = "norm@1", RulesVersion = "rules@5", TiersRun = [ExtractionTier.Deterministic, ExtractionTier.Rules] },
         };
         if (EventSchemaMapper.Map(envelope) is { } mapped) extras["event"] = mapped;
         return Task.FromResult(Result<PostEnvelope>.Ok(ListingSchemaMapper.WithProjection(envelope, capture.Url)));

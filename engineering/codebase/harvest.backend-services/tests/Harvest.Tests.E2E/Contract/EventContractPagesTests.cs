@@ -121,6 +121,7 @@ public sealed class EventContractPagesTests
         createdData.GetProperty("classification").ValueKind.Should().Be(JsonValueKind.Null);
         createdData.GetProperty("starts").GetProperty("precision").GetString().Should().Be("second");
         createdData.GetProperty("ends").GetProperty("precision").GetString().Should().Be("day");
+        createdData.GetProperty("deadlines").GetArrayLength().Should().Be(0, "a page that states no deadline lists none");
         MentionKinds(createdData).Should().Equal("venue", "city", "street");
         createdData.GetProperty("place").GetProperty("geo").ValueKind.Should().Be(JsonValueKind.Object);
         foreach (var field in new[] { "postedAt", "mapping", "capture", "schemaOrg" })
@@ -212,11 +213,24 @@ public sealed class EventContractPagesTests
         purged.TryGetProperty("data", out _).Should().BeFalse("a row without a payload serves no data");
         files.Add(new("08-purged.json", ["post.purged"], normalizer.Normalize(purgedBytes)));
 
+        // 09: a Craftfair-shaped call whose reader namespace states a closed application deadline; the extractor types
+        // it, and the event carries it in `deadlines` beside the untouched namespace.
+        await SaveAsync(CraftFair(Tick()));
+        var (deadlineBytes, deadlinePage) = await PullAsync(Next(purgedPage), 1);
+        var deadlines = Events(deadlinePage).Single().GetProperty("data").GetProperty("deadlines");
+        deadlines.GetArrayLength().Should().Be(1);
+        deadlines[0].GetProperty("kind").GetString().Should().Be("application");
+        deadlines[0].GetProperty("value").GetString().Should().Be("2026-10-26T23:59:59+05:00");
+        deadlines[0].GetProperty("precision").GetString().Should().Be("second");
+        deadlines[0].GetProperty("raw").GetString().Should().Be("26 October, 2026");
+        deadlines[0].GetProperty("status").GetString().Should().Be("closed");
+        files.Add(new("09-deadline.json", ["deadline:application:closed"], normalizer.Normalize(deadlineBytes)));
+
         // 10: a delivered post whose next revision the filter rejects — the page announced a concert instead — arrives
         // once as post.unmatched with that revision; Events holds the event it made.
         var market = await SaveAsync(Simple(Tick(), "makers-market", "Маркет ремесленников и дизайнеров"));
         (await SaveAsync(Simple(Tick(), "makers-market", "Концерт в арт-пространстве"))).Id.Should().Be(market.Id);
-        var (unmatchedBytes, unmatchedPage) = await PullAsync(Next(purgedPage), 2);
+        var (unmatchedBytes, unmatchedPage) = await PullAsync(Next(deadlinePage), 2);
         Events(unmatchedPage).Select(item => item.GetProperty("type").GetString()).Should().Equal(DeliveryEventTypes.PostNew, DeliveryEventTypes.PostUnmatched);
         Events(unmatchedPage).Should().OnlyContain(item => item.GetProperty("postId").GetGuid() == market.Id);
         Events(unmatchedPage).Select(item => item.GetProperty("revision").GetInt32()).Should().Equal(1, 2);
@@ -241,6 +255,12 @@ public sealed class EventContractPagesTests
     private static Capture Simple(DateTimeOffset at, string slug, string title) => EventCapture(at, slug, """
         {"@context":"https://schema.org","@type":"Event","name":"TITLE","description":"TITLE. Вход по регистрации.","startDate":"2026-12-12","location":{"@type":"Place","name":"Ташкент"}}
         """.Replace("TITLE", title));
+
+    /// <summary>Shapes the event node as <c>CraftfairCaptureReader</c> writes it: the event span, and the call's deadline,
+    /// printed deadline and status badge in its <c>craftfair</c> namespace.</summary>
+    private static Capture CraftFair(DateTimeOffset at) => EventCapture(at, "craft-fair-2026", """
+        {"@context":"https://schema.org","@type":"Event","name":"Craft Fair 2026","description":"Garments and artisan crafts.","startDate":"2026-11-25","endDate":"2026-11-27","inLanguage":"en","location":{"name":"Example expo centre"},"craftfair":{"reader":"craftfair","recordKind":"event","eventDatesRaw":"25 - 27 November, 2026","applicationDeadline":"2026-10-26T23:59:59+05:00","applicationDeadlineRaw":"26 October, 2026","applicationStatusRaw":"Applications are closed","participation":{"artisan":"closed","visitor":"unknown","vendor":"unknown","exhibitor":"unknown","runway":"unknown"},"eligibility":"unknown","fees":"unknown"}}
+        """);
 
     private static Capture Afisha(DateTimeOffset at, string slug, string title, string location) => EventCapture(at, slug, """
         {"@context":"https://schema.org","@type":"Event","name":"TITLE","startDate":"2026-12-19T18:30:00+05:00","location":LOCATION}

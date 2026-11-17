@@ -10,14 +10,14 @@
     },
     {
       "name": "01-new.json",
-      "sha256": "51970368dbae0f0b62ef616b3712662c82bf8f3782c410934bc59950142042d7",
+      "sha256": "88bd98903fa9af59093ee1d18ce52d39acae6a7ea4f41fb53fc86804eab27b56",
       "cases": [
         "post.new"
       ]
     },
     {
       "name": "03-changed.json",
-      "sha256": "34189685053de4cd9c1b727c9b3eacfe531a0dcc8bdc5e8f860ac1bb6bb5b809",
+      "sha256": "4ee7b22ca205ee73e0e083326fa36bce3bff25055553a9eb596db5fd13a42a86",
       "cases": [
         "post.changed"
       ]
@@ -31,7 +31,7 @@
     },
     {
       "name": "05-lifecycle.json",
-      "sha256": "384af5d41183e5decac6edd831abfcbd4ab84db301d7e47b19f52136c08dff34",
+      "sha256": "cb685c41dd5e0cfcb075114f6f9c89feb7932a16f9aac4db970d9b80bf6e96e2",
       "cases": [
         "post.new",
         "link.state:gone",
@@ -44,7 +44,7 @@
     },
     {
       "name": "06-classification.json",
-      "sha256": "40e23152cb1d34f4adfefbe36762e27e7417011d3143d43533921751571c712f",
+      "sha256": "6ebfb5a00c786286b1138e20b82fc3539f299aa7553703ae4815612247451eef",
       "cases": [
         "relevant:runway:0.9",
         "irrelevant",
@@ -54,7 +54,7 @@
     },
     {
       "name": "07-afisha-place.json",
-      "sha256": "a2bcabfe2e351bf66194a64d794985bdfdf67fe76aa011dbf200a4940874f862",
+      "sha256": "6b23dc01835d633e3f435c9ac815e6ae89ccaa88df28147664db9f1aa55b8044",
       "cases": [
         "place:before-city-fix",
         "place:after-city-fix"
@@ -68,8 +68,15 @@
       ]
     },
     {
+      "name": "09-deadline.json",
+      "sha256": "86176bfd66e83a2bcf7bec096dd4524332efdc7b79b770e4b5a3f342314c5ede",
+      "cases": [
+        "deadline:application:closed"
+      ]
+    },
+    {
       "name": "10-unmatched.json",
-      "sha256": "87fb455fb61af1e86d4fa2c5c95e660d0476139eb7f43e9a28a1225b60738fee",
+      "sha256": "300d66e4f8a15e96c7c7d951174604b4ebeefba52a25ea2b73d9465d98af793d",
       "cases": [
         "post.new",
         "post.unmatched"

@@ -268,9 +268,13 @@ operator setup (`HarvestSources:Audience` `internal` only):
   `sourceGroup`, `sourceChannel` and optional `eventFamily`. Existing subscriptions keep their IDs and context; the
   setup response maps them to groups. Each observed event keeps its own source link; groups never auto-merge editions.
 - The event payload keeps canonical source provenance in `links` and registration/ticket/other URLs in
-  `contentLinks`. Dates keep their precision and evidence; application deadlines, closed calls and participation
-  evidence stay in the source's `schemaOrg` namespace. Missing eligibility, fees or routes are unknown. Afisha/ANONS
-  articles without an event announcement stay raw posts outside this stream.
+  `contentLinks`. Dates keep their precision and evidence. An application deadline a reader states travels in the
+  top-level `deadlines` list (additive to `wow2.event.v1`; `[]` when none is stated):
+  `{ kind: "application", value, precision, raw, status: open | closed | unknown }`, copied from
+  `schemaOrg.craftfair.applicationDeadline` (status from its badge), `schemaOrg.uzexpocentre.applicationDeadline` and
+  `schemaOrg.afisha.applicationDeadlineEvidence.date`. The namespaces stay as recorded, with participation evidence;
+  missing eligibility, fees or routes are unknown. Afisha/ANONS articles without an event announcement stay raw posts
+  outside this stream.
 - The host writes nothing to Events or Desk and promotes no candidate; Events pulls and classifies (events-integration #53).
 - `ICaptchaSolver` and the IP broker JSON protocol: [integration-providers.md](../research/integration-providers.md).
   No provider credential reaches registry rows, captures or delivery.
