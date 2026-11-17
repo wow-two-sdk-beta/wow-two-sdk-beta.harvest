@@ -57,6 +57,11 @@ ChatGPT builds these in the pull order of wow-two-ws `system/sessions/events-int
 | Item | Type | Notes |
 |---|---|---|
 | S07 Commit the work in slices and verify v0.2.7 on dev | engineering | spec in `tasks-scfd.md` |
+| S03 Leftovers: drop the legacy-model shim, let rental-terms run on Haven | engineering | spec in `tasks-scfd.md` |
+| S36 Give stage settings one permission | fix | spec in `tasks-scfd.md` |
+| S37 Keep each Afisha crawl inside its section and its page limit | fix | spec in `tasks-scfd.md` |
+| S39 Clear the v0.2.7 review's small findings | engineering | spec in `tasks-scfd.md` |
+| S38 Decide what the marketplace collectors keep about people | decision | spec in `tasks-scfd.md` · needs the developer |
 | S18 Run ANONS, Craftfair, Uzexpocentre and CAEx for Ocharo | product | spec in `tasks-scfd.md` |
 | S08 Carry Ocharo's filter key in the golden contract pages | fix | spec in `tasks-scfd.md` |
 | S09 Let one subscription follow many sections | feature | spec in `tasks-scfd.md` |
