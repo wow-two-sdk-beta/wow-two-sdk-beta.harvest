@@ -65,9 +65,10 @@ function scheduleOf(pipeline: PipelineModel | undefined, kind: 'capture' | 'chec
 function isHarvested(row: SectionRow) {
   return !!row.pipeline && row.pipeline.state !== 'paused' && !!scheduleOf(row.pipeline, 'capture')?.enabled;
 }
-function usesScheduledStages(row: SectionRow) {
+/** Whether the section's Discover or Harvest stage is on; those stages replace the capture schedule. */
+function isHarvestedByStages(row: SectionRow) {
   return row.pipeline?.schedules.some(
-    (schedule) => schedule.kind === 'discover' || schedule.kind === 'harvest' || schedule.kind === 'process',
+    (schedule) => (schedule.kind === 'discover' || schedule.kind === 'harvest') && schedule.stage?.disabled !== true,
   );
 }
 function everyOf(row: SectionRow) {
@@ -238,7 +239,7 @@ function saveName() {
                   Harvest
                 </span>
                 <SwitchInput
-                  v-if="!usesScheduledStages(row)"
+                  v-if="!isHarvestedByStages(row)"
                   :model-value="isHarvested(row)"
                   :is-disabled="pending || (!row.pipeline && !canCapture)"
                   v-bind="{ 'aria-label': `Harvest ${row.label}` }"
@@ -257,11 +258,11 @@ function saveName() {
                     Every
                   </span>
                   <ConsoleLink
-                    v-if="usesScheduledStages(row)"
+                    v-if="isHarvestedByStages(row)"
                     :to="{ kind: 'source', id: props.source.sourceId, tab: 'pipelines' }"
                     class="text-sm font-medium text-primary underline-offset-2 hover:underline"
                   >
-                    Configure stages
+                    Harvested by stages
                   </ConsoleLink>
                   <ChoicePicker
                     v-else

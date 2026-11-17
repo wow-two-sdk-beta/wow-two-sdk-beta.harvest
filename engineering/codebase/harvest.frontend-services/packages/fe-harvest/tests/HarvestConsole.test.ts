@@ -888,6 +888,32 @@ describe('source review behavior', () => {
   });
 });
 
+/** Mounts a source's Settings with the fixture pipeline's schedules replaced by `schedules(capture)`. */
+async function mountSettings(schedules: (capture: ScheduleModel) => ScheduleModel[]) {
+  const base = fixtureFetch();
+  const { data: pipelines } = (await (await base('/api/pipelines')).json()) as {
+    data: { schedules: ScheduleModel[] }[];
+  };
+  pipelines[0]!.schedules = schedules(pipelines[0]!.schedules[0]!);
+  const fetch: typeof globalThis.fetch = (input, init) =>
+    new URL(String(input), 'https://harvest.example.test').pathname === '/api/pipelines'
+      ? Promise.resolve(Response.json({ data: pipelines }))
+      : base(input, init);
+  const wrapper = mountConsole({
+    options: {
+      client: createHarvestClient({ fetch }),
+      isOperator: true,
+      navigation: {
+        href: (place) => (place.kind === 'source' ? `/sources/${place.id}/${place.tab}` : '/'),
+        go: vi.fn(),
+      },
+    },
+    panels: () => h(SourcePanel, { sourceId: 'source-1', tab: 'settings' }),
+  });
+  await flushPromises();
+  return wrapper;
+}
+
 describe('a source', () => {
   it('folds the sections nobody harvests into one closed line', async () => {
     const wrapper = mountConsole({
@@ -1035,37 +1061,30 @@ describe('a source', () => {
     expect(changes.map(([, init]) => JSON.parse(String(init?.body)))).toEqual([{ paused: true }, { paused: false }]);
   });
 
-  it('links staged sections to their pipelines from Settings', async () => {
-    const base = fixtureFetch();
-    const { data: pipelines } = (await (await base('/api/pipelines')).json()) as {
-      data: { schedules: ScheduleModel[] }[];
-    };
-    const capture = pipelines[0]!.schedules[0]!;
-    pipelines[0]!.schedules = [
+  it('says a section is harvested by stages, and links it to its pipelines, when Discover or Harvest is on', async () => {
+    const wrapper = await mountSettings((capture) => [
       { ...capture, enabled: false },
       { ...capture, id: 'harvest', kind: 'harvest', stage: { batchSize: 5 } },
-    ];
-    const fetch: typeof globalThis.fetch = (input, init) =>
-      new URL(String(input), 'https://harvest.example.test').pathname === '/api/pipelines'
-        ? Promise.resolve(Response.json({ data: pipelines }))
-        : base(input, init);
-    const wrapper = mountConsole({
-      options: {
-        client: createHarvestClient({ fetch }),
-        isOperator: true,
-        navigation: {
-          href: (place) => (place.kind === 'source' ? `/sources/${place.id}/${place.tab}` : '/'),
-          go: vi.fn(),
-        },
-      },
-      panels: () => h(SourcePanel, { sourceId: 'source-1', tab: 'settings' }),
-    });
-    await flushPromises();
+    ]);
     const staged = wrapper.get('a[href="/sources/source-1/pipelines"]');
-    expect(staged.text()).toBe('Configure stages');
+    expect(staged.text()).toBe('Harvested by stages');
     const row = staged.element.closest('tr')!;
     expect(row.querySelector('[aria-label^="How often"][aria-label$="is harvested"]')).toBeNull();
+    expect(row.querySelector('[aria-label="Harvest Fashion"]')).toBeNull();
     expect(row.querySelector('[aria-label$="is checked for changes"]')).toBeTruthy();
+  });
+
+  it('keeps the capture controls on a section whose Discover and Harvest stages are off', async () => {
+    const wrapper = await mountSettings((capture) => [
+      capture,
+      { ...capture, id: 'discover', kind: 'discover', stage: { batchSize: 5, disabled: true } },
+      { ...capture, id: 'harvest', kind: 'harvest', stage: { batchSize: 5, disabled: true } },
+      { ...capture, id: 'process', kind: 'process', stage: { batchSize: 5 } },
+    ]);
+    expect(wrapper.text()).not.toContain('Harvested by stages');
+    expect(wrapper.find('a[href="/sources/source-1/pipelines"]').exists()).toBe(false);
+    expect(wrapper.find('[aria-label="Harvest Fashion"]').exists()).toBe(true);
+    expect(wrapper.find('[aria-label^="How often"][aria-label$="is harvested"]').exists()).toBe(true);
   });
 
   it('runs a configured manual stage without requiring an automatic schedule', async () => {
