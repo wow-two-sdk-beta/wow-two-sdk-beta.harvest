@@ -1,6 +1,8 @@
+using Harvest.Api.Registration.Access;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
+using WoW.Two.Sdk.Beta.Be.Harvest.Posts;
 using WoW.Two.Sdk.Beta.Be.Harvest.Tenants;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Marketplace;
 using WoW.Two.Sdk.Beta.Be.Web.Contracts;
@@ -12,7 +14,7 @@ namespace HarvestSources.Api.Marketplace;
 [ApiController]
 [Route("api/marketplace")]
 [Authorize(Policy = HarvestScopeConstants.TenantsManage)]
-public sealed class MarketplaceController(MarketplaceProvisioner provisioner) : ControllerBase
+public sealed class MarketplaceController(MarketplaceProvisioner provisioner, MarketplaceListingImporter importer) : ControllerBase
 {
     /// <summary>Lists the reviewed profiles without writing registry rows or starting network calls.</summary>
     [HttpGet("profiles")]
@@ -39,4 +41,14 @@ public sealed class MarketplaceController(MarketplaceProvisioner provisioner) : 
             ? this.ToProblem(AppErrorFactory.NotFound($"No marketplace profile {profile}."))
             : (await provisioner.ReadAsync(found, cancellationToken)).Match<IActionResult>(
                 value => Ok(ApiResponse<MarketplaceStatus>.Ok(value)), this.ToProblem);
+
+    /// <summary>Submits an authorized rental listing to a provisioned import-only search.</summary>
+    [HttpPost("{profile}/searches/{search}/listings")]
+    [Authorize(Policy = AccessPolicies.ManageStorage)]
+    [RequestSizeLimit(131072)]
+    public async Task<IActionResult> Import(string profile, string search, [FromBody] MarketplaceListingImport item, CancellationToken cancellationToken) =>
+        MarketplaceProfiles.Find(profile) is not { } found
+            ? this.ToProblem(AppErrorFactory.NotFound($"No marketplace profile {profile}."))
+            : (await importer.ImportAsync(found, search, item, cancellationToken)).Match<IActionResult>(
+                value => Ok(ApiResponse<CaptureSaveResult>.Ok(value)), this.ToProblem);
 }

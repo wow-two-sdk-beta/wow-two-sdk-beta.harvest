@@ -15,6 +15,8 @@ public sealed class InstagramStepBroker(IInstagramMediaClient client, IOptions<I
     /// <inheritdoc />
     public string StepKey => "enumerate";
     /// <inheritdoc />
+    public IReadOnlyList<string> OperationKeys => ["prepare-authentication", "fetch", "deserialize-response", "paginate"];
+    /// <inheritdoc />
     public async Task<StepResult> ExecuteAsync(StepItem item, IStepContext context, CancellationToken cancellationToken = default)
     {
         if (!Uri.TryCreate(item.Target, UriKind.Absolute, out var uri) || uri.Scheme != "https" || !uri.IsDefaultPort
@@ -35,7 +37,7 @@ public sealed class InstagramStepBroker(IInstagramMediaClient client, IOptions<I
                 || !number.TryGetInt32(out pageNumber) || pageNumber < 1 || pageNumber >= options.Value.MaximumPages || after is null)
                 return new() { Outcome = FetchOutcome.UnexpectedContent, Message = "Invalid Instagram continuation state." };
         }
-        InstagramMediaPage result = await client.ReadAsync(username, after, cancellationToken);
+        InstagramMediaPage result = await client.ReadTracedAsync(username, after, context, cancellationToken);
         context.Observe(new() { Outcome = result.Outcome, Bytes = result.Usage.Bytes, RetryAfter = result.RetryAfter });
         if (result.Outcome != FetchOutcome.Ok)
             return new() { Outcome = result.Outcome, Usage = result.Usage, RetryAfter = result.RetryAfter, Message = result.Message };
@@ -45,16 +47,20 @@ public sealed class InstagramStepBroker(IInstagramMediaClient client, IOptions<I
                 RequestUrl = result.RequestUrl ?? profile, FinalUrl = result.RequestUrl ?? profile, HttpStatus = result.HttpStatus,
             })];
         bool truncated = result.After is not null && pageNumber + 1 >= options.Value.MaximumPages;
-        StepTarget[] next = [];
-        if (result.After is { } cursor && !truncated)
+        StepTarget[] NextPage()
         {
+            if (result.After is not { } cursor || truncated)
+                return [];
             string digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(cursor)))[..24].ToLowerInvariant();
-            next = [new()
+            return [new()
             {
                 StepKey = StepKey, Target = profile + "?__harvest_cursor=" + digest,
                 Payload = JsonSerializer.SerializeToElement(new { after = cursor, page = pageNumber + 1 }),
             }];
         }
+        var next = await context.RunOperationAsync("paginate", () => Task.FromResult(NextPage()),
+            targets => new(Input: 1, Output: targets.Length,
+                Message: truncated ? "The configured page limit was reached." : null));
         return new()
         {
             Outcome = captures.Length == 0 && result.Media.Count > 0 ? FetchOutcome.Unrecognized : FetchOutcome.Ok,

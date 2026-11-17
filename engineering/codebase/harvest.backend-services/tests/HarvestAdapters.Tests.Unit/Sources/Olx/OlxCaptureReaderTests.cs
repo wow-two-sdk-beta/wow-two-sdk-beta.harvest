@@ -163,10 +163,49 @@ public sealed class OlxCaptureReaderTests
     public async Task Read_ShouldExcludeRefreshAndExpiryTimesFromContentHashing()
     {
         var reader = new OlxCaptureReader();
-        Capture first = Value(await reader.ReadAsync(Document(Visible() + Native("2026-10-08T21:26:22+05:00", "2026-10-26T05:01:46+05:00")))).Captures.Single();
-        Capture second = Value(await reader.ReadAsync(Document(Visible() + Native("2026-10-08T21:26:22+05:00", "2026-10-27T05:01:46+05:00")))).Captures.Single();
+        string firstHtml = Visible() + Product("2026-10-26") + Native("2026-10-08T21:26:22+05:00", "2026-10-26T05:01:46+05:00");
+        string secondHtml = Visible() + Product("2026-10-27") + Native("2026-10-08T21:26:22+05:00", "2026-10-27T05:01:46+05:00");
+        Capture first = Value(await reader.ReadAsync(Document(firstHtml))).Captures.Single();
+        Capture second = Value(await reader.ReadAsync(Document(secondHtml))).Captures.Single();
 
         second.ContentProjection.Should().Be(first.ContentProjection);
+        second.Structured[0].GetProperty("offers").GetProperty("priceValidUntil").GetString().Should().Be("2026-10-27");
+    }
+
+    [Fact]
+    public async Task Read_ShouldKeepPublishedCategoryAndVersionNativeListingFacts()
+    {
+        const string categoryPath = "/nedvizhimost/kvartiry/arenda-dolgosrochnaya";
+        const string links = """
+            <nav data-testid="breadcrumbs">
+                <a href="/nedvizhimost/">Real estate</a>
+                <a href="/nedvizhimost/kvartiry/arenda-dolgosrochnaya/">Long-term apartment rental</a>
+                <a href="https://evil.test/nedvizhimost/kvartiry/other/deeper/">Unrelated</a>
+            </nav>
+            """;
+        string markup = Visible() + links;
+        var reader = new OlxCaptureReader();
+        async Task<Capture> Read(int floor, int viewCount)
+        {
+            return Value(await reader.ReadAsync(Document(markup + NativeWithPropertyFacts(floor, viewCount)))).Captures.Single();
+        }
+
+        Capture original = await Read(3, 10);
+        Capture viewed = await Read(3, 25);
+        Capture changed = await Read(4, 25);
+        JsonElement source = changed.Structured[1].GetProperty("sourceFields");
+        JsonElement fields = source.GetProperty("fields");
+        JsonElement schema = new OlxSourceAdapter().DescribeConfiguration(null!).SourceFieldsSchema!.Value.GetProperty("properties");
+        var declaredFields = schema.GetProperty("fields").GetProperty("properties").EnumerateObject()
+            .Select(property => property.Name).ToHashSet(StringComparer.Ordinal);
+
+        source.GetProperty("schema").GetString().Should().Be(schema.GetProperty("schema").GetProperty("const").GetString());
+        source.GetProperty("parserVersion").GetString().Should().Be("olx-html@2");
+        fields.GetProperty("categoryPath").GetString().Should().Be(categoryPath);
+        fields.GetProperty("params")[0].GetProperty("value").GetInt32().Should().Be(4);
+        fields.EnumerateObject().Select(property => property.Name).Should().OnlyContain(name => declaredFields.Contains(name));
+        viewed.ContentProjection.Should().Be(original.ContentProjection);
+        changed.ContentProjection.Should().NotBe(original.ContentProjection);
     }
 
     [Theory]
@@ -249,18 +288,25 @@ public sealed class OlxCaptureReaderTests
             + "<div data-testid='ad-parameters-container'><p>Condition: Used</p></div></html>";
     }
 
-    private static string Product()
+    private static string Product(string? validUntil = null)
     {
         return "<script type='application/ld+json'>" + JsonSerializer.Serialize(new
         {
             @type = "Product", name = "Structured title", description = "Structured fallback", url = Ad,
-            offers = new { price = 700, priceCurrency = "USD", areaServed = new { name = "Tashkent" } },
+            offers = new { price = 700, priceCurrency = "USD", priceValidUntil = validUntil, areaServed = new { name = "Tashkent" } },
         }).Replace("\"type\"", "\"@type\"", StringComparison.Ordinal) + "</script>";
     }
 
     private static string Native(string createdTime, string lastRefreshTime, bool isActive = true)
     {
-        string state = JsonSerializer.Serialize(new { ad = new { ad = new { id = 1234, url = Ad, createdTime, lastRefreshTime, isActive, status = isActive ? "active" : "inactive" } } });
+        string state = JsonSerializer.Serialize(new { ad = new { ad = new { id = 1234, url = Ad, createdTime, lastRefreshTime, validToTime = lastRefreshTime, isActive, status = isActive ? "active" : "inactive" } } });
+        return "<script>window.__PRERENDERED_STATE__= " + JsonSerializer.Serialize(state) + ";</script>";
+    }
+
+    private static string NativeWithPropertyFacts(int floor, int viewCount)
+    {
+        var ad = new { id = 1234, url = Ad, @params = new[] { new { key = "floor", value = floor } }, price = new { viewCount } };
+        string state = JsonSerializer.Serialize(new { ad = new { ad } });
         return "<script>window.__PRERENDERED_STATE__= " + JsonSerializer.Serialize(state) + ";</script>";
     }
 

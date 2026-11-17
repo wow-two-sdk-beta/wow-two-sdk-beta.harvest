@@ -31,6 +31,8 @@ internal sealed class ScheduleRow
 
     public required bool Enabled { get; set; }
 
+    public string? StageOptions { get; set; }
+
     public DateTimeOffset? NextDueAt { get; set; }
 
     public DateTimeOffset? LastQueuedAt { get; set; }

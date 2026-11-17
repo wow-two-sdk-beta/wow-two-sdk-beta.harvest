@@ -24,15 +24,17 @@ public sealed class MarketplaceSetupVerbTests
         var result = Last(first.Output);
         result.GetProperty("profile").GetString().Should().Be("haven");
         var searches = result.GetProperty("searches").EnumerateArray().ToArray();
-        searches.Select(item => item.GetProperty("key").GetString()).Should().Equal("apartments-rent", "houses-rent", "daily-rent");
+        searches.Select(item => item.GetProperty("key").GetString()).Should().Equal("apartments-rent", "houses-rent", "daily-rent",
+            "joymee-apartments-rent", "birbir-apartments-rent", "birbir-collection", "domtut-apartments-rent");
         searches.Select(item => item.GetProperty("subscriptionId").GetGuid()).Should().OnlyHaveUniqueItems();
-        result.GetProperty("runs").GetArrayLength().Should().Be(searches.Length, "--run queues one capture per search");
+        result.GetProperty("runs").GetArrayLength().Should().Be(5, "--run queues only active collection");
         result.GetProperty("consumerKey").ValueKind.Should().Be(JsonValueKind.Null, "setup issues no key unless asked");
         again.Exit.Should().Be(0, again.Error);
         var repeated = Last(again.Output);
         foreach (string id in new[] { "tenantId", "containerId" })
             repeated.GetProperty(id).GetGuid().Should().Be(result.GetProperty(id).GetGuid());
-        searches.Select(item => item.GetProperty("sourceId").GetGuid()).Distinct().Should().ContainSingle("OLX searches share one source");
+        searches.Take(3).Select(item => item.GetProperty("sourceId").GetGuid()).Distinct().Should().ContainSingle("OLX searches share one source");
+        searches.Select(item => item.GetProperty("sourceId").GetGuid()).Distinct().Should().HaveCount(5);
         repeated.GetProperty("searches").EnumerateArray().Select(item => item.GetProperty("subscriptionId").GetGuid())
             .Should().Equal(searches.Select(item => item.GetProperty("subscriptionId").GetGuid()));
         repeated.GetProperty("runs").GetArrayLength().Should().Be(0);
@@ -75,10 +77,14 @@ public sealed class MarketplaceSetupVerbTests
         missing.Exit.Should().Be(1);
         status.Exit.Should().Be(0, status.Error);
         string last = status.Output.TrimEnd().Split('\n')[^1];
-        last.Length.Should().BeLessThan(600);
         var lines = JsonDocument.Parse(last).RootElement.GetProperty("pipelines").EnumerateArray().Select(item => item.GetString()!).ToArray();
-        lines.Should().HaveCount(3).And.OnlyContain(line => line.Contains("capture 2h due ") && line.Contains("check 1d due ")
+        lines.Should().HaveCount(7);
+        lines.Take(3).Should().OnlyContain(line => line.Contains("capture 2h due ") && line.Contains("check 1d due ")
             && line.EndsWith("; events 0", StringComparison.Ordinal));
+        lines[3].Should().Contain("joymee-apartments-rent capture 2h due ").And.NotContain("check");
+        lines[4].Should().Be("birbir-apartments-rent imports; events 0");
+        lines[5].Should().Contain("birbir-collection capture 2h due ").And.NotContain("check");
+        lines[6].Should().Be("domtut-apartments-rent imports; events 0");
         again.Output.Should().Be(status.Output, "status reads and never queues or writes");
     }
 

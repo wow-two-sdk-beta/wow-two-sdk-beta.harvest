@@ -148,7 +148,7 @@ public sealed class RulesPostExtractor : IPostExtractor
             Extraction = new() { NormVersion = "norm@1", RulesVersion = "rules@4", TiersRun = [ExtractionTier.Deterministic, ExtractionTier.Rules] },
         };
         if (EventSchemaMapper.Map(envelope) is { } mapped) extras["event"] = mapped;
-        return Task.FromResult(Result<PostEnvelope>.Ok(envelope));
+        return Task.FromResult(Result<PostEnvelope>.Ok(ListingSchemaMapper.WithProjection(envelope, capture.Url)));
     }
 
     private static string? NullText(string? value, bool preserveLineBreaks = false)

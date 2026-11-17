@@ -23,6 +23,7 @@ using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Instagram;
 
 namespace HarvestAdapters.Tests.Integration.Ocharo;
 
+[Collection(SourceDeliveryCollection.Name)]
 public sealed class OcharoPipelineTests
 {
     [Fact]
@@ -74,7 +75,9 @@ public sealed class OcharoPipelineTests
         OcharoSourceRegistration route = setup.Sources.First(item => item.SourceKey == "afisha-uz");
         var registry = scope.ServiceProvider.GetRequiredService<IRegistrationBroker>();
         var sections = Value(await registry.ListPipelinesAsync(setup.ContainerId)).Where(row => row.SourceId == route.SourceId);
-        sections.Should().HaveCount(6).And.OnlyContain(row => row.Schedules.All(schedule => !schedule.Enabled));
+        sections.Should().HaveCount(3).And.OnlyContain(row => row.Scope.Url != null
+            && row.Scope.Url.StartsWith("https://www.afisha.uz/ru/", StringComparison.Ordinal)
+            && row.Schedules.All(schedule => !schedule.Enabled));
         var runs = scope.ServiceProvider.GetRequiredService<IRunBroker>();
         var delivery = scope.ServiceProvider.GetRequiredService<IDeliveryBroker>();
         var posts = scope.ServiceProvider.GetRequiredService<IPostBroker>();

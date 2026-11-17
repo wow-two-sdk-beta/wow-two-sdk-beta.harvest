@@ -10,7 +10,7 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Tenants;
 
 namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Marketplace;
 
-/// <summary>Applies a marketplace profile: the consumer's tenant, its private container, one source per marketplace site,
+/// <summary>Applies a marketplace profile: the consumer's tenant, its private container, sources by marketplace and intake mode,
 /// one pipeline and one listing subscription per saved search, and the consumer's key. Existing rows and operator settings
 /// are kept.</summary>
 public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDeliveryBroker delivery)
@@ -51,17 +51,22 @@ public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDelive
             if (container.Kind != ContainerKind.Private || container.TenantId != tenant.Id || container.EmbeddingsEnabled)
                 return Conflict($"The existing {profile.ContainerRef} container is not private, the tenant's own and non-embedded.");
 
-            var sources = new Dictionary<string, SourceModel>(StringComparer.Ordinal);
+            var sources = new Dictionary<MarketplaceSite, SourceModel?>();
             var pipelines = Value(await registry.ListPipelinesAsync(container.Id, cancellationToken)).ToList();
             var subscriptions = Value(await delivery.ListSubscriptionsAsync(tenant.Id, cancellationToken)).ToList();
             var rows = new List<MarketplaceSearchRegistration>();
             foreach (MarketplaceSearch search in profile.Searches)
             {
-                if (!sources.TryGetValue(search.Site.Key, out SourceModel? source))
-                    sources[search.Site.Key] = source = await EnsureSourceAsync(container.Id, search.Site, cancellationToken);
-                var schedules = Cadence(profile, enableSchedules);
+                if (!sources.TryGetValue(search.Site, out var source))
+                    sources[search.Site] = source = await EnsureSourceAsync(container.Id, search.Site, cancellationToken);
+                if (source is null)
+                    continue;
+                bool canCapture = !search.Site.ImportOnly && source.State == SourceState.Active
+                    && source.Permission is SourcePermission.Open or SourcePermission.Granted;
+                var schedules = Cadence(profile, search.Site, enableSchedules && canCapture);
                 PipelineModel? pipeline = pipelines.SingleOrDefault(item => item.SourceId == source.Id && item.Scope.Url == search.Url);
-                if (pipeline is not null && enableSchedules && EnabledCadence(pipeline, schedules) is { } cadence)
+                if (pipeline is not null && enableSchedules && canCapture
+                    && ScheduleProvisioning.EnabledCadence(pipeline, schedules) is { } cadence)
                 {
                     pipeline = Value(await registry.UpdatePipelineAsync(pipeline.Id, new()
                     {
@@ -96,7 +101,8 @@ public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDelive
                     }, cancellationToken));
                     subscriptions.Add(subscription);
                 }
-                rows.Add(new(search.Key, search.Url, source.Id, pipeline.Id, subscription.Id));
+                rows.Add(new(search.Key, search.Url, source.Id, pipeline.Id, subscription.Id, search.Site.ImportOnly,
+                    canCapture && pipeline.State == PipelineState.Active));
             }
 
             MarketplaceConsumerKey? key = await EnsureKeyAsync(tenant.Id, profile.Consumer, keys, cancellationToken);
@@ -124,13 +130,16 @@ public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDelive
                 return Result<MarketplaceStatus>.Fail(AppErrorFactory.NotFound(
                     $"Tenant {profile.TenantSlug} has no {profile.ContainerRef} container yet; run marketplace setup first."));
             var pipelines = Value(await registry.ListPipelinesAsync(container.Id, cancellationToken));
+            var sources = Value(await registry.ListSourcesAsync(container.Id, cancellationToken));
             var subscriptions = Value(await delivery.ListSubscriptionsAsync(tenant.Id, cancellationToken));
             var rows = profile.Searches.Select(search =>
             {
-                PipelineModel? pipeline = pipelines.FirstOrDefault(item => item.Scope.Url == search.Url);
+                var source = sources.SingleOrDefault(item => item.Handle == search.Site.Handle && item.Family == Family(search.Site));
+                PipelineModel? pipeline = pipelines.FirstOrDefault(item => item.SourceId == source?.Id && item.Scope.Url == search.Url);
                 Guid? subscription = pipeline is null ? null : subscriptions.FirstOrDefault(item => item.PipelineId == pipeline.Id
                     && item.FilterKey == MarketplaceListingFilter.FilterKey && item.State == SubscriptionState.Active)?.Id;
-                return new MarketplaceSearchStatus(search.Key, pipeline, subscription);
+                return new MarketplaceSearchStatus(search.Key, pipeline, subscription,
+                    search.Site.RequiresGrant && source?.Permission != SourcePermission.Granted);
             }).ToList();
             int active = Value(await registry.ListApiKeysAsync(tenant.Id, cancellationToken))
                 .Count(item => item.Name == profile.Consumer && item.State == ApiKeyState.Active);
@@ -141,19 +150,28 @@ public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDelive
 
     /// <summary>Creates or reuses the container's source for a marketplace site, named and grouped for the console; an
     /// operator's name or group is kept.</summary>
-    private async Task<SourceModel> EnsureSourceAsync(Guid containerId, MarketplaceSite site, CancellationToken cancellationToken)
+    private async Task<SourceModel?> EnsureSourceAsync(Guid containerId, MarketplaceSite site, CancellationToken cancellationToken)
     {
         var sources = Value(await registry.ListSourcesAsync(containerId, cancellationToken));
-        SourceModel source = sources.SingleOrDefault(item => item.Family == SourceFamily.Site && item.Handle == site.Handle)
-            ?? Value(await registry.RegisterSourceAsync(new()
+        var family = Family(site);
+        var source = sources.SingleOrDefault(item => item.Family == family && item.Handle == site.Handle);
+        if (site.RequiresGrant && source?.Permission != SourcePermission.Granted)
+            return null;
+
+        source ??= Value(await registry.RegisterSourceAsync(new()
             {
-                ContainerId = containerId, Family = SourceFamily.Site, Handle = site.Handle, ExternalRef = site.Key,
-                Coverage = SourceCoverage.Filtered, Completeness = SourceCompleteness.Window, Posture = SourcePosture.OwnFetch,
+                ContainerId = containerId, Family = family, Handle = site.Handle, ExternalRef = site.Key,
+                Coverage = SourceCoverage.Filtered, Completeness = SourceCompleteness.Window,
+                Posture = site.ImportOnly ? SourcePosture.ConsentedIntake : SourcePosture.OwnFetch,
+                Permission = site.ImportOnly ? SourcePermission.Restricted : SourcePermission.Open,
+                ConsentBasis = site.ImportOnly ? ConsentBasis.Submitter : ConsentBasis.None,
                 AiAllowed = false, PoolShareable = false, RobotsPolicy = RobotsPolicy.Obey, CheckPolicy = site.CheckPolicy,
             }, cancellationToken));
         if (source.AiAllowed || source.PoolShareable || source.RobotsPolicy != RobotsPolicy.Obey)
             throw new ProvisioningFailure(AppErrorFactory.Conflict(
                 $"The existing {site.Name} source has a different AI, sharing or robots posture. Review it before applying this profile."));
+        if (site.ImportOnly && (source.Posture != SourcePosture.ConsentedIntake || source.Permission != SourcePermission.Restricted))
+            throw new ProvisioningFailure(AppErrorFactory.Conflict($"The existing {site.Name} source is not restricted to imports."));
         if (source.GroupId is not null && source.Name is not null)
             return source;
 
@@ -166,6 +184,8 @@ public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDelive
             GroupId = source.GroupId is null ? group.Id : null,
         }, cancellationToken));
     }
+
+    private static SourceFamily Family(MarketplaceSite site) => site.ImportOnly ? SourceFamily.Manual : SourceFamily.Site;
 
     /// <summary>Issues or rotates the consumer's <c>events:read</c> key as asked, and reports the newest active one.</summary>
     private async Task<MarketplaceConsumerKey?> EnsureKeyAsync(Guid tenantId, string consumer, MarketplaceKeyAction action,
@@ -191,32 +211,17 @@ public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDelive
     }
 
     /// <summary>The profile's capture and check cadence, switched on only when asked.</summary>
-    private static List<ScheduleDeclaration> Cadence(MarketplaceProfile profile, bool enabled) =>
-    [
-        new() { Kind = WorkKind.Capture, Mode = ScheduleMode.Interval, Every = profile.CaptureEvery, TimeZone = profile.TimeZone, Enabled = enabled },
-        new() { Kind = WorkKind.Check, Mode = ScheduleMode.Interval, Every = profile.CheckEvery, TimeZone = profile.TimeZone, Enabled = enabled },
-    ];
-
-    /// <summary>Returns an existing pipeline's full cadence with the profile's rows switched on, or null when every such row
-    /// already runs. An operator-tuned row keeps its timing; a missing row is added; every other row is carried, since an
-    /// update disables the kinds it omits.</summary>
-    private static List<ScheduleDeclaration>? EnabledCadence(PipelineModel pipeline, IReadOnlyList<ScheduleDeclaration> wanted)
+    private static List<ScheduleDeclaration> Cadence(MarketplaceProfile profile, MarketplaceSite site, bool enabled)
     {
-        var missing = wanted.Where(row => row.Enabled).ToDictionary(row => row.Kind);
-        bool changed = false;
-        var cadence = new List<ScheduleDeclaration>();
-        foreach (ScheduleModel row in pipeline.Schedules)
+        if (site.ImportOnly)
+            return [];
+        var schedules = new List<ScheduleDeclaration>
         {
-            bool enable = missing.Remove(row.Kind) && !row.Enabled;
-            changed |= enable;
-            cadence.Add(new()
-            {
-                Kind = row.Kind, Mode = row.Mode, Every = row.Every, MaxEvery = row.MaxEvery, Cron = row.Cron,
-                TimeZone = row.TimeZone, Window = row.Window, Enabled = row.Enabled || enable,
-            });
-        }
-        cadence.AddRange(missing.Values);
-        return changed || missing.Count > 0 ? cadence : null;
+            new() { Kind = WorkKind.Capture, Mode = ScheduleMode.Interval, Every = profile.CaptureEvery, TimeZone = profile.TimeZone, Enabled = enabled },
+        };
+        if (site.CheckPolicy != "none")
+            schedules.Add(new() { Kind = WorkKind.Check, Mode = ScheduleMode.Interval, Every = profile.CheckEvery, TimeZone = profile.TimeZone, Enabled = enabled });
+        return schedules;
     }
 
     private static T Value<T>(Result<T> result) where T : notnull => result switch

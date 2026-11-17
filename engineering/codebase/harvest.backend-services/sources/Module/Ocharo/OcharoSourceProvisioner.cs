@@ -112,7 +112,7 @@ public sealed class OcharoSourceProvisioner(IRegistrationBroker registry, IDeliv
                 };
                 if (profile.CheckPolicy == "web-direct")
                     schedules.Add(new() { Kind = WorkKind.Check, Mode = ScheduleMode.Interval, Every = TimeSpan.FromHours(24), TimeZone = "Asia/Tashkent", Enabled = enableSchedules });
-                if (pipeline is not null && enableSchedules && EnabledCadence(pipeline, schedules) is { } cadence)
+                if (pipeline is not null && enableSchedules && ScheduleProvisioning.EnabledCadence(pipeline, schedules) is { } cadence)
                 {
                     pipeline = Value(await registry.UpdatePipelineAsync(pipeline.Id, new()
                     {
@@ -193,32 +193,6 @@ public sealed class OcharoSourceProvisioner(IRegistrationBroker registry, IDeliv
             return Result<OcharoStatus>.Ok(new(tenant.Id, container.Id, channels));
         }
         catch (ProvisioningFailure failure) { return Result<OcharoStatus>.Fail(failure.Error); }
-    }
-
-    /// <summary>Returns an existing pipeline's full cadence with the registry's enabled rows switched on, or null when every
-    /// such row already runs.</summary>
-    /// <remarks>
-    ///   - an operator-tuned row keeps its interval, cron, window and time zone; only its switch changes
-    ///   - a registry row the pipeline lacks is added with the registry's default cadence
-    ///   - every other row is carried unchanged, since an update disables the kinds it omits
-    /// </remarks>
-    private static List<ScheduleDeclaration>? EnabledCadence(PipelineModel pipeline, IReadOnlyList<ScheduleDeclaration> registry)
-    {
-        var wanted = registry.Where(row => row.Enabled).ToDictionary(row => row.Kind);
-        bool changed = false;
-        var cadence = new List<ScheduleDeclaration>();
-        foreach (ScheduleModel row in pipeline.Schedules)
-        {
-            bool enable = wanted.Remove(row.Kind) && !row.Enabled;
-            changed |= enable;
-            cadence.Add(new()
-            {
-                Kind = row.Kind, Mode = row.Mode, Every = row.Every, MaxEvery = row.MaxEvery, Cron = row.Cron,
-                TimeZone = row.TimeZone, Window = row.Window, Enabled = row.Enabled || enable,
-            });
-        }
-        cadence.AddRange(wanted.Values);
-        return changed || wanted.Count > 0 ? cadence : null;
     }
 
     /// <summary>Names a source as the console shows it: a site by its host without <c>www.</c>, any other family by its

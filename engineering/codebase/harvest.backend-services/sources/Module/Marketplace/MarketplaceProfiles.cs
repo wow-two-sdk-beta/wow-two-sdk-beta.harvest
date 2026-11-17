@@ -1,11 +1,12 @@
+using WoW.Two.Sdk.Beta.Be.HarvestAdapters.BirBir;
+using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Joymee;
+using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Olx;
+
 namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Marketplace;
 
 /// <summary>The reviewed marketplace profiles setup can apply.</summary>
 public static class MarketplaceProfiles
 {
-    /// <summary>Holds the order every OLX search uses: newest ads first, so a bounded run reads what changed since the last.</summary>
-    private const string NewestFirst = "?search%5Border%5D=created_at%3Adesc";
-
     /// <summary>Haven's Tashkent residential rent (<c>rent-res</c>): long-term apartments and houses, and daily rent.</summary>
     /// <remarks>Category slugs as OLX's own category tree names them (read 2026-11-14). Haven v1.0 read every Tashkent
     /// apartment and ListingShelf the same category; rent-only categories leave sales out before classification.</remarks>
@@ -20,11 +21,19 @@ public static class MarketplaceProfiles
         Searches =
         [
             new("apartments-rent", "OLX · Tashkent apartments, long-term rent · Haven",
-                "https://www.olx.uz/nedvizhimost/kvartiry/arenda-dolgosrochnaya/tashkent/" + NewestFirst, MarketplaceSite.Olx),
+                OlxSourceAdapter.ApartmentRentCatalog, MarketplaceSite.Olx),
             new("houses-rent", "OLX · Tashkent houses, long-term rent · Haven",
-                "https://www.olx.uz/nedvizhimost/doma/arenda-dolgosrochnaya/tashkent/" + NewestFirst, MarketplaceSite.Olx),
+                OlxSourceAdapter.HouseRentCatalog, MarketplaceSite.Olx),
             new("daily-rent", "OLX · Tashkent daily rent · Haven",
-                "https://www.olx.uz/nedvizhimost/posutochno_pochasovo/tashkent/" + NewestFirst, MarketplaceSite.Olx),
+                OlxSourceAdapter.DailyRentCatalog, MarketplaceSite.Olx),
+            new("joymee-apartments-rent", "Joymee · Tashkent apartments, long-term rent · Haven",
+                JoymeeSourceAdapter.RentCatalog, MarketplaceSite.Joymee),
+            new("birbir-apartments-rent", "BirBir · Tashkent apartment imports · Haven",
+                BirBirSourceAdapter.RentalCatalog, MarketplaceSite.BirBir),
+            new("birbir-collection", "BirBir · Tashkent apartment rentals · Haven",
+                BirBirSourceAdapter.RentalCatalog, MarketplaceSite.BirBirCollection),
+            new("domtut-apartments-rent", "Domtut · Tashkent rental imports · Haven",
+                "https://domtut.uz/filter/search?format=rent", MarketplaceSite.Domtut),
         ],
     };
 

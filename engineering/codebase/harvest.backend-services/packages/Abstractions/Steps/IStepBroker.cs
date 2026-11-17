@@ -11,6 +11,9 @@ public interface IStepBroker
     /// <summary>Gets the step's key within its adapter.</summary>
     string StepKey { get; }
 
+    /// <summary>Gets the operations this broker may perform, in execution order.</summary>
+    IReadOnlyList<string> OperationKeys => [];
+
     /// <summary>Executes the step for one claimed item.</summary>
     /// <param name="item">The claimed item.</param>
     /// <param name="context">The client, renderer and detectors for the claim.</param>

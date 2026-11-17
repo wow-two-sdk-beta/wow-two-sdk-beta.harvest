@@ -18,6 +18,7 @@ public sealed class SourceConsoleEndpointTests(HarvestApiFixture fixture)
     [InlineData("PUT", "/api/sources/00000000-0000-0000-0000-000000000001")]
     [InlineData("PUT", "/api/sources/00000000-0000-0000-0000-000000000001/reading")]
     [InlineData("GET", "/api/sources/00000000-0000-0000-0000-000000000001/posts")]
+    [InlineData("POST", "/api/sources/00000000-0000-0000-0000-000000000001/posts/query")]
     [InlineData("GET", "/api/posts/00000000-0000-0000-0000-000000000001/revisions")]
     public async Task SourceRoutes_ShouldRequireAnAuthenticatedCaller(string method, string path)
     {
@@ -55,13 +56,13 @@ public sealed class SourceConsoleEndpointTests(HarvestApiFixture fixture)
         await ExpectAsync(admin.PutAsJsonAsync($"/api/pipelines/{lane.PipelineId}", Edit(lane, new { maxPages = 51 })), HttpStatusCode.BadRequest);
 
         var overview = (await DataAsync(await admin.GetAsync($"/api/sources/overview?containerId={lane.ContainerId}"))).EnumerateArray().Single();
-        Keys(overview).Should().BeEquivalentTo("sourceId", "name", "family", "handle", "groupId", "state", "newPostsDaily", "sections", "health");
+        Keys(overview).Should().BeEquivalentTo("sourceId", "name", "family", "handle", "groupId", "state", "sourceState", "permission", "postCount", "newPostsDaily", "sections", "health");
         overview.GetProperty("name").GetString().Should().Be("Afisha.uz");
         overview.GetProperty("family").GetString().Should().Be("site");
         overview.GetProperty("state").GetString().Should().Be("healthy");
         overview.GetProperty("newPostsDaily").EnumerateArray().Select(day => day.GetInt32()).Should().HaveCount(14).And.OnlyContain(day => day == 0);
         var section = overview.GetProperty("sections").EnumerateArray().Single();
-        Keys(section).Should().BeEquivalentTo("pipelineId", "name", "url", "harvesting", "paused", "captureEvery", "checkEvery", "maxPages",
+        Keys(section).Should().BeEquivalentTo("pipelineId", "name", "url", "harvesting", "paused", "harvestKind", "captureEvery", "checkEvery", "maxPages",
             "posts", "subscribers");
         section.GetProperty("captureEvery").GetString().Should().Be("PT6H");
         section.GetProperty("checkEvery").GetString().Should().Be("P1D");
@@ -69,6 +70,8 @@ public sealed class SourceConsoleEndpointTests(HarvestApiFixture fixture)
         Keys(overview.GetProperty("health")).Should().BeEquivalentTo("hostKey", "minDelayMs", "consecutiveFailures");
 
         var post = await CaptureAsync(admin, lane, "Concert");
+        (await DataAsync(await admin.GetAsync($"/api/sources/overview?containerId={lane.ContainerId}")))
+            .EnumerateArray().Single().GetProperty("postCount").GetInt32().Should().Be(1);
         var posts = (await DataAsync(await admin.GetAsync($"/api/sources/{lane.SourceId}/posts?limit=10"))).EnumerateArray().Single();
         Keys(posts).Should().BeEquivalentTo("postId", "title", "kind", "state", "revision", "firstSeenAt", "lastChangedAt", "url", "imageUrls");
         posts.GetProperty("kind").GetString().Should().Be("event");
@@ -109,15 +112,18 @@ public sealed class SourceConsoleEndpointTests(HarvestApiFixture fixture)
         await ExpectAsync(client.GetAsync($"/api/sources/overview?containerId={own.ContainerId}"), HttpStatusCode.OK);
         await ExpectAsync(client.GetAsync($"/api/sources/groups?containerId={own.ContainerId}"), HttpStatusCode.OK);
         await ExpectAsync(client.GetAsync($"/api/sources/{own.SourceId}/posts"), HttpStatusCode.OK);
+        await ExpectAsync(client.PostAsJsonAsync($"/api/sources/{own.SourceId}/posts/query", new { search = "Concert" }), HttpStatusCode.OK);
         await ExpectAsync(client.GetAsync($"/api/posts/{ownPost}/revisions"), HttpStatusCode.OK);
         await ExpectAsync(client.GetAsync($"/api/posts/{ownPost}/revisions?containerId={own.ContainerId}"), HttpStatusCode.OK);
         await ExpectAsync(client.GetAsync($"/api/sources/overview?containerId={other.ContainerId}"), HttpStatusCode.NotFound);
         await ExpectAsync(client.GetAsync($"/api/sources/groups?containerId={other.ContainerId}"), HttpStatusCode.NotFound);
         await ExpectAsync(client.GetAsync($"/api/sources/{other.SourceId}/posts"), HttpStatusCode.NotFound);
+        await ExpectAsync(client.PostAsJsonAsync($"/api/sources/{other.SourceId}/posts/query", new { }), HttpStatusCode.NotFound);
         await ExpectAsync(client.GetAsync($"/api/posts/{otherPost}/revisions"), HttpStatusCode.NotFound);
         await ExpectAsync(client.GetAsync($"/api/posts/{otherPost}/revisions?containerId={other.ContainerId}"), HttpStatusCode.NotFound);
         await ExpectAsync(narrow.GetAsync($"/api/sources/overview?containerId={own.ContainerId}"), HttpStatusCode.Forbidden);
         await ExpectAsync(narrow.GetAsync($"/api/sources/{own.SourceId}/posts"), HttpStatusCode.Forbidden);
+        await ExpectAsync(narrow.PostAsJsonAsync($"/api/sources/{own.SourceId}/posts/query", new { }), HttpStatusCode.Forbidden);
     }
 
     private static object Edit(Lane lane, object? limits) => new

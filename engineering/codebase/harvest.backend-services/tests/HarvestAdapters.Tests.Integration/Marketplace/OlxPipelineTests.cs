@@ -29,6 +29,7 @@ using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Marketplace;
 namespace HarvestAdapters.Tests.Integration.Marketplace;
 
 /// <summary>Exercises filtered pagination, durable listing delivery and availability policy over PostgreSQL.</summary>
+[Collection(SourceDeliveryCollection.Name)]
 public sealed class OlxPipelineTests
 {
     [Fact]

@@ -1,6 +1,8 @@
 using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Capabilities.Challenges;
+using WoW.Two.Sdk.Beta.Be.Harvest.Capabilities.Fetching;
 using WoW.Two.Sdk.Beta.Be.Harvest.Delivery;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Engine;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
@@ -15,6 +17,255 @@ namespace Harvest.Tests.Integration.Engine;
 /// <summary>Exercises the engine against real durable stores and offline source fixtures.</summary>
 public sealed class HarvestEngineTests
 {
+    [Fact]
+    public async Task Discovery_ShouldReadThePublishedCatalogAndIgnoreLegacyOverrides()
+    {
+        await using var host = await EngineHost.StartAsync();
+        var registration = await host.RegisterAsync(schedules:
+        [
+            new() { Kind = WorkKind.Discover, Mode = ScheduleMode.Manual, Stage = new() },
+        ]);
+        await host.ExecuteAsync("""
+            UPDATE harvest_schedules SET stage_options=stage_options || '{"catalogUrl":"https://mstar.uz/private"}'::jsonb
+            WHERE pipeline_id=@id AND kind='discover'
+            """, ("id", registration.PipelineId));
+        Fixtures(host, "mstar.uz", count: 1);
+        using var scope = host.Services.CreateScope();
+        var runs = scope.ServiceProvider.GetRequiredService<IRunBroker>();
+        var run = EngineHost.Data(await runs.StartAsync(registration.PipelineId, WorkKind.Discover));
+        (await host.DrainAsync()).Should().Be(1);
+        EngineHost.Data(await runs.GetAsync(run.Id)).Discovered.Should().Be(1);
+        host.Fetcher.Calls.Should().Equal("https://mstar.uz/sitemap.xml");
+
+        var custom = await host.RegisterAsync(pipelineScope: new() { Url = "https://mstar.uz/unpublished" });
+        var unavailable = EngineHost.Data(await runs.StartAsync(custom.PipelineId, WorkKind.Discover));
+        unavailable.FetchOutcome.Should().Be(FetchOutcome.CapabilityUnavailable);
+        (await host.DrainAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Harvest_ShouldKeepTheBatchBacklogWhenTheHostGoesOffline()
+    {
+        await using var host = await EngineHost.StartAsync();
+        var registration = await host.RegisterAsync();
+        Fixtures(host, "mstar.uz", count: 2);
+        using var scope = host.Services.CreateScope();
+        var runs = scope.ServiceProvider.GetRequiredService<IRunBroker>();
+        EngineHost.Data(await runs.StartAsync(registration.PipelineId, WorkKind.Discover));
+        (await host.DrainAsync()).Should().Be(1);
+        foreach (var index in new[] { 1, 2 })
+            host.Fetcher.Set($"https://mstar.uz/events/{index}", (_, _) => Task.FromResult(new FetchResponse
+            {
+                Outcome = FetchOutcome.NetworkError, Message = "Fixture DNS failure.",
+                RetryAfter = TimeSpan.FromMinutes(5), Usage = new() { Requests = 1 },
+            }));
+
+        var run = EngineHost.Data(await runs.StartAsync(registration.PipelineId, WorkKind.Harvest));
+        (await host.DrainAsync()).Should().Be(1);
+        EngineHost.Data(await runs.GetAsync(run.Id)).Status.Should().Be(RunStatus.Partial);
+        (await host.ScalarAsync<long>("SELECT count(*) FROM harvest_discoveries WHERE detail_state IN ('pending','failed')")).Should().Be(2);
+        (await host.ScalarAsync<long>("SELECT count(*) FROM harvest_step_attempts WHERE outcome='network_error' AND retry_at IS NOT NULL")).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task StageSwitch_ShouldGateManualAndScheduledRunsOnASubscribedPipeline()
+    {
+        await using var host = await EngineHost.StartAsync();
+        var cadence = new ScheduleDeclaration
+        {
+            Kind = WorkKind.Harvest, Mode = ScheduleMode.Interval, Every = TimeSpan.FromMinutes(5),
+            Stage = new() { BatchSize = 5 },
+        };
+        var registration = await host.RegisterAsync(schedules: [cadence]);
+        using var scope = host.Services.CreateScope();
+        var registry = scope.ServiceProvider.GetRequiredService<IRegistrationBroker>();
+        var pipeline = EngineHost.Data(await registry.GetPipelineAsync(registration.PipelineId));
+        var source = EngineHost.Data(await registry.GetSourceAsync(pipeline.SourceId));
+        var stages = scope.ServiceProvider.GetRequiredService<PipelineStages>();
+        var runs = scope.ServiceProvider.GetRequiredService<IRunBroker>();
+        var engine = scope.ServiceProvider.GetRequiredService<HarvestEngine>();
+
+        async Task Save(ScheduleDeclaration update)
+            => EngineHost.Data(await stages.SaveAsync(pipeline, source, update, seedOnly: false, CancellationToken.None))
+                .Should().BeTrue();
+
+        await Save(cadence with { Stage = new() { BatchSize = 5, Disabled = true } });
+        await Save(cadence with { Stage = new() { BatchSize = 7 } });
+        var saved = EngineHost.Data(await registry.GetPipelineAsync(pipeline.Id)).Schedules.Single();
+        var options = saved.Stage!;
+        saved.Enabled.Should().BeTrue();
+        options.BatchSize.Should().Be(7);
+        options.Disabled.Should().BeTrue();
+        (await runs.StartAsync(pipeline.Id, WorkKind.Harvest)).Should().BeOfType<Result<RunModel>.Failure>();
+        (await engine.QueueDueAsync()).Should().Be(0);
+
+        await Save(cadence with { Stage = new() { BatchSize = 7, Disabled = false } });
+        EngineHost.Data(await runs.SetPausedAsync(pipeline.Id, true)).State.Should().Be(PipelineState.Paused);
+        (await engine.QueueDueAsync()).Should().Be(0);
+        EngineHost.Data(await runs.SetPausedAsync(pipeline.Id, false)).State.Should().Be(PipelineState.Active);
+        (await engine.QueueDueAsync()).Should().Be(1);
+        var delivery = scope.ServiceProvider.GetRequiredService<IDeliveryBroker>();
+        EngineHost.Data(await delivery.GetSubscriptionAsync(registration.SubscriptionId)).PipelineId.Should().Be(pipeline.Id);
+    }
+
+    [Fact]
+    public async Task StageSchedule_ShouldKeepTheChosenCapturePathAcrossSavesAndSeeds()
+    {
+        await using var host = await EngineHost.StartAsync();
+        var capture = new ScheduleDeclaration { Kind = WorkKind.Capture, Mode = ScheduleMode.Interval, Every = TimeSpan.FromHours(6) };
+        var stage = capture with { Kind = WorkKind.Harvest, Stage = new() { BatchSize = 7 } };
+        var registration = await host.RegisterAsync(schedules: [capture]);
+        using var scope = host.Services.CreateScope();
+        var registry = scope.ServiceProvider.GetRequiredService<IRegistrationBroker>();
+        var pipeline = EngineHost.Data(await registry.GetPipelineAsync(registration.PipelineId));
+        var source = EngineHost.Data(await registry.GetSourceAsync(pipeline.SourceId));
+        var stages = scope.ServiceProvider.GetRequiredService<PipelineStages>();
+        Task<Result<bool>> Save(ScheduleDeclaration setting, bool seedOnly = false) =>
+            stages.SaveAsync(pipeline, source, setting, seedOnly, CancellationToken.None);
+
+        EngineHost.Data(await Save(stage, seedOnly: true)).Should().BeFalse();
+        EngineHost.Data(await Save(stage, seedOnly: true)).Should().BeFalse();
+        Assert.IsType<Result<bool>.Failure>(await Save(stage)).Error.Message
+            .Should().Be("A section runs either capture or the discover and harvest stages.");
+        EngineHost.Data(await Save(stage with { Stage = new() { BatchSize = 5, Disabled = true } })).Should().BeTrue();
+        EngineHost.Data(await Save(stage)).Should().BeTrue("saving options at the same cadence keeps the stage disabled");
+        var updated = EngineHost.Data(await registry.UpdatePipelineAsync(pipeline.Id, new()
+        {
+            Scope = pipeline.Scope, Schedules = [capture, stage with { Stage = null }],
+        }));
+        updated.Schedules.Single(row => row.Kind == WorkKind.Harvest).Stage!.Disabled.Should().BeTrue();
+
+        EngineHost.Data(await registry.UpdatePipelineAsync(pipeline.Id, new()
+        {
+            Scope = pipeline.Scope, Schedules = [capture with { Enabled = false }, stage],
+        }));
+        EngineHost.Data(await Save(stage with { Stage = new() { BatchSize = 7, Disabled = false } })).Should().BeTrue();
+        EngineHost.Data(await Save(stage with { Stage = new() { BatchSize = 2 } }, seedOnly: true)).Should().BeFalse();
+        var saved = EngineHost.Data(await registry.GetPipelineAsync(pipeline.Id));
+        saved.Schedules.Single(row => row.Kind == WorkKind.Harvest).Stage!.BatchSize.Should().Be(7);
+
+        // A mixed row created before the policy cannot queue duplicate capture work.
+        await host.ExecuteAsync("UPDATE harvest_schedules SET enabled=true WHERE pipeline_id=@pipeline AND kind='capture'",
+            ("pipeline", pipeline.Id));
+        (await scope.ServiceProvider.GetRequiredService<HarvestEngine>().QueueDueAsync()).Should().Be(1);
+        (await host.ScalarAsync<long>("SELECT count(*) FROM harvest_runs WHERE pipeline_id=@pipeline AND kind='capture'",
+            ("pipeline", pipeline.Id))).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Audit_ShouldShowTheActiveFetchAndItsCompletedOperations()
+    {
+        await using var host = await EngineHost.StartAsync();
+        var registration = await host.RegisterAsync();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        const string url = "https://mstar.uz/sitemap.xml";
+        host.Fetcher.Set(url, async (_, ct) =>
+        {
+            entered.TrySetResult();
+            await release.Task.WaitAsync(ct);
+            return new FetchResponse { Outcome = FetchOutcome.NetworkError, Usage = new() { Requests = 1 } };
+        });
+        using var scope = host.Services.CreateScope();
+        var runs = scope.ServiceProvider.GetRequiredService<IRunBroker>();
+        var audit = scope.ServiceProvider.GetRequiredService<PipelineStages>();
+        var run = EngineHost.Data(await runs.StartAsync(registration.PipelineId, WorkKind.Discover));
+        var execution = host.ProcessAsync();
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            var active = (await audit.AuditAsync(run.Id, 0, 10, CancellationToken.None)).Single().Operations.Single();
+            active.Key.Should().Be("fetch");
+            active.FinishedAtUtc.Should().BeNull();
+        }
+        finally
+        {
+            release.TrySetResult();
+            await execution;
+        }
+        var failed = (await audit.AuditAsync(run.Id, 0, 10, CancellationToken.None)).Single().Operations.Single();
+        failed.Result!.Status.Should().Be("failed");
+        failed.FinishedAtUtc.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Audit_ShouldIdentifyInvalidSavedCaptureShapeAtDeserialization()
+    {
+        await using var host = await EngineHost.StartAsync();
+        var registration = await host.RegisterAsync();
+        Fixtures(host, "mstar.uz", count: 1);
+        using var scope = host.Services.CreateScope();
+        var runs = scope.ServiceProvider.GetRequiredService<IRunBroker>();
+        var audit = scope.ServiceProvider.GetRequiredService<PipelineStages>();
+        EngineHost.Data(await runs.StartAsync(registration.PipelineId));
+        await host.DrainAsync();
+        await host.ExecuteAsync("UPDATE harvest_link_readings SET fields='[]'::jsonb");
+        var run = EngineHost.Data(await runs.StartAsync(registration.PipelineId, WorkKind.Process));
+        (await host.DrainAsync()).Should().Be(1);
+        var operations = (await audit.AuditAsync(run.Id, 0, 10, CancellationToken.None)).Single().Operations;
+        operations.Select(step => step.Key).Should().Equal("load-capture", "deserialize-capture");
+        operations.Select(step => step.Result!.Status).Should().Equal("completed", "failed");
+    }
+
+    [Fact]
+    public async Task Stages_ShouldResumeExactPendingPagesAndDetailsAfterRestart()
+    {
+        await using var host = await EngineHost.StartAsync();
+        var registration = await host.RegisterAsync(limits: new() { MaxPages = 1 }, schedules:
+        [
+            new() { Kind = WorkKind.Discover, Mode = ScheduleMode.Manual, Stage = new() { BatchSize = 1 } },
+            new() { Kind = WorkKind.Harvest, Mode = ScheduleMode.Manual, Stage = new() { BatchSize = 1 } },
+            new() { Kind = WorkKind.Process, Mode = ScheduleMode.Manual, Stage = new() { BatchSize = 1 } },
+        ]);
+        const string root = "https://mstar.uz/sitemap.xml";
+        const string next = "https://mstar.uz/next.xml";
+        host.Fetcher.Set(root, $"<sitemapindex><sitemap><loc>{next}</loc></sitemap></sitemapindex>", "application/xml");
+        host.Fetcher.Set(next, "<urlset><url><loc>https://mstar.uz/events/1</loc></url><url><loc>https://mstar.uz/events/2</loc></url></urlset>", "application/xml");
+        host.Fetcher.Set("https://mstar.uz/events/1", Event("mstar.uz", 1));
+        host.Fetcher.Set("https://mstar.uz/events/2", Event("mstar.uz", 2));
+
+        async Task<RunModel> Run(WorkKind kind, bool drain = true)
+        {
+            host.Clock.Advance(TimeSpan.FromMinutes(1));
+            using var scope = host.Services.CreateScope();
+            var broker = scope.ServiceProvider.GetRequiredService<IRunBroker>();
+            var queued = EngineHost.Data(await broker.StartAsync(registration.PipelineId, kind));
+            if (drain)
+                await host.DrainAsync();
+            return EngineHost.Data(await broker.GetAsync(queued.Id));
+        }
+
+        var first = await Run(WorkKind.Discover, drain: false);
+        (await host.ProcessAsync()).Should().BeTrue();
+        host.Fetcher.Calls.Should().Equal(root);
+        await host.RestartAsync();
+
+        (await host.DrainAsync()).Should().Be(1);
+        using (var scope = host.Services.CreateScope())
+        {
+            var broker = scope.ServiceProvider.GetRequiredService<IRunBroker>();
+            var resumed = EngineHost.Data(await broker.GetAsync(first.Id));
+            resumed.Status.Should().Be(RunStatus.Completed);
+            resumed.Discovered.Should().Be(2);
+        }
+        host.Fetcher.Calls.Should().Equal(root, next);
+        (await host.ScalarAsync<long>("SELECT count(*) FROM harvest_captures")).Should().Be(0);
+
+        (await Run(WorkKind.Harvest)).Captured.Should().Be(1);
+        string pending = await host.ScalarAsync<string>("SELECT url FROM harvest_discoveries WHERE detail_state='pending'");
+        await host.RestartAsync();
+        (await Run(WorkKind.Harvest)).Captured.Should().Be(1);
+        host.Fetcher.Calls.Last().Should().Be(pending);
+        host.Fetcher.Calls.Should().OnlyHaveUniqueItems();
+        (await host.ScalarAsync<long>("SELECT count(*) FROM harvest_step_attempts WHERE outcome='ok'")).Should().Be(4);
+
+        (await Run(WorkKind.Process)).Requests.Should().Be(0);
+        (await Run(WorkKind.Process)).Captured.Should().Be(1);
+        (await Run(WorkKind.Process)).CompletionReason.Should().Be(RunReason.NoItems);
+        (await host.ScalarAsync<long>("SELECT count(*) FROM harvest_processing_results WHERE result IS NOT NULL")).Should().Be(2);
+        host.Fetcher.Calls.Count.Should().Be(4);
+    }
+
     [Fact]
     public async Task ListingPageLimit_ShouldCompleteDetailsFromAdmittedListings()
     {

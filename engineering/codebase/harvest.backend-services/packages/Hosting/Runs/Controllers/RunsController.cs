@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Containers;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Engine;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
 using WoW.Two.Sdk.Beta.Be.Harvest.Runs;
@@ -17,7 +18,7 @@ namespace Harvest.Api.Runs.Controllers;
 /// <summary>Controls runs while keeping each tenant inside its containers.</summary>
 [ApiController]
 [Route("api/runs")]
-public sealed class RunsController(IRunBroker runs, IRegistrationBroker registry, CallerResolver callers) : ControllerBase
+public sealed class RunsController(IRunBroker runs, IRegistrationBroker registry, CallerResolver callers, PipelineStages stages) : ControllerBase
 {
     /// <summary>Queues work in a writable pipeline.</summary>
     [HttpPost]
@@ -50,6 +51,20 @@ public sealed class RunsController(IRunBroker runs, IRegistrationBroker registry
             || !await AllowedAsync(run.PipelineId, false, ct))
             return this.ToProblem(AppErrorFactory.NotFound("The run was not found."));
         return Ok(ApiResponse<RunModel>.Ok(run));
+    }
+
+    /// <summary>Reads an authorized run's individual step attempts.</summary>
+    [HttpGet("{runId:guid}/audit")]
+    [Authorize(Policy = HarvestScopeConstants.PipelinesRead)]
+    public async Task<IActionResult> Audit(Guid runId, [FromQuery] int offset = 0, [FromQuery] int limit = 100,
+        [FromQuery] bool newestFirst = false, CancellationToken ct = default)
+    {
+        if (await runs.GetAsync(runId, ct) is not Result<RunModel>.Success { Value: var run }
+            || !await AllowedAsync(run.PipelineId, false, ct))
+            return this.ToProblem(AppErrorFactory.NotFound("The run was not found."));
+        if (offset < 0 || limit is < 1 or > 200)
+            return this.ToProblem(AppErrorFactory.Validation("Use a page size of 1–200 and a nonnegative offset."));
+        return Ok(ApiResponse<IReadOnlyList<RunAttemptModel>>.Ok(await stages.AuditAsync(runId, offset, limit, ct, newestFirst)));
     }
 
     /// <summary>Cancels outstanding work without removing its history.</summary>

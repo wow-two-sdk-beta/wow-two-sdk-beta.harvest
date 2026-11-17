@@ -20,6 +20,11 @@ internal sealed class ApiSourceOverviewBroker(HttpClient http) : ISourceOverview
             $"{RegistrationRouteConstants.Sources}/{sourceId}/{SourceRouteConstants.Posts}?{SourceRouteConstants.LimitParameter}={limit}", null, cancellationToken);
 
     /// <inheritdoc />
+    public Task<Result<SourcePostPage>> QuerySourcePostsAsync(Guid sourceId, SourcePostQuery query, CancellationToken cancellationToken = default) =>
+        HarvestDataHttp.SendAsync<SourcePostPage>(http, HttpMethod.Post,
+            $"{RegistrationRouteConstants.Sources}/{sourceId}/{SourceRouteConstants.PostQuery}", query, cancellationToken);
+
+    /// <inheritdoc />
     public Task<Result<IReadOnlyList<PostRevisionModel>>> ListPostRevisionsAsync(Guid containerId, Guid postId, CancellationToken cancellationToken = default) =>
         HarvestDataHttp.SendAsync<IReadOnlyList<PostRevisionModel>>(http, HttpMethod.Get,
             $"{PostRouteConstants.Posts}/{postId}/{SourceRouteConstants.Revisions}?{RegistrationRouteConstants.ContainerIdParameter}={containerId}",

@@ -79,6 +79,7 @@ internal sealed class HarvestDbContext(DbContextOptions<HarvestDbContext> option
         schedule.HasKey(row => row.Id);
         schedule.Property(row => row.Kind).HasConversion(Text<WorkKind>());
         schedule.Property(row => row.Mode).HasConversion(Text<ScheduleMode>());
+        schedule.Property(row => row.StageOptions).HasColumnType("jsonb");
     }
 
     /// <summary>Converts an enum to the snake_case text the schema's CHECK constraints name.</summary>

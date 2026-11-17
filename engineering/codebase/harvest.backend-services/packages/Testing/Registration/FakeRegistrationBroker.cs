@@ -296,6 +296,8 @@ public sealed partial class FakeRegistrationBroker(TimeProvider? time = null) : 
             if (index < 0)
                 return Fail<SourceModel>(RegistrationErrors.SourceNotFound(sourceId));
             var source = sources[index];
+            if (update.Paused is not null && source.State is not (SourceState.Active or SourceState.Paused))
+                return Fail<SourceModel>(AppErrorFactory.Conflict("The source cannot change its master pause while unavailable or retired."));
             if (update.GroupId is { } groupId)
             {
                 if (groups.FirstOrDefault(group => group.Id == groupId) is not { } group)
@@ -311,6 +313,8 @@ public sealed partial class FakeRegistrationBroker(TimeProvider? time = null) : 
 
             if (update.Name is not null)
                 source = source with { Name = displayName };
+            if (update.Paused is { } paused && source.State != (paused ? SourceState.Paused : SourceState.Active))
+                source = source with { State = paused ? SourceState.Paused : SourceState.Active, StateSinceUtc = Clock.GetUtcNow() };
             sources[index] = source;
             return Ok(source);
         }
@@ -408,6 +412,7 @@ public sealed partial class FakeRegistrationBroker(TimeProvider? time = null) : 
                     TimeZone = schedule.TimeZone,
                     Window = schedule.Window,
                     Enabled = schedule.Enabled,
+                    Stage = schedule.Stage,
                 })],
                 CreatedAtUtc = now,
             };
@@ -458,6 +463,7 @@ public sealed partial class FakeRegistrationBroker(TimeProvider? time = null) : 
                     Id = schedules.GetValueOrDefault(spec.Kind)?.Id ?? Guid.CreateVersion7(Clock.GetUtcNow()),
                     Kind = spec.Kind, Mode = spec.Mode, Every = spec.Every, MaxEvery = spec.MaxEvery,
                     Cron = spec.Cron?.Trim(), TimeZone = spec.TimeZone, Window = spec.Window, Enabled = spec.Enabled,
+                    Stage = spec.Stage ?? schedules.GetValueOrDefault(spec.Kind)?.Stage,
                 };
             pipelines[index] = pipeline with
             {

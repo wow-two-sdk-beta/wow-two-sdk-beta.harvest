@@ -1,5 +1,6 @@
 using System.Text.Json;
 using WoW.Two.Sdk.Beta.Be.Harvest.Runs;
+using WoW.Two.Sdk.Beta.Be.Harvest.Readers;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 
@@ -17,4 +18,7 @@ public sealed record StepTarget
 
     /// <summary>Gets the target's priority; the run's when null.</summary>
     public WorkPriority? Priority { get; init; }
+
+    /// <summary>Gets the catalog evidence when this target represents a discovered listing.</summary>
+    public DiscoveredUrl? Discovery { get; init; }
 }

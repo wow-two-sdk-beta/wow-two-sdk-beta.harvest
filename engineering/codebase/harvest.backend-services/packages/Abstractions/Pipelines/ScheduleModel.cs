@@ -32,4 +32,7 @@ public sealed record ScheduleModel
 
     /// <summary>Gets when the row's next run is due (UTC); null until the scheduler first computes it.</summary>
     public DateTimeOffset? NextDueAtUtc { get; init; }
+
+    /// <summary>Gets the saved settings for a discovery, harvest or processing stage.</summary>
+    public PipelineStageOptions? Stage { get; init; }
 }

@@ -32,6 +32,15 @@ public interface IStepContext
     /// <summary>Tells whether a page destination belongs to the run's selected section.</summary>
     bool AllowsDestination(Uri destination) => true;
 
+    /// <summary>Runs a named operation and lets the host record its timing and result.</summary>
+    /// <typeparam name="T">The value returned by the operation.</typeparam>
+    /// <param name="key">A stable statement of the operation, such as fetch or deserialize.</param>
+    /// <param name="execute">The work itself, with its regular cancellation policy.</param>
+    /// <param name="describe">Summarizes the result without sensitive content. Omit for a plain completion.</param>
+    /// <returns>The value from <paramref name="execute"/>.</returns>
+    Task<T> RunOperationAsync<T>(string key, Func<Task<T>> execute, Func<T, StepOperationResult>? describe = null)
+        => execute();
+
     /// <summary>Reports an observation to the host gate and the usage meters.</summary>
     /// <param name="signal">What the host answered.</param>
     void Observe(StepSignal signal);

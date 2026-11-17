@@ -15,14 +15,29 @@ public sealed partial class InstagramBusinessDiscoveryClient(
     public const string ClientName = "Harvest.Instagram.BusinessDiscovery";
 
     /// <inheritdoc />
-    public async Task<InstagramMediaPage> ReadAsync(string username, string? after = null, CancellationToken cancellationToken = default)
+    public Task<InstagramMediaPage> ReadAsync(string username, string? after = null, CancellationToken cancellationToken = default)
+        => ReadAsync(username, after, null, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<InstagramMediaPage> ReadTracedAsync(string username, string? after, IStepContext context, CancellationToken cancellationToken)
+        => ReadAsync(username, after, context, cancellationToken);
+
+    private async Task<InstagramMediaPage> ReadAsync(string username, string? after, IStepContext? context, CancellationToken cancellationToken)
     {
+        Task<T> Trace<T>(string key, Func<Task<T>> execute, Func<T, StepOperationResult>? describe = null)
+            => context?.RunOperationAsync(key, execute, describe) ?? execute();
+
         cancellationToken.ThrowIfCancellationRequested();
         InstagramOptions options = configuration.Value;
-        if (!options.Enabled)
-            return Failure(FetchOutcome.CapabilityUnavailable, "Instagram is disabled. Configure HarvestInstagram and enable it explicitly.");
-        if (!HasValidConfiguration(options))
-            return Failure(FetchOutcome.CapabilityUnavailable, "Instagram needs a supported API version, professional account ID, token and valid request bounds.");
+        InstagramMediaPage? rejected = await Trace<InstagramMediaPage?>("prepare-authentication", () => Task.FromResult(
+            !options.Enabled
+                ? Failure(FetchOutcome.CapabilityUnavailable, "Instagram is disabled. Configure HarvestInstagram and enable it explicitly.")
+                : !HasValidConfiguration(options)
+                    ? Failure(FetchOutcome.CapabilityUnavailable, "Instagram needs a supported API version, professional account ID, token and valid request bounds.")
+                    : null),
+            result => result is null ? new(Message: "Configured credentials are available.") : new("failed", Message: result.Message));
+        if (rejected is not null)
+            return rejected;
         if (!Username().IsMatch(username) || options.AllowedUsernames is null
             || !options.AllowedUsernames.Contains(username, StringComparer.OrdinalIgnoreCase))
             return Failure(FetchOutcome.NotApproved, "The Instagram publisher is not in HarvestInstagram:AllowedUsernames.");
@@ -40,7 +55,9 @@ public sealed partial class InstagramBusinessDiscoveryClient(
         try
         {
             using HttpClient http = clients.CreateClient(ClientName);
-            using HttpResponseMessage response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+            using HttpResponseMessage response = await Trace("fetch",
+                () => http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token),
+                result => new(result.IsSuccessStatusCode ? "completed" : "failed", Input: 1, HttpStatus: (int)result.StatusCode));
             var retry = response.Headers.RetryAfter?.Delta;
             if (response.Headers.RetryAfter?.Date is { } until)
                 retry = until - clock.GetUtcNow();
@@ -67,7 +84,9 @@ public sealed partial class InstagramBusinessDiscoveryClient(
                 return Failure(FetchOutcome.LoginRequired, "Instagram credentials need renewal.", 1, bytes);
             if (response.StatusCode == HttpStatusCode.Forbidden)
                 return Failure(FetchOutcome.Restricted, "Instagram permissions or account eligibility do not allow this request.", 1, bytes);
-            using JsonDocument document = JsonDocument.Parse(buffer.ToArray(), new JsonDocumentOptions { MaxDepth = 32 });
+            using JsonDocument document = await Trace("deserialize-response",
+                () => Task.FromResult(JsonDocument.Parse(buffer.ToArray(), new JsonDocumentOptions { MaxDepth = 32 })),
+                _ => new(Input: 1, Output: 1));
             JsonElement root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object)
                 return Failure(FetchOutcome.UnexpectedContent, "Instagram did not return an object.", 1, bytes);

@@ -2,7 +2,10 @@ using System.Text;
 using System.Text.Json;
 using AwesomeAssertions;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
+using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
+using WoW.Two.Sdk.Beta.Be.Harvest.Posts;
 using WoW.Two.Sdk.Beta.Be.Harvest.Readers;
+using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Afisha;
 
 namespace HarvestAdapters.Tests.Unit.Sources.Afisha;
@@ -11,6 +14,32 @@ namespace HarvestAdapters.Tests.Unit.Sources.Afisha;
 public sealed class AfishaCaptureReaderTests
 {
     private const string Article = "https://www.afisha.uz/ru/fashion/2026/10/14/fashline-26";
+
+    [Fact]
+    public void PostFacets_ShouldUseThePublisherCategoryAndAfishaLocalDay()
+    {
+        var adapter = new AfishaSourceAdapter();
+        var now = new DateTimeOffset(2026, 11, 20, 19, 0, 0, TimeSpan.Zero);
+        var post = new SourcePostModel
+        {
+            PostId = Guid.NewGuid(),
+            Kind = PostKind.Event,
+            Title = "Concert",
+            State = PostState.Live,
+            Revision = 1,
+            FirstSeenAt = now.AddDays(-1),
+            LastChangedAt = now.AddDays(-1),
+            StartsAt = "2026-11-21",
+            EndsAt = "2026-11-21",
+            Url = "https://www.afisha.uz/ru/concerts/2026/10/14/show",
+        };
+        adapter.ReadPostFilter(SourcePostFilterKeys.PublisherCategory, post, now).Should().Be("concerts");
+        adapter.ReadPostFilter(SourcePostFilterKeys.EventTiming, post, now.AddMinutes(-1)).Should().Be("upcoming");
+        adapter.ReadPostFilter(SourcePostFilterKeys.EventTiming, post, now).Should().Be("ongoing");
+        adapter.ReadPostFilter(SourcePostFilterKeys.EventTiming, post, now.AddDays(1)).Should().Be("finished");
+        adapter.ReadPostFilter(SourcePostFilterKeys.EventTiming, post with { EndsAt = null }, now).Should().Be("endUnknown");
+        adapter.ReadPostFilter(SourcePostFilterKeys.EventTiming, post with { StartsAt = null, EndsAt = null }, now).Should().Be("undated");
+    }
 
     [Fact]
     public async Task Read_ShouldUseEventStartRatherThanPublicationDate_AndCleanTheSeoTitle()
@@ -244,6 +273,8 @@ public sealed class AfishaCaptureReaderTests
             <a href="/ru/fashion/2026/10/14/fashline-26">Runway again</a>
             <a href="/ru/znaniya/2026/07/10/moda-yoli">Designer call</a>
             <a href="/ru/exhibitions">Exhibitions</a>
+            <a href="/uz/fashion/2026/10/14/fashline-26">Uzbek edition</a>
+            <a href="/uz/exhibitions">Uzbek exhibitions</a>
             <a href="/ru/znaniya">Unrelated section archive</a>
             <a href="/ru/fashion">Self</a>
             <a href="/api/materials?page=2">Internal API</a>
@@ -300,13 +331,33 @@ public sealed class AfishaCaptureReaderTests
         (await Read(html)).Captures.Single().Links.Single().Url.Should().Be("https://organizer.example/apply?event=7");
     }
 
-    [Fact]
-    public async Task Read_ShouldIgnoreACrossHostCanonical_AndUseTheCurrentArticle()
+    [Theory]
+    [InlineData("https://attacker.example/fair")]
+    [InlineData("https://www.afisha.uz/uz/fashion/2026/10/14/fashline-26")]
+    public async Task Read_ShouldUseTheCurrentArticleWhenTheCanonicalIsOutsideTheRussianEdition(string canonical)
     {
         string html = Page("", new { title = "Designer fair", type = "EVENT", content = "<p>Garments.</p>" })
-            .Replace(Article, "https://attacker.example/fair", StringComparison.Ordinal);
+            .Replace(Article, canonical, StringComparison.Ordinal);
 
         (await Read(html)).Captures.Single().ExternalKey.Should().Be(Article);
+    }
+
+    [Theory]
+    [InlineData("uz-Latn", "ru", false)]
+    [InlineData(null, "uz", false)]
+    [InlineData("ru-RU", "ru", true)]
+    public async Task Read_ShouldCheckTheDeclaredArticleLanguage(string? materialLocale, string documentLanguage, bool expected)
+    {
+        string html = Page("", new { title = "Designer fair", type = "EVENT", locale = materialLocale })
+            .Replace("lang='ru'", $"lang='{documentLanguage}'", StringComparison.Ordinal);
+
+        var result = await new AfishaCaptureReader().ReadAsync(Document(html, Article));
+
+        if (expected)
+            result.Should().BeOfType<Result<CaptureReadResult>.Success>().Which.Value.Captures
+                .Should().ContainSingle().Which.Locale.Should().Be("ru");
+        else
+            result.Should().BeOfType<Result<CaptureReadResult>.Failure>();
     }
 
     [Fact]
@@ -333,9 +384,19 @@ public sealed class AfishaCaptureReaderTests
     [InlineData("https://afisha.uz.attacker.example/ru/fashion", "text/html", "<html />", false)]
     [InlineData("https://www.afisha.uz/api/materials", "text/html", "<html />", false)]
     [InlineData("https://www.afisha.uz/ru/exhibitions", "text/html", "<html />", true)]
+    [InlineData("https://www.afisha.uz/uz/exhibitions", "text/html", "<html />", false)]
     public void CanRead_ShouldBindOnlyItsPublicHtmlRoutes(string url, string contentType, string body, bool expected)
     {
         new AfishaCaptureReader().CanRead(Document(body, url, contentType)).Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData(Article, true)]
+    [InlineData("https://www.afisha.uz/uz/fashion/2026/10/14/fashline-26", false)]
+    [InlineData("https://www.afisha.uz/russian/fashion/2026/10/14/fashline-26", false)]
+    public void Allows_ShouldRestrictFetchesToTheRussianEdition(string url, bool expected)
+    {
+        new AfishaCaptureReader().Allows(new Uri(url)).Should().Be(expected);
     }
 
     [Fact]

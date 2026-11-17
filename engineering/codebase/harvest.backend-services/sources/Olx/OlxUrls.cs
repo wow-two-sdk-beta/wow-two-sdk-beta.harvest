@@ -36,6 +36,13 @@ internal static partial class OlxUrls
         return new UriBuilder(uri) { Query = string.Empty, Fragment = string.Empty }.Uri.AbsoluteUri;
     }
 
+    internal static string? RealEstateCategoryPath(Uri basis, string raw)
+    {
+        Uri? category = Resolve(basis, raw);
+        return category is not null && RealEstatePath().IsMatch(category.AbsolutePath)
+            ? category.AbsolutePath.TrimEnd('/') : null;
+    }
+
     internal static Uri? NextPage(Uri current, string? raw)
     {
         Uri? next = Resolve(current, raw);
@@ -85,4 +92,7 @@ internal static partial class OlxUrls
 
     [GeneratedRegex(@"^/(?:oz/|ru/)?(?:$|(?:nedvizhimost|transport|elektronika|rabota|uslugi|dom-i-sad|detskiy-mir|moda-i-stil|hobbi-otdyh-i-sport|zhivotnye|otdam-darom|obmen-darom|biznes-i-uslugi|list|obyavleniya)(?:/.*)?$|q-[^/]+/?$)", RegexOptions.CultureInvariant)]
     private static partial Regex CatalogPath();
+
+    [GeneratedRegex(@"^/(?:oz/|ru/)?nedvizhimost(?:/|$)", RegexOptions.CultureInvariant)]
+    private static partial Regex RealEstatePath();
 }

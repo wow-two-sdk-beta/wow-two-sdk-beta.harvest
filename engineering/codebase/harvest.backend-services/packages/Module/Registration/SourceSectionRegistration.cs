@@ -19,7 +19,7 @@ internal sealed class SourceSectionRegistration(HarvestDbContext db, IEnumerable
             && row.Permission != SourcePermission.Denied).ToListAsync(ct);
         foreach (SourceRow row in sources)
         {
-            if (Catalog(row.ToModel(null)) is null)
+            if (PassiveSections(row.ToModel(null)).Count == 0)
                 continue;
             await using var transaction = await db.Database.BeginTransactionAsync(ct);
             SourceRow? current = await db.Sources.FromSqlInterpolated(
@@ -34,14 +34,17 @@ internal sealed class SourceSectionRegistration(HarvestDbContext db, IEnumerable
 
     internal async Task StageAsync(SourceModel source, CancellationToken ct)
     {
-        if (source.Permission == SourcePermission.Denied || Catalog(source) is not { } catalog)
+        if (source.Permission == SourcePermission.Denied)
+            return;
+        var sections = PassiveSections(source);
+        if (sections.Count == 0)
             return;
         var scopes = await db.Pipelines.AsNoTracking().Where(row => row.SourceId == source.Id)
             .Select(row => row.Scope).ToListAsync(ct);
         var urls = scopes.Select(json => StoreJson.Read(json, new PipelineScope()).Url)
             .Where(url => url is not null).Select(url => url!.TrimEnd('/')).ToHashSet(StringComparer.Ordinal);
         DateTimeOffset now = clock.GetUtcNow();
-        foreach (SourceSectionDefinition section in catalog.Sections(source))
+        foreach (SourceSectionDefinition section in sections)
         {
             if (!Uri.TryCreate(section.Url, UriKind.Absolute, out Uri? url) || url.Scheme != Uri.UriSchemeHttps
                 || !url.IsDefaultPort || url.UserInfo.Length != 0
@@ -68,8 +71,9 @@ internal sealed class SourceSectionRegistration(HarvestDbContext db, IEnumerable
         }
     }
 
-    private ISourceSectionCatalog? Catalog(SourceModel source) =>
-        adapters.LastOrDefault(adapter => adapter.Serves(source)) as ISourceSectionCatalog;
+    private IReadOnlyList<SourceSectionDefinition> PassiveSections(SourceModel source) =>
+        adapters.LastOrDefault(adapter => adapter.Serves(source)) is ISourceSectionCatalog catalog
+            ? catalog.Sections(source).Where(section => section.RegisterPassivePipeline).ToArray() : [];
 }
 
 /// <summary>Reconciles registered source sections after the Harvest schema is ready.</summary>

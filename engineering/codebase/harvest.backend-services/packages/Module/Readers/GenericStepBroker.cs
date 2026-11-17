@@ -31,6 +31,14 @@ public sealed class GenericStepBroker : IStepBroker
     public string StepKey { get; }
 
     /// <inheritdoc />
+    public IReadOnlyList<string> OperationKeys => StepKey switch
+    {
+        "enumerate" => ["fetch", "parse-response", "paginate"],
+        "check" => ["fetch", "inspect-link"],
+        _ => ["fetch", "parse-response"],
+    };
+
+    /// <inheritdoc />
     public async Task<StepResult> ExecuteAsync(StepItem item, IStepContext context, CancellationToken cancellationToken = default)
     {
         if (!Uri.TryCreate(item.Target, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
@@ -38,10 +46,14 @@ public sealed class GenericStepBroker : IStepBroker
         var destinations = new StepDestinationPolicy(context, readers.OfType<IFetchDestinationPolicy>().FirstOrDefault());
         if (!destinations.Allows(uri))
             return new() { Outcome = FetchOutcome.NotApproved, Message = "The target is outside the source's supported public routes." };
-        var response = await fetcher.FetchAsync(new FetchRequest
+        var response = await context.RunOperationAsync("fetch", () => fetcher.FetchAsync(new FetchRequest
         {
             Uri = uri, RobotsPolicy = context.Source.RobotsPolicy, MinDelay = context.Plan.Requirements.MinDelay, DestinationPolicy = destinations,
-        }, cancellationToken);
+        }, cancellationToken), answer => new(
+            answer.Outcome is FetchOutcome.Ok or FetchOutcome.Gone ? "completed" : "failed",
+            Input: 1, Output: answer.Document is null ? 0 : 1,
+            Message: answer.Outcome is FetchOutcome.Ok ? null : answer.Outcome.ToString(),
+            HttpStatus: answer.Document?.StatusCode));
         var document = response.Document;
         var bytes = response.Usage.Bytes;
         context.Observe(new StepSignal
@@ -57,7 +69,7 @@ public sealed class GenericStepBroker : IStepBroker
             .FirstOrDefault(candidate => candidate.CanCheck(document));
         if (response.Outcome == FetchOutcome.Gone && document?.StatusCode is 404 or 410 && availability is not null)
         {
-            LinkObservation? missing = await availability.ReadAvailabilityAsync(document, externalKey, cancellationToken);
+            LinkObservation? missing = await InspectLinkAsync(availability, document, externalKey, context, cancellationToken);
             return new()
             {
                 Outcome = missing is null ? FetchOutcome.Unrecognized : FetchOutcome.Gone,
@@ -82,7 +94,7 @@ public sealed class GenericStepBroker : IStepBroker
         if (document is null) return new() { Outcome = FetchOutcome.UnexpectedContent, Usage = usage };
         if (StepKey == "check" && availability is not null)
         {
-            LinkObservation? observation = await availability.ReadAvailabilityAsync(document, externalKey, cancellationToken);
+            LinkObservation? observation = await InspectLinkAsync(availability, document, externalKey, context, cancellationToken);
             return new()
             {
                 Outcome = observation is null ? FetchOutcome.Unrecognized : FetchOutcome.Ok,
@@ -96,26 +108,55 @@ public sealed class GenericStepBroker : IStepBroker
                 Outcome = FetchOutcome.Ok, Usage = usage,
                 Links = [new() { ExternalKey = externalKey, Signal = LinkSignal.Present, Reason = "seen_again", HttpStatus = document.StatusCode }],
             };
-        var reader = readers.FirstOrDefault(candidate => candidate.CanRead(document));
-        if (reader is null) return new() { Outcome = FetchOutcome.Unrecognized, Usage = usage, Message = "No generic reader understood the response." };
-        var parsed = await reader.ReadAsync(document, cancellationToken);
+        var parsed = await context.RunOperationAsync("parse-response", async () =>
+        {
+            var reader = readers.FirstOrDefault(candidate => candidate.CanRead(document));
+            return reader is null ? null : await reader.ReadAsync(document, cancellationToken);
+        }, result => result switch
+        {
+            Result<CaptureReadResult>.Success parsedResponse => new(Input: 1,
+                Output: parsedResponse.Value.Captures.Count + parsedResponse.Value.Discovered.Count),
+            null => new("failed", Input: 1, Message: "No reader recognized this response."),
+            _ => new("failed", Input: 1, Message: "The source document could not be parsed."),
+        });
+        if (parsed is null) return new() { Outcome = FetchOutcome.Unrecognized, Usage = usage, Message = "No generic reader understood the response." };
         if (parsed is not Result<CaptureReadResult>.Success success) return new() { Outcome = FetchOutcome.UnexpectedContent, Usage = usage, Message = "The source document could not be parsed." };
         var read = success.Value;
         if (read.Captures.Any(capture => capture.Warnings.Contains("render_required")))
             return new() { Outcome = FetchOutcome.RenderRequired, Usage = usage, Message = "The page exposes only a JavaScript shell; no renderer is bound." };
+        List<StepTarget> FollowUps() => read.Discovered.Where(target => Uri.TryCreate(target.Url, UriKind.Absolute, out var found)
+                    && found.IdnHost.Equals(uri.IdnHost, StringComparison.OrdinalIgnoreCase))
+                .Select(target => new StepTarget
+                {
+                    StepKey = target.IsListing ? "enumerate" : "detail",
+                    Target = target.Url,
+                    Discovery = target.IsListing ? null : target,
+                }).ToList();
+        var next = StepKey == "enumerate"
+            ? await context.RunOperationAsync("paginate", () => Task.FromResult(FollowUps()), targets =>
+            {
+                int pages = targets.Count(target => target.StepKey == "enumerate");
+                return new(Input: read.Discovered.Count, Output: pages,
+                    Message: pages == 0 ? "No continuation pages." : $"{pages} continuation pages found.");
+            })
+            : FollowUps();
         return new()
         {
             Outcome = FetchOutcome.Ok, Usage = usage, Captures = read.Captures,
             EnumerationComplete = StepKey == "enumerate" && read.Complete,
-            Next = read.Discovered.Where(target => Uri.TryCreate(target.Url, UriKind.Absolute, out var found)
-                    && found.IdnHost.Equals(uri.IdnHost, StringComparison.OrdinalIgnoreCase))
-                .Select(target => new StepTarget { StepKey = target.IsListing ? "enumerate" : "detail", Target = target.Url }).ToList(),
+            Next = next,
             Links = read.Captures.Select(capture => new LinkObservation
             {
                 ExternalKey = capture.ExternalKey, Signal = LinkSignal.Present, Reason = "seen_again", HttpStatus = document.StatusCode,
             }).ToList(),
         };
     }
+
+    private static Task<LinkObservation?> InspectLinkAsync(ILinkAvailabilityReader availability, FetchedDocument document,
+        string externalKey, IStepContext context, CancellationToken ct)
+        => context.RunOperationAsync("inspect-link", () => availability.ReadAvailabilityAsync(document, externalKey, ct),
+            evidence => new(evidence is null ? "failed" : "completed", Input: 1, Output: evidence is null ? 0 : 1,
+                Message: evidence is null ? "No availability evidence was found." : null));
 
     private sealed record StepDestinationPolicy(IStepContext Context, IFetchDestinationPolicy? Adapter) : IFetchDestinationPolicy
     {

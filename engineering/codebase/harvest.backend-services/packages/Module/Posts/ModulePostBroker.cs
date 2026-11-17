@@ -56,10 +56,11 @@ internal sealed partial class ModulePostBroker(
                 postId = Guid.CreateVersion7(now);
                 isNewPost = true;
                 await PostSql.ExecuteAsync(connection, transaction, """
-                    INSERT INTO harvest_posts(id,container_id,kind,state_since,first_seen_at,last_changed_at,base,dedup_state)
-                    VALUES(@id,@container,@kind,@now,@now,@now,CAST(@base AS jsonb),'settled')
+                    INSERT INTO harvest_posts(id,container_id,kind,state_since,first_seen_at,last_changed_at,base,dedup_state,published_at)
+                    VALUES(@id,@container,@kind,@now,@now,@now,CAST(@base AS jsonb),'settled',@published)
                     """, cancellationToken, ("id", postId.Value), ("container", containerId),
-                    ("kind", Kind(envelope)), ("now", now), ("base", StoreJson.Write(envelope)));
+                    ("kind", Kind(envelope)), ("now", now), ("base", StoreJson.Write(envelope)),
+                    ("published", capture.PublishedAtUtc?.ToUniversalTime()));
             }
             var linkId = Guid.CreateVersion7(now);
             await PostSql.ExecuteAsync(connection, transaction, """
@@ -124,6 +125,10 @@ internal sealed partial class ModulePostBroker(
 
         if (changed || restored || newLink)
         {
+            if (capture.PublishedAtUtc is { } published)
+                await PostSql.ExecuteAsync(connection, transaction,
+                    "UPDATE harvest_posts SET published_at=@published WHERE id=@id AND published_at IS NULL",
+                    cancellationToken, ("published", published.ToUniversalTime()), ("id", link.PostId));
             await ResolveAsync(connection, transaction, containerId, link.PostId, now, !isNewPost, cancellationToken);
             var post = (await ReadPostAsync(connection, transaction, containerId, link.PostId, cancellationToken))!;
             await DeliveryEventWriter.AppendAsync(connection, transaction, post, isNewPost ? "post.new" : "post.changed", runId, link.Id, now, postFilters, cancellationToken);

@@ -653,6 +653,31 @@ public abstract class RegistrationBrokerConformance
         Value(await Broker.GetSourceAsync(source.Id)).Should().Match<SourceModel>(value => value.Name == null && value.GroupId == null);
     }
 
+    /// <summary>The source master pause persists without changing its registered sections or their schedules.</summary>
+    [Fact]
+    public async Task UpdateSource_ShouldPreservePipelineChoices_WhenPausingAndResuming()
+    {
+        var (container, source) = await SourceAsync(SourceCoverage.Whole);
+        var pipeline = Value(await Broker.DeclarePipelineAsync(new PipelineDeclaration
+        {
+            ContainerId = container.Id, SourceId = source.Id,
+            Schedules = [new() { Kind = WorkKind.Harvest, Mode = ScheduleMode.Interval, Every = TimeSpan.FromHours(1), Stage = new() { BatchSize = 50 } }],
+        }));
+
+        var paused = Value(await Broker.UpdateSourceAsync(source.Id, new SourceUpdate { Paused = true }));
+        paused.State.Should().Be(SourceState.Paused);
+        Value(await Broker.GetSourceAsync(source.Id)).State.Should().Be(SourceState.Paused);
+        Value(await Broker.UpdateSourceAsync(source.Id, new SourceUpdate { Name = "Renamed" })).State.Should().Be(SourceState.Paused);
+        Value(await Broker.UpdateSourceAsync(source.Id, new SourceUpdate { Paused = true })).StateSinceUtc.Should().Be(paused.StateSinceUtc);
+        Value(await Broker.GetPipelineAsync(pipeline.Id)).Should().BeEquivalentTo(pipeline);
+
+        var resumed = Value(await Broker.UpdateSourceAsync(source.Id, new SourceUpdate { Paused = false }));
+        resumed.State.Should().Be(SourceState.Active);
+        resumed.Permission.Should().Be(source.Permission);
+        resumed.Name.Should().Be("Renamed");
+        Value(await Broker.GetPipelineAsync(pipeline.Id)).Should().BeEquivalentTo(pipeline);
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>Returns twelve lowercase hex characters, unique per call.</summary>

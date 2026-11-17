@@ -14,7 +14,8 @@ public sealed class MigrationTests : IAsyncLifetime
 {
     /// <summary>Holds every migration of the set, in order.</summary>
     private static readonly string[] Migrations =
-        ["001-baseline", "002-drop-escalation", "003-fetching", "004-posts-delivery", "005-subscription-filter", "006-source-groups", "007-source-assets"];
+        ["001-baseline", "002-drop-escalation", "003-fetching", "004-posts-delivery", "005-subscription-filter", "006-source-groups",
+            "007-source-assets", "008-pipeline-stages", "009-step-operations"];
 
     /// <summary>Holds the escalation columns 002 drops.</summary>
     private const string EscalationColumns =
@@ -29,7 +30,8 @@ public sealed class MigrationTests : IAsyncLifetime
         "harvest_posts", "harvest_post_merges", "harvest_post_keep_apart", "harvest_post_revisions", "harvest_retention_policies", "harvest_runs",
         "harvest_schedules", "harvest_source_assets", "harvest_source_groups", "harvest_source_scopes",
         "harvest_sources", "harvest_subscription_event", "harvest_subscriptions", "harvest_tenants", "harvest_usage",
-        "harvest_work_item",
+        "harvest_work_item", "harvest_discoveries", "harvest_discovery_scopes", "harvest_catalog_pages",
+        "harvest_processing_results", "harvest_step_attempts",
     ];
 
     private ServiceProvider services = null!;
@@ -107,7 +109,8 @@ public sealed class MigrationTests : IAsyncLifetime
     {
         Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None));
 
-        Unwrap(await Runner.RollbackAsync(targetOrdinal: 5, CancellationToken.None)).Should().Equal("007-source-assets", "006-source-groups");
+        Unwrap(await Runner.RollbackAsync(targetOrdinal: 5, CancellationToken.None)).Should()
+            .Equal("009-step-operations", "008-pipeline-stages", "007-source-assets", "006-source-groups");
         (await ColumnCountAsync("table_name = 'harvest_sources' AND column_name IN ('group_id', 'display_name')")).Should().Be(0);
         (await ScalarAsync<bool>("SELECT to_regclass('harvest_source_groups') IS NULL AND to_regclass('harvest_post_revisions') IS NULL")).Should().BeTrue();
 

@@ -75,7 +75,9 @@ internal sealed class ModuleRunBroker(
             UPDATE harvest_runs SET status='cancelled',cancellation_requested=true,finished_at=@now,completion_reason='cancelled'
             WHERE id=@id AND status IN ('queued','running','paused');
             UPDATE harvest_work_item SET state='blocked',lease_owner=NULL,lease_until=NULL,finished_at=@now,last_error='Run cancelled'
-            WHERE run_id=@id AND state IN ('queued','running')
+            WHERE run_id=@id AND state IN ('queued','running');
+            UPDATE harvest_step_attempts SET finished_at=@now,outcome='cancelled',message='Run cancelled'
+            WHERE run_id=@id AND finished_at IS NULL
             """, cancellationToken, ("id", runId), ("now", clock.GetUtcNow()));
         await transaction.CommitAsync(cancellationToken);
         return await GetAsync(runId, cancellationToken);

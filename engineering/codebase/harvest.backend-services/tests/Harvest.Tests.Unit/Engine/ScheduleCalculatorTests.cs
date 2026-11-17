@@ -32,6 +32,20 @@ public sealed class ScheduleCalculatorTests
             .Should().Be(DateTimeOffset.Parse("2026-10-27T10:00:10Z"));
     }
 
+    [Theory]
+    [InlineData("5 7 * * 1,3,0", "2026-11-18T02:05:00Z")]
+    [InlineData("0 9 L * *", "2026-11-30T04:00:00Z")]
+    public void Calendar_ShouldStartOnOrAfterTheSelectedLocalDate(string cron, string expected)
+    {
+        var schedule = Schedule(ScheduleMode.Cron) with
+        {
+            Kind = WorkKind.Discover, Cron = cron, TimeZone = "Asia/Tashkent",
+            Stage = new() { BatchSize = 3, StartsOn = new(2026, 11, 18) },
+        };
+        ScheduleCalculator.Next(schedule, DateTimeOffset.Parse("2026-11-16T00:00:00Z"), first: true)
+            .Should().Be(DateTimeOffset.Parse(expected));
+    }
+
     [Fact]
     public void Window_ShouldDeferAnEveningSlotUntilNextLocalMorning()
     {

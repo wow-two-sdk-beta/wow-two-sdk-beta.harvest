@@ -1,9 +1,11 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Containers;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Engine;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Persistence;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Persistence.Rows;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
@@ -16,7 +18,8 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Registration;
 
 /// <summary>Integrates the registry over the module's store: validates, normalizes and writes the registry tables.</summary>
 /// <remarks>Duplicates are checked before the insert for a readable error, and the unique indexes catch the race.</remarks>
-internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider time, SourceSectionRegistration sections) : IRegistrationBroker
+internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider time, SourceSectionRegistration sections,
+    IServiceProviderIsKeyedService keyedServices) : IRegistrationBroker
 {
     /// <summary>Holds PostgreSQL's unique-violation state.</summary>
     private const string UniqueViolation = "23505";
@@ -283,9 +286,17 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
             displayName = name;
         }
 
-        var row = await db.Sources.SingleOrDefaultAsync(source => source.Id == sourceId, cancellationToken);
+        // Queue creation and source pauses share this transaction lock, so a successful pause cannot race a new run.
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        if (update.Paused is not null)
+            await db.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(hashtextextended('harvest:scheduler',0))", cancellationToken);
+        var row = await db.Sources.FromSqlInterpolated($"SELECT * FROM harvest_sources WHERE id = {sourceId} FOR UPDATE")
+            .SingleOrDefaultAsync(cancellationToken);
         if (row is null)
             return Result<SourceModel>.Fail(RegistrationErrors.SourceNotFound(sourceId));
+        await db.Entry(row).ReloadAsync(cancellationToken);
+        if (update.Paused is not null && row.State is not (SourceState.Active or SourceState.Paused))
+            return Result<SourceModel>.Fail(AppErrorFactory.Conflict("The source cannot change its master pause while unavailable or retired."));
         if (update.GroupId is { } groupId)
         {
             var group = await db.SourceGroups.AsNoTracking().SingleOrDefaultAsync(candidate => candidate.Id == groupId, cancellationToken);
@@ -302,7 +313,13 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
 
         if (update.Name is not null)
             row.DisplayName = displayName;
+        if (update.Paused is { } paused && row.State != (paused ? SourceState.Paused : SourceState.Active))
+        {
+            row.State = paused ? SourceState.Paused : SourceState.Active;
+            row.StateSince = Now();
+        }
         await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
         var checkPolicy = row.CheckPolicyId is { } id
             ? await db.CheckPolicies.AsNoTracking().Where(policy => policy.Id == id).Select(policy => policy.Key).SingleOrDefaultAsync(cancellationToken)
@@ -369,7 +386,7 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
             return Result<PipelineModel>.Fail(RegistrationErrors.SourceNotFound(declaration.SourceId));
         if (PipelineRules.ValidateSource(declaration, source.ContainerId, source.Permission, source.Coverage) is { } sourceError)
             return Result<PipelineModel>.Fail(sourceError);
-        if (RegistrationRules.ValidatePipeline(declaration) is { } pipelineError)
+        if (RegistrationRules.ValidatePipeline(declaration, key => CaptureProcessors.IsRegistered(keyedServices, key)) is { } pipelineError)
             return Result<PipelineModel>.Fail(pipelineError);
         var (scopeKey, scopeError) = RegistrationRules.CanonicalScopeKey(declaration.Scope);
         if (scopeError is not null)
@@ -410,6 +427,7 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
             WindowStart = schedule.Window?.Start,
             WindowEnd = schedule.Window?.End,
             Enabled = schedule.Enabled,
+            StageOptions = schedule.Stage is null ? null : StoreJson.Write(schedule.Stage),
             CreatedAt = now,
         }).ToList();
         db.Pipelines.Add(pipeline);
@@ -433,13 +451,19 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
             return Result<PipelineModel>.Fail(RegistrationErrors.PipelineNotFound(pipelineId));
         await db.Entry(pipeline).ReloadAsync(cancellationToken);
         var source = await db.Sources.AsNoTracking().SingleAsync(row => row.Id == pipeline.SourceId, cancellationToken);
+        var schedules = await db.Schedules.Where(row => row.PipelineId == pipelineId).ToListAsync(cancellationToken);
+        foreach (var row in schedules)
+            await db.Entry(row).ReloadAsync(cancellationToken);
+        var disabledStages = schedules.Where(row => row.ToModel().Stage?.Disabled is true)
+            .Select(row => row.Kind).ToHashSet();
         var declaration = new PipelineDeclaration
         {
             ContainerId = pipeline.ContainerId, SourceId = pipeline.SourceId,
             Name = update.Name, Scope = update.Scope, Schedules = update.Schedules,
         };
         if ((PipelineRules.ValidateSource(declaration, source.ContainerId, source.Permission, source.Coverage)
-            ?? RegistrationRules.ValidatePipeline(declaration)) is { } error)
+            ?? RegistrationRules.ValidatePipeline(declaration, key => CaptureProcessors.IsRegistered(keyedServices, key),
+                disabledStages)) is { } error)
             return Result<PipelineModel>.Fail(error);
         var (scopeKey, scopeError) = RegistrationRules.CanonicalScopeKey(update.Scope);
         if (scopeError is not null)
@@ -451,10 +475,8 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
                 && row.SourceId == pipeline.SourceId && row.ScopeKey == scopeKey, cancellationToken))
             return Result<PipelineModel>.Fail(RegistrationErrors.PipelineExists(scopeKey!));
 
-        var schedules = await db.Schedules.Where(row => row.PipelineId == pipelineId).ToListAsync(cancellationToken);
         foreach (var row in schedules)
         {
-            await db.Entry(row).ReloadAsync(cancellationToken);
             if (update.Schedules.All(spec => spec.Kind != row.Kind))
             {
                 row.Enabled = false;
@@ -476,9 +498,14 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
             }
             // Keep due times when only the name or URL changes; cadence edits are recomputed from the next tick.
             var previous = row.ToModel();
+            var stage = spec.Stage is { } options
+                ? options with { Disabled = options.Disabled ?? previous.Stage?.Disabled }
+                : null;
             var changed = previous.Mode != spec.Mode || previous.Every != spec.Every || previous.MaxEvery != spec.MaxEvery
                 || previous.Cron != spec.Cron?.Trim() || previous.TimeZone != spec.TimeZone
-                || previous.Window != spec.Window || previous.Enabled != spec.Enabled;
+                || previous.Window != spec.Window || previous.Enabled != spec.Enabled
+                || (stage is not null && (previous.Stage?.StartsOn != stage.StartsOn
+                    || (previous.Stage?.Disabled is true) != (stage.Disabled is true)));
             row.Mode = spec.Mode;
             row.EveryInterval = spec.Every;
             row.MaxInterval = spec.MaxEvery;
@@ -487,6 +514,8 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
             row.WindowStart = spec.Window?.Start;
             row.WindowEnd = spec.Window?.End;
             row.Enabled = spec.Enabled;
+            if (stage is not null)
+                row.StageOptions = StoreJson.Write(stage);
             if (changed)
                 row.NextDueAt = null;
         }

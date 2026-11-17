@@ -37,9 +37,9 @@ public sealed class SourcesController(IRegistrationBroker broker, CallerResolver
             source => StatusCode(StatusCodes.Status201Created, ApiResponse<SourceModel>.Ok(source)), this.ToProblem);
     }
 
-    /// <summary>Sets a source's display name and group (operator only).</summary>
+    /// <summary>Sets a source's display name, group or master pause (operator only).</summary>
     /// <param name="sourceId">The source's identifier.</param>
-    /// <param name="update">The name and group to set; <c>clearGroup</c> ungroups.</param>
+    /// <param name="update">The name, group or pause to set; <c>clearGroup</c> ungroups.</param>
     /// <param name="ct">The token that cancels the request.</param>
     [HttpPut("{sourceId:guid}")]
     [Authorize(Policy = AccessPolicies.ManageSources)]

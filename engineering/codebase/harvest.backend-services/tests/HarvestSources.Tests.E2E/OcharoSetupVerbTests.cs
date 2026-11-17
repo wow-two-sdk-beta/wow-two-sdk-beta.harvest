@@ -6,6 +6,10 @@ using HarvestSources.Api.Ocharo;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using WoW.Two.Sdk.Beta.Be.Foundation.Results;
+using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
+using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
 using WoW.Two.Sdk.Beta.Be.Meta;
 
 namespace HarvestSources.Tests.E2E;
@@ -68,6 +72,43 @@ public sealed class OcharoSetupVerbTests
             && line.Contains("check 1d due "));
         again.Output.Should().Be(status.Output, "status reads and never queues or writes");
         (await Run(host.Services, ["status", "--force"])).Exit.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Setup_with_schedules_keeps_tuned_stages_and_does_not_enable_capture()
+    {
+        await using var host = await StartAsync();
+        var initial = await Run(host.Services, ["setup", "--group", "afisha"]);
+        initial.Exit.Should().Be(0, initial.Error);
+        using var result = JsonDocument.Parse(initial.Output.TrimEnd().Split('\n')[^1]);
+        Guid pipelineId = result.RootElement.GetProperty("subscriptions")[0].GetProperty("pipelineId").GetGuid();
+        using var scope = host.Services.CreateScope();
+        var registry = scope.ServiceProvider.GetRequiredService<IRegistrationBroker>();
+        var original = Assert.IsType<Result<PipelineModel>.Success>(await registry.GetPipelineAsync(pipelineId)).Value;
+        Assert.IsType<Result<PipelineModel>.Success>(await registry.UpdatePipelineAsync(pipelineId, new()
+        {
+            Name = original.Name,
+            Scope = original.Scope,
+            Schedules =
+            [
+                new() { Kind = WorkKind.Capture, Mode = ScheduleMode.Interval, Every = TimeSpan.FromHours(12), Enabled = false },
+                new() { Kind = WorkKind.Harvest, Mode = ScheduleMode.Interval, Every = TimeSpan.FromMinutes(30), Stage = new() { BatchSize = 17 } },
+            ],
+        }));
+
+        var setup = await Run(host.Services, ["setup", "--group", "afisha", "--schedules"]);
+        setup.Exit.Should().Be(0, setup.Error);
+        var again = await Run(host.Services, ["setup", "--group", "afisha", "--schedules"]);
+        again.Exit.Should().Be(0, again.Error);
+        var saved = Assert.IsType<Result<PipelineModel>.Success>(await registry.GetPipelineAsync(pipelineId)).Value;
+        var capture = saved.Schedules.Single(row => row.Kind == WorkKind.Capture);
+        capture.Enabled.Should().BeFalse();
+        capture.Every.Should().Be(TimeSpan.FromHours(12));
+        var harvest = saved.Schedules.Single(row => row.Kind == WorkKind.Harvest);
+        harvest.Enabled.Should().BeTrue();
+        harvest.Every.Should().Be(TimeSpan.FromMinutes(30));
+        harvest.Stage!.BatchSize.Should().Be(17);
+        saved.Schedules.Single(row => row.Kind == WorkKind.Check).Enabled.Should().BeTrue();
     }
 
     [Fact]

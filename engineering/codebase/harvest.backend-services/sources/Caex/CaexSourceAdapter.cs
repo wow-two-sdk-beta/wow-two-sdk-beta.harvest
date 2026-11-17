@@ -5,7 +5,7 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Caex;
 
 /// <summary>Collects the explicitly dated events in the public CAEx calendar.</summary>
-public sealed class CaexSourceAdapter : ISourceAdapter, ISourceConfigurationProvider
+public sealed class CaexSourceAdapter : ISourceAdapter, ISourceConfigurationProvider, ISourceSectionCatalog
 {
     /// <summary>The stable private reader key.</summary>
     public const string AdapterKey = "caex-uz";
@@ -27,8 +27,13 @@ public sealed class CaexSourceAdapter : ISourceAdapter, ISourceConfigurationProv
     {
         DisplayName = "CAEx venue calendar",
         Message = "Calendar rows supply venue dates, not exhibitor admission. Access is checked on each run.",
-        ScopeSchema = SourceScopeSchemas.WebUrl($"https://{Host}{CalendarPath}/"),
+        ScopeSchema = SourceScopeSchemas.Catalog(Sections(source)),
     };
+
+    /// <inheritdoc />
+    public IReadOnlyList<SourceSectionDefinition> Sections(SourceModel source) =>
+        [new("Venue calendar", $"https://{Host}{CalendarPath}/", "und")
+            { Key = "calendar", RestrictToPath = false, RegisterPassivePipeline = false }];
 
     /// <inheritdoc />
     public AdapterDescriptor Describe(SourceModel source) => new()

@@ -5,6 +5,8 @@ namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Afisha;
 /// <summary>Restricts discovery and canonical identity to Afisha's public source routes.</summary>
 internal static partial class AfishaUrls
 {
+    internal const string HarvestLocale = "ru";
+
     internal static IReadOnlyDictionary<string, string> Sections { get; } = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         ["fashion"] = "Fashion",
@@ -17,6 +19,10 @@ internal static partial class AfishaUrls
         return host.Equals("afisha.uz", StringComparison.OrdinalIgnoreCase)
             || host.Equals("www.afisha.uz", StringComparison.OrdinalIgnoreCase);
     }
+
+    internal static bool IsRussianPath(Uri uri) =>
+        uri.AbsolutePath == "/" + HarvestLocale
+        || uri.AbsolutePath.StartsWith("/" + HarvestLocale + "/", StringComparison.Ordinal);
 
     internal static Uri? Resolve(Uri basis, string? value)
     {

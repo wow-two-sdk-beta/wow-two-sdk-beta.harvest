@@ -3,6 +3,9 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using AwesomeAssertions;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 
 namespace Harvest.Tests.E2E;
 
@@ -61,6 +64,56 @@ public sealed class EngineAccessTests(HarvestApiFixture fixture)
         cancelled.GetProperty("status").GetString().Should().Be("cancelled");
         var paused = await DataAsync(await PostAsync(client, $"/api/pipelines/{own.PipelineId}/pause", new { paused = true }));
         paused.GetProperty("state").GetString().Should().Be("paused");
+    }
+
+    [Fact]
+    public async Task RunAudit_ShouldReportEachAttemptWithHttpStatusAndRetryTime()
+    {
+        using var operatorClient = fixture.CreateClient(HarvestApiFixture.OperatorKey);
+        var lane = await LaneAsync(operatorClient);
+        using var tenantClient = fixture.CreateClient(await KeyAsync(operatorClient, lane.TenantId, "pipelines:read"));
+        var run = await DataAsync(await PostAsync(operatorClient, "/api/runs", new { pipelineId = lane.PipelineId }));
+        var runId = run.GetProperty("id").GetGuid();
+        var firstStartedAt = run.GetProperty("queuedAtUtc").GetDateTimeOffset();
+        var retryAt = firstStartedAt.AddMinutes(5);
+        var database = fixture.Host.Services.GetRequiredService<IConfiguration>()["DatabaseSettings:ConnectionString"];
+        await using var connection = new NpgsqlConnection(database);
+        await connection.OpenAsync();
+        await using var seed = new NpgsqlCommand("""
+            INSERT INTO harvest_step_attempts
+                (run_id,work_item_id,attempt,started_at,finished_at,outcome,retry_at,http_status)
+            SELECT work.run_id,work.id,attempt.number,attempt.started_at,attempt.started_at + interval '1 second',
+                attempt.outcome,attempt.retry_at,attempt.http_status
+            FROM harvest_work_item work
+            CROSS JOIN (VALUES (1,@started,'rate_limited',@retry,429), (2,@retry,'ok',NULL,200))
+                AS attempt(number,started_at,outcome,retry_at,http_status)
+            WHERE work.run_id=@run
+            """, connection);
+        seed.Parameters.AddWithValue("run", runId);
+        seed.Parameters.AddWithValue("started", firstStartedAt);
+        seed.Parameters.AddWithValue("retry", retryAt);
+        (await seed.ExecuteNonQueryAsync()).Should().Be(2);
+
+        var rows = (await DataAsync(await tenantClient.GetAsync($"/api/runs/{runId}/audit"))).EnumerateArray().ToArray();
+
+        rows.Select(row => row.GetProperty("attempt").GetInt32()).Should().Equal(1, 2);
+        rows.Select(row => row.GetProperty("httpStatus").GetInt32()).Should().Equal(429, 200);
+        rows[0].GetProperty("retryAtUtc").GetDateTimeOffset().Should().Be(retryAt);
+        rows[0].GetProperty("workItemId").GetGuid().Should().Be(rows[1].GetProperty("workItemId").GetGuid());
+    }
+
+    [Fact]
+    public async Task RunAudit_ShouldHideAnExistingRunFromAnotherTenant()
+    {
+        using var operatorClient = fixture.CreateClient(HarvestApiFixture.OperatorKey);
+        var caller = await LaneAsync(operatorClient);
+        var owner = await LaneAsync(operatorClient);
+        using var tenantClient = fixture.CreateClient(await KeyAsync(operatorClient, caller.TenantId, "pipelines:read"));
+        var run = await DataAsync(await PostAsync(operatorClient, "/api/runs", new { pipelineId = owner.PipelineId }));
+        var audit = $"/api/runs/{run.GetProperty("id").GetGuid()}/audit";
+
+        await ExpectAsync(operatorClient.GetAsync(audit), HttpStatusCode.OK);
+        await ExpectAsync(tenantClient.GetAsync(audit), HttpStatusCode.NotFound);
     }
 
     [Fact]

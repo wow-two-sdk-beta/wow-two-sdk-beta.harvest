@@ -5,6 +5,18 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 /// <summary>Builds the shared URL-and-query scope schema without source-specific execution code.</summary>
 public static class SourceScopeSchemas
 {
+    /// <summary>Describes the published content sections and their entry links.</summary>
+    public static JsonElement Catalog(IReadOnlyList<SourceSectionDefinition> sections) => JsonSerializer.SerializeToElement(new
+    {
+        schema = "harvest.scope.v1",
+        type = "object",
+        sections = sections.Select(section => new
+        {
+            label = section.Label, url = section.Url, locale = section.Locale, key = section.Key,
+            restrictToPath = section.RestrictToPath,
+        }),
+    });
+
     /// <summary>Describes a saved URL and string query overrides; an optional URL permits whole-source discovery.</summary>
     /// <param name="description">The adapter's public URL guidance.</param>
     /// <param name="required">Whether this adapter requires an explicit URL.</param>

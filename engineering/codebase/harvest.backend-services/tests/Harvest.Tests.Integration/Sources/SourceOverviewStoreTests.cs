@@ -73,6 +73,7 @@ public sealed class SourceOverviewStoreTests
         overview.Sections[0].Should().BeEquivalentTo(new SourceSectionModel
         {
             PipelineId = fashion.Id, Name = "Afisha · Ocharo", Url = $"https://{Handle}/ru/fashion", Harvesting = true, Paused = false,
+            HarvestKind = WorkKind.Capture, NextWorkKind = WorkKind.Capture,
             CaptureEvery = TimeSpan.FromHours(6), CheckEvery = TimeSpan.FromDays(1), MaxPages = 5,
             LastRun = new SourceSectionRunModel
             {

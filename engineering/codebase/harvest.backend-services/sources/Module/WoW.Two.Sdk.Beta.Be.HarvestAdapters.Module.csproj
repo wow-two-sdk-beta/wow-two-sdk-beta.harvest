@@ -8,11 +8,13 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="WoW2.Sdk.Beta.Be" />
+    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Afisha\WoW.Two.Sdk.Beta.Be.HarvestAdapters.Afisha.csproj" />
     <ProjectReference Include="..\Anons\WoW.Two.Sdk.Beta.Be.HarvestAdapters.Anons.csproj" />
+    <ProjectReference Include="..\BirBir\WoW.Two.Sdk.Beta.Be.HarvestAdapters.BirBir.csproj" />
     <ProjectReference Include="..\Caex\WoW.Two.Sdk.Beta.Be.HarvestAdapters.Caex.csproj" />
     <ProjectReference Include="..\Craftfair\WoW.Two.Sdk.Beta.Be.HarvestAdapters.Craftfair.csproj" />
     <ProjectReference Include="..\Uzexpocentre\WoW.Two.Sdk.Beta.Be.HarvestAdapters.Uzexpocentre.csproj" />
@@ -20,6 +22,7 @@
     <ProjectReference Include="..\Instagram\WoW.Two.Sdk.Beta.Be.HarvestAdapters.Instagram.csproj" />
     <ProjectReference Include="..\Olx\WoW.Two.Sdk.Beta.Be.HarvestAdapters.Olx.csproj" />
     <ProjectReference Include="..\Domtut\WoW.Two.Sdk.Beta.Be.HarvestAdapters.Domtut.csproj" />
+    <ProjectReference Include="..\Joymee\WoW.Two.Sdk.Beta.Be.HarvestAdapters.Joymee.csproj" />
     <ProjectReference Include="../../packages/Module/WoW.Two.Sdk.Beta.Be.Harvest.Module.csproj" />
   </ItemGroup>
 

@@ -13,4 +13,19 @@ public sealed record SourceConfigurationModel
     public string? Message { get; init; }
     /// <summary>Gets a declarative JSON Schema for the saved pipeline scope. Execution remains authoritative.</summary>
     public required JsonElement ScopeSchema { get; init; }
+    /// <summary>Gets the JSON Schema for this adapter's native <c>sourceFields</c> envelope, if it declares one.</summary>
+    public JsonElement? SourceFieldsSchema { get; init; }
+    /// <summary>Gets the optional facets this adapter supports over its stored posts.</summary>
+    public IReadOnlyList<SourcePostFilterDefinition> PostFilters { get; init; } = [];
+    /// <summary>Gets the optional capture-evidence sections this source displays in the console.</summary>
+    public SourcePostView PostView { get; init; } = new();
+}
+
+/// <summary>Chooses which evidence belongs on the source's captured-post page.</summary>
+public sealed record SourcePostView
+{
+    /// <summary>Gets whether captured photos appear in the photo gallery.</summary>
+    public bool ShowPhotos { get; init; } = true;
+    /// <summary>Gets whether the captured source text appears below the capture record.</summary>
+    public bool ShowSourceText { get; init; }
 }

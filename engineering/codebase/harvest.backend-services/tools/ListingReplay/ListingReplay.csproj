@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../packages/Module/WoW.Two.Sdk.Beta.Be.Harvest.Module.csproj" />
+    <ProjectReference Include="../../sources/Joymee/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Joymee.csproj" />
+  </ItemGroup>
+</Project>

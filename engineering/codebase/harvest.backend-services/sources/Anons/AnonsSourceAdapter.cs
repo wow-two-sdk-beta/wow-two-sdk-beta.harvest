@@ -5,15 +5,20 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Anons;
 
 /// <summary>Declares ANONS's public listing, event detail and known-link check steps.</summary>
-public sealed class AnonsSourceAdapter : ISourceAdapter, ISourceConfigurationProvider
+public sealed class AnonsSourceAdapter : ISourceAdapter, ISourceConfigurationProvider, ISourceSectionCatalog
 {
     /// <inheritdoc />
     public SourceConfigurationModel DescribeConfiguration(SourceModel source) => new()
     {
         DisplayName = "ANONS Uzbekistan",
         Message = "The source adapter is installed. Remote access is evaluated during each run.",
-        ScopeSchema = SourceScopeSchemas.WebUrl("Save an ANONS event directory or individual event URL."),
+        ScopeSchema = SourceScopeSchemas.Catalog(Sections(source)),
     };
+
+    /// <inheritdoc />
+    public IReadOnlyList<SourceSectionDefinition> Sections(SourceModel source) =>
+        [.. new[] { "ru", "uz" }.Select(locale => new SourceSectionDefinition("Events", $"https://{source.Handle}/{locale}/events", locale)
+            { Key = "events", RestrictToPath = false, RegisterPassivePipeline = false })];
 
     /// <inheritdoc />
     public string Key => "anons-uz";

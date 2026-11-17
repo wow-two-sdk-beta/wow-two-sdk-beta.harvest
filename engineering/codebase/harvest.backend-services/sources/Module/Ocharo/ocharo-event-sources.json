@@ -278,17 +278,6 @@
       "aggregates": [],
       "channels": [
         {
-          "id": "primary",
-          "url": "https://www.afisha.uz/uz/exhibitions",
-          "role": "primary",
-          "relationship": "owned",
-          "primary": true,
-          "mode": "reference",
-          "method": "reference",
-          "plan": "Uzbek counterpart of the supported Russian exhibitions scope; avoid a second poll of the same locale-neutral event identities.",
-          "checkState": "readable"
-        },
-        {
           "id": "fashion",
           "url": "https://www.afisha.uz/ru/fashion",
           "role": "fashion desk",
@@ -318,7 +307,7 @@
           "url": "https://www.afisha.uz/ru/exhibitions",
           "role": "Exhibitions in Russian",
           "relationship": "owned",
-          "primary": false,
+          "primary": true,
           "mode": "harvest",
           "method": "index-detail",
           "plan": "Discover localized event permalinks and read embedded Event data; keep editorial articles and visitor routes distinct.",

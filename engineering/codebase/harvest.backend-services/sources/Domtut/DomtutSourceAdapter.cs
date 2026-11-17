@@ -5,15 +5,20 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Domtut;
 
 /// <summary>Declares Domtut's public catalog, detail, refresh and availability operations.</summary>
-public sealed class DomtutSourceAdapter : ISourceAdapter, ISourceConfigurationProvider
+public sealed class DomtutSourceAdapter : ISourceAdapter, ISourceConfigurationProvider, ISourceSectionCatalog
 {
     /// <inheritdoc />
     public SourceConfigurationModel DescribeConfiguration(SourceModel source) => new()
     {
         DisplayName = "Domtut",
         Message = "The source adapter is installed. Remote access is evaluated during each run.",
-        ScopeSchema = SourceScopeSchemas.WebUrl("Save the complete Domtut catalog URL (catalog-nedvijimosty, one of its sections or a class page) or a listing URL, including every query filter."),
+        ScopeSchema = SourceScopeSchemas.Catalog(Sections(source)),
     };
+
+    /// <inheritdoc />
+    public IReadOnlyList<SourceSectionDefinition> Sections(SourceModel source) =>
+        [new("New developments", $"https://{source.Handle}/catalog-nedvijimosty", "ru")
+            { Key = "new-developments", RestrictToPath = false, RegisterPassivePipeline = false }];
 
     /// <inheritdoc />
     public string Key => "domtut-uz";

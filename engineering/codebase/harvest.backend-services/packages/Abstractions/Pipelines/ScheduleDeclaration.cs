@@ -29,4 +29,7 @@ public sealed record ScheduleDeclaration
 
     /// <summary>Gets whether the row is live.</summary>
     public bool Enabled { get; init; } = true;
+
+    /// <summary>Gets the independent settings for a discovery, harvest or processing stage.</summary>
+    public PipelineStageOptions? Stage { get; init; }
 }

@@ -99,6 +99,22 @@ public sealed class RegistrationRulesTests
         ]).Should().BeNull();
     }
 
+    [Theory]
+    [InlineData(WorkKind.Discover)]
+    [InlineData(WorkKind.Harvest)]
+    public void ScheduleSet_ShouldRefuseCaptureBesideHarvestStages(WorkKind stageKind)
+    {
+        var capture = new ScheduleDeclaration { Kind = WorkKind.Capture, Mode = ScheduleMode.Interval, Every = TimeSpan.FromHours(6) };
+        var staged = capture with { Kind = stageKind, Stage = new() { BatchSize = 5 } };
+        var check = capture with { Kind = WorkKind.Check };
+        var process = staged with { Kind = WorkKind.Process };
+
+        RegistrationRules.ValidateSchedules([capture, staged, check, process])?.Message
+            .Should().Be("A section runs either capture or the discover and harvest stages.");
+        RegistrationRules.ValidateSchedules([capture, staged with { Enabled = false }, check, process]).Should().BeNull();
+        RegistrationRules.ValidateSchedules([capture with { Enabled = false }, staged, check, process]).Should().BeNull();
+    }
+
     [Fact]
     public void ValidateSchedules_ShouldFail_WhenAnIntervalCarriesACron()
     {
@@ -113,6 +129,69 @@ public sealed class RegistrationRulesTests
         RegistrationRules.ValidateSchedules(
             [new ScheduleDeclaration { Kind = WorkKind.Capture, Mode = ScheduleMode.Manual, Window = new ScheduleWindow { Start = new TimeOnly(2, 0), End = new TimeOnly(2, 0) } }])
             .Should().NotBeNull();
+    }
+
+    [Fact]
+    public void ValidateSchedules_ShouldRefuseCatalogUrlOverrides()
+    {
+        var error = RegistrationRules.ValidateSchedules(
+            [new() { Kind = WorkKind.Discover, Mode = ScheduleMode.Manual,
+                Stage = new() { BatchSize = 1, CatalogUrl = "https://catalog.example.test/alternate" } }]);
+
+        (error?.Message).Should().Be("Discovery entry points come from the source catalog.");
+    }
+
+    [Theory]
+    [InlineData(WorkKind.Harvest, PipelineConstants.MaxItemsCap)]
+    [InlineData(WorkKind.Process, PipelineConstants.MaxItemsCap)]
+    public void ValidateSchedules_ShouldEnforceTheStageBatchBoundsForEachKind(WorkKind kind, int cap)
+    {
+        var schedule = new ScheduleDeclaration { Kind = kind, Mode = ScheduleMode.Manual, Stage = new() { BatchSize = cap } };
+
+        RegistrationRules.ValidateSchedules([schedule]).Should().BeNull();
+        foreach (int batch in new[] { 0, cap + 1 })
+        {
+            var error = RegistrationRules.ValidateSchedules([schedule with { Stage = new() { BatchSize = batch } }]);
+            (error?.Message).Should().Be($"The {kind} batch size must be 1–{cap}.");
+        }
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(PipelineConstants.MaxPagesCap + 1)]
+    public void ValidateSchedules_ShouldIgnoreDiscoveryBatchSize(int batchSize)
+    {
+        var schedule = new ScheduleDeclaration
+        {
+            Kind = WorkKind.Discover, Mode = ScheduleMode.Manual,
+            Stage = new() { BatchSize = batchSize },
+        };
+
+        RegistrationRules.ValidateSchedules([schedule]).Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(WorkKind.Discover, nameof(PipelineStageOptions.TitleContains))]
+    [InlineData(WorkKind.Discover, nameof(PipelineStageOptions.PublishedSinceUtc))]
+    [InlineData(WorkKind.Discover, nameof(PipelineStageOptions.Model))]
+    [InlineData(WorkKind.Harvest, nameof(PipelineStageOptions.TitleContains))]
+    [InlineData(WorkKind.Harvest, nameof(PipelineStageOptions.PublishedSinceUtc))]
+    [InlineData(WorkKind.Harvest, nameof(PipelineStageOptions.Model))]
+    public void ValidateSchedules_ShouldRefuseProcessSettingsOnOtherStages(WorkKind kind, string setting)
+    {
+        var options = new PipelineStageOptions { BatchSize = 1 };
+        options = setting switch
+        {
+            nameof(PipelineStageOptions.TitleContains) => options with { TitleContains = "fixtures" },
+            nameof(PipelineStageOptions.PublishedSinceUtc) => options with { PublishedSinceUtc = Now },
+            nameof(PipelineStageOptions.Model) => options with { Model = "fixture-model" },
+            _ => throw new ArgumentOutOfRangeException(nameof(setting)),
+        };
+        var schedule = new ScheduleDeclaration { Kind = kind, Mode = ScheduleMode.Manual, Stage = options };
+
+        var error = RegistrationRules.ValidateSchedules([schedule]);
+        (error?.Message).Should().Be("These stage settings do not apply to this work kind.");
+        RegistrationRules.ValidateSchedules([schedule with { Kind = WorkKind.Process }]).Should().BeNull();
     }
 
     [Fact]

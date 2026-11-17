@@ -4,8 +4,10 @@ using Microsoft.AspNetCore.Mvc;
 using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Containers;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Engine;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
+using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 using WoW.Two.Sdk.Beta.Be.Harvest.Tenants;
 using WoW.Two.Sdk.Beta.Be.Web.Contracts;
 using WoW.Two.Sdk.Beta.Be.Web.ExceptionHandling.Extensions;
@@ -16,7 +18,7 @@ namespace Harvest.Api.Registration.Controllers;
 /// private containers; <c>pipelines:read</c> reads the pool's and its own.</summary>
 [ApiController]
 [Route(RegistrationRouteConstants.Pipelines)]
-public sealed class PipelinesController(IRegistrationBroker broker, CallerResolver callers) : ControllerBase
+public sealed class PipelinesController(IRegistrationBroker broker, CallerResolver callers, PipelineStages stages) : ControllerBase
 {
     /// <summary>Declares a pipeline.</summary>
     /// <param name="declaration">The pipeline to declare.</param>
@@ -102,5 +104,51 @@ public sealed class PipelinesController(IRegistrationBroker broker, CallerResolv
         return (await broker.ListPipelinesAsync(containerId, ct)).Match<IActionResult>(
             pipelines => Ok(ApiResponse<IReadOnlyList<PipelineModel>>.Ok(pipelines)),
             this.ToProblem);
+    }
+
+    /// <summary>Reads discovery, harvest and processing for a visible section.</summary>
+    [HttpGet("{pipelineId:guid}/stages")]
+    [Authorize(Policy = HarvestScopeConstants.PipelinesRead)]
+    public async Task<IActionResult> Stages(Guid pipelineId, CancellationToken ct)
+    {
+        if (await VisibleAsync(pipelineId, false, ct) is not { } scope)
+            return this.ToProblem(RegistrationErrors.PipelineNotFound(pipelineId));
+        var values = await stages.ListAsync(scope.Pipeline, scope.Source, ct);
+        return Ok(ApiResponse<IReadOnlyList<PipelineStageModel>>.Ok(values));
+    }
+
+    /// <summary>Sets one stage's independent settings and cadence.</summary>
+    [HttpPut("{pipelineId:guid}/stages")]
+    [Authorize(Policy = AccessPolicies.ManageSources)]
+    public async Task<IActionResult> SaveStage(Guid pipelineId, [FromBody] ScheduleDeclaration schedule, CancellationToken ct)
+    {
+        if (await VisibleAsync(pipelineId, true, ct) is not { } scope)
+            return this.ToProblem(RegistrationErrors.PipelineNotFound(pipelineId));
+        return (await stages.SaveAsync(scope.Pipeline, scope.Source, schedule, seedOnly: false, ct)).Match<IActionResult>(
+            saved => Ok(ApiResponse<bool>.Ok(saved)), this.ToProblem);
+    }
+
+    /// <summary>Reads a section's persisted discoveries before and after detail capture.</summary>
+    [HttpGet("{pipelineId:guid}/discoveries")]
+    [Authorize(Policy = HarvestScopeConstants.PipelinesRead)]
+    public async Task<IActionResult> Discoveries(Guid pipelineId, [FromQuery] string? state, [FromQuery] int offset = 0,
+        [FromQuery] int limit = 50, CancellationToken ct = default)
+    {
+        if (await VisibleAsync(pipelineId, false, ct) is null)
+            return this.ToProblem(RegistrationErrors.PipelineNotFound(pipelineId));
+        if (offset < 0 || limit is < 1 or > 200 || state is not (null or "pending" or "captured" or "failed" or "gone"))
+            return this.ToProblem(AppErrorFactory.Validation("Use a known discovery state, a positive page size and a nonnegative offset."));
+        return Ok(ApiResponse<IReadOnlyList<PipelineDiscoveryModel>>.Ok(await stages.DiscoveriesAsync(pipelineId, state, offset, limit, ct)));
+    }
+
+    private async Task<(PipelineModel Pipeline, SourceModel Source)?> VisibleAsync(Guid pipelineId, bool write, CancellationToken ct)
+    {
+        if (await callers.ResolveAsync(User, ct) is not { } caller
+            || await broker.GetPipelineAsync(pipelineId, ct) is not Result<PipelineModel>.Success { Value: var pipeline }
+            || await broker.GetContainerAsync(pipeline.ContainerId, ct) is not Result<ContainerModel>.Success { Value: var container }
+            || !(write ? caller.CanWrite(container) : caller.CanRead(container))
+            || await broker.GetSourceAsync(pipeline.SourceId, ct) is not Result<SourceModel>.Success { Value: var source })
+            return null;
+        return (pipeline, source);
     }
 }

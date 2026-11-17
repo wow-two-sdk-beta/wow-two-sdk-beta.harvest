@@ -15,6 +15,8 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Registration;
 /// <remarks>Each rule returns the error for the first problem it finds, or null; normalizers return the stored form.</remarks>
 internal static partial class RegistrationRules
 {
+    internal const string SchedulePathConflict = "A section runs either capture or the discover and harvest stages.";
+
     private static readonly IdnMapping Idn = new();
 
     /// <summary>Lists the families whose handle is a host.</summary>
@@ -139,18 +141,23 @@ internal static partial class RegistrationRules
     }
 
     /// <summary>Validates a pipeline's display name, schedules, step overrides and limits.</summary>
-    public static AppError? ValidatePipeline(PipelineDeclaration declaration)
+    public static AppError? ValidatePipeline(PipelineDeclaration declaration, Func<string, bool>? hasProcessor = null,
+        IReadOnlySet<WorkKind>? disabledStages = null)
     {
         if (declaration.Name is { } name && NormalizeName(name, PipelineConstants.MaxNameLength).Error is { } nameError)
             return nameError;
 
-        return ValidateSchedules(declaration.Schedules) ?? ValidateStepOverrides(declaration.Steps) ?? ValidateLimits(declaration.Limits);
+        return ValidateSchedules(declaration.Schedules, hasProcessor, disabledStages)
+            ?? ValidateStepOverrides(declaration.Steps) ?? ValidateLimits(declaration.Limits);
     }
 
     /// <summary>Validates schedule rows: schedulable kinds, one row per kind, the spec each mode needs, a known zone.</summary>
-    public static AppError? ValidateSchedules(IReadOnlyList<ScheduleDeclaration> schedules)
+    public static AppError? ValidateSchedules(IReadOnlyList<ScheduleDeclaration> schedules,
+        Func<string, bool>? hasProcessor = null, IReadOnlySet<WorkKind>? disabledStages = null)
     {
         var kinds = new HashSet<WorkKind>();
+        bool scheduledCapture = false;
+        bool scheduledStages = false;
         foreach (var schedule in schedules)
         {
             if (!PipelineConstants.SchedulableKinds.Contains(schedule.Kind))
@@ -159,13 +166,39 @@ internal static partial class RegistrationRules
                 return RegistrationErrors.Invalid($"A pipeline holds one schedule row per kind; '{schedule.Kind}' repeats.");
             if (ValidateScheduleSpec(schedule) is { } specError)
                 return specError;
+            if (schedule.Stage is { } stage)
+            {
+                if (stage.CatalogUrl is not null)
+                    return RegistrationErrors.Invalid("Discovery entry points come from the source catalog.");
+                if ((schedule.Kind is WorkKind.Harvest or WorkKind.Process)
+                    && stage.BatchSize is < 1 or > PipelineConstants.MaxItemsCap)
+                    return RegistrationErrors.Invalid($"The {schedule.Kind} batch size must be 1–{PipelineConstants.MaxItemsCap}.");
+                if (schedule.Kind is not (WorkKind.Discover or WorkKind.Harvest or WorkKind.Process)
+                    || ((stage.TitleContains is not null || stage.PublishedSinceUtc is not null || stage.Model is not null || stage.Processor is not null)
+                        && schedule.Kind != WorkKind.Process))
+                    return RegistrationErrors.Invalid("These stage settings do not apply to this work kind.");
+                if (stage.TitleContains is { Length: > 200 } || stage.Model is { Length: > 100 } || stage.Processor is { Length: > 100 })
+                    return RegistrationErrors.Invalid("A stage setting is too long.");
+                if (stage.Processor is { } processor
+                    && (processor == ICaptureProcessor.LegacyModelKey
+                        || processor != ICaptureProcessor.DefaultKey && hasProcessor?.Invoke(processor) != true))
+                    return RegistrationErrors.Invalid("Select a registered capture processor.");
+                if (stage.Processor == ICaptureProcessor.DefaultKey && !string.IsNullOrWhiteSpace(stage.Model))
+                    return RegistrationErrors.Invalid("The saved-reading processor does not use a model.");
+            }
             if (!TimeZoneInfo.TryFindSystemTimeZoneById(schedule.TimeZone, out _))
                 return RegistrationErrors.Invalid($"'{schedule.TimeZone}' is not a known time zone.");
             if (schedule.Window is { } window && window.Start == window.End)
                 return RegistrationErrors.Invalid("A schedule window must not open and close at the same time.");
+            if (schedule.Enabled && schedule.Mode != ScheduleMode.Manual)
+            {
+                scheduledCapture |= schedule.Kind == WorkKind.Capture;
+                scheduledStages |= schedule.Kind is WorkKind.Discover or WorkKind.Harvest
+                    && !(schedule.Stage?.Disabled ?? disabledStages?.Contains(schedule.Kind) ?? false);
+            }
         }
 
-        return null;
+        return scheduledCapture && scheduledStages ? RegistrationErrors.Invalid(SchedulePathConflict) : null;
     }
 
     /// <summary>Validates step overrides: keys and lanes, non-negative caps.</summary>

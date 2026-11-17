@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Joymee's public rental search and listing reader for Harvest.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../packages/Abstractions/WoW.Two.Sdk.Beta.Be.Harvest.Abstractions.csproj" />
+  </ItemGroup>
+</Project>

@@ -9,9 +9,11 @@
   <Folder Name="/Sources/">
     <Project Path="sources/Afisha/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Afisha.csproj" />
     <Project Path="sources/Anons/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Anons.csproj" />
+    <Project Path="sources/BirBir/WoW.Two.Sdk.Beta.Be.HarvestAdapters.BirBir.csproj" />
     <Project Path="sources/Caex/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Caex.csproj" />
     <Project Path="sources/Craftfair/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Craftfair.csproj" />
     <Project Path="sources/Domtut/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Domtut.csproj" />
+    <Project Path="sources/Joymee/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Joymee.csproj" />
     <Project Path="sources/Instagram/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Instagram.csproj" />
     <Project Path="sources/Integrations/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Integrations.csproj" />
     <Project Path="sources/Module/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Module.csproj" />
@@ -30,5 +32,8 @@
     <Project Path="tests/HarvestAdapters.Tests.Integration/HarvestAdapters.Tests.Integration.csproj" />
     <Project Path="tests/HarvestAdapters.Tests.Unit/HarvestAdapters.Tests.Unit.csproj" />
     <Project Path="tests/HarvestSources.Tests.E2E/HarvestSources.Tests.E2E.csproj" />
+  </Folder>
+  <Folder Name="/Tools/">
+    <Project Path="tools/ListingReplay/ListingReplay.csproj" />
   </Folder>
 </Solution>

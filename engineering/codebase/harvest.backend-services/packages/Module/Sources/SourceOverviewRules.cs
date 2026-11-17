@@ -23,7 +23,7 @@ internal static class SourceOverviewRules
     /// else healthy when a section is harvesting; else idle.</summary>
     /// <param name="runActive">Whether any of the source's runs is queued or running.</param>
     /// <param name="health">The source's host health; a pause in it is current.</param>
-    /// <param name="lastHarvest">The source's newest capture run.</param>
+    /// <param name="lastHarvest">The source's newest collection or processing run.</param>
     /// <param name="sections">The source's sections.</param>
     internal static SourceHarvestState State(bool runActive, SourceHealthModel health, SourceHarvestModel? lastHarvest,
         IEnumerable<SourceSectionModel> sections)
@@ -55,10 +55,10 @@ internal static class SourceOverviewRules
         return series;
     }
 
-    /// <summary>Tells whether a section harvests: its pipeline is active and has an enabled capture schedule.</summary>
+    /// <summary>Tells whether an active section has automatic collection or processing work.</summary>
     /// <param name="pipeline">The section's pipeline.</param>
     internal static bool IsHarvesting(PipelineModel pipeline) =>
-        pipeline.State == PipelineState.Active && Enabled(pipeline, WorkKind.Capture) is not null;
+        pipeline.State == PipelineState.Active && SourceHarvestSelection.Automatic(pipeline).Any();
 
     /// <summary>Returns the enabled schedule row of a work kind, or null when that work is off.</summary>
     /// <param name="pipeline">The pipeline.</param>

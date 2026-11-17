@@ -1,6 +1,8 @@
 using AwesomeAssertions;
 using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
+using WoW.Two.Sdk.Beta.Be.HarvestAdapters.BirBir;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Marketplace;
+using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Joymee;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Olx;
 
 namespace HarvestAdapters.Tests.Unit.Marketplace;
@@ -16,7 +18,7 @@ public sealed class MarketplaceProfilesTests
         {
             profile.Searches.Should().NotBeEmpty();
             profile.Searches.Select(search => search.Key).Should().OnlyHaveUniqueItems();
-            profile.Searches.Select(search => search.Url).Should().OnlyHaveUniqueItems();
+            profile.Searches.Select(search => (search.Site, search.Url)).Should().OnlyHaveUniqueItems();
             profile.Limits.MaxPages.Should().BeInRange(profile.Limits.MaxItems!.Value + 1, profile.Limits.MaxItems.Value + 5,
                 "a run's pages count each ad it reads, plus only the newest search pages");
             profile.CaptureEvery.Should().BeGreaterThanOrEqualTo(TimeSpan.FromHours(1));
@@ -45,8 +47,15 @@ public sealed class MarketplaceProfilesTests
 
         haven.TenantSlug.Should().Be("haven");
         haven.Consumer.Should().Be("haven-supply");
-        haven.Searches.Should().OnlyContain(search => search.Url.StartsWith("https://www.olx.uz/nedvizhimost/", StringComparison.Ordinal)
+        haven.Searches.Where(search => search.Site == MarketplaceSite.Olx).Should().OnlyContain(search => search.Url.StartsWith("https://www.olx.uz/nedvizhimost/", StringComparison.Ordinal)
             && search.Url.Contains("/tashkent/", StringComparison.Ordinal) && !search.Url.Contains("prodazha", StringComparison.Ordinal));
+        haven.Searches.Where(search => search.Site.ImportOnly).Select(search => search.Site)
+            .Should().BeEquivalentTo(new[] { MarketplaceSite.BirBir, MarketplaceSite.Domtut });
+        var joymee = haven.Searches.Single(search => search.Site == MarketplaceSite.Joymee);
+        new JoymeeCaptureReader().Allows(new Uri(joymee.Url)).Should().BeTrue();
+        var birbir = haven.Searches.Single(search => search.Site == MarketplaceSite.BirBirCollection);
+        new BirBirCaptureReader().Allows(new Uri(birbir.Url)).Should().BeTrue();
+        birbir.Site.RequiresGrant.Should().BeFalse();
         MarketplaceProfiles.Find("unknown").Should().BeNull();
     }
 

@@ -14,7 +14,8 @@ internal sealed class EngineStepContext(
     IChallengeDetector challenges,
     TimeProvider clock,
     IBrowserRenderer? browser,
-    PipelineScope scope) : IStepContext
+    PipelineScope scope,
+    StepTrace trace) : IStepContext
 {
     public ResolvedPlan Plan { get; } = plan;
     public SourceModel Source { get; } = source;
@@ -26,6 +27,9 @@ internal sealed class EngineStepContext(
 
     public bool AllowsDestination(Uri destination) =>
         !scope.RestrictToPath || RunPlanner.InScope(destination.AbsoluteUri, Source, scope);
+
+    public Task<T> RunOperationAsync<T>(string key, Func<Task<T>> execute, Func<T, StepOperationResult>? describe = null)
+        => trace.RunAsync(key, execute, describe);
 
     public void Observe(StepSignal signal)
     {

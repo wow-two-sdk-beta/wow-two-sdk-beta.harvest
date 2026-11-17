@@ -5,15 +5,20 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Uzexpocentre;
 
 /// <summary>Reads the venue's explicit exhibition calendar without assuming future recurrence.</summary>
-public sealed class UzexpocentreSourceAdapter : ISourceAdapter, ISourceConfigurationProvider
+public sealed class UzexpocentreSourceAdapter : ISourceAdapter, ISourceConfigurationProvider, ISourceSectionCatalog
 {
     /// <inheritdoc />
     public SourceConfigurationModel DescribeConfiguration(SourceModel source) => new()
     {
         DisplayName = "Uzexpocentre exhibitions",
         Message = "The source adapter is installed. Remote access is evaluated during each run.",
-        ScopeSchema = SourceScopeSchemas.WebUrl("Save the venue calendar URL or a known exhibition URL."),
+        ScopeSchema = SourceScopeSchemas.Catalog(Sections(source)),
     };
+
+    /// <inheritdoc />
+    public IReadOnlyList<SourceSectionDefinition> Sections(SourceModel source) =>
+        [new("Venue calendar", $"https://{source.Handle}/en/menu/krgazmalar-rezhasi", "en")
+            { Key = "calendar", RestrictToPath = false, RegisterPassivePipeline = false }];
 
     /// <inheritdoc />
     public string Key => "uzexpocentre-uz";

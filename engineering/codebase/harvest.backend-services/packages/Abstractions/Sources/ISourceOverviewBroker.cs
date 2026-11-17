@@ -23,6 +23,13 @@ public interface ISourceOverviewBroker
     /// <returns>The posts; <c>NotFound</c> for an unknown source, <c>Validation</c> for a limit outside 1–500.</returns>
     Task<Result<IReadOnlyList<SourcePostModel>>> ListSourcePostsAsync(Guid sourceId, int limit = SourceConstants.DefaultPostsLimit, CancellationToken cancellationToken = default);
 
+    /// <summary>Searches a source's posts with counts across the full result set and an optional continuation.</summary>
+    /// <param name="sourceId">The source.</param>
+    /// <param name="query">The search, facets, page size and cursor.</param>
+    /// <param name="cancellationToken">The token that cancels the call.</param>
+    /// <returns>A page and its facet counts, or a validation or source lookup error.</returns>
+    Task<Result<SourcePostPage>> QuerySourcePostsAsync(Guid sourceId, SourcePostQuery query, CancellationToken cancellationToken = default);
+
     /// <summary>Lists a post's revisions, newest first; a post from before revisions were kept has none.</summary>
     /// <param name="containerId">The container that owns the post.</param>
     /// <param name="postId">The post.</param>

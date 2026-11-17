@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using Npgsql;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Extraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Persistence;
 using WoW.Two.Sdk.Beta.Be.Harvest.Posts;
 using Capture = WoW.Two.Sdk.Beta.Be.Harvest.Readers.Capture;
@@ -93,7 +94,9 @@ internal sealed partial class ModulePostBroker
                     CheckCount = reader.GetInt32(15),
                     SourceFields = reader.IsDBNull(16) ? null : JsonSerializer.Deserialize<JsonElement>(reader.GetString(16)),
                 });
-        return post with { Links = links };
+        var sourceUrl = post.FieldSources.TryGetValue("extras", out var extraLink)
+            ? links.FirstOrDefault(link => link.Id == extraLink)?.Url : links.FirstOrDefault()?.Url;
+        return post with { Links = links, Base = ListingSchemaMapper.WithProjection(post.Base, sourceUrl) };
     }
 
     private static async Task<Guid?> FindDuplicateAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid containerId, Capture capture, PostEnvelope envelope, byte[] contentHash, CancellationToken ct)
@@ -166,7 +169,11 @@ internal sealed partial class ModulePostBroker
 
     /// <summary>Holds field sources that qualify an envelope field rather than name one, by the field they qualify: a
     /// declared <c>organizer</c> says the <c>author</c> is the event's organizer, so it travels with the chosen author.</summary>
-    private static readonly IReadOnlyDictionary<string, string> QualifiedFields = new Dictionary<string, string> { ["organizer"] = "author" };
+    private static readonly IReadOnlyDictionary<string, string> QualifiedFields = new Dictionary<string, string>
+    {
+        ["organizer"] = "author",
+        ["listing"] = "extras",
+    };
 
     private static (PostEnvelope Envelope, IReadOnlyDictionary<string, Guid> Provenance) ResolveFields(IReadOnlyList<(Guid LinkId, PostEnvelope Envelope)> readings)
     {

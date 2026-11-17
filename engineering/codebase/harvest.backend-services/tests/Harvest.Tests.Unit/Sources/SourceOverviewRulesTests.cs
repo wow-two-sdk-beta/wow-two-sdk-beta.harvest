@@ -85,6 +85,45 @@ public sealed class SourceOverviewRulesTests
         SourceOverviewRules.IsHarvesting(pipeline with { Schedules = [pipeline.Schedules[0] with { Kind = WorkKind.Check }] }).Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData(WorkKind.Discover)]
+    [InlineData(WorkKind.Harvest)]
+    [InlineData(WorkKind.Process)]
+    public void StageSelection_ShouldDistinguishAutomationFromManualAvailability(WorkKind kind)
+    {
+        var schedule = new ScheduleModel
+        {
+            Id = Guid.NewGuid(), Kind = kind, Mode = ScheduleMode.Interval, Every = TimeSpan.FromHours(1),
+            TimeZone = PipelineConstants.DefaultTimeZone, Enabled = true, Stage = new(),
+        };
+        var pipeline = Pipeline(PipelineState.Active, schedule);
+
+        SourceOverviewRules.IsHarvesting(pipeline).Should().BeTrue();
+        SourceHarvestSelection.ManualKind(pipeline).Should().Be(kind);
+        var manual = pipeline with { Schedules = [schedule with { Mode = ScheduleMode.Manual, Enabled = false }] };
+        SourceOverviewRules.IsHarvesting(manual).Should().BeFalse();
+        SourceHarvestSelection.ManualKind(manual).Should().Be(kind);
+        var disabled = pipeline with { Schedules = [schedule with { Stage = new() { Disabled = true } }] };
+        SourceOverviewRules.IsHarvesting(disabled).Should().BeFalse();
+        SourceHarvestSelection.ManualKind(disabled).Should().BeNull();
+        SourceHarvestSelection.ManualKind(pipeline with { State = PipelineState.Paused }).Should().BeNull();
+    }
+
+    [Fact]
+    public void ManualSelection_ShouldUseTheSavedCapturePathBeforeIndependentProcessing()
+    {
+        var schedule = new ScheduleModel
+        {
+            Id = Guid.NewGuid(), Kind = WorkKind.Harvest, Mode = ScheduleMode.Interval, Every = TimeSpan.FromHours(1),
+            TimeZone = PipelineConstants.DefaultTimeZone, Enabled = true, Stage = new(),
+        };
+        var staged = Pipeline(PipelineState.Active, schedule with { Kind = WorkKind.Discover }, schedule,
+            schedule with { Kind = WorkKind.Process });
+        SourceHarvestSelection.ManualKind(staged).Should().Be(WorkKind.Harvest);
+        SourceHarvestSelection.ManualKind(staged with { Schedules = [schedule with { Kind = WorkKind.Capture }, schedule with { Kind = WorkKind.Process }] })
+            .Should().Be(WorkKind.Capture);
+    }
+
     [Fact]
     public void Health_ShouldReportTheLaterCurrentPause_AndTheWorstFailures()
     {

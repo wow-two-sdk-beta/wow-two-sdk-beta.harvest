@@ -5,15 +5,39 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Olx;
 
 /// <summary>Declares OLX Uzbekistan's public catalog, detail, refresh and availability operations.</summary>
-public sealed class OlxSourceAdapter : ISourceAdapter, ISourceConfigurationProvider
+public sealed class OlxSourceAdapter : ISourceAdapter, ISourceConfigurationProvider, ISourceSectionCatalog
 {
+    private const string NewestFirst = "?search%5Border%5D=created_at%3Adesc";
+
+    /// <summary>The published Tashkent long-term apartment catalog.</summary>
+    public const string ApartmentRentCatalog = "https://www.olx.uz/nedvizhimost/kvartiry/arenda-dolgosrochnaya/tashkent/" + NewestFirst;
+
+    /// <summary>The published Tashkent long-term house catalog.</summary>
+    public const string HouseRentCatalog = "https://www.olx.uz/nedvizhimost/doma/arenda-dolgosrochnaya/tashkent/" + NewestFirst;
+
+    /// <summary>The published Tashkent daily rental catalog.</summary>
+    public const string DailyRentCatalog = "https://www.olx.uz/nedvizhimost/posutochno_pochasovo/tashkent/" + NewestFirst;
+
     /// <inheritdoc />
     public SourceConfigurationModel DescribeConfiguration(SourceModel source) => new()
     {
         DisplayName = "OLX Uzbekistan",
         Message = "The source adapter is installed. Remote access is evaluated during each run.",
-        ScopeSchema = SourceScopeSchemas.WebUrl("Save the complete OLX category, search, seller or ad URL, including every query filter."),
+        ScopeSchema = SourceScopeSchemas.Catalog(Sections(source)),
+        SourceFieldsSchema = OlxSourceFields.JsonSchema,
+        PostFilters = [new(SourcePostFilterKeys.Rooms, "Rooms", [])],
     };
+
+    /// <inheritdoc />
+    public IReadOnlyList<SourceSectionDefinition> Sections(SourceModel source) =>
+    [
+        Section("apartments-rent", "Tashkent long-term apartments", ApartmentRentCatalog),
+        Section("houses-rent", "Tashkent long-term houses", HouseRentCatalog),
+        Section("daily-rent", "Tashkent daily rentals", DailyRentCatalog),
+    ];
+
+    private static SourceSectionDefinition Section(string key, string name, string url) =>
+        new(name, url, "und") { Key = key, RestrictToPath = false, RegisterPassivePipeline = false };
 
     /// <inheritdoc />
     public string Key => "olx-uz";

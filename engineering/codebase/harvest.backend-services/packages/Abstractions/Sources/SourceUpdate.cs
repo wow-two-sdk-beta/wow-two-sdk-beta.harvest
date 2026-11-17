@@ -1,6 +1,6 @@
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 
-/// <summary>Represents a change to a source's display name and group; an omitted value keeps what is stored.</summary>
+/// <summary>Represents a change to a source's name, group or master pause; omitted values keep what is stored.</summary>
 public sealed record SourceUpdate
 {
     /// <summary>Gets the display name; a blank one clears it, so the source shows its handle again.</summary>
@@ -11,4 +11,8 @@ public sealed record SourceUpdate
 
     /// <summary>Gets whether to take the source out of its group; only with no <see cref="GroupId"/>.</summary>
     public bool ClearGroup { get; init; }
+
+    /// <summary>Gets whether the operator pauses the source, preserving every pipeline's own state and schedules.
+    /// Only active or operator-paused sources may change this switch.</summary>
+    public bool? Paused { get; init; }
 }

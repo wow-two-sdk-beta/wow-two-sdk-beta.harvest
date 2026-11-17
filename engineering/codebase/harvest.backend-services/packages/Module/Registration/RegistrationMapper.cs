@@ -1,3 +1,5 @@
+using System.Text.Json;
+using WoW.Two.Sdk.Beta.Be.Foundation.Serialization;
 using WoW.Two.Sdk.Beta.Be.Harvest.Containers;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Persistence;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Persistence.Rows;
@@ -110,5 +112,8 @@ internal static class RegistrationMapper
         Window = row.WindowStart is { } start && row.WindowEnd is { } end ? new ScheduleWindow { Start = start, End = end } : null,
         Enabled = row.Enabled,
         NextDueAtUtc = row.NextDueAt,
+        Stage = row.StageOptions is not null
+            && JsonSerializer.Deserialize<PipelineStageOptions>(row.StageOptions, JsonOptionsConstants.Default) is { } stage
+            ? stage with { CatalogUrl = null } : null,
     };
 }

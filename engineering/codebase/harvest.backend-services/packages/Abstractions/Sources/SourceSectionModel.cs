@@ -1,3 +1,5 @@
+using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
+
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 
 /// <summary>Represents a section of a source: one pipeline over it, with its cadence, last run and reach.</summary>
@@ -12,11 +14,17 @@ public sealed record SourceSectionModel
     /// <summary>Gets the listing URL the section starts from; null for the whole source.</summary>
     public string? Url { get; init; }
 
-    /// <summary>Gets whether the pipeline is active and has an enabled capture schedule.</summary>
+    /// <summary>Gets whether the source and pipeline can run an automatic collection or processing schedule.</summary>
     public required bool Harvesting { get; init; }
 
     /// <summary>Gets whether the pipeline is paused.</summary>
     public required bool Paused { get; init; }
+
+    /// <summary>Gets the configured manual action, or null when the source, pipeline or selected stage cannot run.</summary>
+    public WorkKind? HarvestKind { get; init; }
+
+    /// <summary>Gets the kind of the earliest next automatic run, when its due time is known.</summary>
+    public WorkKind? NextWorkKind { get; init; }
 
     /// <summary>Gets the enabled capture schedule's interval; null when capture is off or runs on a cron.</summary>
     public TimeSpan? CaptureEvery { get; init; }
@@ -30,7 +38,7 @@ public sealed record SourceSectionModel
     /// <summary>Gets the pipeline's newest run of any kind.</summary>
     public SourceSectionRunModel? LastRun { get; init; }
 
-    /// <summary>Gets when the next capture is due (UTC); null unless the section is harvesting and the scheduler has
+    /// <summary>Gets when the next collection or processing run is due (UTC); null unless the section is harvesting and the scheduler has
     /// computed it.</summary>
     public DateTimeOffset? NextDueAt { get; init; }
 

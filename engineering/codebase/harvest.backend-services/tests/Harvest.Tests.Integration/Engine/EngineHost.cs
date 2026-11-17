@@ -36,7 +36,7 @@ internal sealed class EngineHost : IAsyncDisposable
         Fetcher = fetcher;
     }
 
-    internal ServiceProvider Services { get; }
+    internal ServiceProvider Services { get; private set; }
     internal string ConnectionString { get; }
     internal FakeTimeProvider Clock { get; }
     internal FixtureFetcher Fetcher { get; }
@@ -46,15 +46,27 @@ internal sealed class EngineHost : IAsyncDisposable
         var connection = (await PostgresServer.SharedAsync()).NewDatabase("engine");
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 27, 10, 0, 0, TimeSpan.Zero));
         var fetcher = new FixtureFetcher(clock);
+        var provider = BuildServices(connection, clock, fetcher);
+        await provider.MigrateHarvestOnStartupAsync("engine-fixtures");
+        return new(provider, connection, clock, fetcher);
+    }
+
+    internal async Task RestartAsync()
+    {
+        await Services.DisposeAsync();
+        Services = BuildServices(ConnectionString, Clock, Fetcher);
+        await Services.MigrateHarvestOnStartupAsync("engine-fixtures");
+    }
+
+    private static ServiceProvider BuildServices(string connection, FakeTimeProvider clock, FixtureFetcher fetcher)
+    {
         var services = new ServiceCollection().AddLogging().AddSingleton<TimeProvider>(clock)
             .AddSingleton<IPageFetcher>(fetcher).AddSingleton<IFetchClientFactory, NoNetworkClients>()
             .AddSingleton<IChallengeDetector, NoChallenges>();
         services.AddHarvest().Configure(options => options.ConnectionString = connection);
         services.AddHarvestReaders().AddHarvestExtraction().AddHarvestPosts().AddHarvestDelivery();
         services.AddHarvestEngine().Configure(options => options.LeaseDuration = TimeSpan.FromSeconds(30));
-        var provider = services.BuildServiceProvider(validateScopes: true);
-        await provider.MigrateHarvestOnStartupAsync("engine-fixtures");
-        return new(provider, connection, clock, fetcher);
+        return services.BuildServiceProvider(validateScopes: true);
     }
 
     internal async Task<(Guid TenantId, Guid ContainerId, Guid PipelineId, Guid SubscriptionId)> RegisterAsync(

@@ -1,8 +1,9 @@
 using WoW.Two.Sdk.Beta.Be.Harvest.Runs;
+using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 
-/// <summary>Represents a source's newest capture run across its sections.</summary>
+/// <summary>Represents a source's newest collection or processing run across its sections.</summary>
 public sealed record SourceHarvestModel
 {
     /// <summary>Gets the run's identifier.</summary>
@@ -10,6 +11,9 @@ public sealed record SourceHarvestModel
 
     /// <summary>Gets the section's pipeline that ran it.</summary>
     public required Guid PipelineId { get; init; }
+
+    /// <summary>Gets which collection or processing stage ran.</summary>
+    public WorkKind Kind { get; init; } = WorkKind.Capture;
 
     /// <summary>Gets when the run finished, else when it was queued (UTC).</summary>
     public required DateTimeOffset At { get; init; }

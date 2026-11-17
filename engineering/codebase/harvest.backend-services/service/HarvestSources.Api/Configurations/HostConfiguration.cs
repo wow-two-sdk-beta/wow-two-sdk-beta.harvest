@@ -10,6 +10,7 @@ public static partial class HostConfiguration
     /// <returns>The configured builder.</returns>
     public static WebApplicationBuilder Configure(this WebApplicationBuilder builder)
     {
+        builder.AddProcessingModels();
         global::Harvest.Api.Configurations.HostConfiguration.Configure(builder);
         return builder.Configuration["HarvestSources:Audience"] switch
         {
@@ -26,6 +27,7 @@ public static partial class HostConfiguration
     {
         await global::Harvest.Api.Configurations.HostConfiguration.ConfigureAsync(app);
         await app.Services.ReconcileHarvestSourceSectionsAsync(app.Lifetime.ApplicationStopping);
+        await app.SeedPipelineStagesAsync(app.Lifetime.ApplicationStopping);
         return app;
     }
 }

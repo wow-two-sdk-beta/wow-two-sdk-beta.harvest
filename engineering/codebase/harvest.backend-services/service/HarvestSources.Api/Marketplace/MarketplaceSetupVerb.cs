@@ -67,7 +67,7 @@ public static class MarketplaceSetupVerb
         if (run)
         {
             var broker = scope.ServiceProvider.GetRequiredService<IRunBroker>();
-            foreach (var search in value.Searches)
+            foreach (var search in value.Searches.Where(search => search.CanCapture))
             {
                 var started = await broker.StartAsync(search.PipelineId, WorkKind.Capture, ct);
                 if (started is not Result<RunModel>.Success { Value: var queued })
@@ -99,6 +99,8 @@ public static class MarketplaceSetupVerb
                 sourceId = search.SourceId,
                 pipelineId = search.PipelineId,
                 subscriptionId = search.SubscriptionId,
+                importOnly = search.ImportOnly,
+                canCapture = search.CanCapture,
             }),
             consumerKey = value.ConsumerKey is { } issued ? new { id = issued.Id, prefix = issued.Prefix, secret = issued.Secret } : null,
             runs,
@@ -121,6 +123,11 @@ public static class MarketplaceSetupVerb
         var lines = new List<string>();
         foreach (var search in status.Searches)
         {
+            if (search.AwaitingSourceAccess)
+            {
+                lines.Add(search.Key + " awaiting source access");
+                continue;
+            }
             if (search.Pipeline is not { } pipeline)
             {
                 lines.Add(search.Key + " none");
@@ -140,7 +147,8 @@ public static class MarketplaceSetupVerb
             string delivered = search.SubscriptionId is not { } subscription ? " no subscription"
                 : await delivery.PullAsync(subscription, null, 100, ct) is Result<CursorPage<DeliveryEvent>>.Success { Value: var page }
                     ? $"; events {page.Data.Count}{(page.HasMore ? "+" : "")}" : "; events unreadable";
-            string line = search.Key + " " + string.Join("; ", parts) + delivered;
+            string cadence = pipeline.Schedules.Count == 0 ? "imports" : string.Join("; ", parts);
+            string line = search.Key + " " + cadence + delivered;
             lines.Add(line);
             await error.WriteLineAsync($"{line} (pipeline {pipeline.Id}, subscription {search.SubscriptionId})");
         }

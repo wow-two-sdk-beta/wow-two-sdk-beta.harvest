@@ -14,6 +14,7 @@ public static class HarvestEngineServiceCollectionExtensions
     {
         services.TryAddScoped<IRunBroker, ModuleRunBroker>();
         services.TryAddScoped<HarvestEngine>();
+        services.TryAddScoped<PipelineStages>();
         return services.AddOptions<HarvestEngineOptions>()
             .Validate(options => options.LeaseDuration >= TimeSpan.FromSeconds(10), "A lease must last at least ten seconds.")
             .Validate(options => options.PollInterval > TimeSpan.Zero && options.RefusalBackoff > TimeSpan.Zero,

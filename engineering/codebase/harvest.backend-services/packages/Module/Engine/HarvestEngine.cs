@@ -31,6 +31,7 @@ public sealed class HarvestEngine(
     IEnumerable<IBrowserRenderer> renderers,
     IPostExtractor extractor,
     IPostBroker posts,
+    IServiceProvider services,
     IOptions<HarvestEngineOptions> options,
     TimeProvider clock,
     ILogger<HarvestEngine> logger)
@@ -54,6 +55,11 @@ public sealed class HarvestEngine(
             SELECT s.id,s.pipeline_id,s.next_due_at FROM harvest_schedules s
             JOIN harvest_pipelines p ON p.id=s.pipeline_id JOIN harvest_sources src ON src.id=p.source_id
             WHERE s.enabled AND s.mode<>'manual' AND p.state='active' AND src.state='active'
+              AND s.stage_options->>'disabled' IS DISTINCT FROM 'true'
+              AND (s.kind<>'capture' OR NOT EXISTS (
+                  SELECT 1 FROM harvest_schedules staged WHERE staged.pipeline_id=s.pipeline_id
+                    AND staged.kind IN ('discover','harvest') AND staged.enabled AND staged.mode<>'manual'
+                    AND staged.stage_options->>'disabled' IS DISTINCT FROM 'true'))
               AND src.permission IN ('open','granted') AND (s.next_due_at IS NULL OR s.next_due_at<=@now)
             ORDER BY s.next_due_at NULLS FIRST,s.id LIMIT 100
             FOR UPDATE OF s SKIP LOCKED
@@ -108,9 +114,15 @@ public sealed class HarvestEngine(
             return false;
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         lifetime.CancelAfter(options.Value.LeaseDuration - TimeSpan.FromSeconds(5));
+        var trace = new StepTrace(database, claim.Item, claim.Owner, clock, logger, cancellationToken);
+        if (claim.Frozen.Kind == WorkKind.Process)
+        {
+            await ProcessSavedCaptureAsync(claim, trace, lifetime.Token, cancellationToken);
+            return true;
+        }
         using HttpClient http = clients.CreateClient();
         var context = new EngineStepContext(claim.Plan, claim.Frozen.Source, http, challenges, clock,
-            renderers.FirstOrDefault(), claim.Frozen.Pipeline.Scope);
+            renderers.FirstOrDefault(), claim.Frozen.Pipeline.Scope, trace);
         StepResult result;
         var readings = new List<(Capture Capture, PostEnvelope Envelope)>();
         try
@@ -121,31 +133,43 @@ public sealed class HarvestEngine(
                 result = new StepResult { Outcome = FetchOutcome.CapabilityUnavailable, Message = "No browser renderer is registered." };
             else if (broker is null)
                 result = new StepResult { Outcome = FetchOutcome.CapabilityUnavailable, Message = "No broker is registered for the frozen step." };
-            else
+            else if (broker.OperationKeys.Count > 0)
                 result = await broker.ExecuteAsync(claim.Item, context, lifetime.Token);
+            else
+                result = await trace.RunAsync(claim.Item.StepKey, () => broker.ExecuteAsync(claim.Item, context, lifetime.Token),
+                    value => new(value.Outcome is FetchOutcome.Ok or FetchOutcome.Gone ? "completed" : "failed",
+                        Input: 1, Output: value.Captures.Count, Message: value.Outcome.ToString()));
             if (result.Outcome == FetchOutcome.RenderRequired && context.Browser is null)
                 result = result with { Outcome = FetchOutcome.CapabilityUnavailable, Message = "This page needs the unbound browser renderer." };
             StepSignal? refusal = context.Signals.LastOrDefault(signal => IsRefusal(signal.Outcome));
             if (refusal is not null)
                 result = result with { Outcome = refusal.Outcome, Challenge = refusal.Challenge, RetryAfter = refusal.RetryAfter, Captures = [], Next = [], Links = [] };
 
-            if (result.Outcome == FetchOutcome.Ok)
+            if (result.Outcome == FetchOutcome.Ok && result.Captures.Count > 0)
             {
-                foreach (Capture capture in result.Captures.Take(claim.Frozen.Pipeline.Limits.MaxItems ?? options.Value.MaxItems))
+                var captures = claim.Frozen.Kind == WorkKind.Discover ? result.Captures
+                    : result.Captures.Take(claim.Frozen.Pipeline.Limits.MaxItems ?? options.Value.MaxItems).ToArray();
+                await trace.RunAsync("normalize-capture", async () =>
                 {
-                    Result<PostEnvelope> extraction = await extractor.ExtractAsync(capture, new ExtractionRequest
+                    foreach (Capture capture in captures)
                     {
-                        Family = claim.Frozen.Source.Family,
-                        Ai = AiMode.Off,
-                        AiAllowed = false,
-                        BudgetAllowsAi = false,
-                    }, lifetime.Token);
-                    if (extraction is Result<PostEnvelope>.Success success)
-                        readings.Add((capture, success.Value));
-                    else
-                        throw new InvalidOperationException(((Result<PostEnvelope>.Failure)extraction).Error.Message);
-                }
+                        Result<PostEnvelope> extraction = await extractor.ExtractAsync(capture, new ExtractionRequest
+                        {
+                            Family = claim.Frozen.Source.Family,
+                            Ai = AiMode.Off,
+                            AiAllowed = false,
+                            BudgetAllowsAi = false,
+                        }, lifetime.Token);
+                        if (extraction is Result<PostEnvelope>.Success success)
+                            readings.Add((capture, success.Value));
+                        else
+                            throw new InvalidOperationException(((Result<PostEnvelope>.Failure)extraction).Error.Message);
+                    }
+                    return readings.Count;
+                }, count => new(Input: captures.Count, Output: count));
             }
+            if (claim.Frozen.Kind == WorkKind.Harvest && result.Outcome == FetchOutcome.Ok && readings.Count == 0)
+                result = result with { Outcome = FetchOutcome.UnexpectedContent, Message = "The listing did not yield a capture." };
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -160,8 +184,57 @@ public sealed class HarvestEngine(
             logger.LogError(error, "Harvest step {Step} failed in run {RunId}", claim.Item.StepKey, claim.Item.RunId);
             result = new StepResult { Outcome = FetchOutcome.UnexpectedContent, Message = "The step could not read its content. See the host log." };
         }
-        await CompleteAsync(claim, result, readings, cancellationToken);
+        int? httpStatus = result.Outcome is FetchOutcome.NetworkError or FetchOutcome.FetchTimeout
+            ? null : context.Signals.LastOrDefault()?.HttpStatus;
+        await CompleteTracedAsync(claim, result, readings, null, httpStatus, trace, cancellationToken);
         return true;
+    }
+
+    private async Task ProcessSavedCaptureAsync(WorkClaim claim, StepTrace trace, CancellationToken stepToken, CancellationToken ct)
+    {
+        CaptureProcessResult processed;
+        try
+        {
+            processed = await ProcessingStore.ProcessAsync(database, services, claim.Frozen, claim.Item, trace, stepToken);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            processed = new(new StepResult { Outcome = FetchOutcome.FetchTimeout, Message = "Processing exceeded the claim time budget." });
+        }
+        catch (Exception error)
+        {
+            logger.LogWarning("Saved capture processing failed in run {RunId} with {ErrorType}", claim.Item.RunId, error.GetType().Name);
+            processed = new(new StepResult { Outcome = FetchOutcome.UnexpectedContent, Message = "The processing result could not be read." });
+        }
+        await CompleteTracedAsync(claim, processed.StepResult, [], processed.Output, null, trace, ct);
+    }
+
+    private async Task CompleteTracedAsync(WorkClaim claim, StepResult result,
+        IReadOnlyList<(Capture Capture, PostEnvelope Envelope)> readings, JsonElement? processingOutput, int? httpStatus,
+        StepTrace trace, CancellationToken ct)
+    {
+        string? operation = result.Outcome is FetchOutcome.Ok or FetchOutcome.Gone ? claim.Frozen.Kind switch
+        {
+            WorkKind.Discover => "save-discoveries",
+            WorkKind.Harvest => "save-capture",
+            WorkKind.Process => processingOutput is not null ? "save-result" : null,
+            _ => readings.Count > 0 ? "save-capture" : null,
+        } : null;
+        int? index = operation is null ? null : await trace.BeginAsync(operation);
+        try
+        {
+            await CompleteAsync(claim, result, readings, processingOutput, httpStatus, trace, index, ct);
+        }
+        catch (Exception error) when (index.HasValue && !ct.IsCancellationRequested)
+        {
+            trace.End(index.Value, StepTrace.Failure(error));
+            await trace.PublishAsync();
+            throw;
+        }
     }
 
     private async Task<WorkClaim?> ClaimAsync(CancellationToken ct)
@@ -180,7 +253,7 @@ public sealed class HarvestEngine(
               AND w.due_at<=@now AND w.not_before<=@now AND r.status IN ('queued','running')
               AND NOT r.cancellation_requested AND p.state='active' AND s.state='active' AND s.permission IN ('open','granted')
               AND (h.paused_until IS NULL OR h.paused_until<=@now)
-              AND (hs.retry_after_until IS NULL OR hs.retry_after_until<=@now)
+              AND (r.kind='process' OR COALESCE(GREATEST(hs.paused_until,hs.retry_after_until),@now)<=@now)
               AND NOT EXISTS(SELECT 1 FROM harvest_work_item busy WHERE busy.host_key=w.host_key AND busy.lane=w.lane
                 AND busy.state='running' AND busy.lease_until>@now)
             ORDER BY w.priority DESC,w.due_at,w.id LIMIT 1 FOR UPDATE OF r,w,h SKIP LOCKED
@@ -204,9 +277,12 @@ public sealed class HarvestEngine(
         await EngineSql.ExecuteAsync(connection, transaction,
             """
             UPDATE harvest_work_item SET state='running',attempts=attempts+1,lease_owner=@owner,lease_until=@until WHERE id=@id;
-            UPDATE harvest_runs SET status='running',started_at=coalesce(started_at,@now),stage=@step WHERE id=@run
+            UPDATE harvest_runs SET status='running',started_at=coalesce(started_at,@now),stage=@step WHERE id=@run;
+            UPDATE harvest_step_attempts SET finished_at=@now,outcome='interrupted',message='Worker lease expired.'
+              WHERE work_item_id=@id AND finished_at IS NULL;
+            INSERT INTO harvest_step_attempts(run_id,work_item_id,attempt,started_at) VALUES(@run,@id,@attempt,@now)
             """, ct, ("id", claim.Item.WorkItemId), ("owner", claim.Owner), ("until", now + options.Value.LeaseDuration),
-            ("run", claim.Item.RunId), ("now", now), ("step", claim.Item.StepKey));
+            ("run", claim.Item.RunId), ("now", now), ("step", claim.Item.StepKey), ("attempt", claim.Item.Attempt+1));
         await transaction.CommitAsync(ct);
         return claim;
     }
@@ -215,6 +291,10 @@ public sealed class HarvestEngine(
         WorkClaim claim,
         StepResult result,
         IReadOnlyList<(Capture Capture, PostEnvelope Envelope)> readings,
+        JsonElement? processingOutput,
+        int? httpStatus,
+        StepTrace trace,
+        int? storeOperation,
         CancellationToken ct)
     {
         DateTimeOffset now = clock.GetUtcNow();
@@ -241,16 +321,19 @@ public sealed class HarvestEngine(
         }
 
         RunReason? limit = await LimitAsync(connection, transaction, claim, now, ct);
+        bool withinLimits = limit is null;
         int captured = 0;
         int created = 0;
         int unchanged = 0;
+        Guid? detailLink = null;
         var savedKeys = new HashSet<string>(StringComparer.Ordinal);
         if (limit is null && result.Outcome == FetchOutcome.Ok)
         {
             await using NpgsqlCommand count = EngineSql.Command(connection, transaction,
                 "SELECT captured+unchanged FROM harvest_runs WHERE id=@run", ("run", claim.Item.RunId));
             int used = (int)(await count.ExecuteScalarAsync(ct))!;
-            int remaining = Math.Max(0, (claim.Frozen.Pipeline.Limits.MaxItems ?? options.Value.MaxItems) - used);
+            int remaining = claim.Frozen.Kind == WorkKind.Discover ? readings.Count
+                : Math.Max(0, (claim.Frozen.Pipeline.Limits.MaxItems ?? options.Value.MaxItems) - used);
             foreach ((Capture capture, PostEnvelope envelope) in readings.Take(remaining))
             {
                 Result<CaptureSaveResult> saved = await posts.SaveCaptureAsync(claim.Item.ContainerId, claim.Item.SourceId,
@@ -258,6 +341,7 @@ public sealed class HarvestEngine(
                 if (saved is Result<CaptureSaveResult>.Failure failure)
                     throw new InvalidOperationException(failure.Error.Message);
                 var captureResult = ((Result<CaptureSaveResult>.Success)saved).Value;
+                detailLink ??= captureResult.LinkId;
                 if (captureResult.Created)
                     created++;
                 if (captureResult.Changed)
@@ -274,7 +358,7 @@ public sealed class HarvestEngine(
             {
                 if (result.Captures.Count > 0 && !savedKeys.Contains(observation.ExternalKey))
                     continue;
-                if (result.Outcome == FetchOutcome.Gone && claim.Item.Payload is null)
+                if (result.Outcome == FetchOutcome.Gone && (claim.Item.Payload is null || claim.Frozen.Kind == WorkKind.Harvest))
                     continue;
                 Result<PostModel> observed = await posts.ObserveLinkAsync(claim.Item.ContainerId, claim.Item.SourceId,
                     observation, claim.Item.RunId, ct);
@@ -283,7 +367,28 @@ public sealed class HarvestEngine(
             }
 
         int discovered = 0;
-        if (limit is null && result.Outcome == FetchOutcome.Ok)
+        int savedResults = 0;
+        if (claim.Frozen.Kind == WorkKind.Harvest && limit is null)
+            await DiscoveryStore.CompleteDetailAsync(connection, transaction, claim.Item, result.Outcome, detailLink,
+                now, result.RetryAfter is { } detailWait ? now + detailWait : null, ct);
+
+        if (claim.Frozen.Kind == WorkKind.Process)
+        {
+            savedResults = await ProcessingStore.CompleteAsync(connection, transaction, claim.Frozen, claim.Item, processingOutput, now, ct);
+            if (processingOutput is not null)
+                captured++;
+        }
+        else if (claim.Frozen.Kind == WorkKind.Discover && limit is null && result.Outcome is FetchOutcome.Ok or FetchOutcome.Gone)
+        {
+            var (found, pageLimit) = await DiscoveryStore.CompleteCatalogAsync(connection, transaction, claim.Frozen,
+                claim.Item, result.Next, now, ct);
+            discovered = found;
+            if (pageLimit)
+                await EngineSql.ExecuteAsync(connection, transaction,
+                    "UPDATE harvest_runs SET completion_reason=COALESCE(completion_reason,'page_limit'),enumeration_complete=false WHERE id=@id",
+                    ct, ("id", claim.Item.RunId));
+        }
+        else if (limit is null && result.Outcome == FetchOutcome.Ok && claim.Frozen.Kind != WorkKind.Harvest)
         {
             int max = (claim.Frozen.Pipeline.Limits.MaxItems ?? options.Value.MaxItems)
                 + (claim.Frozen.Pipeline.Limits.MaxPages ?? 100);
@@ -315,12 +420,32 @@ public sealed class HarvestEngine(
 
         bool ok = result.Outcome is FetchOutcome.Ok or FetchOutcome.Gone;
         bool refused = IsRefusal(result.Outcome);
+        bool stopForHost = refused || result.Outcome == FetchOutcome.NetworkError;
         if (refused)
             await BackoffAsync(connection, transaction, claim, result, now, ct);
+        if (storeOperation is int index)
+        {
+            var measurement = claim.Frozen.Kind switch
+            {
+                WorkKind.Discover => new StepOperationResult(Input: result.Next.Count, Output: discovered),
+                WorkKind.Process => new StepOperationResult(Input: 1, Output: savedResults),
+                _ => new StepOperationResult(Input: readings.Count, Output: captured + unchanged,
+                    Message: result.Outcome is FetchOutcome.Gone ? "Marked the detail as gone." : null),
+            };
+            trace.End(index, withinLimits || claim.Frozen.Kind == WorkKind.Process
+                ? measurement : new("skipped", Message: "The run reached its limit before saving."));
+        }
         await EngineSql.ExecuteAsync(connection, transaction,
             """
             UPDATE harvest_work_item SET state=@state,outcome=@outcome,last_error=@message,finished_at=@now,
               lease_owner=NULL,lease_until=NULL WHERE id=@id;
+            UPDATE harvest_step_attempts SET finished_at=@now,outcome=@outcome,message=@message,
+              retry_at=GREATEST(@retry::timestamptz,(
+                SELECT GREATEST(s.paused_until,s.retry_after_until,l.paused_until)
+                FROM harvest_host_state s JOIN harvest_host_lane l ON l.host_key=s.host_key
+                WHERE s.host_key=@host AND l.lane=@lane AND NOT @ok AND @network)),
+              http_status=@http,discovered=@discovered,operations=@operations::jsonb
+              WHERE work_item_id=@id AND attempt=@attempt;
             UPDATE harvest_runs SET pages=pages+1,captured=captured+@captured,new_posts=new_posts+@created,unchanged=unchanged+@unchanged,
               discovered=discovered+@discovered,failed=failed+@failed,requests=requests+@requests,bytes=bytes+@bytes,
               cost_usd_est=cost_usd_est+@cost,enumeration_complete=(enumeration_complete OR @complete) AND completion_reason IS NULL,
@@ -328,6 +453,9 @@ public sealed class HarvestEngine(
             """, ct, ("id", claim.Item.WorkItemId), ("run", claim.Item.RunId), ("now", now),
             ("state", ok ? "done" : refused ? "blocked" : "failed"), ("outcome", SnakeCaseEnum<FetchOutcome>.ToText(result.Outcome)),
             ("message", result.Message), ("captured", captured), ("created", created), ("unchanged", unchanged), ("discovered", discovered),
+            ("retry", result.RetryAfter is { } retry ? now + retry : null), ("http", httpStatus is { } status ? (short)status : null),
+            ("host", claim.Item.HostKey), ("lane", claim.Item.Lane), ("network", claim.Frozen.Kind != WorkKind.Process),
+            ("attempt", claim.Item.Attempt+1), ("operations", trace.Snapshot()),
             ("failed", ok ? 0 : 1), ("requests", checked((int)Math.Min(result.Usage.Requests, int.MaxValue))),
             ("bytes", result.Usage.Bytes), ("cost", result.Usage.EstimatedUsd), ("complete", result.EnumerationComplete && limit is null), ("ok", ok));
         foreach ((string meter, long units) in new[] { ("requests", result.Usage.Requests), ("bytes", result.Usage.Bytes) })
@@ -350,7 +478,7 @@ public sealed class HarvestEngine(
             if (await pending.ExecuteScalarAsync(ct) is true)
                 limit ??= await LimitAsync(connection, transaction, claim, now, ct);
         }
-        if (refused || limit is not null)
+        if (stopForHost || limit is not null)
         {
             await EngineSql.ExecuteAsync(connection, transaction,
                 """
@@ -387,7 +515,8 @@ public sealed class HarvestEngine(
         await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(ct);
         await reader.ReadAsync(ct);
         PipelineLimits limits = claim.Frozen.Pipeline.Limits;
-        if (reader.GetInt32(0) >= (limits.MaxItems ?? options.Value.MaxItems))
+        if (claim.Frozen.Kind is not (WorkKind.Discover or WorkKind.Process)
+            && reader.GetInt32(0) >= (limits.MaxItems ?? options.Value.MaxItems))
             return RunReason.ItemLimit;
         if (reader.GetInt32(1) >= (limits.MaxRequests ?? options.Value.MaxRequests))
             return RunReason.RequestLimit;

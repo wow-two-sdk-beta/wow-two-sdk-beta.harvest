@@ -5,7 +5,7 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Readers;
 
 /// <summary>Declares the public direct-fetch plans for one cooperating web source family.</summary>
-public sealed class GenericSourceAdapter : ISourceAdapter
+public sealed class GenericSourceAdapter : ISourceAdapter, ISourceSectionCatalog
 {
     /// <summary>Creates an adapter for a generic page, structured page, whole site, feed or submitted link.</summary>
     /// <param name="family">The source family this adapter serves.</param>
@@ -24,6 +24,12 @@ public sealed class GenericSourceAdapter : ISourceAdapter
 
     /// <inheritdoc />
     public bool Serves(SourceModel source) => source.Family == Family;
+
+    /// <inheritdoc />
+    public IReadOnlyList<SourceSectionDefinition> Sections(SourceModel source) => Family == SourceFamily.Site
+        ? [new("Sitemap", $"https://{source.Handle}/sitemap.xml", "und")
+            { Key = "sitemap", RestrictToPath = false, RegisterPassivePipeline = false }]
+        : [];
 
     /// <inheritdoc />
     public AdapterDescriptor Describe(SourceModel source) => new()

@@ -5,4 +5,11 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Engine;
 
 /// <summary>Keeps a run independent from subsequent registry edits.</summary>
-internal sealed record FrozenRun(PipelineModel Pipeline, SourceModel Source, string AdapterKey, AdapterDescriptor Adapter);
+internal sealed record FrozenRun(PipelineModel Pipeline, SourceModel Source, string AdapterKey, AdapterDescriptor Adapter)
+{
+    public WorkKind Kind { get; init; } = WorkKind.Capture;
+
+    public PipelineStageOptions? Stage { get; init; }
+
+    public string? CatalogEntry { get; init; }
+}

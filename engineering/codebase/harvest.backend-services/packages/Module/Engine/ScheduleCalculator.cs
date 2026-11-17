@@ -12,6 +12,12 @@ internal static class ScheduleCalculator
             return null;
 
         TimeZoneInfo zone = TimeZoneInfo.FindSystemTimeZoneById(schedule.TimeZone);
+        if (schedule.Stage?.StartsOn is { } startsOn
+            && DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(after, zone).DateTime) < startsOn)
+        {
+            after = LocalInstant(startsOn.ToDateTime(TimeOnly.MinValue), zone);
+            first = true;
+        }
         DateTimeOffset? due;
         if (schedule.Mode == ScheduleMode.Cron)
         {
@@ -41,12 +47,17 @@ internal static class ScheduleCalculator
             DateTime next = local.Date.Add(start.ToTimeSpan());
             if (next <= local)
                 next = next.AddDays(1);
-            while (zone.IsInvalidTime(next))
-                next = next.AddMinutes(1);
-            DateTimeOffset windowStart = new(TimeZoneInfo.ConvertTimeToUtc(next, zone), TimeSpan.Zero);
+            DateTimeOffset windowStart = LocalInstant(next, zone);
             due = schedule.Mode == ScheduleMode.Cron ? Next(schedule with { Window = null }, windowStart, first: true) : windowStart;
         }
 
         return null;
+    }
+
+    private static DateTimeOffset LocalInstant(DateTime local, TimeZoneInfo zone)
+    {
+        while (zone.IsInvalidTime(local))
+            local = local.AddMinutes(1);
+        return new(TimeZoneInfo.ConvertTimeToUtc(local, zone), TimeSpan.Zero);
     }
 }

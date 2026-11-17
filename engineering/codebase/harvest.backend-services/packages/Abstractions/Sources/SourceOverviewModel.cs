@@ -25,11 +25,20 @@ public sealed record SourceOverviewModel
     /// <summary>Gets where the source's harvesting stands.</summary>
     public required SourceHarvestState State { get; init; }
 
-    /// <summary>Gets the newest capture run across the source's sections.</summary>
+    /// <summary>Gets the source's master availability, independent of its sections' individual pauses.</summary>
+    public SourceState SourceState { get; init; } = SourceState.Active;
+
+    /// <summary>Gets the source's fetching permission; enabling the source never changes this permission.</summary>
+    public SourcePermission Permission { get; init; } = SourcePermission.Open;
+
+    /// <summary>Gets the newest capture, discovery, harvest or processing run across the source's sections.</summary>
     public SourceHarvestModel? LastHarvest { get; init; }
 
-    /// <summary>Gets the earliest next capture among the harvesting sections (UTC).</summary>
+    /// <summary>Gets the earliest next automatic collection or processing run among the source's sections (UTC).</summary>
     public DateTimeOffset? NextHarvestAt { get; init; }
+
+    /// <summary>Gets the number of distinct posts this source shows, including posts without a harvest section.</summary>
+    public int? PostCount { get; init; }
 
     /// <summary>Gets the source's post links first seen on each of the last
     /// <see cref="SourceConstants.OverviewDays"/> UTC days, oldest first; the last entry is today.</summary>

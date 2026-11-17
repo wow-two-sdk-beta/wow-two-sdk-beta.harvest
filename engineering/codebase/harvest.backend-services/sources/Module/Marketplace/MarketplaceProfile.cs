@@ -1,4 +1,5 @@
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
+using WoW.Two.Sdk.Beta.Be.HarvestAdapters.BirBir;
 
 namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Marketplace;
 
@@ -60,8 +61,19 @@ public sealed record MarketplaceSearch(string Key, string Name, string Url, Mark
 /// <param name="Name">The source's display name in the console.</param>
 /// <param name="Group">The source group the console lists it under.</param>
 /// <param name="CheckPolicy">How known ads are re-checked.</param>
-public sealed record MarketplaceSite(string Key, string Handle, string Name, string Group, string CheckPolicy = "web-direct")
+/// <param name="ImportOnly">Whether listings arrive from an operator or an authorized feed.</param>
+/// <param name="RequiresGrant">Whether the site must first be registered with a provider grant.</param>
+public sealed record MarketplaceSite(string Key, string Handle, string Name, string Group, string CheckPolicy = "web-direct",
+    bool ImportOnly = false, bool RequiresGrant = false)
 {
     /// <summary>Gets OLX Uzbekistan.</summary>
     public static MarketplaceSite Olx { get; } = new("olx-uz", "www.olx.uz", "OLX Uzbekistan", "OLX");
+    /// <summary>Gets Joymee's public listing API.</summary>
+    public static MarketplaceSite Joymee { get; } = new("joymee-uz", "api.joymee.uz", "Joymee", "Joymee", "none");
+    /// <summary>Gets the restricted BirBir import source.</summary>
+    public static MarketplaceSite BirBir { get; } = new("birbir-uz", BirBirSourceAdapter.Host, "BirBir", "BirBir", "none", ImportOnly: true);
+    /// <summary>Gets BirBir's direct collection source.</summary>
+    public static MarketplaceSite BirBirCollection { get; } = BirBir with { ImportOnly = false };
+    /// <summary>Gets the Domtut rental import source.</summary>
+    public static MarketplaceSite Domtut { get; } = new("domtut-uz", "domtut.uz", "Domtut rentals", "Domtut", "none", ImportOnly: true);
 }

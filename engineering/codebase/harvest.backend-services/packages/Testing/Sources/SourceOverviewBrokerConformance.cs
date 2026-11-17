@@ -170,6 +170,44 @@ public abstract class SourceOverviewBrokerConformance
         Error(await Overview.ListSourcePostsAsync(Guid.NewGuid())).Type.Should().Be(AppErrorType.NotFound);
     }
 
+    /// <summary>Counts the full source, reports alternate facet counts and continues below the first page.</summary>
+    [Fact]
+    public async Task QuerySourcePosts_ShouldSearchAndCountBeforePaging()
+    {
+        var context = await ContextAsync();
+        var oldest = Value(await Posts.SaveCaptureAsync(context.Container, context.Source.Id, null,
+            Capture(context, "oldest"), Envelope("Концерт Гайбуллы")));
+        for (int index = 0; index < 31; index++)
+        {
+            var title = $"Программа {index:D2}";
+            Value(await Posts.SaveCaptureAsync(context.Container, context.Source.Id, null,
+                Capture(context, $"programme-{index}"), Envelope(title) with { Kind = PostKind.Other }));
+        }
+
+        var first = Value(await Overview.QuerySourcePostsAsync(context.Source.Id, new()));
+        first.Items.Should().HaveCount(30);
+        first.Total.Should().Be(32);
+        first.NextCursor.Should().NotBeNullOrEmpty();
+        var next = Value(await Overview.QuerySourcePostsAsync(context.Source.Id, new() { Cursor = first.NextCursor }));
+        next.Items.Should().HaveCount(2);
+        first.Items.Select(post => post.PostId).Intersect(next.Items.Select(post => post.PostId)).Should().BeEmpty();
+        next.NextCursor.Should().BeNull();
+
+        var beyondFirstPage = next.Items[^1];
+        var found = Value(await Overview.QuerySourcePostsAsync(context.Source.Id, new() { Search = beyondFirstPage.Title.ToUpperInvariant() }));
+        found.Items.Should().ContainSingle().Which.PostId.Should().Be(beyondFirstPage.PostId);
+        var events = Value(await Overview.QuerySourcePostsAsync(context.Source.Id, new()
+        {
+            Filters = new Dictionary<string, string> { [SourcePostFilterKeys.Kind] = "event" },
+        }));
+        events.Total.Should().Be(1);
+        events.Items.Should().ContainSingle().Which.PostId.Should().Be(oldest.Post.Id);
+        events.Facets.Single(facet => facet.Key == SourcePostFilterKeys.Kind).Options
+            .Should().Contain(option => option.Value == "other" && option.Count == 31);
+        Error(await Overview.QuerySourcePostsAsync(context.Source.Id, new() { Cursor = first.NextCursor, Search = "Concert" }))
+            .Type.Should().Be(AppErrorType.Validation);
+    }
+
     /// <summary>A post's creation and each rise of its revision are recorded with the base fields that changed.</summary>
     [Fact]
     public async Task ListPostRevisions_ShouldRecordCreationAndChangedFields_WhenThePostChanges()
@@ -189,6 +227,36 @@ public abstract class SourceOverviewBrokerConformance
         revisions[0].Changed.Should().Contain("title").And.NotContain("text").And.NotContain("extraction").And.NotContain(PostRevisionConstants.Created);
         Error(await Overview.ListPostRevisionsAsync(Guid.NewGuid(), created.Post.Id)).Type.Should().Be(AppErrorType.NotFound);
         Error(await Overview.ListPostRevisionsAsync(context.Container, Guid.NewGuid())).Type.Should().Be(AppErrorType.NotFound);
+    }
+
+    /// <summary>Stage schedules and the source master pause produce the same overview in every form.</summary>
+    [Fact]
+    public async Task ListOverview_ShouldRepresentStageSchedulesAndMasterPause()
+    {
+        var context = await ContextAsync();
+        var pipeline = Value(await Registry.DeclarePipelineAsync(new PipelineDeclaration
+        {
+            ContainerId = context.Container, SourceId = context.Source.Id,
+            Schedules = [new() { Kind = WorkKind.Harvest, Mode = ScheduleMode.Interval, Every = TimeSpan.FromHours(1), Stage = new() { BatchSize = 50 } }],
+        }));
+        var enabled = Single(await Overview.ListOverviewAsync(context.Container));
+        enabled.SourceState.Should().Be(SourceState.Active);
+        enabled.Permission.Should().Be(context.Source.Permission);
+        enabled.State.Should().Be(SourceHarvestState.Healthy);
+        enabled.Sections.Single().Should().Match<SourceSectionModel>(section => section.Harvesting && section.HarvestKind == WorkKind.Harvest);
+
+        var run = Value(await Runs.StartAsync(pipeline.Id, WorkKind.Process));
+        var after = Single(await Overview.ListOverviewAsync(context.Container));
+        after.LastHarvest.Should().Match<SourceHarvestModel>(last => last.RunId == run.Id && last.Kind == WorkKind.Process);
+
+        Value(await Registry.UpdateSourceAsync(context.Source.Id, new SourceUpdate { Paused = true }));
+        var paused = Single(await Overview.ListOverviewAsync(context.Container));
+        paused.SourceState.Should().Be(SourceState.Paused);
+        paused.State.Should().Be(SourceHarvestState.Idle);
+        paused.NextHarvestAt.Should().BeNull();
+        paused.Sections.Single().Should().Match<SourceSectionModel>(section => !section.Harvesting && !section.Paused && section.HarvestKind == null);
+        Value(await Registry.UpdateSourceAsync(context.Source.Id, new SourceUpdate { Paused = false }));
+        Single(await Overview.ListOverviewAsync(context.Container)).Sections.Single().Harvesting.Should().BeTrue();
     }
 
     private async Task<Context> ContextAsync()

@@ -52,4 +52,28 @@ public sealed record SourcePostModel
     /// <summary>Gets the post's image addresses in order, at most
     /// <see cref="SourceConstants.MaxPostImages"/>; empty when it has none. The first is <see cref="ImageUrl"/>.</summary>
     public IReadOnlyList<string> ImageUrls { get; init; } = [];
+
+    /// <summary>Gets the essential housing facts for a card, when a housing projection exists.</summary>
+    public SourceListingSummary? Listing { get; init; }
+
+    /// <summary>Gets the publisher's category label when the source adapter has item-level evidence.</summary>
+    public string? PublisherCategory { get; init; }
+
+    /// <summary>Gets the source adapter's timing at the query's reference time.</summary>
+    public string? EventTiming { get; init; }
 }
+
+/// <summary>Housing facts returned with a source's post list.</summary>
+/// <param name="PropertyKind">The kind of property offered.</param>
+/// <param name="Rooms">The stated number of rooms.</param>
+/// <param name="TotalAreaM2">The total area in square metres.</param>
+/// <param name="Floor">The signed unit level.</param>
+/// <param name="BuildingFloors">The number of floors in the building.</param>
+/// <param name="City">The published city.</param>
+/// <param name="District">The published district.</param>
+/// <param name="Transaction">The transaction kind.</param>
+/// <param name="Period">The price period.</param>
+/// <param name="Price">The published asking price.</param>
+public sealed record SourceListingSummary(ListingPropertyKind? PropertyKind, short? Rooms, decimal? TotalAreaM2,
+    short? Floor, short? BuildingFloors, string? City, string? District, ListingTransaction? Transaction,
+    ListingPeriod? Period, ListingMoney? Price);

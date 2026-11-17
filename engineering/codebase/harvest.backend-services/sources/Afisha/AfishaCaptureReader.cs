@@ -6,13 +6,14 @@ using AngleSharp.Dom;
 using AngleSharp.Html.Parser;
 using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
+using WoW.Two.Sdk.Beta.Be.Harvest.Capabilities.Fetching;
 using WoW.Two.Sdk.Beta.Be.Harvest.Readers;
 using Capture = WoW.Two.Sdk.Beta.Be.Harvest.Readers.Capture;
 
 namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Afisha;
 
 /// <summary>Discovers Afisha's visible category links and reads explicit event data from its public HTML.</summary>
-public sealed partial class AfishaCaptureReader : ICaptureReader
+public sealed partial class AfishaCaptureReader : ICaptureReader, IFetchDestinationPolicy
 {
     private const string ParserVersion = "afisha-html@4";
 
@@ -20,13 +21,19 @@ public sealed partial class AfishaCaptureReader : ICaptureReader
     public string Key => "afisha-uz";
 
     /// <inheritdoc />
+    public bool Allows(Uri destination) =>
+        destination.IsAbsoluteUri && destination.Scheme is ("http" or "https")
+        && destination.IsDefaultPort && destination.UserInfo.Length == 0
+        && AfishaUrls.IsHost(destination.IdnHost) && AfishaUrls.IsRussianPath(destination)
+        && (destination.AbsolutePath is "/ru" or "/ru/"
+            || AfishaUrls.IsArticle(destination) || AfishaUrls.IsCategory(destination));
+
+    /// <inheritdoc />
     public bool CanRead(FetchedDocument document)
     {
-        return AfishaUrls.IsHost(document.FinalUrl.IdnHost)
+        return Allows(document.FinalUrl)
             && (document.ContentType?.Contains("html", StringComparison.OrdinalIgnoreCase) == true
-                || document.ContentType is null && Encoding.UTF8.GetString(document.Body.Span).TrimStart().StartsWith('<'))
-            && (AfishaUrls.IsArticle(document.FinalUrl) || AfishaUrls.IsCategory(document.FinalUrl)
-                || document.FinalUrl.AbsolutePath is "/ru" or "/ru/" or "/uz" or "/uz/");
+                || document.ContentType is null && Encoding.UTF8.GetString(document.Body.Span).TrimStart().StartsWith('<'));
     }
 
     /// <inheritdoc />
@@ -35,22 +42,30 @@ public sealed partial class AfishaCaptureReader : ICaptureReader
         ArgumentNullException.ThrowIfNull(document);
         cancellationToken.ThrowIfCancellationRequested();
         if (!CanRead(document))
-            return Result<CaptureReadResult>.Fail(AppErrorFactory.SerializationFailed("The document is not public Afisha HTML."));
+            return Result<CaptureReadResult>.Fail(AppErrorFactory.SerializationFailed("The document is not public Russian Afisha HTML."));
         IDocument html = await new HtmlParser().ParseDocumentAsync(Decode(document), cancellationToken);
         if (!AfishaUrls.IsArticle(document.FinalUrl))
             return Result<CaptureReadResult>.Ok(new CaptureReadResult { Discovered = Discover(html, document.FinalUrl), Complete = false });
 
         JsonElement? material = AfishaEmbeddedData.Material(html);
+        string? materialLocale = AfishaEmbeddedData.String(material, "locale");
+        string? declaredLocale = string.IsNullOrWhiteSpace(materialLocale)
+            ? html.DocumentElement?.GetAttribute("lang")?.Trim()
+            : materialLocale.Trim();
+        if (!string.IsNullOrEmpty(declaredLocale)
+            && !declaredLocale.Equals(AfishaUrls.HarvestLocale, StringComparison.OrdinalIgnoreCase)
+            && !declaredLocale.StartsWith(AfishaUrls.HarvestLocale + "-", StringComparison.OrdinalIgnoreCase))
+            return Result<CaptureReadResult>.Fail(AppErrorFactory.SerializationFailed("The Afisha article declares a different language."));
+        const string locale = AfishaUrls.HarvestLocale;
+
         JsonElement? original = AfishaEmbeddedData.Event(html);
         string title = Clean(AfishaEmbeddedData.String(material, "title") ?? html.QuerySelector("article h1, h1")?.TextContent);
         if (title.Length == 0)
             return Result<CaptureReadResult>.Fail(AppErrorFactory.SerializationFailed("The Afisha article has no readable title."));
         Uri? canonical = AfishaUrls.Resolve(document.FinalUrl, html.QuerySelector("link[rel='canonical']")?.GetAttribute("href"));
-        if (canonical is null || !AfishaUrls.IsArticle(canonical))
+        if (canonical is null || !AfishaUrls.IsRussianPath(canonical) || !AfishaUrls.IsArticle(canonical))
             canonical = document.FinalUrl;
         string identity = AfishaUrls.Identity(canonical);
-        string locale = AfishaEmbeddedData.String(material, "locale") ?? html.DocumentElement?.GetAttribute("lang")
-            ?? (canonical.AbsolutePath.StartsWith("/uz/", StringComparison.Ordinal) ? "uz" : "ru");
         string? body = AfishaEmbeddedData.Content(html, material);
         IElement? content = Content(html, body);
         string text = BodyText(content);
@@ -121,7 +136,7 @@ public sealed partial class AfishaCaptureReader : ICaptureReader
         foreach (IElement anchor in html.QuerySelectorAll("a[href]"))
         {
             Uri? url = AfishaUrls.Resolve(basis, anchor.GetAttribute("href"));
-            if (url is null)
+            if (url is null || !AfishaUrls.IsRussianPath(url))
                 continue;
             if (AfishaUrls.IsArticle(url))
             {

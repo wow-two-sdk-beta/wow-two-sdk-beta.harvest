@@ -16,7 +16,20 @@ namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Olx;
 /// <summary>Ports ListingShelf's OLX extraction into pure Harvest reading and source-aware availability evidence.</summary>
 public sealed partial class OlxCaptureReader : ICaptureReader, ILinkAvailabilityReader, IFetchDestinationPolicy
 {
-    private const string ParserVersion = "olx-html@1";
+    private const string ParserVersion = "olx-html@2";
+    private static readonly string[] NativeFields =
+    [
+        "id", "category", "map", "isBusiness", "url", "createdTime", "lastRefreshTime", "validToTime", "isActive",
+        "status", "params", "itemCondition", "price", "salary", "isJob", "photos", "location",
+    ];
+    private static readonly string[] StableNativeFields =
+    [
+        "category", "map", "isBusiness", "isActive", "status", "params", "itemCondition", "price", "salary", "isJob", "location",
+    ];
+    private static readonly HashSet<string> VolatileProjectionFields = new(StringComparer.Ordinal)
+    {
+        "lastRefreshTime", "validToTime", "priceValidUntil", "validThrough", "stats", "viewCount", "views",
+    };
 
     /// <inheritdoc />
     public string Key => "olx-uz";
@@ -81,20 +94,23 @@ public sealed partial class OlxCaptureReader : ICaptureReader, ILinkAvailability
             .Select(href => Uri.UnescapeDataString(href[(href.IndexOf(':') + 1)..].Split('?')[0])).ToArray() ?? [];
         Uri? declared = OlxUrls.Resolve(document.FinalUrl, html.QuerySelector("link[rel='canonical']")?.GetAttribute("href"));
         string canonical = OlxUrls.DetailUrl(declared is not null && OlxUrls.AdKey(declared) == key ? declared : document.FinalUrl);
-        JsonElement normalized = Product(original, title, text, canonical, seller, priceText, matchedNative ? native : null, media);
+        JsonElement? identifiedNative = matchedNative ? native : null;
+        JsonElement normalized = Product(original, title, text, canonical, seller, priceText, identifiedNative, media);
         string locale = html.DocumentElement?.GetAttribute("lang") ?? (document.FinalUrl.AbsolutePath.Contains("/oz/", StringComparison.Ordinal) ? "uz" : "ru");
+        string? categoryPath = CategoryPath(html, document.FinalUrl, identifiedNative);
         var fields = new Dictionary<string, object?>
         {
             ["externalId"] = key, ["title"] = title, ["descriptionHtml"] = bodyHtml, ["priceText"] = priceText,
             ["postedAtText"] = postedRaw, ["sellerName"] = seller, ["attributes"] = attributes, ["originalProduct"] = original,
+            ["categoryPath"] = categoryPath,
         };
-        if (matchedNative && native is { } ad)
-            foreach (string name in new[] { "id", "category", "map", "isBusiness", "url", "createdTime", "lastRefreshTime", "validToTime", "isActive", "status", "params", "itemCondition", "price", "salary", "isJob", "photos", "location" })
+        if (identifiedNative is { } ad)
+            foreach (string name in NativeFields)
                 if (ad.TryGetProperty(name, out JsonElement value)) fields[name] = value.Clone();
         JsonElement metadata = JsonSerializer.SerializeToElement(new
         {
             reader = "page", source = Key, title, text, author = seller, contacts,
-            sourceFields = new { schema = "olx.ad.v1", parserVersion = ParserVersion, fields },
+            sourceFields = new { schema = OlxSourceFields.Schema, parserVersion = ParserVersion, fields },
         });
         var warnings = new List<string>();
         if (text.Length == 0) warnings.Add("description_not_published");
@@ -110,7 +126,11 @@ public sealed partial class OlxCaptureReader : ICaptureReader, ILinkAvailability
             HttpStatus = document.StatusCode, ContentType = document.ContentType, CapturedAtUtc = document.FetchedAtUtc,
             Body = document.Body, Locale = locale, PublishedAtUtc = published,
             Structured = [normalized, metadata], Media = media, Links = links, Warnings = warnings,
-            ContentProjection = JsonSerializer.Serialize(new { parserVersion = ParserVersion, key, normalized, attributes, published, links }),
+            ContentProjection = JsonSerializer.Serialize(new
+            {
+                parserVersion = ParserVersion, key, normalized = StableValue(normalized), attributes, published, links,
+                categoryPath, priceText, facts = StableFacts(identifiedNative),
+            }),
         };
         return Result<CaptureReadResult>.Ok(new() { Captures = [capture], Complete = false });
     }
@@ -150,7 +170,8 @@ public sealed partial class OlxCaptureReader : ICaptureReader, ILinkAvailability
         foreach (IElement anchor in grid?.QuerySelectorAll("a[href]").AsEnumerable() ?? Enumerable.Empty<IElement>())
         {
             Uri? url = OlxUrls.Resolve(basis, anchor.GetAttribute("href"));
-            if (url is not null && OlxUrls.AdKey(url) is { } id) ads.TryAdd(id, new() { Url = OlxUrls.DetailUrl(url) });
+            if (url is not null && OlxUrls.AdKey(url) is { } id)
+                ads.TryAdd(id, new() { Url = OlxUrls.DetailUrl(url), ExternalKey = id });
         }
         if (ads.Count == 0 && !empty) return Invalid("The catalog exposed no recognizable ads or explicit empty state.");
         var targets = ads.Values.ToList();
@@ -215,6 +236,43 @@ public sealed partial class OlxCaptureReader : ICaptureReader, ILinkAvailability
     private static bool NativeIdentity(JsonElement? native, string key)
     {
         return Uri.TryCreate(OlxEmbeddedData.Text(native, "url"), UriKind.Absolute, out Uri? url) && OlxUrls.AdKey(url) == key;
+    }
+
+    private static string? CategoryPath(IDocument html, Uri basis, JsonElement? native)
+    {
+        var candidates = new List<string>();
+        if (native is { } ad && ad.TryGetProperty("category", out JsonElement category))
+        {
+            if (OlxEmbeddedData.Text(category, "url") is { } url) candidates.Add(url);
+            if (OlxEmbeddedData.Text(category, "path") is { } path) candidates.Add(path);
+        }
+        candidates.AddRange(html.QuerySelectorAll("[data-testid='breadcrumbs'] a[href], [itemtype$='/BreadcrumbList'] a[href]")
+            .Select(anchor => anchor.GetAttribute("href")).OfType<string>());
+        return candidates.Select(candidate => OlxUrls.RealEstateCategoryPath(basis, candidate)).OfType<string>()
+            .OrderByDescending(path => path.Count(character => character == '/')).FirstOrDefault();
+    }
+
+    private static Dictionary<string, object> StableFacts(JsonElement? native)
+    {
+        var facts = new Dictionary<string, object>(StringComparer.Ordinal);
+        if (native is { } ad)
+            foreach (string name in StableNativeFields)
+                if (ad.TryGetProperty(name, out JsonElement value))
+                    facts[name] = StableValue(value);
+        return facts;
+    }
+
+    private static object StableValue(JsonElement value)
+    {
+        if (value.ValueKind == JsonValueKind.Object)
+        {
+            var properties = new SortedDictionary<string, object>(StringComparer.Ordinal);
+            foreach (JsonProperty property in value.EnumerateObject())
+                if (!VolatileProjectionFields.Contains(property.Name))
+                    properties[property.Name] = StableValue(property.Value);
+            return properties;
+        }
+        return value.ValueKind == JsonValueKind.Array ? value.EnumerateArray().Select(StableValue).ToArray() : value;
     }
 
     private static bool Inactive(JsonElement? native)

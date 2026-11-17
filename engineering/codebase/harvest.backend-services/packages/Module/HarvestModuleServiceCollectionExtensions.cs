@@ -7,9 +7,11 @@ using WoW.Two.Sdk.Beta.Be.Data.Abstractions;
 using WoW.Two.Sdk.Beta.Be.Data.Migrations.Bespoke;
 using WoW.Two.Sdk.Beta.Be.Foundation.Options;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.ApiKeys;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Engine;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Persistence;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Registration;
 using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
+using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 using WoW.Two.Sdk.Beta.Be.Harvest.Tenants;
 using WoW.Two.Sdk.Beta.Be.Identity.ApiKeys;
 using WoW.Two.Sdk.Beta.Be.Observability.HealthChecks;
@@ -46,6 +48,7 @@ public static class HarvestModuleServiceCollectionExtensions
         });
         services.AddScoped<IRegistrationBroker, ModuleRegistrationBroker>();
         services.AddScoped<SourceSectionRegistration>();
+        services.TryAddKeyedSingleton<ICaptureProcessor, SavedReadingProcessor>(ICaptureProcessor.DefaultKey);
         services.AddHealthChecks().AddDatabaseReadinessCheck<HarvestDbContext>();
 
         services.AddValidatedOptions<HarvestModuleOptions>(null, rules => rules

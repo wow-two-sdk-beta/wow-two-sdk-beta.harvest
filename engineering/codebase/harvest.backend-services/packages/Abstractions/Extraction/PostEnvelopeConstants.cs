@@ -8,4 +8,7 @@ public static class PostEnvelopeConstants
 
     /// <summary>Holds the event schema Events registers, mapped from <c>extras.schemaOrg</c>.</summary>
     public const string EventSchema = "wow2.event.v1";
+
+    /// <summary>Holds the housing listing schema carried in <c>extras.listing</c>.</summary>
+    public const string ListingSchema = "wow2.listing.v1";
 }

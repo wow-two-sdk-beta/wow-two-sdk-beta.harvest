@@ -57,15 +57,17 @@ public sealed class FakeSourceOverviewBroker(
             var own = pipelines.Where(pipeline => pipeline.SourceId == source.Id).OrderBy(pipeline => pipeline.CreatedAtUtc).ThenBy(pipeline => pipeline.Id).ToList();
             var ids = own.Select(pipeline => pipeline.Id).ToHashSet();
             var sourceRuns = allRuns.Where(run => ids.Contains(run.PipelineId)).OrderByDescending(run => run.QueuedAtUtc).ThenByDescending(run => run.Id).ToList();
-            var sections = own.Select(pipeline => Section(pipeline, sourceRuns, firstPipelines, source.Id, subscriptions)).ToList();
+            var readable = SourceHarvestSelection.CanRead(source);
+            var sections = own.Select(pipeline => Section(pipeline, source, sourceRuns, firstPipelines, subscriptions)).ToList();
             var health = await runs.HealthAsync(source, cancellationToken);
-            var capture = sourceRuns.FirstOrDefault(run => run.Kind == WorkKind.Capture);
+            var capture = sourceRuns.FirstOrDefault(run => SourceHarvestSelection.IsCollection(run.Kind));
             var lastHarvest = capture is null ? null : new SourceHarvestModel
             {
-                RunId = capture.Id, PipelineId = capture.PipelineId, At = capture.FinishedAtUtc ?? capture.QueuedAtUtc, Status = capture.Status,
+                RunId = capture.Id, PipelineId = capture.PipelineId, Kind = capture.Kind, At = capture.FinishedAtUtc ?? capture.QueuedAtUtc, Status = capture.Status,
                 Reason = Reason(capture.CompletionReason), NewPosts = capture.Captured, Found = capture.Discovered,
             };
-            var state = sourceRuns.Any(run => run.Status is RunStatus.Queued or RunStatus.Running) ? SourceHarvestState.Harvesting
+            var state = !readable ? source.State == SourceState.Paused ? SourceHarvestState.Idle : SourceHarvestState.NeedsAttention
+                : sourceRuns.Any(run => run.Status is RunStatus.Queued or RunStatus.Running) ? SourceHarvestState.Harvesting
                 : health.PausedUntil is not null || health.ConsecutiveFailures >= 3 || lastHarvest?.Status == RunStatus.Failed ? SourceHarvestState.NeedsAttention
                 : sections.Any(section => section.Harvesting) ? SourceHarvestState.Healthy : SourceHarvestState.Idle;
             overviews.Add(new SourceOverviewModel
@@ -76,8 +78,12 @@ public sealed class FakeSourceOverviewBroker(
                 Handle = source.Handle,
                 GroupId = source.GroupId,
                 State = state,
+                SourceState = source.State,
+                Permission = source.Permission,
                 LastHarvest = lastHarvest,
                 NextHarvestAt = sections.Where(section => section.Harvesting && section.NextDueAt is not null).Min(section => section.NextDueAt),
+                PostCount = links.Where(link => link.SourceId == source.Id).Select(link => link.PostId).Distinct()
+                    .Count(postId => posts.Find(postId) is { MergedInto: null }),
                 NewPostsDaily = Daily(links.Where(link => link.SourceId == source.Id), now),
                 Sections = sections,
                 Health = health,
@@ -95,9 +101,32 @@ public sealed class FakeSourceOverviewBroker(
             return Result<IReadOnlyList<SourcePostModel>>.Fail(RegistrationErrors.Invalid($"The limit must be between 1 and {SourceConstants.MaxPostsLimit}."));
         if (await registry.GetSourceAsync(sourceId, cancellationToken) is not Result<SourceModel>.Success { Value: var source })
             return Result<IReadOnlyList<SourcePostModel>>.Fail(RegistrationErrors.SourceNotFound(sourceId));
+        return Result<IReadOnlyList<SourcePostModel>>.Ok([.. SourcePosts(source).Take(limit)]);
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<SourcePostPage>> QuerySourcePostsAsync(Guid sourceId, SourcePostQuery query, CancellationToken cancellationToken = default)
+    {
+        if (await registry.GetSourceAsync(sourceId, cancellationToken) is not Result<SourceModel>.Success { Value: var source }
+            || await registry.ListPipelinesAsync(source.ContainerId, cancellationToken) is not Result<IReadOnlyList<PipelineModel>>.Success { Value: var pipelines })
+            return Result<SourcePostPage>.Fail(RegistrationErrors.SourceNotFound(sourceId));
+        return SourcePostQuerySelection.Start(source, query, Clock.GetUtcNow(), pipelines)
+            .Match(selection =>
+            {
+                foreach (var post in SourcePosts(source))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    selection.Add(post);
+                }
+                return Result<SourcePostPage>.Ok(selection.Complete());
+            }, Result<SourcePostPage>.Fail);
+    }
+
+    private IReadOnlyList<SourcePostModel> SourcePosts(SourceModel source)
+    {
         lock (posts.Gate)
         {
-            var links = posts.Links(source.ContainerId).Where(link => link.SourceId == sourceId).ToList();
+            var links = posts.Links(source.ContainerId).Where(link => link.SourceId == source.Id).ToList();
             var firstPipelines = FirstPipelines(links);
             var list = new List<SourcePostModel>();
             foreach (var group in links.GroupBy(link => link.PostId))
@@ -114,7 +143,7 @@ public sealed class FakeSourceOverviewBroker(
                     Revision = post.Revision,
                     FirstSeenAt = post.FirstSeenAtUtc,
                     LastChangedAt = post.LastChangedAtUtc,
-                    PipelineId = firstPipelines.GetValueOrDefault((post.Id, sourceId)),
+                    PipelineId = firstPipelines.GetValueOrDefault((post.Id, source.Id)),
                     StartsAt = post.Base.Dates.FirstOrDefault(date => date.Role == DateRole.Start)?.Value,
                     EndsAt = post.Base.Dates.FirstOrDefault(date => date.Role == DateRole.End)?.Value,
                     PostedAt = post.Base.PostedAt?.Value,
@@ -124,7 +153,7 @@ public sealed class FakeSourceOverviewBroker(
                 });
             }
 
-            return Result<IReadOnlyList<SourcePostModel>>.Ok([.. list.OrderByDescending(post => post.FirstSeenAt).ThenByDescending(post => post.PostId).Take(limit)]);
+            return [.. list.OrderByDescending(post => post.FirstSeenAt).ThenByDescending(post => post.PostId)];
         }
     }
 
@@ -138,12 +167,15 @@ public sealed class FakeSourceOverviewBroker(
                 : Result<IReadOnlyList<PostRevisionModel>>.Fail(AppErrorFactory.NotFound("Post not found in the container.")));
     }
 
-    private static SourceSectionModel Section(PipelineModel pipeline, IReadOnlyList<RunModel> sourceRuns,
-        IReadOnlyDictionary<(Guid Post, Guid Source), Guid?> firstPipelines, Guid sourceId, IReadOnlyList<SubscriptionModel> subscriptions)
+    private static SourceSectionModel Section(PipelineModel pipeline, SourceModel source, IReadOnlyList<RunModel> sourceRuns,
+        IReadOnlyDictionary<(Guid Post, Guid Source), Guid?> firstPipelines, IReadOnlyList<SubscriptionModel> subscriptions)
     {
         var capture = pipeline.Schedules.FirstOrDefault(row => row.Kind == WorkKind.Capture && row.Enabled);
         var check = pipeline.Schedules.FirstOrDefault(row => row.Kind == WorkKind.Check && row.Enabled);
-        var harvesting = pipeline.State == PipelineState.Active && capture is not null;
+        var readable = SourceHarvestSelection.CanRead(source);
+        var harvesting = readable && pipeline.State == PipelineState.Active && SourceHarvestSelection.Automatic(pipeline).Any();
+        var next = harvesting ? SourceHarvestSelection.Automatic(pipeline).Where(schedule => schedule.NextDueAtUtc is not null)
+            .OrderBy(schedule => schedule.NextDueAtUtc).FirstOrDefault() : null;
         var last = sourceRuns.FirstOrDefault(run => run.PipelineId == pipeline.Id);
         return new SourceSectionModel
         {
@@ -152,6 +184,8 @@ public sealed class FakeSourceOverviewBroker(
             Url = string.IsNullOrWhiteSpace(pipeline.Scope.Url) ? null : pipeline.Scope.Url,
             Harvesting = harvesting,
             Paused = pipeline.State == PipelineState.Paused,
+            HarvestKind = readable ? SourceHarvestSelection.ManualKind(pipeline) : null,
+            NextWorkKind = next?.Kind,
             CaptureEvery = capture?.Every,
             CheckEvery = check?.Every,
             MaxPages = pipeline.Limits.MaxPages,
@@ -160,8 +194,8 @@ public sealed class FakeSourceOverviewBroker(
                 RunId = last.Id, Kind = last.Kind, At = last.FinishedAtUtc ?? last.QueuedAtUtc, Status = last.Status,
                 Reason = Reason(last.CompletionReason), NewPosts = last.Captured, Found = last.Discovered,
             },
-            NextDueAt = harvesting ? capture!.NextDueAtUtc : null,
-            Posts = firstPipelines.Count(pair => pair.Key.Source == sourceId && pair.Value == pipeline.Id),
+            NextDueAt = next?.NextDueAtUtc,
+            Posts = firstPipelines.Count(pair => pair.Key.Source == source.Id && pair.Value == pipeline.Id),
             Subscribers = subscriptions.Count(subscription => subscription.PipelineId == pipeline.Id),
         };
     }

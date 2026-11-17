@@ -29,5 +29,5 @@ public static class PipelineConstants
 
     /// <summary>Gets the work kinds a schedule row may run.</summary>
     public static IReadOnlyList<WorkKind> SchedulableKinds { get; } =
-        [WorkKind.Capture, WorkKind.Discover, WorkKind.Refresh, WorkKind.Check, WorkKind.Metrics];
+        [WorkKind.Capture, WorkKind.Discover, WorkKind.Refresh, WorkKind.Check, WorkKind.Metrics, WorkKind.Harvest, WorkKind.Process];
 }

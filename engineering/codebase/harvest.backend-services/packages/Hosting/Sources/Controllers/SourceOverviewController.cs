@@ -46,15 +46,37 @@ public sealed class SourceOverviewController(ISourceOverviewBroker overview, IRe
     public async Task<IActionResult> Posts(Guid sourceId, [FromQuery(Name = SourceRouteConstants.LimitParameter)] int limit = SourceConstants.DefaultPostsLimit,
         CancellationToken ct = default)
     {
+        if (await SourceAccessErrorAsync(sourceId, ct) is { } error)
+            return this.ToProblem(error);
+        return (await overview.ListSourcePostsAsync(sourceId, limit, ct)).Match<IActionResult>(
+            value => Ok(ApiResponse<IReadOnlyList<SourcePostModel>>.Ok(value)), this.ToProblem);
+    }
+
+    /// <summary>Queries the visible source's full Posts collection and returns one page with facet counts.</summary>
+    /// <param name="sourceId">The source.</param>
+    /// <param name="query">The search, filters, and page request.</param>
+    /// <param name="ct">The token that cancels the request.</param>
+    [HttpPost("/" + RegistrationRouteConstants.Sources + "/{sourceId:guid}/" + SourceRouteConstants.PostQuery)]
+    [Authorize(Policy = HarvestScopeConstants.PostsRead)]
+    [RequestSizeLimit(16_384)]
+    [ProducesResponseType<ApiResponse<SourcePostPage>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> QueryPosts(Guid sourceId, [FromBody] SourcePostQuery query, CancellationToken ct)
+    {
+        if (await SourceAccessErrorAsync(sourceId, ct) is { } error)
+            return this.ToProblem(error);
+        return (await overview.QuerySourcePostsAsync(sourceId, query, ct)).Match<IActionResult>(
+            value => Ok(ApiResponse<SourcePostPage>.Ok(value)), this.ToProblem);
+    }
+
+    private async Task<AppError?> SourceAccessErrorAsync(Guid sourceId, CancellationToken ct)
+    {
         if (await callers.ResolveAsync(User, ct) is not { } caller)
-            return this.ToProblem(AppErrorFactory.Unauthorized());
+            return AppErrorFactory.Unauthorized();
         if (await registry.GetSourceAsync(sourceId, ct) is not Result<SourceModel>.Success { Value: var source }
             || await registry.GetContainerAsync(source.ContainerId, ct) is not Result<ContainerModel>.Success { Value: var container }
             || !caller.CanRead(container))
-            return this.ToProblem(RegistrationErrors.SourceNotFound(sourceId));
-
-        return (await overview.ListSourcePostsAsync(sourceId, limit, ct)).Match<IActionResult>(
-            value => Ok(ApiResponse<IReadOnlyList<SourcePostModel>>.Ok(value)), this.ToProblem);
+            return RegistrationErrors.SourceNotFound(sourceId);
+        return null;
     }
 
     /// <summary>Lists a visible post's revisions, newest first; the container may be named, else the caller's visible

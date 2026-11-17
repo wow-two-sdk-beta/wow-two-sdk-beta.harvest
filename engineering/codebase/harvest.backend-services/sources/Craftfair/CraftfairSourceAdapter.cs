@@ -5,15 +5,20 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Craftfair;
 
 /// <summary>Declares the public Hunarmand event directory and its individual calls.</summary>
-public sealed class CraftfairSourceAdapter : ISourceAdapter, ISourceConfigurationProvider
+public sealed class CraftfairSourceAdapter : ISourceAdapter, ISourceConfigurationProvider, ISourceSectionCatalog
 {
     /// <inheritdoc />
     public SourceConfigurationModel DescribeConfiguration(SourceModel source) => new()
     {
         DisplayName = "Hunarmand event directory",
         Message = "The source adapter is installed. Remote access is evaluated during each run.",
-        ScopeSchema = SourceScopeSchemas.WebUrl("Save the public Craftfair directory or an individual event call URL."),
+        ScopeSchema = SourceScopeSchemas.Catalog(Sections(source)),
     };
+
+    /// <inheritdoc />
+    public IReadOnlyList<SourceSectionDefinition> Sections(SourceModel source) =>
+        [new("Events", $"https://{source.Handle}/events?lang=en", "en")
+            { Key = "events", RestrictToPath = false, RegisterPassivePipeline = false }];
 
     /// <inheritdoc />
     public string Key => "craftfair-uz";

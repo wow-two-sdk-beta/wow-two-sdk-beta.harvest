@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <ItemGroup>
     <PackageReference Include="AngleSharp" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
     <PackageReference Include="WoW2.Sdk.Beta.Be.Files.Client" />
   </ItemGroup>
   <ItemGroup>

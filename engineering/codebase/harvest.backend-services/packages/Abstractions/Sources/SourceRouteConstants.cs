@@ -12,6 +12,9 @@ public static class SourceRouteConstants
     /// <summary>Holds a source's posts, under <c>api/sources/{sourceId}</c>.</summary>
     public const string Posts = "posts";
 
+    /// <summary>Holds the paged Posts query beneath a source's posts collection.</summary>
+    public const string PostQuery = Posts + "/query";
+
     /// <summary>Holds a source's reading pace, under <c>api/sources/{sourceId}</c>.</summary>
     public const string Reading = "reading";
 

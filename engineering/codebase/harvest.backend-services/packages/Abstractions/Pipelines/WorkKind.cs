@@ -26,4 +26,10 @@ public enum WorkKind
 
     /// <summary>Consented submissions; never scheduled.</summary>
     Intake,
+
+    /// <summary>Capture pending listings from the saved discovery index.</summary>
+    Harvest,
+
+    /// <summary>Process saved captures using the configured processor.</summary>
+    Process,
 }

@@ -18,7 +18,10 @@ public sealed record MarketplaceSetup(string Profile, Guid TenantId, Guid Contai
 /// <param name="SourceId">The site's source the pipeline reads.</param>
 /// <param name="PipelineId">The search's pipeline.</param>
 /// <param name="SubscriptionId">The <c>wow2.post.v1</c> subscription the consumer pulls.</param>
-public sealed record MarketplaceSearchRegistration(string Key, string Url, Guid SourceId, Guid PipelineId, Guid SubscriptionId);
+/// <param name="ImportOnly">Whether the pipeline receives submitted listings.</param>
+/// <param name="CanCapture">Whether the registered source and pipeline are active for scheduled or manual fetching.</param>
+public sealed record MarketplaceSearchRegistration(string Key, string Url, Guid SourceId, Guid PipelineId, Guid SubscriptionId, bool ImportOnly,
+    bool CanCapture = false);
 
 /// <summary>The consumer's tenant API key: <c>events:read</c> on its own tenant only.</summary>
 /// <param name="Id">The key's ID, which revocation takes.</param>
@@ -52,4 +55,5 @@ public sealed record MarketplaceStatus(string Profile, Guid TenantId, Guid Conta
 /// <param name="Key">The search's key in the profile.</param>
 /// <param name="Pipeline">The search's pipeline, with its schedules.</param>
 /// <param name="SubscriptionId">The search's listing subscription.</param>
-public sealed record MarketplaceSearchStatus(string Key, PipelineModel? Pipeline, Guid? SubscriptionId);
+/// <param name="AwaitingSourceAccess">Whether the source needs a registered grant before it can collect.</param>
+public sealed record MarketplaceSearchStatus(string Key, PipelineModel? Pipeline, Guid? SubscriptionId, bool AwaitingSourceAccess = false);
