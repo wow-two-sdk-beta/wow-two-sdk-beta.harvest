@@ -1,6 +1,6 @@
 # SCFD deployment
 
-*Last updated: 2026-11-12*
+*Last updated: 2026-11-17*
 
 One image, one host: `HarvestSources.Api` runs the capture and delivery API, the worker and the source readers.
 Wheelhouse deploys it as product `harvest`, service `harvest` (`deploy.yml`); the dev SCFD runs this image.
@@ -23,7 +23,7 @@ curl --fail http://127.0.0.1:8397/api/system/status
 - To upgrade a local preview, reuse its Compose project and keep the database volume.
 - Two local instances: separate project names (`-p`) and env files, each with its own password, operator key and
   `HARVEST_HTTP_PORT`; start both with `HARVEST_WORKER_ENABLED=false` while configuring.
-- Compose pins CAPTCHA and Instagram off; the rest comes from `.env`:
+- Compose leaves CAPTCHA disabled and Instagram unconfigured; the rest comes from `.env`:
 
 | Variable | Default | Sets |
 |---|---|---|
@@ -203,9 +203,10 @@ lists the optional listing fields. Set Haven's corresponding subscription variab
 
 ## Integrations
 
-Every provider integration ships in the image and stays off until explicitly configured: `HarvestIntegrations:Enabled`,
-`HarvestIntegrations:Captcha:Enabled` and `HarvestInstagram:Enabled` default to `false`. A configured route stays
-fixed for its source origin; rotating proxy pools to get past a site's limits stay out (events-integration #50, #63).
+Every provider integration ships in the image and stays inactive until configured. `HarvestIntegrations:Enabled`
+and `HarvestIntegrations:Captcha:Enabled` default to `false`. Instagram requires a valid connection plus registered,
+unpaused publisher pipelines; collection policy lives in tables. A configured route stays fixed for its source
+origin; rotating proxy pools to get past a site's limits stay out (events-integration #50, #63).
 Provider setup and protocols: [integration-providers.md](../research/integration-providers.md).
 
 - OLX egress: enable `HarvestIntegrations:Enabled` and set `HarvestIntegrations:OlxProxyProfile` to a profile name in
@@ -213,8 +214,10 @@ Provider setup and protocols: [integration-providers.md](../research/integration
   The route covers `https://olx.uz` and `https://www.olx.uz`. Choose either a profile or the inline
   `HarvestIntegrations:OlxProxy:{Server,Username,Password}`; recreate the service to apply a profile change.
   [Provider comparison](../research/olx-egress-options.md)
-- CAPTCHA and Instagram: `deploy.yml` declares no CAPTCHA key and only `HarvestInstagram:Enabled`; enabling either on
-  a target adds its credential keys there first. Instagram's settings: `codebase/harvest.backend-services/sources/Instagram/instagram.md`.
+- CAPTCHA: `deploy.yml` declares no CAPTCHA key; configuring it on a target requires declaring its credential keys.
+- Instagram: `deploy.yml` declares the connection token, professional account ID, API version and Graph origin.
+  Profile URLs, page/run limits, pauses and schedules are table-managed. Follow the [Instagram test procedure](instagram.md);
+  the old `HarvestInstagram:Enabled` setting is no longer used.
 
 ## Wheelhouse
 

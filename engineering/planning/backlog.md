@@ -1,6 +1,6 @@
 # SCFD — Backlog
 
-*Last updated: 2026-11-13*
+*Last updated: 2026-11-17*
 
 Every unbuilt item, grouped; top of each group = next. Shipped work lives in [`version-track/`](version-track/).
 Shape: wow-two-ws/conventions/planning/version-track/version-track.md
@@ -61,7 +61,7 @@ ChatGPT builds these in the pull order of wow-two-ws `system/sessions/events-int
 | S39 Leftovers: Settings says "Harvested by stages"; drop `RequiresGrant` / `AwaitingSourceAccess` | engineering | spec in `tasks-scfd.md`; left to the Codex OLX/AI work, which holds those files |
 | S38 Decide what the marketplace collectors keep about people | decision | spec in `tasks-scfd.md` · needs the developer |
 | S18 Run ANONS, Craftfair, Uzexpocentre and CAEx for Ocharo | product | spec in `tasks-scfd.md` |
-| S09 Let one subscription follow many sections | feature | spec in `tasks-scfd.md` |
+| S09 Let one subscription follow many sections | feature | spec in `tasks-scfd.md`; Instagram needs one subscription across publisher pipelines. Collection pipelines stay independent of subscriber interests. Apply the same declared scope to stored-post replay and future delivery; a shared Instagram source is intentional, not a requirement for separate publisher subscriptions. |
 | E02 Tighten ocharo-fashion-v1 against off-topic event matches | fix | spec in `tasks-events-path.md` |
 | E19 Let a subscriber list its tenant's subscriptions | feature | spec in `tasks-events-path.md` |
 | S10 Ocharo filter regression set over every reader's fixtures | engineering | spec in `tasks-scfd.md` |
@@ -73,7 +73,6 @@ ChatGPT builds these in the pull order of wow-two-ws `system/sessions/events-int
 | S22 Read Hunarmand association calls | feature | spec in `tasks-scfd.md` |
 | S23 Read regional tourism news on gov.uz | feature | spec in `tasks-scfd.md` |
 | S24 Read public Telegram channels through t.me/s | feature | spec in `tasks-scfd.md` |
-| S25 Fix Instagram paging and file each profile under its publisher | fix | spec in `tasks-scfd.md` |
 | S26 Read iTicket and ShowGo event listings | feature | spec in `tasks-scfd.md` |
 | S27 Stop counting page-limit harvests as failures | fix | spec in `tasks-scfd.md` |
 | S28 Let adapters declare each section's topic | engineering | spec in `tasks-scfd.md` |
@@ -84,7 +83,7 @@ ChatGPT builds these in the pull order of wow-two-ws `system/sessions/events-int
 | A05 SCFD relevance pass in shadow on one Afisha pipeline | feature | spec in `tasks-platform.md` · owner: ev-ai lane |
 | S14 Embed the shared AI layer in the source host | engineering | spec in `tasks-scfd.md` |
 | S15 Run Ocharo relevance in shadow on Afisha | feature | spec in `tasks-scfd.md` |
-| S16 Promote AI relevance into Ocharo's delivery | product | spec in `tasks-scfd.md` |
+| S16 Promote AI relevance into Ocharo's delivery | product | spec in `tasks-scfd.md`; connect completed AI results to consumer delivery before evaluating requested event filters. Capturing Instagram posts and storing separate processing results do not establish this path. Verify accepted, rejected and unresolved results end to end before promotion. |
 | S17 Estimate event dates from the AI pass | feature | spec in `tasks-scfd.md` |
 | S33 Serve the console on harvest-dev | engineering | spec in `tasks-scfd.md` |
 | S35 Publish the Harvest NuGet and npm family | engineering | spec in `tasks-scfd.md` |
@@ -94,6 +93,7 @@ ChatGPT builds these in the pull order of wow-two-ws `system/sessions/events-int
 
 | Item | Type | Notes |
 |---|---|---|
+| Instagram Phase 1 target acceptance | product | the collector ships in v0.2.12 and local capture/deduplication passed. After the shared Ocharo AI/delivery work closes, configure the test connection on `harvest-dev`, register approved publisher profiles, enable chosen table-managed schedules and verify scheduled capture through filtered delivery to Events/Desk. Production requires a separate account and grant. See [Instagram operation and readiness](../deployment/instagram.md#integration-boundary-and-phase-1-acceptance). |
 | De-duplicate a post's images | feature | a post lists one picture at two sizes (Afisha: `…_l.webp` from `og:image`, `…_m.webp` from the page), so the console's carousel steps between near-identical images; needs a rule that keeps the largest size per picture in the reader, a generic de-dup by `PostMedia.Hash` once images are fetched, the posts list counting distinct pictures, and a `refresh` run for stored posts (console live edits, 2026-11-13) |
 | Telegram `t.me/s` reader | feature | a reader in `sources/` |
 | Live event-source coverage | feature | complete bounded acceptance of ANONS, Craftfair and Uzexpocentre, and review dates and access evidence, as Afisha passed on dev |
@@ -107,6 +107,7 @@ ChatGPT builds these in the pull order of wow-two-ws `system/sessions/events-int
 
 | Item | Type | Notes |
 |---|---|---|
+| Resumable historical backfill for feed sources | feature | deferred; shared policy for Instagram and later Telegram, persisted per feed in tables. The admin explicitly enables backfill and chooses the oldest post publication date; initialize it to three calendar months before activation and persist that fixed cutoff. No hardcoded two-year or other history-duration ceiling. Save captured posts and continuation checkpoints durably across runs/restarts; batch budgets preserve unfinished progress. A separate service prioritizes feeds and dispatches small background batches under shared quotas, backoff and pause controls, independently of recent collection. Report cutoff reached, provider history exhausted and interrupted/incomplete coverage distinctly. AI owns event-date extraction and recurrence. |
 | Adaptive scheduling and batch sizing | feature | tune each stage from content volume, queue age, yield and refusals. Respect operator bounds and shared host budgets. Store each decision in the run audit. Current adaptive schedules use their minimum interval. |
 | Full-sweep absence inference | feature | current deletion evidence comes from direct known-link checks |
 | Per-request budget enforcement within a step | engineering | current request/byte budgets stop at step boundaries, including robots and redirect usage |

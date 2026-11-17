@@ -70,3 +70,33 @@ trigger repeated immediate requests. Neither failure means that stored posts wer
 The deployed image currently serves the API. Run the existing console in real HTTP mode against the chosen local
 API, with a separate database/ports for experiments. Use its normal API-key connection or Identity sign-in. Never
 put the Meta token into the browser console connection; that token belongs only to the server's provider client.
+
+## Integration boundary and Phase 1 acceptance
+
+The Instagram collector ships in `v0.2.12`: provider client, SCFD broker/registry, saved profile controls, bounded
+cursor paging, post/media storage and deduplication. Local acceptance captured a real professional publisher's
+post and repeated the capture without creating a duplicate. DevQA runs the released collector; that deployment
+does not itself prove a configured Meta connection or a scheduled Instagram run.
+
+Collection pipelines and subscriber interests are independent. A consumer may request one Instagram-wide feed
+across publisher pipelines, then receive only events matching its interests after AI analysis. Separate
+subscriptions per publisher are not a product requirement. The current pull contract still follows one pipeline;
+initial source-wide replay does not make it follow future captures from other pipelines. Shared delivery must
+apply the subscription's declared scope consistently to both paths.
+
+The shared Ocharo work precedes further Instagram acceptance:
+
+1. Finish the subscription scope spanning pipelines (`S09` in the [backlog](../planning/backlog.md)).
+2. Connect AI extraction/relevance results to filtered consumer delivery (`S14`–`S17`). Capture currently emits
+   delivery before AI, while processing results remain separate; stored results alone do not complete this flow.
+3. Verify accepted, rejected and unresolved cases through Events/Desk, including repeat delivery and restart.
+
+After that lane closes, configure the approved test connection privately on `harvest-dev`, register the chosen
+professional publisher profiles and enable their selected database schedules. Verify one scheduled capture,
+deduplication and the complete AI-filtered consumer flow. Keep production credentials and activation separate.
+Use the existing expired-token recovery procedure; this collector does not automate Meta account onboarding or
+grant renewal.
+
+Historical backfill is deferred in the shared engine backlog. It has an admin-selected history boundary, a
+three-month initial default when enabled, and no hardcoded history-duration ceiling. An external service owns
+cross-feed prioritization and small background batches. Event-date extraction and recurrence belong to AI.
