@@ -9,6 +9,7 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="WoW2.Sdk.Beta.Be" />
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions" />
+    <PackageReference Include="WoW2.Sdk.Beta.Be.Ai.Abstractions" />
   </ItemGroup>
 
   <ItemGroup>

@@ -26,4 +26,7 @@ public sealed record PipelineStageOptions
 
     /// <summary>Gets the configured model route, when the processor calls a model.</summary>
     public string? Model { get; init; }
+
+    /// <summary>Gets the immutable prompt version to use for model processing, frozen when the run is queued.</summary>
+    public int? PromptVersion { get; init; }
 }

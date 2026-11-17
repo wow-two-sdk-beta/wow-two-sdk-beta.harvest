@@ -174,16 +174,19 @@ internal static partial class RegistrationRules
                     && stage.BatchSize is < 1 or > PipelineConstants.MaxItemsCap)
                     return RegistrationErrors.Invalid($"The {schedule.Kind} batch size must be 1–{PipelineConstants.MaxItemsCap}.");
                 if (schedule.Kind is not (WorkKind.Discover or WorkKind.Harvest or WorkKind.Process)
-                    || ((stage.TitleContains is not null || stage.PublishedSinceUtc is not null || stage.Model is not null || stage.Processor is not null)
+                    || ((stage.TitleContains is not null || stage.PublishedSinceUtc is not null || stage.Model is not null || stage.Processor is not null
+                        || stage.PromptVersion is not null)
                         && schedule.Kind != WorkKind.Process))
                     return RegistrationErrors.Invalid("These stage settings do not apply to this work kind.");
                 if (stage.TitleContains is { Length: > 200 } || stage.Model is { Length: > 100 } || stage.Processor is { Length: > 100 })
                     return RegistrationErrors.Invalid("A stage setting is too long.");
+                if (stage.PromptVersion is <= 0)
+                    return RegistrationErrors.Invalid("The prompt version must be a positive integer.");
                 if (stage.Processor is { } processor && processor != ICaptureProcessor.DefaultKey
                     && hasProcessor?.Invoke(processor) != true)
                     return RegistrationErrors.Invalid("Select a registered capture processor.");
                 if ((stage.Processor ?? ICaptureProcessor.DefaultKey) == ICaptureProcessor.DefaultKey
-                    && !string.IsNullOrWhiteSpace(stage.Model))
+                    && (!string.IsNullOrWhiteSpace(stage.Model) || stage.PromptVersion is not null))
                     return RegistrationErrors.Invalid("The saved-reading processor does not use a model; select a model processor.");
             }
             if (!TimeZoneInfo.TryFindSystemTimeZoneById(schedule.TimeZone, out _))

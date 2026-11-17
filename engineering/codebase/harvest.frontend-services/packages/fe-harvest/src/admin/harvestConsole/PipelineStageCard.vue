@@ -26,7 +26,9 @@ const session = useHarvestConsole();
 const canEdit = computed(
   () => props.stage.available && session.canOperate.value && session.canWrite('pipelines:manage'),
 );
-const canRun = computed(() => props.stage.available && session.canWrite('pipelines:run'));
+const canRun = computed(
+  () => props.stage.available && !props.stage.readinessError && session.canWrite('pipelines:run'),
+);
 const submitted = shallowRef<RunModel>();
 const executing = computed(() => activeRun(props.stage.runs) ?? submitted.value);
 const latest = computed(() => executing.value ?? props.stage.runs[0]);
@@ -251,7 +253,8 @@ async function run() {
         </Button>
       </div>
     </div>
-    <p v-if="!stage.available" class="mt-2 text-sm text-muted-foreground">
+    <p v-if="stage.readinessError" class="mt-2 text-sm text-muted-foreground">{{ stage.readinessError }}</p>
+    <p v-else-if="!stage.available" class="mt-2 text-sm text-muted-foreground">
       {{
         stage.kind === 'discover' && !stage.catalog
           ? 'This section has no published discovery catalog.'

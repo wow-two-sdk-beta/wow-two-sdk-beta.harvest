@@ -7,6 +7,7 @@ import ConsoleLink from './ConsoleLink.vue';
 import HarvestPill from './HarvestPill.vue';
 import PhotoGallery from './PhotoGallery.vue';
 import PostPills from './PostPills.vue';
+import PostProcessingPanel from './PostProcessingPanel.vue';
 import { useHarvestConsole, type PostDetails } from './HarvestConsole';
 import type { SourcePostModel } from '../../contracts';
 import { ageOf, changedWords, dateTimeOf, imageSrcOf, webUrlOf, whenOf } from './SourceWords';
@@ -214,6 +215,7 @@ const kind = computed(() => base.value?.kind ?? 'post');
         <h2 class="text-[15px] font-semibold">Captured text</h2>
         <p class="mt-3 whitespace-pre-wrap break-words text-sm">{{ base.text }}</p>
       </section>
+      <PostProcessingPanel v-if="session.canReadPostProcessing.value" :source-id="sourceId" :post-id="postId" />
     </template>
   </div>
 </template>

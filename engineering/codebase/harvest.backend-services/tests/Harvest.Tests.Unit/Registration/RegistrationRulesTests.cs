@@ -174,9 +174,11 @@ public sealed class RegistrationRulesTests
     [InlineData(WorkKind.Discover, nameof(PipelineStageOptions.TitleContains))]
     [InlineData(WorkKind.Discover, nameof(PipelineStageOptions.PublishedSinceUtc))]
     [InlineData(WorkKind.Discover, nameof(PipelineStageOptions.Model))]
+    [InlineData(WorkKind.Discover, nameof(PipelineStageOptions.PromptVersion))]
     [InlineData(WorkKind.Harvest, nameof(PipelineStageOptions.TitleContains))]
     [InlineData(WorkKind.Harvest, nameof(PipelineStageOptions.PublishedSinceUtc))]
     [InlineData(WorkKind.Harvest, nameof(PipelineStageOptions.Model))]
+    [InlineData(WorkKind.Harvest, nameof(PipelineStageOptions.PromptVersion))]
     public void ValidateSchedules_ShouldRefuseProcessSettingsOnOtherStages(WorkKind kind, string setting)
     {
         var options = new PipelineStageOptions { BatchSize = 1 };
@@ -185,6 +187,7 @@ public sealed class RegistrationRulesTests
             nameof(PipelineStageOptions.TitleContains) => options with { TitleContains = "fixtures" },
             nameof(PipelineStageOptions.PublishedSinceUtc) => options with { PublishedSinceUtc = Now },
             nameof(PipelineStageOptions.Model) => options with { Processor = "fixture-processor@1", Model = "fixture-model" },
+            nameof(PipelineStageOptions.PromptVersion) => options with { Processor = "fixture-processor@1", PromptVersion = 1 },
             _ => throw new ArgumentOutOfRangeException(nameof(setting)),
         };
         var schedule = new ScheduleDeclaration { Kind = kind, Mode = ScheduleMode.Manual, Stage = options };

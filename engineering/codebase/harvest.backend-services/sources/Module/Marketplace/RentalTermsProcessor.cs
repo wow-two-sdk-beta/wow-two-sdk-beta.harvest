@@ -1,7 +1,9 @@
 using System.Text.Json;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Foundation.Serialization;
+using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 
 namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Marketplace;
@@ -14,6 +16,14 @@ internal sealed class RentalTermsProcessor(IServiceProvider services) : ICapture
     public string Key => ProcessorKey;
 
     public string Label => "Rental terms";
+
+    public bool RequiresAi => true;
+
+    public AppError? ValidateConfiguration(PipelineStageOptions options) =>
+        string.IsNullOrWhiteSpace(options.Model)
+        || services.GetService<IServiceProviderIsKeyedService>()?.IsKeyedService(typeof(IChatClient), options.Model) != true
+            ? AppErrorFactory.Conflict("The configured model route is unavailable.")
+            : null;
 
     public IReadOnlyList<string> OperationKeys => ["resolve-model", "call-model", "deserialize-result"];
 

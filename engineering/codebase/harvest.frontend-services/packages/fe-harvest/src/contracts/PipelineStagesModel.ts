@@ -12,9 +12,13 @@ export interface PipelineStageOptions {
   readonly publishedSinceUtc?: string;
   readonly processor?: string;
   readonly model?: string;
+  /** The published prompt version selected for this processor. */
+  readonly promptVersion?: number;
 }
 
 export interface PipelineStageModel {
+  /** Why the selected processor cannot run yet; configuration remains editable. */
+  readonly readinessError?: string | null;
   readonly kind: PipelineStageKind;
   readonly catalog?: { readonly label: string; readonly url: string; readonly key?: string };
   readonly available: boolean;
@@ -24,6 +28,7 @@ export interface PipelineStageModel {
   readonly runs: readonly RunModel[];
   readonly operationKeys?: readonly string[];
   readonly processorKeys?: readonly string[];
+  readonly processorLabels?: Readonly<Record<string, string>>;
 }
 
 export interface PipelineDiscoveryModel {

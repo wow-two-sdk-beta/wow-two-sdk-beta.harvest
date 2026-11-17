@@ -61,6 +61,19 @@ describe('Harvest console client', () => {
     expect((await api.listSourceOverview('c')).ok).toBe(false);
   });
 
+  it('requests processing evidence for one source and preserves a container-wide read', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => Response.json({ data: [] }));
+    const api = createHarvestClient({ fetch });
+    expect((await api.listPostProcessing?.('p', 'c', new AbortController().signal, 's'))?.ok).toBe(true);
+    expect((await api.listPostProcessing?.('p', 'c'))?.ok).toBe(true);
+    const requests = fetch.mock.calls.map(([url]) => new URL(String(url), 'https://console.example/source/post'));
+    expect(requests.map((url) => url.pathname)).toEqual(['/api/posts/p/processing', '/api/posts/p/processing']);
+    expect(requests.map((url) => Object.fromEntries(url.searchParams))).toEqual([
+      { containerId: 'c', sourceId: 's', limit: '50' },
+      { containerId: 'c', limit: '50' },
+    ]);
+  });
+
   it('reads safe runtime capabilities and rejects malformed discovery', async () => {
     const fetch = vi.fn<typeof globalThis.fetch>(async () =>
       Response.json({

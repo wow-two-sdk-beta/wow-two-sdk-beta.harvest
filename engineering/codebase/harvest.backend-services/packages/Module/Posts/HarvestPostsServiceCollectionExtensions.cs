@@ -11,6 +11,7 @@ public static class HarvestPostsServiceCollectionExtensions
     public static IServiceCollection AddHarvestPosts(this IServiceCollection services)
     {
         services.TryAddScoped<IPostBroker, ModulePostBroker>();
+        services.TryAddScoped<IPostProcessingBroker, ModulePostProcessingBroker>();
         return services;
     }
 }

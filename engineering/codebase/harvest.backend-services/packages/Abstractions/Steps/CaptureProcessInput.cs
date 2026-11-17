@@ -16,6 +16,7 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 /// <param name="Extras">The saved source extras.</param>
 /// <param name="Model">The optional model route for this processor.</param>
 /// <param name="Trace">The operation recorder for the worker claim.</param>
+/// <param name="PromptVersion">The prompt version frozen in the run's stage settings.</param>
 public sealed record CaptureProcessInput(Guid ContainerId, SourceModel Source, Guid PostId, Guid LinkId, Guid CaptureId,
     string? Title, string? Text, PostLanguage? Language, IReadOnlyDictionary<string, JsonElement> Extras,
-    string? Model, ICaptureProcessTrace Trace);
+    string? Model, ICaptureProcessTrace Trace, int? PromptVersion = null);

@@ -108,13 +108,15 @@ export interface SourceGroupDraft {
   readonly description?: string;
 }
 
-/** Sets a source's display name and group; `clearGroup` with `groupId: null` ungroups it. */
+/** Updates an operator-managed source. Omitted fields keep their saved values. */
 export interface SourceUpdate {
   readonly name?: string;
   readonly groupId?: string | null;
   readonly clearGroup?: boolean;
   /** Pauses the source without changing individual pipeline choices. */
   readonly paused?: boolean;
+  /** Allows Process stages to use a model on the source's saved readings. */
+  readonly aiAllowed?: boolean;
 }
 
 /** Sets the gap between two page reads of a source's host, 1000 to 60000 ms. */

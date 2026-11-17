@@ -21,6 +21,7 @@ internal static class RunPlanner
         PipelineModel pipeline,
         SourceModel source,
         IReadOnlyList<ISourceAdapter> adapters,
+        IServiceProvider services,
         WorkKind kind,
         DateTimeOffset now,
         Guid? scheduleId,
@@ -40,6 +41,9 @@ internal static class RunPlanner
         var stage = StageOptions(pipeline, kind);
         if (stage?.Disabled is true)
             return Result<Guid>.Fail(AppErrorFactory.Conflict("This stage is disabled."));
+        if (kind == WorkKind.Process
+            && await CaptureProcessors.PreflightAsync(CaptureProcessors.Resolve(services, stage), source, stage!, ct) is { } processingError)
+            return Result<Guid>.Fail(processingError);
 
         await using (NpgsqlCommand active = EngineSql.Command(connection, transaction,
             "SELECT id FROM harvest_runs WHERE pipeline_id = @pipeline AND kind = @kind AND status IN ('queued','running','paused')",

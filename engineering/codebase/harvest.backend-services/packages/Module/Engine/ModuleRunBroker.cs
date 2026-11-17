@@ -17,7 +17,7 @@ internal sealed class ModuleRunBroker(
     [FromKeyedServices(HarvestModuleConstants.ServiceKey)] NpgsqlDataSource database,
     IRegistrationBroker registry,
     IEnumerable<ISourceAdapter> adapters,
-    TimeProvider clock) : IRunBroker
+    TimeProvider clock, IServiceProvider services) : IRunBroker
 {
     public async Task<Result<RunModel>> StartAsync(Guid pipelineId, WorkKind kind = WorkKind.Capture, CancellationToken cancellationToken = default)
     {
@@ -31,7 +31,7 @@ internal sealed class ModuleRunBroker(
             return Result<RunModel>.Fail(RegistrationErrors.PipelineNotFound(pipelineId));
         if (await registry.GetSourceAsync(pipeline.SourceId, cancellationToken) is not Result<SourceModel>.Success { Value: var source })
             return Result<RunModel>.Fail(RegistrationErrors.SourceNotFound(pipeline.SourceId));
-        Result<Guid> queued = await RunPlanner.QueueAsync(connection, transaction, pipeline, source, [.. adapters], kind,
+        Result<Guid> queued = await RunPlanner.QueueAsync(connection, transaction, pipeline, source, [.. adapters], services, kind,
             clock.GetUtcNow(), null, null, cancellationToken);
         if (queued is Result<Guid>.Failure failure)
             return Result<RunModel>.Fail(failure.Error);

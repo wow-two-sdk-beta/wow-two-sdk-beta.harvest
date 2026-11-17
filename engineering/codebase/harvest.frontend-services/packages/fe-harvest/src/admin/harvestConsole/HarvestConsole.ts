@@ -23,6 +23,7 @@ import type {
   PipelineUpdate,
   PostModel,
   PostRevisionModel,
+  PostProcessingModel,
   RunModel,
   ScheduleModel,
   SourceCapabilitiesModel,
@@ -173,6 +174,7 @@ function newestFirst(a: RunModel, b: RunModel) {
  */
 export function createHarvestConsole(options: HarvestConsoleOptions) {
   const client = shallowRef<HarvestClient | null>(options.client ?? null);
+  const canReadPostProcessing = computed(() => typeof client.value?.listPostProcessing === 'function');
   const connecting = ref(client.value !== null);
   const connected = computed(() => client.value !== null && !connecting.value);
   const pending = ref(false);
@@ -921,6 +923,18 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
     return ResultExtensions.ok({ post: post.value, revisions: revisions.ok ? revisions.value : [] });
   }
 
+  /** Reads derived output for the post's captures from this source. */
+  function readPostProcessing(
+    sourceId: string,
+    postId: string,
+    signal?: AbortSignal,
+  ): Promise<Result<readonly PostProcessingModel[], ApiFailure>> {
+    const api = client.value;
+    return api?.listPostProcessing
+      ? api.listPostProcessing(postId, containerId.value, signal, sourceId)
+      : Promise.resolve(ResultExtensions.fail(offline()));
+  }
+
   function subscribe(draft: SubscriptionDraft) {
     const tag = draft.tag?.trim();
     return mutate(
@@ -1064,6 +1078,8 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
     readSourcePosts,
     querySourcePosts,
     readPost,
+    canReadPostProcessing,
+    readPostProcessing,
   };
 }
 

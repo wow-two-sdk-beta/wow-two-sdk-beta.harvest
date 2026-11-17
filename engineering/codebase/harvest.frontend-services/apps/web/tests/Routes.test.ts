@@ -361,6 +361,7 @@ describe('a post’s page', () => {
     await vi.waitFor(() => expect(wrapper.get('[aria-label="Post"]').text()).toContain('Revision 2'));
     expect(wrapper.get('[aria-label="Capture"]').text()).toContain('First seen');
     expect(wrapper.get('[aria-label="Captured text"]').text()).toContain('Показ осенних коллекций');
+    expect(wrapper.find('[aria-label="Processing results"]').exists()).toBe(false);
     expect(wrapper.get('[aria-label="Post"]').text()).not.toContain('Дворец творчества молодёжи');
   });
 });

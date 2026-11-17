@@ -47,9 +47,12 @@ const MonthDays = [
   { value: 'L', label: 'Last day' },
 ];
 const SavedReading = 'saved-reading@1';
+const SharedRentalTerms = 'rental-terms@2';
+const MaxPromptVersion = 2_147_483_647;
 const ProcessorLabels: Readonly<Record<string, string>> = {
   [SavedReading]: 'Saved reading',
   'rental-terms@1': 'Rental terms',
+  [SharedRentalTerms]: 'Rental terms with evidence',
 };
 const DefaultTimeZone = 'Asia/Tashkent';
 const BrowserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -89,13 +92,18 @@ function fieldsOf(stage: PipelineStageModel) {
     publishedSince: stage.options.publishedSinceUtc?.slice(0, 10) ?? '',
     processor: stage.options.processor ?? (stage.processorKeys?.length ? SavedReading : ''),
     model: stage.options.model ?? '',
+    promptVersion: stage.options.promptVersion ?? '',
   };
 }
 const draft = ref(fieldsOf(props.stage));
 const processorChoices = computed(() =>
-  (props.stage.processorKeys ?? []).map((key) => ({ value: key, label: ProcessorLabels[key] ?? key })),
+  (props.stage.processorKeys ?? []).map((key) => ({
+    value: key,
+    label: props.stage.processorLabels?.[key] ?? ProcessorLabels[key] ?? key,
+  })),
 );
 const showsModel = computed(() => props.stage.kind === 'process' && draft.value.processor !== SavedReading);
+const usesSharedModel = computed(() => props.stage.kind === 'process' && draft.value.processor === SharedRentalTerms);
 const selectedModel = computed(() => (showsModel.value ? draft.value.model.trim() : ''));
 const batchSize = computed(() => {
   const current = props.stage.options.batchSize;
@@ -133,6 +141,19 @@ async function save() {
     error.value = 'Choose the calendar days and a time.';
     return;
   }
+  const model = selectedModel.value;
+  const promptVersion = usesSharedModel.value ? Number(fields.promptVersion) : undefined;
+  if (promptVersion !== undefined) {
+    const separator = model.indexOf('/');
+    if (separator <= 0 || separator === model.length - 1 || /\s/.test(model)) {
+      error.value = 'Enter a model route in provider/model format.';
+      return;
+    }
+    if (!Number.isInteger(promptVersion) || promptVersion < 1 || promptVersion > MaxPromptVersion) {
+      error.value = `Enter a whole prompt version between 1 and ${MaxPromptVersion}.`;
+      return;
+    }
+  }
   const publishedSinceUtc = fields.publishedSince
     ? fields.publishedSince === props.stage.options.publishedSinceUtc?.slice(0, 10)
       ? props.stage.options.publishedSinceUtc
@@ -146,7 +167,8 @@ async function save() {
           ...(fields.titleContains.trim() ? { titleContains: fields.titleContains.trim() } : {}),
           ...(publishedSinceUtc ? { publishedSinceUtc } : {}),
           ...(fields.processor ? { processor: fields.processor } : {}),
-          ...(selectedModel.value ? { model: selectedModel.value } : {}),
+          ...(model ? { model } : {}),
+          ...(promptVersion !== undefined ? { promptVersion } : {}),
         }
       : {}),
   };
@@ -290,9 +312,27 @@ async function save() {
               Published since (UTC)
               <input v-model="draft.publishedSince" type="date" :class="inputClass" />
             </label>
-            <label v-if="showsModel" class="grid gap-1.5 text-sm sm:col-span-2">
-              Model
-              <input v-model="draft.model" maxlength="100" placeholder="Local processor" :class="inputClass" />
+            <label v-if="showsModel" class="grid gap-1.5 text-sm" :class="{ 'sm:col-span-2': !usesSharedModel }">
+              {{ usesSharedModel ? 'Model route' : 'Model' }}
+              <input
+                v-model="draft.model"
+                maxlength="100"
+                :placeholder="usesSharedModel ? 'provider/model' : 'Local processor'"
+                :required="usesSharedModel"
+                :class="inputClass"
+              />
+            </label>
+            <label v-if="usesSharedModel" class="grid gap-1.5 text-sm">
+              Prompt version
+              <input
+                v-model.number="draft.promptVersion"
+                type="number"
+                min="1"
+                :max="MaxPromptVersion"
+                step="1"
+                required
+                :class="inputClass"
+              />
             </label>
           </fieldset>
           <p v-if="batchSize < stage.options.batchSize" class="text-sm text-muted-foreground">

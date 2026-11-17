@@ -822,5 +822,7 @@ export function createDemoHarvestClient(): HarvestClient {
     }
     return missing();
   };
-  return createHarvestClient({ fetch: transport });
+  const client = createHarvestClient({ fetch: transport });
+  delete client.listPostProcessing;
+  return client;
 }

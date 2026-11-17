@@ -81,7 +81,9 @@ public sealed class RentalTermsProcessingTests
         var pipeline = Value(await registry.DeclarePipelineAsync(ProcessPipeline(setup.ContainerId, apartments.SourceId, listing)));
         var capture = await SaveAsync(scope.ServiceProvider, host.Clock, setup.ContainerId, apartments.SourceId, listing);
 
-        await RunAsync(scope.ServiceProvider, pipeline.Id);
+        var runs = scope.ServiceProvider.GetRequiredService<IRunBroker>();
+        var blocked = await runs.StartAsync(pipeline.Id, WorkKind.Process);
+        blocked.Should().BeOfType<Result<RunModel>.Failure>().Which.Error.Message.Should().Contain("disabled for this source");
         host.Chat.Input.Should().BeNull("a source closed to models never reaches the model");
         (await StoredAsync(host.Connection, capture)).Should().BeNull();
 
@@ -89,7 +91,6 @@ public sealed class RentalTermsProcessingTests
         Value(await provisioner.EnsureAsync(MarketplaceProfiles.Haven));
         Value(await registry.GetSourceAsync(apartments.SourceId)).AiAllowed.Should().BeTrue("a later setup keeps the source open");
         Value(await registry.GetSourceAsync(imports.SourceId)).AiAllowed.Should().BeFalse("imports keep their consent posture");
-        host.Clock.Advance(TimeSpan.FromMinutes(6));
         (await RunAsync(scope.ServiceProvider, pipeline.Id)).Should().Be(RunStatus.Completed);
         host.Chat.Input.Should().Be(Text);
         await ExpectTermsAsync(host.Connection, capture);

@@ -22,6 +22,8 @@ public static class MarketplaceServiceCollectionExtensions
         services.AddHarvestWebBroker<JoymeeSourceAdapter, JoymeeCaptureReader>();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IDeliveryPostFilter, MarketplaceListingFilter>());
         services.TryAddKeyedScoped<ICaptureProcessor, RentalTermsProcessor>(RentalTermsProcessor.ProcessorKey);
+        services.AddOptions<RentalTermsOptions>();
+        services.TryAddKeyedScoped<ICaptureProcessor, RentalTermsV2Processor>(RentalTermsDefinition.ProcessorKey);
         services.TryAddScoped<MarketplaceProvisioner>();
         services.TryAddScoped<MarketplaceListingImporter>();
         return services;

@@ -105,12 +105,19 @@ function toggle(row: SectionRow, on: boolean) {
 }
 
 /* The source master pause leaves each section's own schedule and pause unchanged. */
-const sourceState = computed(() => props.source.sourceState ?? session.sourceOf(props.source.sourceId)?.state);
+const sourceModel = computed(() => session.sourceOf(props.source.sourceId));
+const sourceState = computed(() => props.source.sourceState ?? sourceModel.value?.state);
 const sourceOn = computed(() => sourceState.value !== 'paused');
 const readingReason = computed(() => sourcePauseReason(sourceState.value, props.source.sourceState !== undefined));
 function setSourceReading(on: boolean) {
   if (!canManageSource.value || pending.value || readingReason.value) return;
   void session.setSourcePaused(props.source.sourceId, !on);
+}
+const aiAllowed = computed(() => sourceModel.value?.aiAllowed);
+function setAiAllowed(allowed: boolean) {
+  if (!canManageSource.value || pending.value || typeof aiAllowed.value !== 'boolean' || aiAllowed.value === allowed)
+    return;
+  void session.updateSource(props.source.sourceId, { aiAllowed: allowed });
 }
 const pace = computed(() => String(Math.round(props.source.health.minDelayMs / 1000)));
 const paceChoices = computed(() =>
@@ -357,9 +364,22 @@ function saveName() {
               @update:model-value="(value) => session.setReadingPace(props.source.sourceId, Number(value) * 1000)"
             />
           </dd>
+          <dt class="text-muted-foreground">Model processing</dt>
+          <dd class="flex items-center gap-2 font-semibold">
+            <SwitchInput
+              :model-value="aiAllowed === true"
+              :is-disabled="pending || typeof aiAllowed !== 'boolean'"
+              v-bind="{ 'aria-label': `Allow model processing for ${props.source.name}` }"
+              @update:model-value="setAiAllowed"
+            />
+            {{ aiAllowed === true ? 'Enabled' : aiAllowed === false ? 'Disabled' : 'Unavailable' }}
+          </dd>
         </dl>
         <p class="mt-3 text-xs text-muted-foreground">
           {{ readingReason || 'Disabling the source preserves each section’s settings.' }}
+        </p>
+        <p class="mt-2 text-xs text-muted-foreground">
+          Model processing lets Process stages send saved text to their configured model.
         </p>
       </section>
 

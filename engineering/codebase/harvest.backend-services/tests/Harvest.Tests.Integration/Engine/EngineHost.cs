@@ -28,12 +28,16 @@ namespace Harvest.Tests.Integration.Engine;
 /// <summary>Wires the real engine, PostgreSQL, parsers, posts and delivery while all fetches stay in memory.</summary>
 internal sealed class EngineHost : IAsyncDisposable
 {
-    private EngineHost(ServiceProvider services, string connectionString, FakeTimeProvider clock, FixtureFetcher fetcher)
+    private readonly Action<IServiceCollection>? configure;
+
+    private EngineHost(ServiceProvider services, string connectionString, FakeTimeProvider clock, FixtureFetcher fetcher,
+        Action<IServiceCollection>? configure)
     {
         Services = services;
         ConnectionString = connectionString;
         Clock = clock;
         Fetcher = fetcher;
+        this.configure = configure;
     }
 
     internal ServiceProvider Services { get; private set; }
@@ -41,24 +45,25 @@ internal sealed class EngineHost : IAsyncDisposable
     internal FakeTimeProvider Clock { get; }
     internal FixtureFetcher Fetcher { get; }
 
-    internal static async Task<EngineHost> StartAsync()
+    internal static async Task<EngineHost> StartAsync(Action<IServiceCollection>? configure = null)
     {
         var connection = (await PostgresServer.SharedAsync()).NewDatabase("engine");
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 27, 10, 0, 0, TimeSpan.Zero));
         var fetcher = new FixtureFetcher(clock);
-        var provider = BuildServices(connection, clock, fetcher);
+        var provider = BuildServices(connection, clock, fetcher, configure);
         await provider.MigrateHarvestOnStartupAsync("engine-fixtures");
-        return new(provider, connection, clock, fetcher);
+        return new(provider, connection, clock, fetcher, configure);
     }
 
     internal async Task RestartAsync()
     {
         await Services.DisposeAsync();
-        Services = BuildServices(ConnectionString, Clock, Fetcher);
+        Services = BuildServices(ConnectionString, Clock, Fetcher, configure);
         await Services.MigrateHarvestOnStartupAsync("engine-fixtures");
     }
 
-    private static ServiceProvider BuildServices(string connection, FakeTimeProvider clock, FixtureFetcher fetcher)
+    private static ServiceProvider BuildServices(string connection, FakeTimeProvider clock, FixtureFetcher fetcher,
+        Action<IServiceCollection>? configure)
     {
         var services = new ServiceCollection().AddLogging().AddSingleton<TimeProvider>(clock)
             .AddSingleton<IPageFetcher>(fetcher).AddSingleton<IFetchClientFactory, NoNetworkClients>()
@@ -66,6 +71,7 @@ internal sealed class EngineHost : IAsyncDisposable
         services.AddHarvest().Configure(options => options.ConnectionString = connection);
         services.AddHarvestReaders().AddHarvestExtraction().AddHarvestPosts().AddHarvestDelivery();
         services.AddHarvestEngine().Configure(options => options.LeaseDuration = TimeSpan.FromSeconds(30));
+        configure?.Invoke(services);
         return services.BuildServiceProvider(validateScopes: true);
     }
 

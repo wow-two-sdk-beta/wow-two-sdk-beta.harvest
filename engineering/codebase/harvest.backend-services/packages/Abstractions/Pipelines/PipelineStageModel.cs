@@ -24,4 +24,7 @@ public sealed record PipelineStageModel(WorkKind Kind, bool Available, ScheduleM
 
     /// <summary>Gets the operations in the stage's current execution plan.</summary>
     public IReadOnlyList<string> OperationKeys { get; init; } = [];
+
+    /// <summary>Why the selected processor cannot run yet; settings remain editable.</summary>
+    public string? ReadinessError { get; init; }
 }

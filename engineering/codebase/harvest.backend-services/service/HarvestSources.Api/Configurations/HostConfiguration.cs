@@ -12,6 +12,7 @@ public static partial class HostConfiguration
     {
         builder.AddProcessingModels();
         global::Harvest.Api.Configurations.HostConfiguration.Configure(builder);
+        builder.AddRentalTermsAi();
         return builder.Configuration["HarvestSources:Audience"] switch
         {
             null or "internal" => builder.AddSources().AddProviderSettings().AddSourceAssets().AddSourceControllers(),
@@ -26,6 +27,7 @@ public static partial class HostConfiguration
     public static async Task<WebApplication> ConfigureAsync(this WebApplication app)
     {
         await global::Harvest.Api.Configurations.HostConfiguration.ConfigureAsync(app);
+        await app.MigrateRentalTermsAiLocallyAsync(app.Lifetime.ApplicationStopping);
         await app.Services.ReconcileHarvestSourceSectionsAsync(app.Lifetime.ApplicationStopping);
         await app.SeedPipelineStagesAsync(app.Lifetime.ApplicationStopping);
         return app;

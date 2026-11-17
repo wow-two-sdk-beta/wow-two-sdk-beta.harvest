@@ -58,7 +58,7 @@ ChatGPT builds these in the pull order of wow-two-ws `system/sessions/events-int
 | Item | Type | Notes |
 |---|---|---|
 | S07 Commit the work in slices and verify v0.2.7 on dev | engineering | spec in `tasks-scfd.md` |
-| S36 Leftovers: the console reads `processorLabels`; a stage-editor gate test | fix | spec in `tasks-scfd.md`; backend shipped, see v0.2 Iteration 4 |
+| S36 Leftovers: tenant-private stage-editor permission parity and a gate test | fix | spec in `tasks-scfd.md`; backend shipped and console labels are included in the OLX/AI patch. The stage card still requires operator access as well as `pipelines:manage`; finish the UI permission path and regression. |
 | S39 Leftovers: Settings says "Harvested by stages"; drop `RequiresGrant` / `AwaitingSourceAccess` | engineering | spec in `tasks-scfd.md`; left to the Codex OLX/AI work, which holds those files |
 | S38 Decide what the marketplace collectors keep about people | decision | spec in `tasks-scfd.md` · needs the developer |
 | S18 Run ANONS, Craftfair, Uzexpocentre and CAEx for Ocharo | product | spec in `tasks-scfd.md` |
@@ -82,7 +82,7 @@ ChatGPT builds these in the pull order of wow-two-ws `system/sessions/events-int
 | S31 Give Ocharo a client view with Sources and Following | feature | spec in `tasks-scfd.md` |
 | S32 Let an operator grant a restricted source | feature | spec in `tasks-scfd.md` |
 | A05 SCFD relevance pass in shadow on one Afisha pipeline | feature | spec in `tasks-platform.md` · owner: ev-ai lane |
-| S14 Embed the shared AI layer in the source host | engineering | spec in `tasks-scfd.md` |
+| S14 Embed the shared AI layer in the source host | engineering | partial: the OLX/AI patch composes published AI `10.0.0-beta` behind an opt-in host flag and adds Process readiness/evidence contracts. Ocharo's relevance use case, eval subject source and deployed configuration remain; see `development/olx-ai.md`. |
 | S15 Run Ocharo relevance in shadow on Afisha | feature | spec in `tasks-scfd.md` |
 | S16 Promote AI relevance into Ocharo's delivery | product | spec in `tasks-scfd.md`; connect completed AI results to consumer delivery before evaluating requested event filters. Capturing Instagram posts and storing separate processing results do not establish this path. Verify accepted, rejected and unresolved results end to end before promotion. |
 | S17 Estimate event dates from the AI pass | feature | spec in `tasks-scfd.md` |

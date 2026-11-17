@@ -20,7 +20,7 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Registration;
 /// <summary>Integrates the registry over the module's store: validates, normalizes and writes the registry tables.</summary>
 /// <remarks>Duplicates are checked before the insert for a readable error, and the unique indexes catch the race.</remarks>
 internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider time, SourceSectionRegistration sections,
-    IServiceProviderIsKeyedService keyedServices, IEnumerable<ISourceAdapter> adapters) : IRegistrationBroker
+    IServiceProviderIsKeyedService keyedServices, IServiceProvider services, IEnumerable<ISourceAdapter> adapters) : IRegistrationBroker
 {
     /// <summary>Holds PostgreSQL's unique-violation state.</summary>
     private const string UniqueViolation = "23505";
@@ -36,6 +36,23 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
             ? validator.ValidatePipeline(model, scope, limits) : Result.Ok();
     }
 
+    private async Task<AppError?> ValidateProcessSchedulesAsync(SourceRow source,
+        IReadOnlyList<ScheduleDeclaration> schedules, IReadOnlyList<ScheduleModel> previous, CancellationToken ct)
+    {
+        foreach (var schedule in schedules.Where(item => item.Kind == WorkKind.Process && item.Enabled && item.Mode != ScheduleMode.Manual))
+        {
+            var old = previous.FirstOrDefault(item => item.Kind == WorkKind.Process)?.Stage;
+            var options = schedule.Stage ?? old ?? new PipelineStageOptions();
+            if ((options.Disabled ?? old?.Disabled) is true || CaptureProcessors.ResolveKey(options) == ICaptureProcessor.DefaultKey)
+                continue;
+            var checkPolicy = source.CheckPolicyId is { } id
+                ? await db.CheckPolicies.AsNoTracking().Where(policy => policy.Id == id).Select(policy => policy.Key).SingleOrDefaultAsync(ct)
+                : null;
+            if (await CaptureProcessors.PreflightAsync(CaptureProcessors.Resolve(services, options), source.ToModel(checkPolicy), options, ct) is { } error)
+                return error;
+        }
+        return null;
+    }
 
     /// <summary>Mints Harvest-shaped secrets with core's factory, independent of any key scheme the host registers.</summary>
     private static readonly ApiKeySecretFactory Secrets = new(Options.Create(new ApiKeyOptions
@@ -301,7 +318,7 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
 
         // Queue creation and source pauses share this transaction lock, so a successful pause cannot race a new run.
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        if (update.Paused is not null)
+        if (update.Paused is not null || update.AiAllowed is not null)
             await db.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(hashtextextended('harvest:scheduler',0))", cancellationToken);
         var row = await db.Sources.FromSqlInterpolated($"SELECT * FROM harvest_sources WHERE id = {sourceId} FOR UPDATE")
             .SingleOrDefaultAsync(cancellationToken);
@@ -403,6 +420,8 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
             return Result<PipelineModel>.Fail(sourceError);
         if (RegistrationRules.ValidatePipeline(declaration, key => CaptureProcessors.IsRegistered(keyedServices, key)) is { } pipelineError)
             return Result<PipelineModel>.Fail(pipelineError);
+        if (await ValidateProcessSchedulesAsync(source, declaration.Schedules, [], cancellationToken) is { } processingError)
+            return Result<PipelineModel>.Fail(processingError);
         var (scopeKey, scopeError) = RegistrationRules.CanonicalScopeKey(declaration.Scope);
         if (scopeError is not null)
             return Result<PipelineModel>.Fail(scopeError);
@@ -483,6 +502,9 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
             ?? RegistrationRules.ValidatePipeline(declaration, key => CaptureProcessors.IsRegistered(keyedServices, key),
                 disabledStages)) is { } error)
             return Result<PipelineModel>.Fail(error);
+        if (await ValidateProcessSchedulesAsync(source, update.Schedules,
+            schedules.Select(row => row.ToModel()).ToArray(), cancellationToken) is { } processingError)
+            return Result<PipelineModel>.Fail(processingError);
         var (scopeKey, scopeError) = RegistrationRules.CanonicalScopeKey(update.Scope);
         if (scopeError is not null)
             return Result<PipelineModel>.Fail(scopeError);

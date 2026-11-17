@@ -8,6 +8,8 @@ return await ServiceHost.RunAsync(args, builder => builder.Configure(), app => a
         .AddHostVerb(OcharoSetupVerb.Name, (services, verb, ct) =>
             OcharoSetupVerb.RunAsync(services, verb.Arguments, verb.Output, verb.Error, ct))
         .AddHostVerb(MarketplaceSetupVerb.Name, (services, verb, ct) =>
-            MarketplaceSetupVerb.RunAsync(services, verb.Arguments, verb.Output, verb.Error, ct)));
+            MarketplaceSetupVerb.RunAsync(services, verb.Arguments, verb.Output, verb.Error, ct))
+        .AddHostVerb(RentalTermsPromptVerb.Name, (services, verb, ct) =>
+            RentalTermsPromptVerb.RunAsync(services, verb.Arguments, Console.OpenStandardInput(), verb.Output, verb.Error, ct)));
 
 public partial class Program;

@@ -14,6 +14,7 @@ public static class HarvestDataClientServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
         services.AddHttpClient<IPostBroker, ApiPostBroker>(HarvestHttp.Configure).WithCredentials();
+        services.AddHttpClient<IPostProcessingBroker, ApiPostProcessingBroker>(HarvestHttp.Configure).WithCredentials();
         services.AddHttpClient<IDeliveryBroker, ApiDeliveryBroker>(HarvestHttp.Configure).WithCredentials();
         return services;
     }

@@ -24,6 +24,7 @@ import type {
   SourcePostPage,
   SourcePostQuery,
   PostRevisionModel,
+  PostProcessingModel,
 } from '../contracts';
 import { createRegistryClient, type RegistryClient, type RegistryClientOptions } from './CreateRegistryClient';
 import type { ScheduleModel } from '../contracts/PipelineModel';
@@ -132,6 +133,13 @@ export interface HarvestClient extends RegistryClient {
   getPost(postId: string, containerId: string, signal?: AbortSignal): Promise<Result<PostModel, ApiFailure>>;
   /** Reads a post's revisions, newest first; empty for a post older than revision tracking. */
   listPostRevisions(postId: string, signal?: AbortSignal): Promise<Result<readonly PostRevisionModel[], ApiFailure>>;
+  /** Reads saved processing results within the post's container, optionally for one source. */
+  listPostProcessing?(
+    postId: string,
+    containerId: string,
+    signal?: AbortSignal,
+    sourceId?: string,
+  ): Promise<Result<readonly PostProcessingModel[], ApiFailure>>;
 }
 
 /** Rejects a malformed object at the transport boundary. */
@@ -382,6 +390,12 @@ export function createHarvestClient(options: RegistryClientOptions = {}): Harves
       api.get(`/api/posts/${encodeURIComponent(postId)}/revisions`, {
         ...signalOf(signal),
         decode: list<PostRevisionModel>,
+      }),
+    listPostProcessing: (postId, containerId, signal, sourceId) =>
+      api.get(`/api/posts/${encodeURIComponent(postId)}/processing`, {
+        query: { containerId, ...(sourceId ? { sourceId } : {}), limit: '50' },
+        ...signalOf(signal),
+        decode: list<PostProcessingModel>,
       }),
   };
 }

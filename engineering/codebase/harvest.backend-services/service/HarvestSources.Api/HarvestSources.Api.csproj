@@ -3,6 +3,8 @@
     <PackageReference Include="AngleSharp" />
     <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
     <PackageReference Include="WoW2.Sdk.Beta.Be.Files.Client" />
+    <PackageReference Include="WoW2.Sdk.Beta.Be.Ai.Module" />
+    <PackageReference Include="WoW2.Sdk.Beta.Be.Ai.Providers" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../sources/Module/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Module.csproj" />

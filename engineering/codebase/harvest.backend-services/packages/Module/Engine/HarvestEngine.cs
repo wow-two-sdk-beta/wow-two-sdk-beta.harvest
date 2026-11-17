@@ -94,7 +94,7 @@ public sealed class HarvestEngine(
             }
             if (due <= now)
             {
-                Result<Guid> result = await RunPlanner.QueueAsync(connection, transaction, pipeline, source, [.. adapters],
+                Result<Guid> result = await RunPlanner.QueueAsync(connection, transaction, pipeline, source, [.. adapters], services,
                     schedule.Kind, now, id, due, cancellationToken);
                 if (result is Result<Guid>.Success)
                     queued++;
@@ -208,19 +208,21 @@ public sealed class HarvestEngine(
         }
         catch (OperationCanceledException)
         {
-            processed = new(new StepResult { Outcome = FetchOutcome.FetchTimeout, Message = "Processing exceeded the claim time budget." });
+            processed = new(new StepResult { Outcome = FetchOutcome.FetchTimeout, Message = "Processing exceeded the claim time budget." },
+                Retryable: CaptureProcessors.Resolve(services, claim.Frozen.Stage)?.RequiresAi is not true);
         }
         catch (Exception error)
         {
             logger.LogWarning("Saved capture processing failed in run {RunId} with {ErrorType}", claim.Item.RunId, error.GetType().Name);
-            processed = new(new StepResult { Outcome = FetchOutcome.UnexpectedContent, Message = "The processing result could not be read." });
+            processed = new(new StepResult { Outcome = FetchOutcome.UnexpectedContent, Message = "The processing result could not be read." },
+                Retryable: CaptureProcessors.Resolve(services, claim.Frozen.Stage)?.RequiresAi is not true);
         }
-        await CompleteTracedAsync(claim, processed.StepResult, [], processed.Output, null, trace, ct);
+        await CompleteTracedAsync(claim, processed.StepResult, [], processed.Output, null, trace, ct, processed.Retryable);
     }
 
     private async Task CompleteTracedAsync(WorkClaim claim, StepResult result,
         IReadOnlyList<(Capture Capture, PostEnvelope Envelope)> readings, JsonElement? processingOutput, int? httpStatus,
-        StepTrace trace, CancellationToken ct)
+        StepTrace trace, CancellationToken ct, bool retryProcessing = true)
     {
         string? operation = result.Outcome is FetchOutcome.Ok or FetchOutcome.Gone ? claim.Frozen.Kind switch
         {
@@ -232,7 +234,7 @@ public sealed class HarvestEngine(
         int? index = operation is null ? null : await trace.BeginAsync(operation);
         try
         {
-            await CompleteAsync(claim, result, readings, processingOutput, httpStatus, trace, index, ct);
+            await CompleteAsync(claim, result, readings, processingOutput, httpStatus, trace, index, ct, retryProcessing);
         }
         catch (Exception error) when (index.HasValue && !ct.IsCancellationRequested)
         {
@@ -300,7 +302,7 @@ public sealed class HarvestEngine(
         int? httpStatus,
         StepTrace trace,
         int? storeOperation,
-        CancellationToken ct)
+        CancellationToken ct, bool retryProcessing)
     {
         DateTimeOffset now = clock.GetUtcNow();
         await using NpgsqlConnection connection = await database.OpenConnectionAsync(ct);
@@ -382,8 +384,8 @@ public sealed class HarvestEngine(
 
         if (claim.Frozen.Kind == WorkKind.Process)
         {
-            savedResults = await ProcessingStore.CompleteAsync(connection, transaction, claim.Frozen, claim.Item, processingOutput, now, ct);
-            if (processingOutput is not null)
+            savedResults = await ProcessingStore.CompleteAsync(connection, transaction, claim.Frozen, claim.Item, processingOutput, now, ct, retryProcessing);
+            if (processingOutput is not null && savedResults > 0)
                 captured++;
         }
         else if (claim.Frozen.Kind == WorkKind.Discover && limit is null && result.Outcome is FetchOutcome.Ok or FetchOutcome.Gone)

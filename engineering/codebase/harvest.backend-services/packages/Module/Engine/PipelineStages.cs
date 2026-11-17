@@ -79,8 +79,11 @@ public sealed class PipelineStages(
         bool active = pipeline.State == PipelineState.Active && source.State == SourceState.Active
             && source.Permission is SourcePermission.Open or SourcePermission.Granted;
         var catalog = RunPlanner.DiscoverySection(adapter, source, pipeline.Scope);
-        var processorLabels = CaptureProcessors.PublicLabels(services);
+        var processorLabels = CaptureProcessors.PublicLabels(services, source);
         string[] processorKeys = [.. processorLabels.Keys];
+        var processOptions = RunPlanner.StageOptions(pipeline, WorkKind.Process)!;
+        var readiness = await CaptureProcessors.PreflightAsync(
+            CaptureProcessors.Resolve(services, processOptions), source, processOptions, ct);
         return Kinds.Select(kind =>
         {
             var steps = RunPlanner.StageSteps(descriptor, kind);
@@ -96,6 +99,7 @@ public sealed class PipelineStages(
                 ProcessorKeys = kind == WorkKind.Process ? processorKeys : [],
                 ProcessorLabels = kind == WorkKind.Process ? processorLabels : new Dictionary<string, string>(),
                 OperationKeys = PlanOf(kind, steps, adapter?.Key, processor),
+                ReadinessError = kind == WorkKind.Process ? readiness?.Message : null,
             };
         }).ToArray();
     }
@@ -132,6 +136,28 @@ public sealed class PipelineStages(
         await EngineSql.ExecuteAsync(connection, transaction,
             "SELECT pg_advisory_xact_lock(hashtextextended('harvest:scheduler',0))", ct);
         var kind = SnakeCaseEnum<WorkKind>.ToText(schedule.Kind);
+        if (schedule.Kind == WorkKind.Process && schedule.Enabled && schedule.Mode != ScheduleMode.Manual)
+        {
+            await using var command = EngineSql.Command(connection, transaction, """
+                SELECT EXISTS (SELECT 1 FROM harvest_schedules
+                           WHERE pipeline_id=@pipeline AND kind=@kind AND stage_options IS NOT NULL),
+                       COALESCE(@disabled::boolean, (SELECT stage_options->>'disabled'='true'
+                           FROM harvest_schedules WHERE pipeline_id=@pipeline AND kind=@kind), false)
+                """, ("pipeline", pipeline.Id), ("kind", kind), ("disabled", schedule.Stage.Disabled));
+            bool exists;
+            bool disabled;
+            await using (var reader = await command.ExecuteReaderAsync(ct))
+            {
+                await reader.ReadAsync(ct);
+                exists = reader.GetBoolean(0);
+                disabled = reader.GetBoolean(1);
+            }
+            if (seedOnly && exists)
+                return Result<bool>.Ok(false);
+            if (!disabled && await CaptureProcessors.PreflightAsync(CaptureProcessors.Resolve(services, schedule.Stage),
+                    source, schedule.Stage, ct) is { } processingError)
+                return Result<bool>.Fail(processingError);
+        }
         if ((schedule.Kind is WorkKind.Discover or WorkKind.Harvest) && schedule.Enabled && schedule.Mode != ScheduleMode.Manual)
         {
             await using var command = EngineSql.Command(connection, transaction, """
