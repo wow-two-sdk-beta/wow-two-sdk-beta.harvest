@@ -31,7 +31,7 @@ it('opens the demo console without a key or backend and resets its state', async
     await wrapper.get('[aria-label="Reading"] input').trigger('click');
     await flushPromises();
     await vi.waitFor(() => expect(state()).toContain('Disabled'));
-    const notices = () => document.body.querySelector('[role="region"][aria-label="Notifications"]');
+    const notices = () => document.body.querySelector('[role="region"][data-toast-position]');
     expect(notices()?.textContent).toContain('Afisha.uz is disabled.');
     expect(wrapper.text()).not.toContain('Afisha.uz is disabled.');
     await router.push('/sources');
