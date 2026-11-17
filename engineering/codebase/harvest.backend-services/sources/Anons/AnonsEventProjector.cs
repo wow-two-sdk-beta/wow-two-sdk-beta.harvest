@@ -14,10 +14,22 @@ internal static partial class AnonsEventProjector
         string? rawPrice = Field(fields, "Стоимость", "Narx", "Price");
         string? rawVenue = Field(fields, "Локация", "Адрес", "Manzil", "Joy", "Location", "Address");
         bool free = rawPrice is not null && FreeAdmission().IsMatch(rawPrice);
+        string? start = ValidDate(AnonsStructuredData.String(original, "startDate"));
+        string? end = ValidDate(AnonsStructuredData.String(original, "endDate"));
+        // The page's Event data and its printed time can disagree (live, 2026-11-17: Event 21:00+05:00 under a printed
+        // 16:00–18:00, five hours apart). Neither is provably right, so the event keeps only its day.
+        DateTimeOffset? localStart = Local(start);
+        bool timeConflict = localStart is { } begins && PrintedStart(rawTimes) is { } printed
+            && TimeOnly.FromTimeSpan(begins.TimeOfDay) != printed;
+        if (timeConflict)
+        {
+            start = Day(localStart!.Value);
+            end = Local(end) is { } ends ? Day(ends) : end;
+        }
         var evidence = new
         {
             reader = "anons", recordKind = ApplicationTitle().IsMatch(title) ? "call" : "event",
-            rawDates, rawTimes, rawPrice, rawVenue, fields, tags,
+            rawDates, rawTimes, rawPrice, rawVenue, fields, tags, timeConflict,
             visitorAdmission = free ? "free" : "unknown",
             participation = new { visitor = "unknown", vendor = "unknown", exhibitor = "unknown", runway = "unknown", artisan = "unknown" },
         };
@@ -30,9 +42,10 @@ internal static partial class AnonsEventProjector
             if (original is { } json && json.TryGetProperty(property, out JsonElement value)
                 && value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined))
                 node[property] = value.Clone();
-        foreach (string property in new[] { "startDate", "endDate" })
-            if (ValidDate(AnonsStructuredData.String(original, property)) is { } value)
-                node[property] = value;
+        if (start is not null)
+            node["startDate"] = start;
+        if (end is not null)
+            node["endDate"] = end;
         if (!node.ContainsKey("location") && rawVenue is not null)
             node["location"] = new Dictionary<string, object?>
             {
@@ -87,6 +100,20 @@ internal static partial class AnonsEventProjector
         .Replace("\u00a0", string.Empty, StringComparison.Ordinal).Replace(',', '.'), NumberStyles.Number,
         CultureInfo.InvariantCulture, out decimal amount) ? amount.ToString(CultureInfo.InvariantCulture) : null;
 
+    /// <summary>Uzbekistan keeps UTC+05:00 all year, with no daylight saving.</summary>
+    private static readonly TimeSpan Tashkent = TimeSpan.FromHours(5);
+
+    private static DateTimeOffset? Local(string? value) => value is { Length: > 10 }
+        && DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTimeOffset time)
+        ? time.ToOffset(Tashkent) : null;
+
+    private static string Day(DateTimeOffset value) => value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    /// <summary>Reads the start of a printed time such as <c>16:00–18:00</c> or <c>10:00 - 23:00</c>.</summary>
+    private static TimeOnly? PrintedStart(string? raw) => raw is not null && PrintedTime().Match(raw) is { Success: true } time
+        && TimeOnly.TryParseExact(time.Groups[1].Value.PadLeft(2, '0') + ":" + time.Groups[2].Value, "HH:mm",
+            CultureInfo.InvariantCulture, DateTimeStyles.None, out TimeOnly value) ? value : null;
+
     private static string? ValidDate(string? raw)
     {
         if (raw is null)
@@ -96,7 +123,7 @@ internal static partial class AnonsEventProjector
         return OffsetDate().IsMatch(raw) && DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.None, out _) ? raw : null;
     }
 
-    [GeneratedRegex(@"вход\s+(?:свободн\w*|бесплатн\w*)|бесплатн\w*\s+вход|kirish\s+bepul|free\s+(?:entry|admission)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"вход\s+(?:для\s+посетител\w*\s+)?(?:свободн\w*|бесплатн\w*)|бесплатн\w*\s+вход|kirish\s+bepul|free\s+(?:entry|admission)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex FreeAdmission();
 
     [GeneratedRegex(@"при[её]м\s+заявок|заявки\s+на\s+(?:конкурс|участие)|открыт\w*\s+конкурс|ariza(?:lar)?\s+qabul|ochiq\s+tanlov", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
@@ -113,4 +140,7 @@ internal static partial class AnonsEventProjector
 
     [GeneratedRegex(@"^20\d{2}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$", RegexOptions.CultureInvariant)]
     private static partial Regex OffsetDate();
+
+    [GeneratedRegex(@"^\D{0,12}?\b([01]?\d|2[0-3])[:.]([0-5]\d)\b", RegexOptions.CultureInvariant)]
+    private static partial Regex PrintedTime();
 }

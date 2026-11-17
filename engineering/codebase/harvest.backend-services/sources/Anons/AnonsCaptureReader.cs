@@ -69,36 +69,43 @@ public sealed partial class AnonsCaptureReader : ICaptureReader
             Body = document.Body, Locale = locale, PublishedAtUtc = published,
             Structured = structured, Links = links, Media = media,
             ContentProjection = JsonSerializer.Serialize(new { canonical = identity, title, text, locale, structured, links, media }),
-            Warnings = projected.TryGetProperty("startDate", out _) ? [] : ["event_date_unknown"],
+            Warnings = [.. projected.TryGetProperty("startDate", out _) ? Array.Empty<string>() : ["event_date_unknown"],
+                .. projected.GetProperty("anons").GetProperty("timeConflict").GetBoolean() ? ["event_time_conflict"] : Array.Empty<string>()],
         };
         return Result<CaptureReadResult>.Ok(new CaptureReadResult { Captures = [capture], Complete = false });
     }
 
     private static IReadOnlyList<DiscoveredUrl> Discover(IDocument html, Uri basis)
     {
-        var targets = new Dictionary<string, DiscoveredUrl>(StringComparer.Ordinal);
+        // A listing leads only to its own locale's events, articles first: the engine admits targets in this order
+        // within the run's page budget, which counts detail pages too. Tag and day filters, the other locale's list
+        // and the home page repeat the same window (one events page links 100+ of them) and would spend the budget
+        // on listings before any event. Calendar days and Events fragments follow the articles.
+        string locale = AnonsUrls.Locale(basis);
+        bool fromEvents = AnonsUrls.IsEvents(basis);
         string current = AnonsUrls.Listing(basis);
+        var articles = new Dictionary<string, DiscoveredUrl>(StringComparer.Ordinal);
+        var listings = new Dictionary<string, DiscoveredUrl>(StringComparer.Ordinal);
         foreach (IElement element in html.QuerySelectorAll("a[href], [data-url]"))
         {
             string? raw = element.GetAttribute("href") ?? element.GetAttribute("data-url");
             Uri? url = AnonsUrls.Resolve(basis, AnonsUrls.WebUrl(basis, raw));
-            if (url is null)
-                continue;
-            if (url.AbsolutePath.Contains("/fragment/", StringComparison.Ordinal) && !EventSection(element))
+            if (url is null || AnonsUrls.Locale(url) != locale)
                 continue;
             if (AnonsUrls.IsArticle(url))
             {
                 string identity = AnonsUrls.Identity(url);
-                targets.TryAdd(identity, new DiscoveredUrl { Url = identity });
+                articles.TryAdd(identity, new DiscoveredUrl { Url = identity });
             }
-            else if (AnonsUrls.IsListing(url))
+            else if (AnonsUrls.IsFragment(url) ? AnonsUrls.IsListing(url) && EventSection(element)
+                : AnonsUrls.IsCalendarDay(url) || !fromEvents && AnonsUrls.IsEvents(url) && url.Query.Length <= 1)
             {
                 string listing = AnonsUrls.Listing(url);
                 if (listing != current)
-                    targets.TryAdd(listing, new DiscoveredUrl { Url = listing, IsListing = true });
+                    listings.TryAdd(listing, new DiscoveredUrl { Url = listing, IsListing = true });
             }
         }
-        return targets.Values.ToArray();
+        return [.. articles.Values, .. listings.Values];
     }
 
     private static bool EventSection(IElement element)

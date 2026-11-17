@@ -127,7 +127,7 @@ public sealed class OcharoSourceProvisioner(IRegistrationBroker registry, IDeliv
                         ContainerId = container.Id, SourceId = source.Id, Scope = new() { Url = seed },
                         Name = profile.Name + (instagram ? " · @" + uri.AbsolutePath.Trim('/') : "") + " · Ocharo",
                         Ai = AiMode.Off, Pinned = false, Schedules = schedules,
-                        Limits = new() { MaxPages = 5, MaxItems = 150, MaxRequests = 180, MaxBytes = 30_000_000, MaxDuration = TimeSpan.FromMinutes(10), MaxProbes = 100 },
+                        Limits = new() { MaxPages = profile.MaxPages, MaxItems = 150, MaxRequests = 180, MaxBytes = 30_000_000, MaxDuration = TimeSpan.FromMinutes(10), MaxProbes = 100 },
                     }, cancellationToken));
                     pipelines.Add(pipeline);
                 }

@@ -11,6 +11,17 @@ internal static partial class AnonsUrls
 
     internal static bool IsListing(Uri url) => ListingPath().IsMatch(url.AbsolutePath);
 
+    /// <summary>Names the locale segment, such as <c>ru</c>; empty outside a locale route.</summary>
+    internal static string Locale(Uri url) => url.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries) is [{ } first, ..]
+        ? first : string.Empty;
+
+    internal static bool IsEvents(Uri url) => EventsPath().IsMatch(url.AbsolutePath);
+
+    internal static bool IsFragment(Uri url) => url.AbsolutePath.Contains("/fragment/", StringComparison.Ordinal);
+
+    /// <summary>A calendar day of the events list, <c>/{locale}/events?date=YYYY-MM-DD</c>.</summary>
+    internal static bool IsCalendarDay(Uri url) => IsEvents(url) && CalendarQuery().IsMatch(url.Query);
+
     internal static Uri? Resolve(Uri basis, string? raw)
     {
         return raw is not null && Uri.TryCreate(basis, raw, out Uri? uri) && IsHost(uri.IdnHost)
@@ -49,4 +60,10 @@ internal static partial class AnonsUrls
 
     [GeneratedRegex(@"^/(?:ru|uz|en)(?:/events|/fragment/section/\d+)?/?$", RegexOptions.CultureInvariant)]
     private static partial Regex ListingPath();
+
+    [GeneratedRegex(@"^/(?:ru|uz|en)/events/?$", RegexOptions.CultureInvariant)]
+    private static partial Regex EventsPath();
+
+    [GeneratedRegex(@"^\?date=20\d{2}-\d{2}-\d{2}$", RegexOptions.CultureInvariant)]
+    private static partial Regex CalendarQuery();
 }

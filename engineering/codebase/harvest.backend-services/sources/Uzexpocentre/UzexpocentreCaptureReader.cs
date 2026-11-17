@@ -47,6 +47,7 @@ public sealed partial class UzexpocentreCaptureReader : ICaptureReader
                 if (title.Length == 0)
                     continue;
                 string organizer = Clean(row[2]?.TextContent);
+                var (organizerName, organizerUrl) = Organizer(row[2], organizer, document.FinalUrl);
                 string rawDate = Clean(row[3]?.TextContent);
                 string pavilion = Clean(row[4]?.TextContent);
                 var dates = Dates(rawDate, year);
@@ -68,7 +69,6 @@ public sealed partial class UzexpocentreCaptureReader : ICaptureReader
                 {
                     ["@context"] = "https://schema.org", ["@type"] = "Event", ["@id"] = externalKey,
                     ["name"] = title, ["description"] = title, ["url"] = canonical, ["inLanguage"] = "en",
-                    ["organizer"] = new { name = organizer },
                     ["location"] = new
                     {
                         name = "Uzexpocentre" + (pavilion.Length > 0 ? " · " + pavilion : string.Empty),
@@ -76,6 +76,8 @@ public sealed partial class UzexpocentreCaptureReader : ICaptureReader
                     },
                     ["uzexpocentre"] = evidence,
                 };
+                if (organizerName.Length > 0)
+                    node["organizer"] = organizerUrl is null ? new { name = organizerName } : (object)new { name = organizerName, url = organizerUrl };
                 if (dates.Start is not null) node["startDate"] = dates.Start;
                 if (dates.End is not null) node["endDate"] = dates.End;
                 JsonElement structured = JsonSerializer.SerializeToElement(node);
@@ -97,6 +99,22 @@ public sealed partial class UzexpocentreCaptureReader : ICaptureReader
         }
         return captures.Count == 0 ? Failure("No readable exhibition rows were found.")
             : Result<CaptureReadResult>.Ok(new() { Captures = captures, Complete = false });
+    }
+
+    /// <summary>Reads the organizer's name ahead of the phone, email, website and "Tel" lines the cell prints after it, so
+    /// contacts never become part of the name; the cell's first web link, when it has one, is the organizer's site.</summary>
+    private static (string Name, string? Url) Organizer(IElement? cell, string raw, Uri basis)
+    {
+        // The cell prints one value per paragraph; joining them keeps a name apart from the phone that follows it.
+        string text = cell?.QuerySelectorAll("p") is { Length: > 0 } lines
+            ? Clean(string.Join(' ', lines.Select(line => line.TextContent))) : raw;
+        Match contact = ContactStart().Match(text);
+        string name = (contact.Success ? text[..contact.Index] : text).Trim().TrimEnd(',', ';', ':', '-', '–', '—', '|').Trim();
+        string? url = cell?.QuerySelectorAll("a[href]")
+            .Select(anchor => Uri.TryCreate(basis, anchor.GetAttribute("href"), out Uri? link) && link.Scheme is "https" or "http"
+                && link.UserInfo.Length == 0 ? link.AbsoluteUri : null)
+            .FirstOrDefault(link => link is not null);
+        return (name, url);
     }
 
     private static int? PrintedYear(IElement table)
@@ -163,6 +181,9 @@ public sealed partial class UzexpocentreCaptureReader : ICaptureReader
     private static string Clean(string? text) => Space().Replace(text ?? string.Empty, " ").Trim().Normalize(NormalizationForm.FormC);
     [GeneratedRegex(@"\b20\d{2}\b", RegexOptions.CultureInvariant)]
     private static partial Regex Year();
+    [GeneratedRegex(@"\S+@\S+|(?<![\w-])\+?\d[\d\s().\-–]{6,}\d|\b(?:tel|phone|fax|web-?site|e-?mail)\b|\bwww\.|https?://",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex ContactStart();
     [GeneratedRegex(@"^\d{1,3}\.?$", RegexOptions.CultureInvariant)]
     private static partial Regex RowNumber();
     [GeneratedRegex(@"^(?<first>\d{1,2})(?:\.(?<firstMonth>\d{1,2}))?(?:[-–—](?<last>\d{1,2}))?\.(?<month>\d{1,2})\.?$", RegexOptions.CultureInvariant)]

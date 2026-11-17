@@ -13,7 +13,7 @@ public sealed partial record OcharoSourceRegistry
     private static readonly CollectionProfile[] Profiles =
     [
         new("afisha-uz", "Afisha", 50, SourceFamily.Site, "web-direct"),
-        new("anons-uz", "ANONS", 50, SourceFamily.Site, "web-direct"),
+        new("anons-uz", "ANONS", 50, SourceFamily.Site, "web-direct", MaxPages: 25),
         new("craftfair-uz", "Craftfair / Hunarmand", 80, SourceFamily.Site, "web-direct"),
         new("uzexpocentre-uz", "Uzexpocentre", 80, SourceFamily.Site, "none"),
         new(CaexSourceAdapter.AdapterKey, "CAEx", 80, SourceFamily.Site, "none"),
@@ -116,7 +116,10 @@ public sealed partial record OcharoSourceRegistry
     [GeneratedRegex("^[a-z0-9]+(?:-[a-z0-9]+)*$", RegexOptions.CultureInvariant)]
     private static partial Regex Identifier();
 
-    internal sealed record CollectionProfile(string Key, string Name, int Authority, SourceFamily Family, string CheckPolicy);
+    /// <summary>A publisher's collection settings. <paramref name="MaxPages"/> bounds a run's listing and detail pages
+    /// together; a publisher whose listing holds more events than fit in five pages takes a larger bound.</summary>
+    internal sealed record CollectionProfile(string Key, string Name, int Authority, SourceFamily Family, string CheckPolicy,
+        int MaxPages = 5);
 
     internal sealed record CollectionRoute(OcharoSourceGroup Group, OcharoSourceChannel Channel, CollectionProfile Profile);
 }

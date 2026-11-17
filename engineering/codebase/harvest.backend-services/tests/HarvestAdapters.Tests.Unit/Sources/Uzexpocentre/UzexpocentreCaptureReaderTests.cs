@@ -75,6 +75,46 @@ public sealed class UzexpocentreCaptureReaderTests
         }
     }
 
+    [Theory]
+    [InlineData("<p>FIXTURE EXHIBITIONS</p><p>+00000 000-00-00</p><p>post@organizer.example</p><p>www.organizer.example</p>",
+        "FIXTURE EXHIBITIONS", null)]
+    [InlineData("<p>FIXTURE EXPO GROUP</p><p>+00000 000-00-00</p><p><a href=\"mailto:info@organizer.example\">info@organizer.example</a></p><p><a href=\"http://www.organizer.example\">www.organizer.example</a></p>",
+        "FIXTURE EXPO GROUP", "http://www.organizer.example/")]
+    [InlineData("<p>FIXTURE-LLP</p><p>+00000 000-00-00 &nbsp;<a href=\"mailto:info@organizer.example\">info@organizer.example</a></p>",
+        "FIXTURE-LLP", null)]
+    [InlineData("<p>&laquo;Fixture&raquo;</p><p>Association</p><p>00-000-00-00</p><p>00-000-00-00</p>", "«Fixture» Association", null)]
+    [InlineData("<p>&ldquo;Fixture Enterprise Inc.&rdquo;</p><p>Tel +0 000 000 0000</p>", "“Fixture Enterprise Inc.”", null)]
+    [InlineData("<p>Ministry of fixtures&nbsp;</p><p>Web-site: <a href=\"http://www.organizer.example\">www.organizer.example</a></p><p>+00000 000-00-00</p>",
+        "Ministry of fixtures", "http://www.organizer.example/")]
+    [InlineData("<p>Fixturemesse Fixturemesse@organizer.example +00000 000-00-00</p>", "Fixturemesse", null)]
+    [InlineData("<p>&laquo;Fixture Fashion week&raquo; Co Ltd.</p>", "«Fixture Fashion week» Co Ltd.", null)]
+    public async Task Read_ShouldKeepPrintedContactsOutOfTheOrganizerName(string cell, string name, string? url)
+    {
+        // Trimmed from the live calendar's organizer cells (2026-11-17), with synthetic contacts: the name came out as
+        // "NAME +phone email site" and reached the event wire as its organizer.
+        string row = $"<tr><td>2.</td><td>Textile fair</td><td>{cell}</td><td>08-10.09</td><td>№№1,2</td></tr>";
+
+        JsonElement node = (await Read(Page(2026, row))).Captures.Single().Structured.Single();
+
+        node.GetProperty("organizer").GetProperty("name").GetString().Should().Be(name);
+        if (url is null)
+            node.GetProperty("organizer").TryGetProperty("url", out _).Should().BeFalse();
+        else
+            node.GetProperty("organizer").GetProperty("url").GetString().Should().Be(url);
+        node.GetProperty("uzexpocentre").GetProperty("organizerRaw").GetString().Should().StartWith(name.Split(' ')[0]);
+        node.GetProperty("startDate").GetString().Should().Be("2026-09-08");
+    }
+
+    [Fact]
+    public async Task Read_ShouldOmitTheOrganizer_WhenTheCellIsEmpty()
+    {
+        string row = "<tr><td>2.</td><td>Textile fair</td><td>\n\n</td><td>08-10.09</td><td>№№1,2</td></tr>";
+
+        JsonElement node = (await Read(Page(2026, row))).Captures.Single().Structured.Single();
+
+        node.TryGetProperty("organizer", out _).Should().BeFalse();
+    }
+
     [Fact]
     public async Task Read_ShouldKeepTheNormalRowKeyStable_WhenItsDatesAndPrintedRowNumberChange()
     {
