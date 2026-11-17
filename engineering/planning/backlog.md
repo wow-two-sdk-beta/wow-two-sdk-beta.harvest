@@ -9,6 +9,7 @@ Shape: wow-two-ws/conventions/planning/version-track/version-track.md
 
 | Item | Type | Notes |
 |---|---|---|
+| Instagram Capture stage controls | feature | Phase 1: expose the adapter's supported Capture operation and cadence in the generic pipeline overview. Current stage cards cover only Discover/Harvest/Process; Instagram has neither a discovery catalog nor a Detail step, so those first two cards cannot harvest it. Source Settings already offers working Capture now. The engine accepts `kind=capture` schedules through pipeline updates; the generic stage-settings API/UI must expose that supported path without inventing a catalog or treating Process as collection. |
 | Post card composition | engineering | review date layout first, then isolate the card from list state and adopt the SDK primitives that preserve card links and controls |
 | Adaptive pagination in the frontend SDK | engineering | extract the cursor loader and scroll-velocity prefetch after reviewing both SCFD views. Reuse the SDK virtual windowing, test slow networks and keyboard navigation, and expose page-size bounds to consumers. |
 | Afisha publisher category coverage | feature | review categories beyond Fashion, Exhibitions and Concerts against saved publisher evidence. Keep publisher category, event timing and harvest section available as facets. |
