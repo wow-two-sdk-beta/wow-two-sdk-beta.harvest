@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { useSourceImages } from './UseSourceImages';
 
 const props = defineProps<{ images: readonly string[]; removed: boolean }>();
 const broken = ref<ReadonlySet<string>>(new Set());
-const photos = computed(() => props.images.filter((url) => !broken.value.has(url)));
+const images = useSourceImages(() => props.images);
+const photos = computed(() => images.urls.value.filter((url) => !broken.value.has(url)));
 const chosen = ref<string>();
 const active = computed(() => photos.value.find((url) => url === chosen.value) ?? photos.value[0]);
 const number = computed(() => (active.value ? photos.value.indexOf(active.value) + 1 : 0));

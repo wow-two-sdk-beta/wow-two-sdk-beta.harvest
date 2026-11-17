@@ -3,7 +3,7 @@ import { computed, ref, useId, watch } from 'vue';
 import { Button } from '@wow-two-beta/fe/presentation/actions';
 import type { PipelineModel, PipelineUpdate } from '../../contracts';
 import { useHarvestConsole } from './HarvestConsole';
-import type { SourceProfileSchema } from './SourceProfileSchema';
+import { profileLimitValue, type SourceProfileSchema } from './SourceProfileSchema';
 
 /** Saves a profile and its run bounds; creating a profile never enables a schedule. */
 defineOptions({ name: 'SourceProfileForm' });
@@ -38,13 +38,12 @@ watch(
       props.sourceId,
       props.schema.fixedUrl,
       props.pipeline?.id,
-      props.pipeline?.limits.pageSize,
-      props.pipeline?.limits.maxPages,
+      props.pipeline?.limits,
       props.schema.limits,
     ]),
   () => {
     values.value = Object.fromEntries(
-      props.schema.limits.map((bound) => [bound.key, props.pipeline?.limits[bound.key] ?? bound.default]),
+      props.schema.limits.map((bound) => [bound.key, profileLimitValue(bound, props.pipeline?.limits)]),
     );
   },
   { immediate: true },
@@ -96,6 +95,7 @@ async function save() {
         />
         <p :id="`${formId}-${bound.key}-range`" class="text-xs text-muted-foreground">
           {{ bound.minimum }}–{{ bound.maximum }}
+          <span v-if="bound.description">· {{ bound.description }}</span>
         </p>
       </div>
       <Button type="submit" variant="outline" :is-disabled="disabled || !valid">

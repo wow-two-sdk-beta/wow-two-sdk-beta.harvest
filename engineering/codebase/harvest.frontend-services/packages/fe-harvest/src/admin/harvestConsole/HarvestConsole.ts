@@ -1070,7 +1070,7 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
 /** One console session: the connection, the open container's data and its actions. */
 export type HarvestConsole = ReturnType<typeof createHarvestConsole>;
 
-const HarvestConsoleKey: InjectionKey<HarvestConsole> = Symbol('harvest.console');
+export const HarvestConsoleKey: InjectionKey<HarvestConsole> = Symbol('harvest.console');
 
 /** Shares a console session with every panel below the calling component. */
 export function provideHarvestConsole(session: HarvestConsole) {

@@ -25,6 +25,7 @@ import PostPills from './PostPills.vue';
 import { kindGlyphOf, sectionGlyphOf } from './PostGlyphs';
 import { labelsStatedBy } from './PostLabels';
 import SourceIcon from './SourceIcon.vue';
+import SourceImage from './SourceImage.vue';
 import { languageName } from './SourceSections';
 import { useHarvestConsole } from './HarvestConsole';
 import { useAdaptiveList } from './UseAdaptiveList';
@@ -423,7 +424,7 @@ function sectionOf(post: SourcePostModel) {
             >
               <CarouselSlides class="size-full">
                 <CarouselSlide v-for="src in imagesOf(post)" :key="src" class="relative">
-                  <img
+                  <SourceImage
                     v-if="!failedImages.has(src)"
                     :src="src"
                     alt=""

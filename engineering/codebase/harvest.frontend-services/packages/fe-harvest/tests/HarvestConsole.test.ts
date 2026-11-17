@@ -632,14 +632,14 @@ describe('Sources gallery', () => {
     expect(never.get('[data-read-method]').attributes('data-read-method')).toBe('telegram');
   });
 
-  it('shows the sources alone while one group holds them all: no group tile, no separator', async () => {
+  it('keeps the named heading when one group holds all sources, without a repeated summary tile', async () => {
     const wrapper = mountConsole({
       options: { client: createHarvestClient({ fetch: fixtureFetch() }) },
       panels: () => h(SourcesGallery, { view: 'cards' }),
     });
     await flushPromises();
     expect(wrapper.find('article[aria-label="Afisha"]').exists()).toBe(false);
-    expect(wrapper.find('section header').exists()).toBe(false);
+    expect(wrapper.get('section header').text()).toContain('Afisha');
     expect(wrapper.find('article[aria-label="Afisha.uz"]').exists()).toBe(true);
     expect(wrapper.find('article[aria-label="Afisha Telegram"]').exists()).toBe(true);
   });

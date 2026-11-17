@@ -83,6 +83,10 @@ internal static class RunPlanner
             WorkKind.Harvest => pipeline.Limits with { MaxItems = stage!.BatchSize },
             _ => pipeline.Limits,
         };
+        if (adapter is ISourceRunLimitsResolver resolver)
+            limits = resolver.ResolveRunLimits(source, limits, kind);
+        if (RegistrationRules.ValidateLimits(limits) is { } limitError)
+            return Result<Guid>.Fail(limitError);
         var frozen = new FrozenRun(pipeline with { Limits = limits }, source, adapter?.Key ?? "unavailable", descriptor)
         {
             Kind = kind, Stage = stage,

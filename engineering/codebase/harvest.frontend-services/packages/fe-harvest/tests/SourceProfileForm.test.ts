@@ -6,7 +6,7 @@ import SourceSettingsTab from '../src/admin/harvestConsole/SourceSettingsTab.vue
 import SourcePipelinesTab from '../src/admin/harvestConsole/SourcePipelinesTab.vue';
 import SourceHeader from '../src/admin/harvestConsole/SourceHeader.vue';
 import SourceProfileForm from '../src/admin/harvestConsole/SourceProfileForm.vue';
-import { sourceProfileSchema } from '../src/admin/harvestConsole/SourceProfileSchema';
+import { profileLimitValue, sourceProfileSchema } from '../src/admin/harvestConsole/SourceProfileSchema';
 import type { PipelineModel, SourceOverviewModel } from '../src/contracts';
 import { createHarvestClient } from '../src/kit';
 
@@ -24,6 +24,22 @@ const schema = {
   limits: {
     pageSize: { minimum: 1, maximum: 50, default: 25, title: 'Posts per page' },
     maxPages: { minimum: 1, maximum: 50, default: 4, title: 'Pages per run' },
+  },
+};
+const postsSchema = {
+  ...schema,
+  limits: {
+    maxItems: {
+      minimum: 1,
+      maximum: 2000,
+      default: 100,
+      title: 'Posts per run',
+      description: 'Checks up to this many recent posts. Existing posts count.',
+      legacyProduct: [
+        { key: 'pageSize', default: 25 },
+        { key: 'maxPages', default: 4 },
+      ],
+    },
   },
 };
 const source: SourceOverviewModel = {
@@ -118,7 +134,7 @@ function mountProfiles(
             displayName: 'Instagram',
             readiness: options.ready === false ? 'configurationRequired' : 'ready',
             scopeSchema: fixedUrl
-              ? { ...schema, properties: { url: { ...schema.properties.url, const: fixedUrl } } }
+              ? { ...postsSchema, properties: { url: { ...schema.properties.url, const: fixedUrl } } }
               : schema,
           },
         },
@@ -316,6 +332,10 @@ describe('stored source profiles', () => {
     expect(wrapper.text()).not.toContain('Another publisher');
     expect(wrapper.text()).not.toContain('Harvest now');
     const limits = wrapper.get('form[aria-label="Profile limits"]');
+    expect(limits.findAll('input[type="number"]')).toHaveLength(1);
+    expect(limits.text()).toContain('Posts per run');
+    expect(limits.text()).not.toContain('Posts per page');
+    expect(limits.text()).not.toContain('Pages per run');
     await limits.get('input[type="number"]').setValue('7');
     await limits.trigger('submit');
     await flushPromises();
@@ -326,7 +346,7 @@ describe('stored source profiles', () => {
         name: publisher.name,
         scope: pipeline.scope,
         schedules: [],
-        limits: { pageSize: 7, maxPages: 4 },
+        limits: { maxItems: 7 },
       },
     });
     await wrapper.get(`[aria-label="Capture ${publisher.name} now"]`).trigger('click');
@@ -350,7 +370,7 @@ describe('stored source profiles', () => {
     expect(writes[0]?.body).toMatchObject({
       sourceId: source.sourceId,
       scope: { url: 'https://www.instagram.com/teplostore_2022/', restrictToPath: false, parameters: {} },
-      limits: { pageSize: 25, maxPages: 4 },
+      limits: { maxItems: 100 },
       schedules: [],
     });
     expect(wrapper.find('form[aria-label="Create pipeline"]').exists()).toBe(false);
@@ -362,6 +382,51 @@ describe('stored source profiles', () => {
     expect(wrapper.find('input[type="url"]').exists()).toBe(false);
     expect(wrapper.text()).toContain('Manage publisher pipeline');
     expect(wrapper.text()).not.toContain('Add profile');
+  });
+
+  it.each([
+    [{ pageSize: 1, maxPages: 1 }, 1],
+    [{}, 100],
+    [{ pageSize: 1, maxPages: 1, maxItems: 150 }, 150],
+    [{ pageSize: 50, maxPages: 100 }, 2000],
+  ])('reads the declared post budget or legacy page product: %j', (limits, expected) => {
+    const bound = sourceProfileSchema(postsSchema)!.limits[0]!;
+    expect(profileLimitValue(bound, limits)).toBe(expected);
+  });
+
+  it('preserves a one-post test bound and saves only the new post limit', async () => {
+    const publisher = { name: 'Teplo Fest', handle: 'teplofest' };
+    const pipeline = {
+      ...existing,
+      scope: { ...existing.scope, url: 'https://www.instagram.com/teplofest/' },
+      limits: { pageSize: 1, maxPages: 1 },
+    };
+    const { wrapper, writes } = mountProfiles([pipeline], { publisher, surface: 'pipelines' });
+    await flushPromises();
+    const form = wrapper.get('form[aria-label="Profile limits"]');
+    const input = form.get('input[type="number"]');
+    expect((input.element as HTMLInputElement).value).toBe('1');
+    expect(input.attributes()).toMatchObject({ min: '1', max: '2000', step: '1' });
+    for (const value of ['', '0', '2001', '1.5']) {
+      await input.setValue(value);
+      await form.trigger('submit');
+      await flushPromises();
+    }
+    expect(writes).toEqual([]);
+    await input.setValue('75');
+    await form.trigger('submit');
+    await flushPromises();
+    expect(writes).toHaveLength(1);
+    expect(writes[0]?.body.limits).toEqual({ maxItems: 75 });
+  });
+
+  it('rejects unsupported legacy limit conversion metadata', () => {
+    expect(
+      sourceProfileSchema({
+        ...postsSchema,
+        limits: { maxItems: { ...postsSchema.limits.maxItems, legacyProduct: [{ key: 'unknown', default: 25 }] } },
+      }),
+    ).toBeUndefined();
   });
 
   it('does not capture a mismatched profile under a fixed publisher source', async () => {

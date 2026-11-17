@@ -116,6 +116,9 @@ internal sealed partial class ModulePostBroker(
                 ("container", containerId), ("version", envelope.Extraction.RulesVersion), ("title", envelope.Title), ("text", envelope.Text),
                 ("fields", StoreJson.Write(envelope)), ("tiers", StoreJson.Write(envelope.FieldSources)), ("contacts", StoreJson.Write(envelope.Contacts)));
         }
+        if (!changed && envelope.Media.Count > 0)
+            await RefreshMediaAsync(connection, transaction, containerId, link.PostId, link.Id, envelope,
+                capture.CapturedAtUtc, now, cancellationToken);
         await PostSql.ExecuteAsync(connection, transaction, """
             UPDATE harvest_link_schedule SET last_seen_at=GREATEST(last_seen_at,@at),
                 consecutive_missing=0,fail_count=0,next_check_at=GREATEST(next_check_at,@next),due=true WHERE link_id=@id

@@ -62,6 +62,8 @@ export interface PipelineStagesClient {
 /** Exposes console operations under the same contract for an embedded or remote Harvest. */
 export interface HarvestClient extends RegistryClient {
   readonly pipelineStages?: PipelineStagesClient;
+  /** Reads private source bytes with the same credentials and session lifetime as other API calls. */
+  getSourceAsset?(sourceId: string, assetId: string, signal?: AbortSignal): Promise<Result<Blob, ApiFailure>>;
   getSourceCapabilities(id: string, signal?: AbortSignal): Promise<Result<SourceCapabilitiesModel, ApiFailure>>;
   listTenants(signal?: AbortSignal): Promise<Result<readonly TenantModel[], ApiFailure>>;
   registerTenant(body: { slug: string; name: string }, signal?: AbortSignal): Promise<Result<TenantModel, ApiFailure>>;
@@ -246,6 +248,11 @@ export function createHarvestClient(options: RegistryClientOptions = {}): Harves
   const signalOf = (signal?: AbortSignal) => (signal === undefined ? {} : { signal });
   return {
     ...createRegistryClient(options),
+    getSourceAsset: (sourceId, assetId, signal) =>
+      api.get(`/api/sources/${encodeURIComponent(sourceId)}/assets/${encodeURIComponent(assetId)}`, {
+        ...signalOf(signal),
+        response: 'blob',
+      }),
     pipelineStages: {
       list: (id, signal) =>
         api.get(`/api/pipelines/${encodeURIComponent(id)}/stages`, {

@@ -145,7 +145,7 @@ public sealed class InstagramPipelineTests
     }
 
     [Fact]
-    public async Task Queued_run_keeps_its_profile_and_page_policy_when_the_saved_pipeline_changes()
+    public async Task Queued_run_keeps_its_profile_and_resolved_post_policy_when_the_saved_pipeline_changes()
     {
         await using var fixture = await Fixture.CreateAsync();
         Guid queued = await fixture.QueueAsync();
@@ -154,7 +154,7 @@ public sealed class InstagramPipelineTests
         {
             Name = "Changed after queueing",
             Scope = new() { Url = "https://www.instagram.com/another.publisher/" },
-            Limits = new() { PageSize = 7, MaxPages = 1 }, Schedules = [],
+            Limits = new() { MaxItems = 1 }, Schedules = [],
         }));
 
         RunModel completed = await fixture.DrainAsync(queued);
@@ -163,17 +163,18 @@ public sealed class InstagramPipelineTests
         completed.Requests.Should().Be(3);
         completed.Captured.Should().Be(2);
         fixture.Http.Calls.Should().HaveCount(3).And.OnlyContain(call =>
-            Uri.UnescapeDataString(call.Uri.Query).Contains("business_discovery.username(genericpublisher)", StringComparison.Ordinal)
-            && Uri.UnescapeDataString(call.Uri.Query).Contains("media.limit(1)", StringComparison.Ordinal));
+            Uri.UnescapeDataString(call.Uri.Query).Contains("business_discovery.username(genericpublisher)", StringComparison.Ordinal));
+        Uri.UnescapeDataString(fixture.Http.Calls[0].Uri.Query).Should().Contain("media.limit(4)");
+        Uri.UnescapeDataString(fixture.Http.Calls[1].Uri.Query).Should().Contain("media.limit(3)");
+        Uri.UnescapeDataString(fixture.Http.Calls[2].Uri.Query).Should().Contain("media.limit(2)");
         PipelineModel saved = Value(await registry.GetPipelineAsync(fixture.PipelineId));
         saved.Scope.Url.Should().Be("https://www.instagram.com/another.publisher/");
-        saved.Limits.PageSize.Should().Be(7);
-        saved.Limits.MaxPages.Should().Be(1);
+        saved.Limits.MaxItems.Should().Be(1);
         await fixture.AssertSanitizedAsync();
     }
 
     [Fact]
-    public async Task Saved_page_budget_stops_provider_pagination_without_a_host_config_change()
+    public async Task Legacy_page_budget_becomes_a_post_budget_without_a_host_config_change()
     {
         await using var fixture = await Fixture.CreateAsync();
         var registry = fixture.Services.GetRequiredService<IRegistrationBroker>();
@@ -187,10 +188,94 @@ public sealed class InstagramPipelineTests
 
         run.Requests.Should().Be(1);
         run.Captured.Should().Be(1);
+        run.Status.Should().Be(RunStatus.Partial);
+        run.CompletionReason.Should().Be(RunReason.ItemLimit);
         fixture.Http.Calls.Should().ContainSingle();
         (await fixture.Services.GetRequiredService<HarvestEngine>().ProcessNextAsync()).Should().BeFalse();
         (await fixture.PostsAsync()).Should().ContainSingle();
         await fixture.AssertSanitizedAsync();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Explicit_post_budget_overrides_legacy_pages_and_stops_after_examining_unchanged_or_malformed_records(bool malformed)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Http.IncludeMalformedFirstRecord = malformed;
+        fixture.Http.RepeatFirstRecord = !malformed;
+        int maximum = malformed ? 3 : 2;
+        var registry = fixture.Services.GetRequiredService<IRegistrationBroker>();
+        var pipeline = Value(await registry.GetPipelineAsync(fixture.PipelineId));
+        Value(await registry.UpdatePipelineAsync(pipeline.Id, new()
+        {
+            Scope = pipeline.Scope, Schedules = [], Limits = new() { MaxItems = maximum, PageSize = 1, MaxPages = 1 },
+        }));
+
+        var run = await fixture.CaptureAsync();
+
+        run.Requests.Should().Be(2);
+        run.Status.Should().Be(RunStatus.Partial);
+        run.CompletionReason.Should().Be(RunReason.ItemLimit);
+        run.Captured.Should().Be(malformed ? 2 : 1);
+        run.Unchanged.Should().Be(malformed ? 0 : 1);
+        fixture.Http.Calls.Should().HaveCount(2);
+        Uri.UnescapeDataString(fixture.Http.Calls[0].Uri.Query).Should().Contain($"media.limit({maximum})");
+        Uri.UnescapeDataString(fixture.Http.Calls[1].Uri.Query).Should().Contain("media.limit(1)");
+        (await fixture.Services.GetRequiredService<HarvestEngine>().ProcessNextAsync()).Should().BeFalse();
+        (await fixture.PostsAsync()).Should().HaveCount(malformed ? 2 : 1);
+        var saved = Value(await registry.GetPipelineAsync(pipeline.Id));
+        saved.Limits.MaxPages.Should().Be(1);
+        saved.Limits.MaxItems.Should().Be(maximum);
+        await fixture.AssertSanitizedAsync();
+    }
+
+    [Fact]
+    public async Task An_examined_malformed_record_reports_the_post_limit_without_saving_a_post_or_fetching_again()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Http.OnlyMalformedFirstPage = true;
+        var registry = fixture.Services.GetRequiredService<IRegistrationBroker>();
+        var pipeline = Value(await registry.GetPipelineAsync(fixture.PipelineId));
+        Value(await registry.UpdatePipelineAsync(pipeline.Id, new()
+        {
+            Scope = pipeline.Scope, Schedules = [], Limits = new() { MaxItems = 1 },
+        }));
+
+        var run = await fixture.CaptureAsync();
+
+        run.Requests.Should().Be(1);
+        run.Status.Should().Be(RunStatus.Partial);
+        run.CompletionReason.Should().Be(RunReason.ItemLimit);
+        run.Captured.Should().Be(0);
+        run.Failed.Should().Be(1);
+        (await fixture.PostsAsync()).Should().BeEmpty();
+        fixture.Http.Calls.Should().ContainSingle();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Malformed_page_continues_but_an_entirely_unrecognized_stream_does_not_report_success(bool emptySecondPage)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Http.OnlyMalformedFirstPage = true;
+        fixture.Http.EmptySecondPage = emptySecondPage;
+        var registry = fixture.Services.GetRequiredService<IRegistrationBroker>();
+        var pipeline = Value(await registry.GetPipelineAsync(fixture.PipelineId));
+        Value(await registry.UpdatePipelineAsync(pipeline.Id, new()
+        {
+            Scope = pipeline.Scope, Schedules = [], Limits = new() { MaxItems = 2 },
+        }));
+
+        var run = await fixture.CaptureAsync();
+
+        run.Requests.Should().Be(2);
+        run.Status.Should().Be(emptySecondPage ? RunStatus.Failed : RunStatus.Partial);
+        run.CompletionReason.Should().Be(emptySecondPage ? RunReason.DetailFailures : RunReason.ItemLimit);
+        run.Captured.Should().Be(emptySecondPage ? 0 : 1);
+        fixture.Http.Calls.Should().HaveCount(2);
+        Uri.UnescapeDataString(fixture.Http.Calls[1].Uri.Query).Should().Contain("media.limit(1)");
     }
 
     private static T Value<T>(Result<T> result) where T : notnull => result is Result<T>.Success success ? success.Value
@@ -314,6 +399,10 @@ public sealed class InstagramPipelineTests
         public string FirstCaption { get; set; } = "Fixture publisher note one.";
         public string MediaSignature { get; set; } = "first-fetch";
         public int? ErrorCode { get; set; }
+        public bool IncludeMalformedFirstRecord { get; set; }
+        public bool RepeatFirstRecord { get; set; }
+        public bool OnlyMalformedFirstPage { get; set; }
+        public bool EmptySecondPage { get; set; }
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -330,7 +419,19 @@ public sealed class InstagramPipelineTests
             if (query.Contains($".after({CursorB})", StringComparison.Ordinal))
                 return Task.FromResult(Response("""{"business_discovery":{"username":"genericpublisher","media":{"data":[]}}}"""));
             bool second = query.Contains($".after({CursorA})", StringComparison.Ordinal);
-            string id = second ? "222" : "111";
+            if (second && EmptySecondPage)
+                return Task.FromResult(Response("""{"business_discovery":{"username":"genericpublisher","media":{"data":[]}}}"""));
+            bool secondRecord = second && !RepeatFirstRecord;
+            string id = secondRecord ? "222" : "111";
+            var media = new
+            {
+                id, caption = secondRecord ? "Fixture publisher note two." : FirstCaption,
+                timestamp = "2026-11-16T12:00:00+0000", media_type = "IMAGE",
+                permalink = "https://www.instagram.com/p/" + (secondRecord ? "FixtureTwo" : "FixtureOne") + "/",
+                media_url = $"https://images.cdninstagram.com/{id}.jpg?signature={MediaSignature}",
+            };
+            object[] records = !second && OnlyMalformedFirstPage ? [new { id = "999" }]
+                : !second && IncludeMalformedFirstRecord ? [new { id = "999" }, media] : [media];
             string body = JsonSerializer.Serialize(new
             {
                 business_discovery = new
@@ -338,13 +439,7 @@ public sealed class InstagramPipelineTests
                     username = "genericpublisher",
                     media = new
                     {
-                        data = new[] { new
-                        {
-                            id, caption = second ? "Fixture publisher note two." : FirstCaption,
-                            timestamp = "2026-11-16T12:00:00+0000", media_type = "IMAGE",
-                            permalink = "https://www.instagram.com/p/" + (second ? "FixtureTwo" : "FixtureOne") + "/",
-                            media_url = $"https://images.cdninstagram.com/{id}.jpg?signature={MediaSignature}",
-                        } },
+                        data = records,
                         paging = new { cursors = new { after = second ? CursorB : CursorA } },
                     },
                 },

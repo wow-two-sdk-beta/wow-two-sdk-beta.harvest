@@ -16,6 +16,7 @@ export const ReadMethodPaths: Record<ReadMethod, string> = {
 import { computed, ref } from 'vue';
 import { Tooltip } from '@wow-two-beta/fe/presentation/overlays';
 import { imageSrcOf, ReadMethodWords, readMethodOf } from './SourceWords';
+import { useSourceImages } from './UseSourceImages';
 
 /**
  * How a source is read — its website, Telegram, Instagram or a branch — as a glyph on a soft tile. `bare` drops the
@@ -39,8 +40,12 @@ const props = withDefaults(
 );
 const method = computed(() => readMethodOf(props.family));
 const failed = ref<string>();
-const favicon = computed(() => {
+const images = useSourceImages(() => {
   const url = imageSrcOf(props.faviconUrl);
+  return url ? [url] : [];
+});
+const favicon = computed(() => {
+  const url = images.urls.value[0];
   return url && url !== failed.value ? url : undefined;
 });
 /** Each size's tile and glyph. @internal */

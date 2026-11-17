@@ -3,11 +3,12 @@ using WoW.Two.Sdk.Beta.Be.Files.Store;
 using WoW.Two.Sdk.Beta.Be.Files.Uploads;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Capabilities.Fetching;
+using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 
 namespace HarvestSources.Api.Media;
 
-/// <summary>Copies eligible site assets through Harvest's guarded fetcher and the Files upload API.</summary>
+/// <summary>Copies eligible source images through Harvest's guarded fetcher and the Files upload API.</summary>
 internal sealed class SourceAssetWorker(
     SourceAssetStore store,
     IPageFetcher fetcher,
@@ -46,9 +47,9 @@ internal sealed class SourceAssetWorker(
         }
     }
 
-    private async Task CopyAsync(SourceAsset asset, CancellationToken ct)
+    internal async Task CopyAsync(SourceAsset asset, CancellationToken ct)
     {
-        var policy = new AssetDestination(asset.Host);
+        var policy = new SourceAssetDestination(asset.Host, asset.Instagram);
         if (!Uri.TryCreate(asset.Url, UriKind.Absolute, out Uri? origin) || !policy.Allows(origin))
         {
             await store.FinishAsync(asset.Id, null, TimeSpan.FromDays(7), ct);
@@ -58,8 +59,9 @@ internal sealed class SourceAssetWorker(
         deadline.CancelAfter(TimeSpan.FromMinutes(2));
         var result = asset.Favicon
             ? await FaviconAsync(origin, policy, deadline.Token)
-            : await ReadAsync(origin, policy, deadline.Token);
+            : await ReadAsync(origin, policy, deadline.Token, asset.Instagram ? RobotsPolicy.Ignore : RobotsPolicy.Obey);
         if (result.Outcome != FetchOutcome.Ok || result.Document is not { } document
+            || !policy.Allows(document.FinalUrl)
             || SourceImageFormat.From(document.ContentType) is not { } format
             || document.Body.IsEmpty || document.Body.Length > (asset.Favicon ? 512 * 1024 : 5 * 1024 * 1024))
         {
@@ -83,7 +85,7 @@ internal sealed class SourceAssetWorker(
             logger.LogWarning("Files declined source asset {AssetId}: {Reason}", asset.Id, failure.Error.Message);
     }
 
-    private async Task<FetchResponse> FaviconAsync(Uri home, AssetDestination policy, CancellationToken ct)
+    private async Task<FetchResponse> FaviconAsync(Uri home, SourceAssetDestination policy, CancellationToken ct)
     {
         var page = await ReadAsync(home, policy, ct);
         if (page.Outcome is not (FetchOutcome.Ok or FetchOutcome.Gone))
@@ -113,15 +115,12 @@ internal sealed class SourceAssetWorker(
         return new FetchResponse { Outcome = FetchOutcome.Gone };
     }
 
-    private Task<FetchResponse> ReadAsync(Uri url, AssetDestination policy, CancellationToken ct) =>
-        fetcher.FetchAsync(new FetchRequest { Uri = url, DestinationPolicy = policy, CacheResponse = false }, ct);
-
-    private sealed class AssetDestination(string host) : IFetchDestinationPolicy
-    {
-        public bool Allows(Uri destination) => destination.Scheme == Uri.UriSchemeHttps
-            && destination.IsDefaultPort && destination.UserInfo.Length == 0
-            && string.Equals(destination.IdnHost, host, StringComparison.OrdinalIgnoreCase);
-    }
+    /// <summary>Official Instagram media URLs deliver signed API artifacts, not website documents to crawl.
+    /// Only those image jobs omit robots discovery; Meta CDN destination, public-IP, redirect, host pacing and
+    /// response guards remain active. Web images and favicons retain the default robots checks.</summary>
+    private Task<FetchResponse> ReadAsync(Uri url, SourceAssetDestination policy, CancellationToken ct,
+        RobotsPolicy robotsPolicy = RobotsPolicy.Obey) =>
+        fetcher.FetchAsync(new FetchRequest { Uri = url, DestinationPolicy = policy, CacheResponse = false, RobotsPolicy = robotsPolicy }, ct);
 }
 
 internal sealed record SourceImageFormat(string ContentType, string Extension)

@@ -3,6 +3,7 @@ using AwesomeAssertions;
 using WoW.Two.Sdk.Beta.Be.Harvest.Capabilities.Challenges;
 using WoW.Two.Sdk.Beta.Be.Harvest.Capabilities.Rendering;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
+using WoW.Two.Sdk.Beta.Be.Harvest.Runs;
 using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Instagram;
@@ -26,10 +27,94 @@ public sealed class InstagramStepTests
         var continuation = first.Next.Single();
         var last = await broker.ExecuteAsync(Item(continuation.Target) with { Payload = continuation.Payload }, context);
         last.Next.Should().BeEmpty();
-        last.Message.Should().Contain("page limit");
+        last.Message.Should().Contain("post limit");
+        last.CompletionReason.Should().Be(RunReason.ItemLimit);
         last.EnumerationComplete.Should().BeFalse();
-        client.Calls.Should().Equal(("teplofest", 7, (string?)null), ("teplofest", 7, "opaque-cursor"));
+        client.Calls.Should().Equal(("teplofest", 2, (string?)null), ("teplofest", 1, "opaque-cursor"));
         context.Signals.Should().HaveCount(2);
+    }
+
+    [Theory]
+    [InlineData(70)]
+    [InlineData(100)]
+    public async Task Post_budget_shrinks_the_last_request_and_counts_malformed_and_repeated_records(int maximum)
+    {
+        var client = new FixtureClient { FillRequestedPage = true, IncludeMalformed = true };
+        var context = new Context { Limits = new() { MaxItems = maximum, MaxPages = 1, PageSize = 1 } };
+        var broker = new InstagramStepBroker(client);
+
+        var first = await broker.ExecuteAsync(Item("https://www.instagram.com/teplofest/"), context);
+        var next = first.Next.Should().ContainSingle().Subject;
+        next.Payload!.Value.GetProperty("scanned").GetInt32().Should().Be(50);
+        first.Captures.Should().HaveCount(49);
+        var last = await broker.ExecuteAsync(Item(next.Target) with { Payload = next.Payload }, context);
+
+        client.Calls.Select(call => call.Item2).Should().Equal(50, maximum - 50);
+        last.Captures.Should().HaveCount(maximum - 51);
+        last.Next.Should().BeEmpty();
+        last.CompletionReason.Should().Be(RunReason.ItemLimit);
+    }
+
+    [Fact]
+    public async Task An_all_malformed_response_still_reports_the_examined_post_limit()
+    {
+        var client = new FixtureClient { FillRequestedPage = true, IncludeMalformed = true };
+        var result = await new InstagramStepBroker(client).ExecuteAsync(Item("https://www.instagram.com/teplofest/"),
+            new Context { Limits = new() { MaxItems = 1 } });
+
+        result.Outcome.Should().Be(FetchOutcome.Unrecognized);
+        result.Captures.Should().BeEmpty();
+        result.Next.Should().BeEmpty();
+        result.CompletionReason.Should().Be(RunReason.ItemLimit);
+        client.Calls.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task Excessive_short_pages_stop_at_the_internal_safety_limit()
+    {
+        var client = new FixtureClient();
+        var item = Item("https://www.instagram.com/teplofest/?__harvest_cursor=opaque") with
+        {
+            Payload = JsonSerializer.SerializeToElement(new { after = "opaque-cursor", page = 99, scanned = 99, recognized = 99 }),
+        };
+
+        var result = await new InstagramStepBroker(client).ExecuteAsync(item, new Context { Limits = new() { MaxItems = 2000 } });
+
+        result.Next.Should().BeEmpty();
+        result.CompletionReason.Should().Be(RunReason.PageLimit);
+        result.Message.Should().Contain("safety limit");
+    }
+
+    [Fact]
+    public async Task Malformed_page_continues_to_the_next_page_with_the_remaining_post_budget()
+    {
+        var client = new FixtureClient { IncludeMalformed = true, MalformedOnlyOnFirstPage = true };
+        var broker = new InstagramStepBroker(client);
+        var context = new Context { Limits = new() { MaxItems = 2 } };
+
+        var first = await broker.ExecuteAsync(Item("https://www.instagram.com/teplofest/"), context);
+        first.Outcome.Should().Be(FetchOutcome.Ok);
+        first.Captures.Should().BeEmpty();
+        first.Message.Should().Contain("malformed");
+        var next = first.Next.Should().ContainSingle().Subject;
+        var last = await broker.ExecuteAsync(Item(next.Target) with { Payload = next.Payload }, context);
+
+        last.Captures.Should().ContainSingle();
+        last.CompletionReason.Should().Be(RunReason.ItemLimit);
+        last.Next.Should().BeEmpty();
+        client.Calls.Select(call => call.Item2).Should().Equal(2, 1);
+    }
+
+    [Fact]
+    public async Task Oversized_terminal_response_reports_the_post_limit_when_records_are_discarded()
+    {
+        var client = new FixtureClient { RecordCount = 3, NoCursor = true };
+        var result = await new InstagramStepBroker(client).ExecuteAsync(Item("https://www.instagram.com/teplofest/"),
+            new Context { Limits = new() { MaxItems = 2 } });
+
+        result.Captures.Should().HaveCount(2);
+        result.Next.Should().BeEmpty();
+        result.CompletionReason.Should().Be(RunReason.ItemLimit);
     }
 
     [Theory]
@@ -134,6 +219,9 @@ public sealed class InstagramStepTests
     [InlineData("{\"after\":\"cursor\",\"page\":2}")]
     [InlineData("{\"page\":1}")]
     [InlineData("{\"after\":42,\"page\":1}")]
+    [InlineData("{\"after\":\"cursor\",\"page\":1,\"scanned\":0}")]
+    [InlineData("{\"after\":\"cursor\",\"page\":1,\"scanned\":2}")]
+    [InlineData("{\"after\":\"cursor\",\"page\":100,\"scanned\":1}")]
     [InlineData("[]")]
     [InlineData("\"cursor\"")]
     public async Task Invalid_continuation_or_exhausted_saved_limit_is_rejected_before_fetching(string payload)
@@ -159,14 +247,22 @@ public sealed class InstagramStepTests
     private sealed class FixtureClient : IInstagramMediaBroker
     {
         internal FetchOutcome Outcome { get; init; } = FetchOutcome.Ok;
+        internal bool FillRequestedPage { get; init; }
+        internal bool IncludeMalformed { get; init; }
+        internal bool MalformedOnlyOnFirstPage { get; init; }
+        internal bool NoCursor { get; init; }
+        internal int? RecordCount { get; init; }
         internal List<(string, int, string?)> Calls { get; } = [];
         public Task<InstagramMediaPage> ReadAsync(string username, int pageSize = 25, string? after = null, CancellationToken cancellationToken = default)
         {
             Calls.Add((username, pageSize, after));
             return Task.FromResult(new InstagramMediaPage
             {
-                Outcome = Outcome, After = "opaque-cursor",
-                Media = [InstagramCaptureTests.Media("Join us at the fashion market", 1)], Usage = new() { Requests = 1, Bytes = 100 },
+                Outcome = Outcome, After = NoCursor ? null : "opaque-cursor",
+                Media = [.. Enumerable.Range(0, RecordCount ?? (FillRequestedPage ? pageSize : 1)).Select(index =>
+                    IncludeMalformed && index == 0 && (!MalformedOnlyOnFirstPage || after is null)
+                    ? JsonSerializer.SerializeToElement(new { id = "invalid" }) : InstagramCaptureTests.Media("Join us at the fashion market", 1))],
+                Usage = new() { Requests = 1, Bytes = 100 },
             });
         }
     }
@@ -177,7 +273,7 @@ public sealed class InstagramStepTests
         public FetchOutcome RequestOutcome { get; init; } = FetchOutcome.Ok;
         public TimeSpan? RequestRetryAfter { get; init; }
         public PipelineScope Scope { get; init; } = new() { Url = "https://www.instagram.com/teplofest/" };
-        public PipelineLimits Limits { get; init; } = new() { PageSize = 7, MaxPages = 2 };
+        public PipelineLimits Limits { get; init; } = new() { MaxItems = 2 };
         public ResolvedPlan Plan => throw new NotSupportedException();
         public string SourceHandle { get; init; } = "teplofest";
         public SourceModel Source => new()

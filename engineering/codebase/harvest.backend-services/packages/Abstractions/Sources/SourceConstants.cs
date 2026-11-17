@@ -37,7 +37,7 @@ public static class SourceConstants
     public const int MaxPostsLimit = 500;
 
     /// <summary>Holds the most image URLs a post in a source's post list carries.</summary>
-    public const int MaxPostImages = 12;
+    public const int MaxPostImages = 20;
 
     /// <summary>Gets the seeded retention classes.</summary>
     public static IReadOnlyList<string> RetentionClasses { get; } = ["standard", "youtube", "meta", "x", "telegram", "intake"];

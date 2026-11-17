@@ -30,6 +30,32 @@ public sealed class InstagramSourceConfigurationTests
     }
 
     [Fact]
+    public void Collection_metadata_exposes_only_posts_and_preserves_legacy_effective_bounds()
+    {
+        var adapter = new InstagramSourceAdapter();
+        var limits = adapter.DescribeConfiguration(Source()).ScopeSchema.GetProperty("limits");
+        limits.EnumerateObject().Select(property => property.Name).Should().Equal("maxItems");
+        limits.GetProperty("maxItems").GetProperty("title").GetString().Should().Be("Posts per run");
+        adapter.ResolveRunLimits(Source(), new(), WorkKind.Capture).MaxItems.Should().Be(100);
+        adapter.ResolveRunLimits(Source(), new() { PageSize = 1, MaxPages = 1 }, WorkKind.Capture).MaxItems.Should().Be(1);
+        var resolved = adapter.ResolveRunLimits(Source(), new() { MaxItems = 150, PageSize = 1, MaxPages = 1 }, WorkKind.Capture);
+        resolved.MaxItems.Should().Be(150);
+        resolved.PageSize.Should().Be(50);
+        resolved.MaxPages.Should().Be(100);
+        var processing = new PipelineLimits { MaxItems = 7 };
+        adapter.ResolveRunLimits(Source(), processing, WorkKind.Process).Should().Be(processing);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(2001)]
+    public void Invalid_post_limits_are_rejected(int maximum)
+    {
+        new InstagramSourceAdapter().ValidatePipeline(Source(), new() { Url = "https://www.instagram.com/publisher/" },
+            new() { MaxItems = maximum }).IsSuccess.Should().BeFalse();
+    }
+
+    [Fact]
     public void Missing_connection_does_not_prevent_saving_a_valid_profile_pipeline()
     {
         var adapter = new InstagramSourceAdapter();

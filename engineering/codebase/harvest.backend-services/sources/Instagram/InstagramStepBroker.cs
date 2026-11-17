@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Readers;
+using WoW.Two.Sdk.Beta.Be.Harvest.Runs;
 using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 
 namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Instagram;
@@ -26,21 +27,28 @@ public sealed class InstagramStepBroker(IInstagramMediaBroker broker) : IStepBro
             || !InstagramPublishers.TryReadProfile(uri.GetLeftPart(UriPartial.Path), out _, out string targetProfile)
             || targetProfile != profile)
             return new() { Outcome = FetchOutcome.NotApproved, Message = "The request must match the publisher profile saved in this pipeline." };
-        int pageSize = context.Limits.PageSize ?? 25;
-        int maximumPages = context.Limits.MaxPages ?? 4;
-        if (pageSize is < 1 or > 50 || maximumPages is < 1 or > PipelineConstants.MaxPagesCap)
-            return new() { Outcome = FetchOutcome.NotApproved, Message = "The saved Instagram pipeline has invalid page bounds." };
+        int maximumPosts = InstagramCollectionLimits.PostsPerRun(context.Limits);
+        if (maximumPosts is < 1 or > PipelineConstants.MaxItemsCap)
+            return new() { Outcome = FetchOutcome.NotApproved, Message = "The saved Instagram pipeline has an invalid post limit." };
         string? after = null;
         int pageNumber = 0;
+        int scanned = 0;
+        int recognized = 0;
         if (item.Payload is { ValueKind: not JsonValueKind.Object })
             return new() { Outcome = FetchOutcome.UnexpectedContent, Message = "Invalid Instagram continuation state." };
         if (item.Payload is { ValueKind: JsonValueKind.Object } payload)
         {
             after = InstagramConfiguration.Text(payload, "after");
             if (!payload.TryGetProperty("page", out var number) || number.ValueKind != JsonValueKind.Number
-                || !number.TryGetInt32(out pageNumber) || pageNumber < 1 || pageNumber >= maximumPages || after is null)
+                || !number.TryGetInt32(out pageNumber) || pageNumber < 1 || pageNumber >= InstagramCollectionLimits.MaximumPages
+                || !payload.TryGetProperty("scanned", out var count) || count.ValueKind != JsonValueKind.Number
+                || !count.TryGetInt32(out scanned) || scanned < 1 || scanned >= maximumPosts
+                || !payload.TryGetProperty("recognized", out var accepted) || accepted.ValueKind != JsonValueKind.Number
+                || !accepted.TryGetInt32(out recognized) || recognized < 0 || recognized > scanned || after is null)
                 return new() { Outcome = FetchOutcome.UnexpectedContent, Message = "Invalid Instagram continuation state." };
         }
+        int remaining = maximumPosts - scanned;
+        int pageSize = Math.Min(InstagramCollectionLimits.RequestSize, remaining);
         InstagramMediaPage result;
         await using (var lease = await context.AcquireRequestAsync(cancellationToken))
         {
@@ -52,32 +60,39 @@ public sealed class InstagramStepBroker(IInstagramMediaBroker broker) : IStepBro
         context.Observe(new() { Outcome = result.Outcome, Bytes = result.Usage.Bytes, RetryAfter = result.RetryAfter });
         if (result.Outcome != FetchOutcome.Ok)
             return new() { Outcome = result.Outcome, Usage = result.Usage, RetryAfter = result.RetryAfter, Message = result.Message };
-        Capture[] captures = [.. result.Media.Select(record => InstagramCaptureReader.Read(record, username, profile, context.Clock.GetUtcNow()))
+        JsonElement[] media = [.. result.Media.Take(remaining)];
+        scanned += media.Length;
+        Capture[] captures = [.. media.Select(record => InstagramCaptureReader.Read(record, username, profile, context.Clock.GetUtcNow()))
             .OfType<Capture>().Select(capture => capture with
             {
                 RequestUrl = result.RequestUrl ?? profile, FinalUrl = result.RequestUrl ?? profile, HttpStatus = result.HttpStatus,
             })];
-        bool truncated = result.After is not null && pageNumber + 1 >= maximumPages;
+        recognized += captures.Length;
+        bool postLimit = result.Media.Count > remaining || result.After is not null && scanned >= maximumPosts;
+        bool pageLimit = result.After is not null && pageNumber + 1 >= InstagramCollectionLimits.MaximumPages;
+        string? limitMessage = postLimit ? "Configured post limit reached; older posts were not scanned."
+            : pageLimit ? "Provider page safety limit reached before the post budget; older posts were not scanned." : null;
         StepTarget[] NextPage()
         {
-            if (result.After is not { } cursor || truncated)
+            if (result.After is not { } cursor || media.Length == 0 || postLimit || pageLimit)
                 return [];
             string digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(cursor)))[..24].ToLowerInvariant();
             return [new()
             {
                 StepKey = StepKey, Target = profile + "?__harvest_cursor=" + digest,
-                Payload = JsonSerializer.SerializeToElement(new { after = cursor, page = pageNumber + 1 }),
+                Payload = JsonSerializer.SerializeToElement(new { after = cursor, page = pageNumber + 1, scanned, recognized }),
             }];
         }
         var next = await context.RunOperationAsync("paginate", () => Task.FromResult(NextPage()),
-            targets => new(Input: 1, Output: targets.Length,
-                Message: truncated ? "The configured page limit was reached." : null));
+            targets => new(Input: 1, Output: targets.Length, Message: limitMessage));
         return new()
         {
-            Outcome = captures.Length == 0 && result.Media.Count > 0 ? FetchOutcome.Unrecognized : FetchOutcome.Ok,
+            Outcome = next.Length == 0 && captures.Length == 0 && (media.Length > 0 || scanned > 0 && recognized == 0)
+                ? FetchOutcome.Unrecognized : FetchOutcome.Ok,
             Captures = captures, Next = next, Usage = result.Usage, EnumerationComplete = false,
-            Message = truncated ? "Configured recent-media page limit reached; older posts were not scanned."
-                : captures.Length != result.Media.Count ? "Some malformed media records were skipped; review the source response." : null,
+            CompletionReason = postLimit ? RunReason.ItemLimit : pageLimit ? RunReason.PageLimit : null,
+            Message = limitMessage ?? (captures.Length != result.Media.Count
+                ? "Some malformed media records were skipped; review the source response." : null),
         };
     }
 }

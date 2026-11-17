@@ -22,13 +22,14 @@ export interface PipelineUpdate {
   readonly scope: PipelineModel['scope'];
   readonly schedules: readonly Omit<ScheduleModel, 'id' | 'nextDueAtUtc'>[];
   /** Only supplied values change; omitted values keep their saved limits. */
-  readonly limits?: Pick<PipelineLimits, 'maxPages' | 'pageSize'>;
+  readonly limits?: Pick<PipelineLimits, 'maxPages' | 'pageSize' | 'maxItems'>;
 }
 
 /** Stored run bounds; adapters may impose narrower ranges through their scope schema. */
 export interface PipelineLimits {
   readonly maxPages?: number;
   readonly pageSize?: number;
+  readonly maxItems?: number;
   readonly [key: string]: number | string | undefined;
 }
 

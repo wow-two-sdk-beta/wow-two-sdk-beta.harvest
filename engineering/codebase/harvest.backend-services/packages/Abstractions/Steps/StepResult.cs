@@ -1,5 +1,6 @@
 using WoW.Two.Sdk.Beta.Be.Harvest.Capabilities.Challenges;
 using WoW.Two.Sdk.Beta.Be.Harvest.Readers;
+using WoW.Two.Sdk.Beta.Be.Harvest.Runs;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 
@@ -24,6 +25,11 @@ public sealed record StepResult
 
     /// <summary>Gets whether an enumerate step listed everything, so absence from it is a weak negative.</summary>
     public bool EnumerationComplete { get; init; }
+
+    /// <summary>Gets an adapter's terminal item or page limit after examining this response. The engine preserves
+    /// admitted captures before stopping; only <see cref="RunReason.ItemLimit"/> and <see cref="RunReason.PageLimit"/>
+    /// are honored for successful or unrecognized responses.</summary>
+    public RunReason? CompletionReason { get; init; }
 
     /// <summary>Gets what the step spent.</summary>
     public StepUsage Usage { get; init; } = new();

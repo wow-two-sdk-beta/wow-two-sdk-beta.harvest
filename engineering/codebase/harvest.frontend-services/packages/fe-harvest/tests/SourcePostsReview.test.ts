@@ -10,7 +10,10 @@ import { useSourcePostPages } from '../src/admin/harvestConsole/UseSourcePostPag
 import { useSourcesView } from '../src/admin/harvestConsole/UseSourcesView';
 
 let session: HarvestConsole;
-vi.mock('../src/admin/harvestConsole/HarvestConsole', () => ({ useHarvestConsole: () => session }));
+vi.mock('../src/admin/harvestConsole/HarvestConsole', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/admin/harvestConsole/HarvestConsole')>()),
+  useHarvestConsole: () => session,
+}));
 const wrappers: VueWrapper[] = [];
 
 const source = (id = 'source-1', runId = 'run-1'): SourceOverviewModel => ({

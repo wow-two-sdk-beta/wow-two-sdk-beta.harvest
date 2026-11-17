@@ -358,6 +358,9 @@ public sealed class HarvestEngine(
             if (readings.Count > remaining || result.Captures.Count > readings.Count)
                 limit = RunReason.ItemLimit;
         }
+        if (result.Outcome is FetchOutcome.Ok or FetchOutcome.Unrecognized
+            && result.CompletionReason is RunReason.ItemLimit or RunReason.PageLimit)
+            limit ??= result.CompletionReason;
         if (result.Outcome is FetchOutcome.Ok or FetchOutcome.Gone)
             foreach (LinkObservation observation in result.Links)
             {

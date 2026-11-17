@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { LightboxModal } from '@wow-two-beta/fe/presentation/overlays';
+import { useSourceImages } from './UseSourceImages';
 
 const props = withDefaults(
   defineProps<{
@@ -11,7 +12,8 @@ const props = withDefaults(
   { label: 'Photos', isMuted: false },
 );
 
-const photos = computed(() => props.images.map((src, index) => ({ src, alt: `Photo ${index + 1}` })));
+const images = useSourceImages(() => props.images);
+const photos = computed(() => images.urls.value.map((src, index) => ({ src, alt: `Photo ${index + 1}` })));
 const previews = computed(() => photos.value.slice(0, 5));
 const overflow = computed(() => Math.max(0, photos.value.length - previews.value.length));
 </script>

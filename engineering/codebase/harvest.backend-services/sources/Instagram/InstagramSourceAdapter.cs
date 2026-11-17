@@ -9,7 +9,7 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Instagram;
 
 /// <summary>Declares bounded recent-media collection for saved professional publisher profile URLs.</summary>
-public sealed class InstagramSourceAdapter(IOptions<InstagramOptions>? options = null) : ISourceAdapter, ISourceConfigurationProvider, ISourcePipelineValidator
+public sealed class InstagramSourceAdapter(IOptions<InstagramOptions>? options = null) : ISourceAdapter, ISourceConfigurationProvider, ISourcePipelineValidator, ISourceRunLimitsResolver
 {
     /// <inheritdoc />
     public SourceConfigurationModel DescribeConfiguration(SourceModel source)
@@ -31,8 +31,12 @@ public sealed class InstagramSourceAdapter(IOptions<InstagramOptions>? options =
                 required = new[] { "url" }, additionalProperties = false,
                 limits = new
                 {
-                    pageSize = new { minimum = 1, maximum = 50, @default = 25, title = "Posts per page" },
-                    maxPages = new { minimum = 1, maximum = PipelineConstants.MaxPagesOnUpdate, @default = 4, title = "Pages per run" },
+                    maxItems = new
+                    {
+                        minimum = 1, maximum = PipelineConstants.MaxItemsCap, @default = InstagramCollectionLimits.DefaultPosts,
+                        title = "Posts per run", description = "Checks up to this many recent posts. Existing posts count.",
+                        legacyProduct = new[] { new { key = "pageSize", @default = 25 }, new { key = "maxPages", @default = 4 } },
+                    },
                 },
             }),
         };
@@ -46,8 +50,18 @@ public sealed class InstagramSourceAdapter(IOptions<InstagramOptions>? options =
             return Result.Fail(RegistrationErrors.Invalid("Instagram pipelines require the source's public publisher profile URL, without query overrides or path restriction."));
         if (limits.PageSize is < 1 or > 50 || limits.MaxPages is < 1 or > PipelineConstants.MaxPagesCap)
             return Result.Fail(RegistrationErrors.Invalid("Instagram page size must be 1–50 and the run page limit 1–100."));
+        if (limits.MaxItems is < 1 or > PipelineConstants.MaxItemsCap)
+            return Result.Fail(RegistrationErrors.Invalid("Instagram posts per run must be 1–2000."));
         return Result.Ok();
     }
+
+    /// <inheritdoc />
+    public PipelineLimits ResolveRunLimits(SourceModel source, PipelineLimits limits, WorkKind kind) =>
+        kind is WorkKind.Capture or WorkKind.Sweep ? limits with
+        {
+            MaxItems = InstagramCollectionLimits.PostsPerRun(limits),
+            PageSize = InstagramCollectionLimits.RequestSize, MaxPages = InstagramCollectionLimits.MaximumPages,
+        } : limits;
 
     /// <summary>The stable private adapter key.</summary>
     public const string AdapterKey = "instagram-business-discovery";

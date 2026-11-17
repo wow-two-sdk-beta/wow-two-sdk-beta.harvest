@@ -21,11 +21,14 @@ Register one source per account: family `instagram`, handle `USERNAME`, posture 
 and check policy `none`. Registry declarations supply publisher names and groups. Teplo Fest and Teplo Store are
 separate sources under Teplo Store, backed by the same provider implementation. Each source has a persisted pipeline
 with `scope.url=https://www.instagram.com/USERNAME/`,
-`restrictToPath=false`, `limits.pageSize` (1–50 posts, default 25) and `limits.maxPages` (default 4). Scope parameters
+`restrictToPath=false` and `limits.maxItems` (Posts per run, 1–2000, default 100). Scope parameters
 are not request settings and are rejected. The API validates the profile and its limits before saving. Adding or
 editing a publisher needs no host restart. Its pipeline cannot target another source's account. The source's
 Pipelines view creates only its declared profile, without schedules; Capture now starts one capture.
 Source/pipeline pauses and schedules are ordinary registry records. No host allowlist or Instagram enable flag exists.
+The post budget counts records examined, including unchanged or malformed posts. API request size and cursor
+pages are internal. Existing page-based limits resolve to their effective post budget; an explicit `maxItems`
+replaces that legacy budget. The final request shrinks to the remaining posts and emits no continuation at the limit.
 
 The adapter declares its canonical profile URL separately from the source handle and uses a shared
 `www.instagram.com` host key. Publisher sources retain common provider pacing and backoff. Existing legacy
@@ -45,6 +48,9 @@ Capture bodies/provenance exclude credentials, cursors, paging URLs and raw prov
 canonical post permalink. Caption edits create revisions; engagement counts and rotating CDN signatures do not.
 Carousel covers are not duplicated, and available video thumbnails remain usable. Publication timestamps are never
 invented event dates; caption classification needs review. CDN references may expire and image text is not read.
+The source host's Files worker copies approved image URLs into private storage when configured. A later unchanged
+capture refreshes signed media URLs without adding a revision or delivery event. Stored images are served through
+the authorized source asset route; video archiving and image compaction are outside this image-copy slice.
 
 See [test setup and acceptance](../../../../deployment/instagram.md) and
 [account review](../../../../research/instagram-source-review.md).
