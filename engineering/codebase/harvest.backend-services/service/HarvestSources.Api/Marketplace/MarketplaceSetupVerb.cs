@@ -125,11 +125,6 @@ public static class MarketplaceSetupVerb
         var lines = new List<string>();
         foreach (var search in status.Searches)
         {
-            if (search.AwaitingSourceAccess)
-            {
-                lines.Add(search.Key + " awaiting source access");
-                continue;
-            }
             if (search.Pipeline is not { } pipeline)
             {
                 lines.Add(search.Key + " none");

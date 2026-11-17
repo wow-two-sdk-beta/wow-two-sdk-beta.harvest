@@ -55,7 +55,6 @@ public sealed class MarketplaceProfilesTests
         new JoymeeCaptureReader().Allows(new Uri(joymee.Url)).Should().BeTrue();
         var birbir = haven.Searches.Single(search => search.Site == MarketplaceSite.BirBirCollection);
         new BirBirCaptureReader().Allows(new Uri(birbir.Url)).Should().BeTrue();
-        birbir.Site.RequiresGrant.Should().BeFalse();
         MarketplaceProfiles.Find("unknown").Should().BeNull();
     }
 

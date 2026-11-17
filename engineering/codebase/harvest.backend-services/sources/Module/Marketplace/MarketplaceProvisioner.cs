@@ -54,7 +54,7 @@ public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDelive
             if (container.Kind != ContainerKind.Private || container.TenantId != tenant.Id || container.EmbeddingsEnabled)
                 return Conflict($"The existing {profile.ContainerRef} container is not private, the tenant's own and non-embedded.");
 
-            var sources = new Dictionary<MarketplaceSite, SourceModel?>();
+            var sources = new Dictionary<MarketplaceSite, SourceModel>();
             var pipelines = Value(await registry.ListPipelinesAsync(container.Id, cancellationToken)).ToList();
             var subscriptions = Value(await delivery.ListSubscriptionsAsync(tenant.Id, cancellationToken)).ToList();
             var rows = new List<MarketplaceSearchRegistration>();
@@ -62,8 +62,6 @@ public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDelive
             {
                 if (!sources.TryGetValue(search.Site, out var source))
                     sources[search.Site] = source = await EnsureSourceAsync(container.Id, search.Site, allowAi, cancellationToken);
-                if (source is null)
-                    continue;
                 bool canCapture = !search.Site.ImportOnly && source.State == SourceState.Active
                     && source.Permission is SourcePermission.Open or SourcePermission.Granted;
                 var schedules = Cadence(profile, search.Site, enableSchedules && canCapture);
@@ -141,8 +139,7 @@ public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDelive
                 PipelineModel? pipeline = pipelines.FirstOrDefault(item => item.SourceId == source?.Id && item.Scope.Url == search.Url);
                 Guid? subscription = pipeline is null ? null : subscriptions.FirstOrDefault(item => item.PipelineId == pipeline.Id
                     && item.FilterKey == MarketplaceListingFilter.FilterKey && item.State == SubscriptionState.Active)?.Id;
-                return new MarketplaceSearchStatus(search.Key, pipeline, subscription,
-                    search.Site.RequiresGrant && source?.Permission != SourcePermission.Granted);
+                return new MarketplaceSearchStatus(search.Key, pipeline, subscription);
             }).ToList();
             int active = Value(await registry.ListApiKeysAsync(tenant.Id, cancellationToken))
                 .Count(item => item.Name == profile.Consumer && item.State == ApiKeyState.Active);
@@ -153,14 +150,12 @@ public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDelive
 
     /// <summary>Creates or reuses the container's source for a marketplace site, named and grouped for the console; an
     /// operator's name or group is kept, and a collected source opens to models when asked.</summary>
-    private async Task<SourceModel?> EnsureSourceAsync(Guid containerId, MarketplaceSite site, bool allowAi,
+    private async Task<SourceModel> EnsureSourceAsync(Guid containerId, MarketplaceSite site, bool allowAi,
         CancellationToken cancellationToken)
     {
         var sources = Value(await registry.ListSourcesAsync(containerId, cancellationToken));
         var family = Family(site);
         var source = sources.SingleOrDefault(item => item.Family == family && item.Handle == site.Handle);
-        if (site.RequiresGrant && source?.Permission != SourcePermission.Granted)
-            return null;
 
         bool opensToAi = allowAi && !site.ImportOnly;
 

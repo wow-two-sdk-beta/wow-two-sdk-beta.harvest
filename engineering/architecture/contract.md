@@ -308,8 +308,7 @@ operator setup (`HarvestSources:Audience` `internal` only):
   `/404`, which robots.txt disallows, stays inconclusive. `sources/Domtut/domtut.md`
 - Haven's `birbir-collection` uses a separate site pipeline and private subscription with the BirBir collector.
   Its source capabilities declare `sourceFieldsSchema`, the JSON Schema for the `birbir.ad.v1` listing envelope.
-  Setup can register the public site source with open permission. Marketplace status sets `awaitingSourceAccess`
-  when a profile declares `RequiresGrant` and the source lacks the grant. The BirBir collection profile uses
+  Setup registers the public site source with open permission; the BirBir collection profile uses
   the open source path. [BirBir reader](../codebase/harvest.backend-services/sources/BirBir/birbir.md)
 - Haven's `birbir-apartments-rent` and `domtut-apartments-rent` searches are restricted to imports. Setup reports
   `importOnly: true` and creates no schedules for them. Import requests carry `externalId`, `url` and `title`;

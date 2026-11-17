@@ -62,9 +62,8 @@ public sealed record MarketplaceSearch(string Key, string Name, string Url, Mark
 /// <param name="Group">The source group the console lists it under.</param>
 /// <param name="CheckPolicy">How known ads are re-checked.</param>
 /// <param name="ImportOnly">Whether listings arrive from an operator or an authorized feed.</param>
-/// <param name="RequiresGrant">Whether the site must first be registered with a provider grant.</param>
 public sealed record MarketplaceSite(string Key, string Handle, string Name, string Group, string CheckPolicy = "web-direct",
-    bool ImportOnly = false, bool RequiresGrant = false)
+    bool ImportOnly = false)
 {
     /// <summary>Gets OLX Uzbekistan.</summary>
     public static MarketplaceSite Olx { get; } = new("olx-uz", "www.olx.uz", "OLX Uzbekistan", "OLX");

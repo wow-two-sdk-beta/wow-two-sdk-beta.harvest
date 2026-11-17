@@ -55,5 +55,4 @@ public sealed record MarketplaceStatus(string Profile, Guid TenantId, Guid Conta
 /// <param name="Key">The search's key in the profile.</param>
 /// <param name="Pipeline">The search's pipeline, with its schedules.</param>
 /// <param name="SubscriptionId">The search's listing subscription.</param>
-/// <param name="AwaitingSourceAccess">Whether the source needs a registered grant before it can collect.</param>
-public sealed record MarketplaceSearchStatus(string Key, PipelineModel? Pipeline, Guid? SubscriptionId, bool AwaitingSourceAccess = false);
+public sealed record MarketplaceSearchStatus(string Key, PipelineModel? Pipeline, Guid? SubscriptionId);

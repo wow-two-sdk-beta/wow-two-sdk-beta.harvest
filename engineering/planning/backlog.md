@@ -60,7 +60,6 @@ ChatGPT builds these in the pull order of wow-two-ws `system/sessions/events-int
 | Item | Type | Notes |
 |---|---|---|
 | S07 Commit the work in slices and verify v0.2.7 on dev | engineering | spec in `tasks-scfd.md`; the commits are accepted, and its dev acceptance runs as v0.2 Verification checks |
-| S39 Leftovers: drop `RequiresGrant` / `AwaitingSourceAccess` | engineering | spec in `tasks-scfd.md`; open task in v0.2 |
 | S38 Decide what the marketplace collectors keep about people | decision | spec in `tasks-scfd.md` · needs the developer |
 | Craftfair challenge-detector posture | decision | `GenericChallengeDetector` reads Craftfair's complete 200 listing as `javascript_interstitial` because Cloudflare's passive JS-detection script is on the page; the detector changes only on the developer's posture call (#50), before S18 runs Craftfair · needs the developer |
 | S18 Run Craftfair for Ocharo after its challenge posture call | product | spec in `tasks-scfd.md`; ANONS, Uzexpocentre and CAEx run on dev on schedule (v0.2) |
