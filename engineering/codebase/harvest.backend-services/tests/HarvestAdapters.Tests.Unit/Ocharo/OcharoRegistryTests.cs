@@ -111,6 +111,22 @@ public sealed class OcharoRegistryTests
     }
 
     [Fact]
+    public async Task Unselected_status_lists_a_provisioned_selected_channel_beside_the_defaults()
+    {
+        var registry = new FakeRegistrationBroker();
+        var provisioner = new OcharoSourceProvisioner(registry, Delivery(registry));
+        Value(await provisioner.EnsureAsync(groupIds: ["afisha"]));
+
+        Value(await provisioner.ReadAsync()).Channels.Should().NotContain(channel => channel.GroupId == "caex");
+
+        var caex = Value(await provisioner.EnsureAsync(groupIds: ["caex"])).Sources.Single();
+        var status = Value(await provisioner.ReadAsync());
+
+        status.Channels.Single(channel => channel.GroupId == "caex").Pipeline!.Id.Should().Be(caex.PipelineId);
+        status.Channels.Should().Contain(channel => channel.GroupId == "afisha");
+    }
+
+    [Fact]
     public async Task Selected_calendar_uses_a_window_capture_and_never_probes_event_detail_links()
     {
         var registry = new FakeRegistrationBroker();

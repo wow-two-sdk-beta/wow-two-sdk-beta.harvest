@@ -175,7 +175,8 @@ public sealed class OcharoSourceProvisioner(IRegistrationBroker registry, IDeliv
     /// <summary>Reads what setup owns on this target, writing nothing: the tenant, its container and each selected channel's
     /// pipeline with its schedules.</summary>
     /// <remarks>A tenant or container setup has not created answers <c>NotFound</c>; a channel without a pipeline reads
-    /// as a row with no pipeline.</remarks>
+    /// as a row with no pipeline. With no groups selected it lists every default channel and every other channel a
+    /// selected setup provisioned, such as CAEx's calendar.</remarks>
     public async Task<Result<OcharoStatus>> ReadAsync(IReadOnlyList<string>? groupIds = null, string tenantSlug = DefaultTenantSlug,
         CancellationToken cancellationToken = default)
     {
@@ -193,16 +194,20 @@ public sealed class OcharoSourceProvisioner(IRegistrationBroker registry, IDeliv
                 return Result<OcharoStatus>.Fail(AppErrorFactory.NotFound($"Tenant {tenantSlug} has no Ocharo container yet; run ocharo setup first."));
             var sources = Value(await registry.ListSourcesAsync(container.Id, cancellationToken));
             var pipelines = Value(await registry.ListPipelinesAsync(container.Id, cancellationToken));
-            var channels = catalog.Routes(includeInstagram: true, selection)
+            var routes = catalog.Routes(includeInstagram: true,
+                selection ?? catalog.Groups.Select(group => group.Id).ToHashSet(StringComparer.Ordinal));
+            var channels = routes
                 .Select(route =>
                 {
                     string seed = route.Channel.PipelineUrl;
                     string handle = route.Profile.Family == SourceFamily.Instagram
                         && InstagramPublishers.TryReadProfile(seed, out string username, out _) ? username : new Uri(seed).IdnHost;
                     SourceModel? source = sources.SingleOrDefault(item => item.Family == route.Profile.Family && item.Handle == handle);
-                    return new OcharoChannelStatus(route.Group.Id, route.Channel.Id,
-                        pipelines.FirstOrDefault(pipeline => pipeline.SourceId == source?.Id && pipeline.Scope.Url == seed));
+                    return (route.Channel.Setup, Status: new OcharoChannelStatus(route.Group.Id, route.Channel.Id,
+                        pipelines.FirstOrDefault(pipeline => pipeline.SourceId == source?.Id && pipeline.Scope.Url == seed)));
                 })
+                .Where(row => selection is not null || row.Setup == "default" || row.Status.Pipeline is not null)
+                .Select(row => row.Status)
                 .ToList();
             return Result<OcharoStatus>.Ok(new(tenant.Id, container.Id, channels));
         }
