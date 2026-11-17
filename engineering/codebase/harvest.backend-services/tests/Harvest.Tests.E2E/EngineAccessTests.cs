@@ -67,6 +67,35 @@ public sealed class EngineAccessTests(HarvestApiFixture fixture)
     }
 
     [Fact]
+    public async Task StageSettings_ShouldNeedPipelinesManage_OnBothRoutes()
+    {
+        using var operatorClient = fixture.CreateClient(HarvestApiFixture.OperatorKey);
+        var lane = await LaneAsync(operatorClient);
+        using var manager = fixture.CreateClient(await KeyAsync(operatorClient, lane.TenantId, "pipelines:read", "pipelines:manage"));
+        using var runner = fixture.CreateClient(await KeyAsync(operatorClient, lane.TenantId, "pipelines:read", "pipelines:run"));
+        var cases = new[]
+        {
+            (Client: operatorClient, Batch: 5, Status: HttpStatusCode.OK),
+            (Client: manager, Batch: 6, Status: HttpStatusCode.OK),
+            (Client: runner, Batch: 7, Status: HttpStatusCode.Forbidden),
+        };
+
+        foreach (var (client, batch, status) in cases)
+        {
+            var stage = new { kind = "process", mode = "manual", timeZone = "Asia/Tashkent", stage = new { batchSize = batch } };
+            await ExpectAsync(client.PutAsJsonAsync($"/api/pipelines/{lane.PipelineId}/stages", stage), status);
+            await ExpectAsync(client.PutAsJsonAsync($"/api/pipelines/{lane.PipelineId}", new
+            {
+                name = "Staged section", scope = new { }, schedules = new[] { stage },
+            }), status);
+        }
+
+        var stages = await DataAsync(await runner.GetAsync($"/api/pipelines/{lane.PipelineId}/stages"));
+        stages.EnumerateArray().Single(item => item.GetProperty("kind").GetString() == "process")
+            .GetProperty("options").GetProperty("batchSize").GetInt32().Should().Be(6, "the refused caller changed nothing");
+    }
+
+    [Fact]
     public async Task RunAudit_ShouldReportEachAttemptWithHttpStatusAndRetryTime()
     {
         using var operatorClient = fixture.CreateClient(HarvestApiFixture.OperatorKey);

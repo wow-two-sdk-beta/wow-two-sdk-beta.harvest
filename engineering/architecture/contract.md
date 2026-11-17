@@ -64,7 +64,7 @@
 | `POST api/containers` · `POST api/sources` | `containers:manage` · `sources:manage` | nothing (403) |
 | `GET api/containers` · `GET api/sources` | any live key | the pool and its own tenant's |
 | `POST api/pipelines` | `pipelines:manage` | its own private containers; the pool is 403 |
-| `PUT api/pipelines/{id}` | `pipelines:manage` | edits its own private pipelines; the pool is 403 and foreign pipelines are 404 |
+| `PUT api/pipelines/{id}` · `PUT api/pipelines/{id}/stages` | `pipelines:manage` | edits its own private pipelines and their stages; the pool is 403 (404 on `/stages`) and foreign pipelines are 404 |
 | `GET api/pipelines` | `pipelines:read` | the pool and its own tenant's; another tenant's is 404 |
 | `PUT api/pipelines/{id}` with `limits` | `pipelines:manage`, operator | nothing (403); the same edit without `limits` follows the row above |
 | `POST api/sources/groups` · `PUT api/sources/{id}` · `PUT api/sources/{id}/reading` | `harvest:manage-sources`: `sources:manage` held by the operator | nothing (403), a browser session's `sources:manage` included |
@@ -224,8 +224,8 @@ the standard `data` envelope.
 
 | Route | Access | Request and response |
 |---|---|---|
-| `GET /api/pipelines/{id}/stages` | `pipelines:read` and container read | `PipelineStageModel[]` with effective options, schedule, catalog when available, operation keys, recent runs and registered processor keys for Process |
-| `PUT /api/pipelines/{id}/stages` | Operator, `sources:manage` and container write | A `ScheduleDeclaration` with stage options for Discover, Harvest or Process. Returns whether settings were saved |
+| `GET /api/pipelines/{id}/stages` | `pipelines:read` and container read | `PipelineStageModel[]` with effective options, schedule, catalog when available, operation keys, recent runs and, for Process, the registered processor keys with their console labels (`processorLabels`) |
+| `PUT /api/pipelines/{id}/stages` | `pipelines:manage` and container write, as `PUT /api/pipelines/{id}` | A `ScheduleDeclaration` with stage options for Discover, Harvest or Process. Returns whether settings were saved |
 | `GET /api/pipelines/{id}/discoveries` | `pipelines:read` and container read | Optional `state` (`pending`, `captured`, `failed`, `gone`), `offset` and `limit` (default 50, maximum 200). Returns `PipelineDiscoveryModel[]` |
 | `GET /api/runs/{id}/audit` | `pipelines:read` and the run's container read | Optional `offset`, `limit` (default 100, maximum 200) and `newestFirst`. Returns `RunAttemptModel[]` with outcomes, retry times, HTTP statuses and recorded operations |
 | `POST /api/sources/{id}/posts/query` | `posts:read` and container read | `SourcePostQuery` accepts title search, facet selections, optional post ID, cursor and limit (default 30, maximum 90). `SourcePostPage` returns items, `nextCursor`, `total`, `searchTotal`, counted facets and page size bounds |

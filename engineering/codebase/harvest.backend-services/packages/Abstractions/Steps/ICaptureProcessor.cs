@@ -9,6 +9,9 @@ public interface ICaptureProcessor
     /// <summary>Gets the stable key under which the host registers this processor.</summary>
     string Key { get; }
 
+    /// <summary>Gets the name the console shows for this processor; the key when the processor names none.</summary>
+    string Label => Key;
+
     /// <summary>Gets the processor's operations in execution order, or an empty list for one operation.</summary>
     IReadOnlyList<string> OperationKeys => [];
 

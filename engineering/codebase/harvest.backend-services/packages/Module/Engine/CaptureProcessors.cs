@@ -19,8 +19,11 @@ internal static class CaptureProcessors
         return key == ICaptureProcessor.DefaultKey || string.IsNullOrWhiteSpace(options?.Model) ? key : $"{key}:{options.Model}";
     }
 
-    internal static string[] PublicKeys(IServiceProvider services) => services.GetKeyedServices<ICaptureProcessor>(KeyedService.AnyKey)
-        .Select(processor => processor.Key).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+    /// <summary>Lists the registered processors by key, each once, with the name the console shows.</summary>
+    internal static IReadOnlyDictionary<string, string> PublicLabels(IServiceProvider services) =>
+        new SortedDictionary<string, string>(services.GetKeyedServices<ICaptureProcessor>(KeyedService.AnyKey)
+            .DistinctBy(processor => processor.Key, StringComparer.Ordinal)
+            .ToDictionary(processor => processor.Key, processor => processor.Label, StringComparer.Ordinal), StringComparer.Ordinal);
 
     internal static bool IsRegistered(IServiceProviderIsKeyedService services, string key) =>
         services.IsKeyedService(typeof(ICaptureProcessor), key);

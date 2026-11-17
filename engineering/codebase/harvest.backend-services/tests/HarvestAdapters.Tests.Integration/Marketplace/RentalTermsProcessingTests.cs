@@ -53,7 +53,11 @@ public sealed class RentalTermsProcessingTests
 
         var stages = scope.ServiceProvider.GetRequiredService<PipelineStages>();
         var process = (await stages.ListAsync(pipeline, source, CancellationToken.None)).Single(stage => stage.Kind == WorkKind.Process);
-        process.ProcessorKeys.Should().BeEquivalentTo(ICaptureProcessor.DefaultKey, Processor);
+        process.ProcessorKeys.Should().Equal(Processor, ICaptureProcessor.DefaultKey);
+        process.ProcessorLabels.Should().BeEquivalentTo(new Dictionary<string, string>
+        {
+            [ICaptureProcessor.DefaultKey] = "Saved reading", [Processor] = "Rental terms",
+        });
         process.Options.Processor.Should().Be(Processor);
 
         var capture = await SaveAsync(scope.ServiceProvider, host.Clock, container.Id, source.Id, "https://rentals.example/listing/one");

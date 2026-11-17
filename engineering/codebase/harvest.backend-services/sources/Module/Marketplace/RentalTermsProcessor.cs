@@ -13,6 +13,8 @@ internal sealed class RentalTermsProcessor(IServiceProvider services) : ICapture
 
     public string Key => ProcessorKey;
 
+    public string Label => "Rental terms";
+
     public IReadOnlyList<string> OperationKeys => ["resolve-model", "call-model", "deserialize-result"];
 
     public async Task<CaptureProcessResult> ProcessAsync(CaptureProcessInput input, CancellationToken cancellationToken = default)

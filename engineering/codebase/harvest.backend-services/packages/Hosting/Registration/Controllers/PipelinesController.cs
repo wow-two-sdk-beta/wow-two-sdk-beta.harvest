@@ -117,9 +117,10 @@ public sealed class PipelinesController(IRegistrationBroker broker, CallerResolv
         return Ok(ApiResponse<IReadOnlyList<PipelineStageModel>>.Ok(values));
     }
 
-    /// <summary>Sets one stage's independent settings and cadence.</summary>
+    /// <summary>Sets one stage's independent settings and cadence; <c>pipelines:manage</c>, like the pipeline update that
+    /// writes the same stage settings.</summary>
     [HttpPut("{pipelineId:guid}/stages")]
-    [Authorize(Policy = AccessPolicies.ManageSources)]
+    [Authorize(Policy = HarvestScopeConstants.PipelinesManage)]
     public async Task<IActionResult> SaveStage(Guid pipelineId, [FromBody] ScheduleDeclaration schedule, CancellationToken ct)
     {
         if (await VisibleAsync(pipelineId, true, ct) is not { } scope)

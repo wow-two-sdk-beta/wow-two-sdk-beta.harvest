@@ -19,6 +19,9 @@ public sealed record PipelineStageModel(WorkKind Kind, bool Available, ScheduleM
     /// <summary>Gets the configured processor choices for a Process stage.</summary>
     public IReadOnlyList<string> ProcessorKeys { get; init; } = [];
 
+    /// <summary>Gets the console name of each key in <see cref="ProcessorKeys"/>.</summary>
+    public IReadOnlyDictionary<string, string> ProcessorLabels { get; init; } = new Dictionary<string, string>();
+
     /// <summary>Gets the operations in the stage's current execution plan.</summary>
     public IReadOnlyList<string> OperationKeys { get; init; } = [];
 }

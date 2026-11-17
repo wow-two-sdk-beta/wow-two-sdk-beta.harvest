@@ -9,6 +9,8 @@ internal sealed class SavedReadingProcessor : ICaptureProcessor
 {
     public string Key => ICaptureProcessor.DefaultKey;
 
+    public string Label => "Saved reading";
+
     public Task<CaptureProcessResult> ProcessAsync(CaptureProcessInput input, CancellationToken cancellationToken = default)
     {
         JsonElement? listing = input.Extras.TryGetValue("listing", out var facts) ? facts : null;

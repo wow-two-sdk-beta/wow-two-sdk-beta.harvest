@@ -79,7 +79,8 @@ public sealed class PipelineStages(
         bool active = pipeline.State == PipelineState.Active && source.State == SourceState.Active
             && source.Permission is SourcePermission.Open or SourcePermission.Granted;
         var catalog = RunPlanner.DiscoverySection(adapter, source, pipeline.Scope);
-        var processorKeys = CaptureProcessors.PublicKeys(services);
+        var processorLabels = CaptureProcessors.PublicLabels(services);
+        string[] processorKeys = [.. processorLabels.Keys];
         return Kinds.Select(kind =>
         {
             var steps = RunPlanner.StageSteps(descriptor, kind);
@@ -93,6 +94,7 @@ public sealed class PipelineStages(
             {
                 Catalog = kind == WorkKind.Discover ? catalog : null,
                 ProcessorKeys = kind == WorkKind.Process ? processorKeys : [],
+                ProcessorLabels = kind == WorkKind.Process ? processorLabels : new Dictionary<string, string>(),
                 OperationKeys = PlanOf(kind, steps, adapter?.Key, processor),
             };
         }).ToArray();
