@@ -67,7 +67,6 @@ ChatGPT builds these in the pull order of wow-two-ws `system/sessions/events-int
 | S09 Let one subscription follow many sections | feature | spec in `tasks-scfd.md` |
 | E02 Tighten ocharo-fashion-v1 against off-topic event matches | fix | spec in `tasks-events-path.md` |
 | E03 Deliver post.unmatched when a seen post stops matching | fix | spec in `tasks-events-path.md` |
-| E30 Run harvest tests on the workspace SDK | engineering | spec in `tasks-events-path.md` |
 | S13 Typed application deadlines in wow2.event.v1 | feature | spec in `tasks-scfd.md` |
 | E07 Project application deadlines into wow2.event.v1 | feature | spec in `tasks-events-path.md` |
 | E19 Let a subscriber list its tenant's subscriptions | feature | spec in `tasks-events-path.md` |
