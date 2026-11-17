@@ -56,7 +56,7 @@ const latestRuns = computed(() => runs.value.slice(0, 6));
         />
       </section>
       <WorkerOffNotice />
-      <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <div class="grid grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <Card class="p-6">
           <h2 class="mb-4 text-base font-semibold">Latest harvests</h2>
           <ul v-if="latestRuns.length" class="divide-y divide-border" aria-label="Latest harvests">

@@ -162,7 +162,7 @@ watch(
     <template #nav="{ isRail }"><ConsoleNav :collapsed="isRail" /></template>
     <template #bar-end>
       <GalleryViewSwitch v-if="hasViewSwitch" />
-      <ContainerSwitch class="shrink-0" />
+      <ContainerSwitch />
     </template>
     <template #notice>
       <div v-if="$slots.notice" class="mb-6"><slot name="notice"></slot></div>

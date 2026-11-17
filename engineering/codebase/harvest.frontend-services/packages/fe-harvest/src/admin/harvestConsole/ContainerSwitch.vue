@@ -29,7 +29,7 @@ const options = computed(() =>
 </script>
 
 <template>
-  <div v-if="options.length > 1" class="w-56 max-w-full">
+  <div v-if="options.length > 1" class="w-56 min-w-0 max-w-full">
     <SelectPicker v-model="containerId" :options="options">
       <SelectPickerTrigger v-bind="{ 'aria-label': 'Workspace' }">
         <SelectPickerValue placeholder="Choose a workspace" />

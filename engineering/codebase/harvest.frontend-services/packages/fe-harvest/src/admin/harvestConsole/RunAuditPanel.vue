@@ -212,7 +212,7 @@ function movePage(delta: number) {
                 :class="{ 'bg-primary/8': step === attempt }"
               >
                 <td class="whitespace-nowrap py-3 pr-4">{{ step.step }} · #{{ step.attempt }}</td>
-                <td class="max-w-96 break-all py-3 pr-4 text-muted-foreground">{{ step.target }}</td>
+                <td class="min-w-48 max-w-96 break-all py-3 pr-4 text-muted-foreground">{{ step.target }}</td>
                 <td class="whitespace-nowrap py-3 pr-4">{{ timestamp(step.startedAtUtc) }}</td>
                 <td class="min-w-40 py-3">
                   <div class="capitalize">

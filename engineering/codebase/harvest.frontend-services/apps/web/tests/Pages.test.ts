@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { RouterHistoryMode } from '@wow-two-beta/fe/router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import AppRoot from '../src/bootstrap/AppRoot.vue';
+import GalleryViewSwitch from '../src/presentation/shell/GalleryViewSwitch.vue';
 import { createWebRouter } from '../src/bootstrap/router/Routes';
 
 const wrappers: ReturnType<typeof mount>[] = [];
@@ -49,5 +50,15 @@ describe('console route', () => {
     expect(wrapper.text()).toContain('Connect to SCFD');
     expect(wrapper.find('input[type="password"]').exists()).toBe(true);
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  });
+});
+
+describe('gallery view switch', () => {
+  it('names Cards and Rows but shows only their icons at phone width', () => {
+    const wrapper = mount(GalleryViewSwitch);
+    wrappers.push(wrapper);
+    const labels = wrapper.findAll('span.ml-1');
+    expect(labels.map((label) => label.text())).toEqual(['Cards', 'Rows']);
+    for (const label of labels) expect(label.classes()).toContain('max-sm:sr-only');
   });
 });

@@ -13,6 +13,7 @@ import SourcePanel from '../src/admin/harvestConsole/SourcePanel.vue';
 import SourcePostsTab from '../src/admin/harvestConsole/SourcePostsTab.vue';
 import SourcesGallery from '../src/admin/harvestConsole/SourcesGallery.vue';
 import AccessPanel from '../src/admin/harvestConsole/AccessPanel.vue';
+import ContainerSwitch from '../src/admin/harvestConsole/ContainerSwitch.vue';
 import type { HarvestConsole, HarvestConsoleOptions } from '../src/admin';
 import type {
   RunModel,
@@ -582,6 +583,13 @@ describe('pipeline activity', () => {
     expect(monitor().text()).toContain('Latest run');
     await vi.waitFor(() => expect(monitor().text()).toContain('1 captured'));
     expect(monitor().get('[aria-label="Step attempts"]').text()).toContain('ok');
+    const target = monitor()
+      .get('[aria-label="Step attempts"]')
+      .findAll('td')
+      .find((cell) => cell.text().endsWith('fashion/show'));
+    expect(target?.classes(), 'a long target keeps a readable column instead of one letter per line').toContain(
+      'min-w-48',
+    );
     view.value = 'overview';
     await vi.waitFor(() => expect(operation().attributes('data-state')).toBe('completed'));
 
@@ -1450,5 +1458,38 @@ describe('access and home', () => {
     expect(health.text()).toContain('Failed harvests');
     expect(health.text()).toContain('Delivery lag');
     expect(wrapper.get('[aria-label="Latest harvests"]').text()).toContain('Afisha.uz · Fashion');
+  });
+
+  it('keeps the home cards inside a phone-width column', async () => {
+    const wrapper = mountConsole({
+      options: { client: createHarvestClient({ fetch: fixtureFetch() }) },
+      panels: () => h(HomePanel),
+    });
+    await flushPromises();
+    const columns = wrapper.get('[aria-label="Latest harvests"]').element.closest('.grid');
+    // One shrinkable column below the wide layout, so a long harvest name truncates rather than widening the card.
+    expect(columns?.classList.contains('grid-cols-[minmax(0,1fr)]')).toBe(true);
+  });
+
+  it('lets the workspace switch shrink in a narrow top bar', async () => {
+    const pools = fixtureFetch();
+    const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(input instanceof Request ? input.url : String(input), 'https://harvest.example.test');
+      return url.pathname === '/api/containers'
+        ? Response.json({
+            data: [
+              { id: 'container-1', kind: 'pool' },
+              { id: 'container-2', kind: 'private', tenantId: 'tenant-1', externalRef: 'haven-listings' },
+            ],
+          })
+        : pools(input, init);
+    });
+    const wrapper = mountConsole({
+      options: { client: createHarvestClient({ fetch }) },
+      panels: () => h(ContainerSwitch),
+    });
+    await flushPromises();
+    const root = wrapper.get('[aria-label="Workspace"]').element.closest('.w-56');
+    expect(root?.classList.contains('min-w-0'), 'the account menu beside it stays on screen at phone width').toBe(true);
   });
 });

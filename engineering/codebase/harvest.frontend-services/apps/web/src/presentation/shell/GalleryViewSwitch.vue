@@ -16,11 +16,11 @@ function choose(value: unknown) {
   <ToggleGroup variant="segmented" aria-label="View" :model-value="view" class="shrink-0" @update:model-value="choose">
     <ToggleInput value="cards" size="sm">
       <ConsoleIcon name="cards" :size="14" />
-      <span class="ml-1">Cards</span>
+      <span class="ml-1 max-sm:sr-only">Cards</span>
     </ToggleInput>
     <ToggleInput value="rows" size="sm">
       <ConsoleIcon name="rows" :size="14" />
-      <span class="ml-1">Rows</span>
+      <span class="ml-1 max-sm:sr-only">Rows</span>
     </ToggleInput>
   </ToggleGroup>
 </template>
