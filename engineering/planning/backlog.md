@@ -52,6 +52,7 @@ Picks for `system/sessions/events-integration` in wow-two-ws (P1 = this goal, P2
 | Link intake and manual entries | planned | — |
 | Tag and keyword subscriptions | planned | — |
 | AI extraction tiers | planned | — |
+| Entity layer: entity types over the collector | planned, deadline 2026-11-30 | wow-two-ws `ideas/scfd-entity-model.md` |
 
 ## Specced next
 
@@ -106,6 +107,8 @@ ChatGPT builds these in the pull order of wow-two-ws `system/sessions/events-int
 
 | Item | Type | Notes |
 |---|---|---|
+| Entity-type architecture | feature | a basic collector (sources, pipelines, posts) with entity-type modules on top, each with its own logic: events link recurring editions, marketplace dedups and researches prices, news gets its own components; other source wrappers may feed it too (developer, 2026-11-18: "we need entity type based architecture and we'll break it down as such later"). Deadline 2026-11-30, wow-two-ws `pln-tasks.md` `app-t-010` |
+| Event entities after AI classification | feature | one record per event as the single source of truth: posts and articles bind to it, past editions attach to it, cadence (annual, quarterly, monthly) and the next edition are predicted; subscribers search events as history, by year, with every source's posts for that year, beside the post feed (developer, 2026-11-18: "one entity / one source of truth for events"). First entity type of the architecture row above |
 | Resumable historical backfill for feed sources | feature | deferred; shared policy for Instagram and later Telegram, persisted per feed in tables. The admin explicitly enables backfill and chooses the oldest post publication date; initialize it to three calendar months before activation and persist that fixed cutoff. No hardcoded two-year or other history-duration ceiling. Save captured posts and continuation checkpoints durably across runs/restarts; batch budgets preserve unfinished progress. A separate service prioritizes feeds and dispatches small background batches under shared quotas, backoff and pause controls, independently of recent collection. Report cutoff reached, provider history exhausted and interrupted/incomplete coverage distinctly. AI owns event-date extraction and recurrence. |
 | Adaptive scheduling and batch sizing | feature | tune each stage from content volume, queue age, yield and refusals. Respect operator bounds and shared host budgets. Store each decision in the run audit. Current adaptive schedules use their minimum interval. |
 | Full-sweep absence inference | feature | current deletion evidence comes from direct known-link checks |
