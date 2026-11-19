@@ -10,13 +10,15 @@ import type {
 } from '../../contracts';
 import { SourceProcessedLimits } from '../../contracts/ProcessedModels';
 import ChoicePicker from './ChoicePicker.vue';
+import HarvestPill from './HarvestPill.vue';
 import ProcessedPostCard from './ProcessedPostCard.vue';
 import { useHarvestConsole } from './HarvestConsole';
 
 /**
  * What the AI passes made of a source's posts, one card per tagged post, newest first seen first: filters by entity
- * type, verdict and whether an extraction is done, and a cursor page of 30 at a time. The Posts tab beside it shows
- * what the source gave, untouched.
+ * type, verdict and whether an extraction is done, and a cursor page of 30 at a time. The tab label carries the
+ * source's total; while a filter narrows the list, a pill first in the filter row reads how many match (`12 of 88`).
+ * The Posts tab beside it shows what the source gave, untouched.
  */
 defineOptions({ name: 'SourceProcessedTab' });
 const props = defineProps<{ source: SourceOverviewModel }>();
@@ -33,6 +35,20 @@ const state = ref<'loading' | 'ready' | 'unavailable'>('loading');
 const appending = ref(false);
 const appendFailed = ref(false);
 const filtered = computed(() => entityType.value !== '' || verdict.value !== '' || extracted.value !== '');
+/** The matching count while a filter narrows the list: `12 of 88`, or just the match when the host sends no total. */
+const matchText = computed(() => {
+  if (!filtered.value) return undefined;
+  if (state.value === 'loading') return 'Updating…';
+  if (state.value !== 'ready') return undefined;
+  const all = props.source.processedCount;
+  return all === undefined ? `${total.value} matching` : `${total.value} of ${Math.max(all, total.value)}`;
+});
+/** The one language every section of the source reads in, so a card names a language only when it differs. */
+const uniformLanguage = computed(() => {
+  const locales = new Set(props.source.sections.map((section) => session.sectionParts(section.pipelineId).locale));
+  const [only] = locales;
+  return locales.size === 1 ? only : undefined;
+});
 let read: AbortController | undefined;
 
 const EntityChoices = [
@@ -114,6 +130,9 @@ onScopeDispose(() => read?.abort());
 <template>
   <div class="flex min-w-0 flex-col gap-4">
     <div class="flex flex-wrap items-center gap-2.5" role="group" aria-label="Filter processed posts">
+      <span role="status" aria-live="polite" aria-atomic="true" class="inline-flex empty:-me-2.5">
+        <HarvestPill v-if="matchText" tone="neutral" size="md" class="tabular-nums">{{ matchText }}</HarvestPill>
+      </span>
       <div class="w-44 max-w-full">
         <ChoicePicker v-model="entityType" :choices="EntityChoices" label="Entity type" />
       </div>
@@ -122,9 +141,6 @@ onScopeDispose(() => read?.abort());
         <ChoicePicker v-model="extracted" :choices="ExtractedChoices" label="Extraction" />
       </div>
       <Button v-if="filtered" variant="ghost" size="sm" @click="clear">Clear filters</Button>
-      <span class="ms-auto text-sm text-muted-foreground" role="status" aria-live="polite">
-        <template v-if="state === 'ready'">{{ total }} processed {{ total === 1 ? 'post' : 'posts' }}</template>
-      </span>
     </div>
 
     <p v-if="state === 'loading'" class="text-sm text-muted-foreground" role="status">Loading processed posts…</p>
@@ -139,7 +155,13 @@ onScopeDispose(() => read?.abort());
       {{ filtered ? 'No processed post matches.' : 'No processed posts yet. Posts appear here once the AI tags them.' }}
     </p>
     <div v-else class="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(min(100%,24rem),1fr))]">
-      <ProcessedPostCard v-for="post in items" :key="post.postId" :source-id="props.source.sourceId" :post="post" />
+      <ProcessedPostCard
+        v-for="post in items"
+        :key="post.postId"
+        :source="props.source"
+        :post="post"
+        :hidden-language="uniformLanguage"
+      />
     </div>
 
     <div v-if="state === 'ready' && (next || appendFailed)" class="flex items-center gap-3">

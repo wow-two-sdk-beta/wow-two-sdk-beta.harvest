@@ -68,6 +68,7 @@ const harvested = {
     found: 23,
   },
   nextHarvestAt: '2026-11-10T14:12:00Z',
+  processedCount: 3,
   newPostsDaily: [0, 1, 0, 2, 0, 0, 3, 1, 0, 0, 1, 0, 2, 4],
   sections: [
     {
@@ -995,7 +996,7 @@ describe('a source', () => {
     expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toEqual([
       'Overview',
       'Posts 4',
-      'Processed',
+      'Processed 3',
       'Pipelines',
       'Activity',
     ]);

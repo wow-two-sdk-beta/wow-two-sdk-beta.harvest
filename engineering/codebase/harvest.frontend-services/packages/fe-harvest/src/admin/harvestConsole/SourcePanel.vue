@@ -22,7 +22,8 @@ import type { GalleryView } from './SourceWords';
 /**
  * One source on its own page, as Wheelhouse opens a product: the header card over its tabs — Overview, Posts (what the
  * source gave), Processed (what the AI made of it, on a client that reads it), Activity and, for operators, Settings.
- * Each tab is its own place, `/sources/{id}/{tab}`, so a tab change goes through the host app's router.
+ * Posts and Processed carry the source's totals in their labels; the panels beneath show only matches. Each tab is its
+ * own place, `/sources/{id}/{tab}`, so a tab change goes through the host app's router.
  */
 defineOptions({ name: 'SourcePanel' });
 const props = withDefaults(defineProps<{ sourceId: string; tab?: SourceTab; view?: GalleryView }>(), {
@@ -40,7 +41,9 @@ const postCount = computed(
 const tabs = computed(() => [
   { value: 'overview' as const, label: 'Overview' },
   { value: 'posts' as const, label: 'Posts', count: postCount.value },
-  ...(session.canReadProcessed.value ? [{ value: 'processed' as const, label: 'Processed' }] : []),
+  ...(session.canReadProcessed.value
+    ? [{ value: 'processed' as const, label: 'Processed', count: source.value?.processedCount }]
+    : []),
   ...(session.client.value?.pipelineStages ? [{ value: 'pipelines' as const, label: 'Pipelines' }] : []),
   { value: 'activity' as const, label: 'Activity' },
   ...(canSet.value ? [{ value: 'settings' as const, label: 'Settings' }] : []),

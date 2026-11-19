@@ -98,7 +98,9 @@ describe('console routes', () => {
     await vi.waitFor(() => expect(wrapper.findAll('article[aria-label]').length).toBeGreaterThan(0));
     const show = wrapper.get('article[aria-label="Показ мод The Fashion Show Line 2026"]');
     expect(show.text()).toContain('Relevant');
-    expect(show.get('[data-provider]').attributes('aria-label')).toContain('haiku-5-5 · $0.0003 · 1.8s · p2');
+    expect(show.get('header [data-ai-brand]').attributes('data-ai-brand')).toBe('claude');
+    expect(show.get('header [role="img"]').attributes('aria-label')).toBe('Claude Haiku 5.5');
+    expect(show.get('footer').text()).toContain('tags $0.0003 · 1.8s · 1.4k tok');
     expect(show.get('[aria-label="Event extraction"]').text()).toContain('Youth Creativity Palace');
     const href = show.get('a').attributes('href')!;
     expect(href).toMatch(new RegExp(`^${Afisha}/posts/`));

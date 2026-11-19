@@ -34,7 +34,9 @@ import { ageOf, agoOf, eventDatesOf, imageSrcOf, timingOf, webUrlOf, type Galler
 
 /**
  * A source's posts, newest first: a search, filter chips by section and by kind with their counts, and the posts as
- * rows or cards. A card is filled edge to edge by the post's first image, its text at the bottom where the blur
+ * rows or cards. The tab label carries the source's total; while a search or filter narrows the list, a pill first in
+ * the controls reads how many posts match (`12 of 88`), and a source whose posts share one language names it in a pill
+ * after the filters. A card is filled edge to edge by the post's first image, its text at the bottom where the blur
  * fades into the image. The dates and publication age share a line when they fit. Missing images show the source icon
  * and failed images show an unavailable-image icon. The grid fits as many columns of 17rem or more as the page allows. The pool
  * keeps posts of every kind; a subscriber receives only its matches. A post opens on its own page, with its facts and
@@ -122,6 +124,28 @@ const uniformLanguage = computed(() => {
     ?.options.filter((option) => option.count > 0);
   return options?.length === 1 && options[0]!.count === page.value?.total ? options[0]!.value : undefined;
 });
+/** The source's unfiltered post count, as the tab label shows it. */
+const sourceTotal = computed(
+  () => props.source.postCount ?? props.source.sections.reduce((sum, section) => sum + section.posts, 0),
+);
+const narrowed = computed(() => search.value.trim() !== '' || Object.keys(filters.value).length > 0);
+/** The matching count while a search or filter narrows the list, `Updating…` while it reloads, else nothing. */
+const matchText = computed(() => {
+  if (!page.value) return undefined;
+  if (updating.value) return 'Updating…';
+  if (!narrowed.value) return undefined;
+  return `${page.value.total} of ${Math.max(sourceTotal.value, page.value.total)}`;
+});
+/** The language of a source with only one, since its language filter hides itself. */
+const singleLanguage = computed(() => {
+  const options = page.value?.facets.find((facet) => facet.key === 'language')?.options;
+  return options?.length === 1 && !filters.value.language ? options[0]!.value : undefined;
+});
+const hasStatusRow = computed(
+  () =>
+    !!page.value &&
+    (selectedMore.value.length > 0 || (browsing.value && !updatesAvailable.value && !refreshFailed.value)),
+);
 const all = computed({
   get: () => (Object.keys(filters.value).length ? null : 'all'),
   set: clearFilters,
@@ -199,6 +223,9 @@ function sectionOf(post: SourcePostModel) {
 <template>
   <div class="flex min-w-0 flex-col gap-4">
     <div class="flex flex-wrap items-center gap-2.5">
+      <span role="status" aria-live="polite" aria-atomic="true" class="inline-flex empty:-me-2.5">
+        <HarvestPill v-if="matchText" tone="neutral" size="md" class="tabular-nums">{{ matchText }}</HarvestPill>
+      </span>
       <div class="min-w-[min(100%,15rem)] flex-1">
         <SearchInput
           v-model="search"
@@ -248,14 +275,20 @@ function sectionOf(post: SourcePostModel) {
             </div>
           </PopoverContent>
         </Popover>
+        <Tooltip v-if="singleLanguage" :content="`Every post is in ${languageName(singleLanguage)}`" :open-delay="200">
+          <HarvestPill
+            tone="outline"
+            v-bind="{ tabindex: 0 }"
+            class="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          >
+            <PillIcon name="language" />
+            {{ languageName(singleLanguage) }}
+          </HarvestPill>
+        </Tooltip>
       </div>
     </div>
 
-    <div v-if="page" class="flex min-h-7 flex-wrap items-center gap-x-3 gap-y-2 text-sm text-muted-foreground">
-      <span role="status" aria-live="polite" aria-atomic="true">
-        {{ updating ? 'Updating posts…' : `${page.total} ${page.total === 1 ? 'post' : 'posts'}` }}
-        <template v-if="!updating && uniformLanguage">· {{ languageName(uniformLanguage) }}</template>
-      </span>
+    <div v-if="hasStatusRow" class="flex min-h-7 flex-wrap items-center gap-x-3 gap-y-2 text-sm text-muted-foreground">
       <Button
         v-for="selected in selectedMore"
         :key="selected.key"

@@ -1,3 +1,4 @@
+import { AiBrandNames, aiModelLabel, resolveAiBrand } from '@wow-two-beta/fe/domain/aiBrands';
 import type {
   ClassificationVerdict,
   ProcessedAnswerModel,
@@ -10,23 +11,23 @@ import type {
 } from '../../contracts';
 import { eventDatesOf, type PillTone } from './SourceWords';
 
-/** The providers a card draws a mark for; any other provider shares one mark. */
-export type ProviderKind = 'anthropic' | 'openai' | 'other';
-
-/** The mark a provider gets: Anthropic, OpenAI, else the shared one. */
-export function providerKindOf(provider?: string): ProviderKind {
-  const name = provider?.toLowerCase();
-  if (name === 'anthropic') return 'anthropic';
-  if (name === 'openai') return 'openai';
-  return 'other';
+/** A brand's name as people write it: `Claude` for a Claude model, else the provider key as given. */
+export function providerName(provider?: string, model?: string) {
+  const brand = resolveAiBrand({ provider, model });
+  return brand ? AiBrandNames[brand] : provider || 'Unknown provider';
 }
 
-/** A provider's name as people write it. */
-export function providerName(provider?: string) {
-  const kind = providerKindOf(provider);
-  if (kind === 'anthropic') return 'Anthropic';
-  if (kind === 'openai') return 'OpenAI';
-  return provider || 'Unknown provider';
+/** A model id as a person reads it: `claude-haiku-5-5` reads `Claude Haiku 5.5`; an unknown id stays as given. */
+export function modelLabel(model?: string) {
+  return aiModelLabel(model);
+}
+
+/** What names an answer's mark: the model label led by the brand unless it already starts with it (`OpenAI GPT-5 mini`). */
+export function markLabel(provider?: string, model?: string) {
+  const brand = providerName(provider, model);
+  const label = modelLabel(model);
+  if (!label) return brand;
+  return label.toLowerCase().startsWith(brand.toLowerCase()) ? label : `${brand} ${label}`;
 }
 
 /** A model id without the family prefix a tooltip has no room for: `claude-haiku-5-5` reads `haiku-5-5`. */
@@ -50,12 +51,38 @@ export function latencyText(latencyMs?: number) {
   return latencyMs < 1000 ? `${Math.round(latencyMs)}ms` : `${(latencyMs / 1000).toFixed(1)}s`;
 }
 
-/** One answer's provenance in one line: `haiku-5-5 · $0.0003 · 1.8s · p2`. */
+/** A token count as short as its size allows: `186`, `1.4k`, `12k`. */
+export function tokenCount(count: number) {
+  if (count < 1000) return String(count);
+  const thousands = count / 1000;
+  return `${thousands < 10 ? thousands.toFixed(1).replace(/\.0$/, '') : Math.round(thousands)}k`;
+}
+
+/** An answer's tokens, input and output together: `1.4k tok`; nothing when the inference log recorded none. */
+export function tokensText(answer: ProcessedAnswerModel) {
+  const { inputTokens, outputTokens } = answer;
+  const known = [inputTokens, outputTokens].filter((count): count is number => typeof count === 'number');
+  return known.length ? `${tokenCount(known.reduce((sum, count) => sum + count, 0))} tok` : undefined;
+}
+
+/** An answer's tokens split by direction, for a tooltip: `1,240 in · 186 out`. */
+export function tokensDetail(answer: ProcessedAnswerModel) {
+  const format = new Intl.NumberFormat('en-US');
+  return [
+    typeof answer.inputTokens === 'number' ? `${format.format(answer.inputTokens)} in` : undefined,
+    typeof answer.outputTokens === 'number' ? `${format.format(answer.outputTokens)} out` : undefined,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/** One answer's provenance in one line: `haiku-5-5 · $0.0003 · 1.8s · 1.4k tok · p2`. */
 export function answerLine(answer: ProcessedAnswerModel) {
   return [
     shortModel(answer.model) ?? 'no model',
     costText(answer.costMicroUsd),
     latencyText(answer.latencyMs),
+    tokensText(answer),
     answer.promptVersion !== undefined && answer.promptVersion !== null ? `p${answer.promptVersion}` : undefined,
   ]
     .filter(Boolean)
@@ -70,9 +97,53 @@ export function provenanceLines(tags: ProcessedTagsModel, extraction?: Processed
   return lines;
 }
 
+/** One model's share of a card's answers: its label and the passes it answered, each with its cost, speed and tokens. */
+export interface AnswerGroup {
+  readonly provider?: string;
+  readonly model?: string;
+  /** The brand-led model label, as the mark is named. */
+  readonly label: string;
+  readonly passes: readonly { readonly name: string; readonly text: string }[];
+}
+
+/**
+ * The card footer's answers grouped by the model that gave them: tags and extraction on one model make one group, on
+ * two models two, each with its own mark. A pass with no cost, latency or tokens adds no text.
+ */
+export function answerGroups(tags: ProcessedTagsModel, extraction?: ProcessedExtractionModel): AnswerGroup[] {
+  const answers = [
+    { name: 'tags', answer: tags.answer },
+    ...(extraction ? [{ name: 'extraction', answer: extraction.answer }] : []),
+  ];
+  const groups = new Map<string, { provider?: string; model?: string; passes: { name: string; text: string }[] }>();
+  for (const { name, answer } of answers) {
+    const key = `${answer.provider ?? ''}/${answer.model ?? ''}`;
+    const group = groups.get(key) ?? { provider: answer.provider, model: answer.model, passes: [] };
+    groups.set(key, group);
+    const text = [costText(answer.costMicroUsd), latencyText(answer.latencyMs), tokensText(answer)]
+      .filter(Boolean)
+      .join(' · ');
+    if (text) group.passes.push({ name, text });
+  }
+  return [...groups.values()].map((group) => ({ ...group, label: markLabel(group.provider, group.model) }));
+}
+
+/** When a card was last answered: the later of its tags' and extraction's answers. */
+export function answeredAt(tags: ProcessedTagsModel, extraction?: ProcessedExtractionModel) {
+  return [tags.answer.answeredAt, extraction?.answer.answeredAt]
+    .filter((value): value is string => !!value)
+    .sort()
+    .at(-1);
+}
+
 /** The provider a card shows: the tags answer's, else the extraction's. */
 export function cardProvider(tags: ProcessedTagsModel, extraction?: ProcessedExtractionModel) {
   return tags.answer.provider ?? extraction?.answer.provider;
+}
+
+/** The model of the answer `cardProvider` names. */
+export function cardModel(tags: ProcessedTagsModel, extraction?: ProcessedExtractionModel) {
+  return tags.answer.provider ? tags.answer.model : extraction?.answer.model;
 }
 
 /** The words of a verdict. */
@@ -98,6 +169,20 @@ export function entityTypeWords(type?: string) {
 /** The fields the model or the checks were unsure of, each once: tags first, then extraction. */
 export function unsureFields(tags: ProcessedTagsModel, extraction?: ProcessedExtractionModel) {
   return [...new Set([...tags.flags, ...(extraction?.flags ?? [])].map((flag) => flag.field).filter(Boolean))];
+}
+
+/** The flags behind `unsureFields`, one per field: the field, why it is unsure and the value proposed for it. */
+export function unsureFlags(tags: ProcessedTagsModel, extraction?: ProcessedExtractionModel) {
+  const flags = new Map<string, { field: string; reason: string; proposed?: string }>();
+  for (const flag of [...tags.flags, ...(extraction?.flags ?? [])]) {
+    if (flag.field && !flags.has(flag.field))
+      flags.set(flag.field, {
+        field: flag.field,
+        reason: flag.reason,
+        ...(flag.proposed ? { proposed: flag.proposed } : {}),
+      });
+  }
+  return [...flags.values()];
 }
 
 /** A price as `150,000 UZS`, a rent's period after a slash: `500 USD/month`; `free` without an amount. */

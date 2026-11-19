@@ -11,9 +11,11 @@ Defer to `wow-two-ws/conventions/development/frontend/`.
 - `apps/web` is `@harvest/web`, private: the console, one route per page (Home; Sources and a source with its
   Overview, Posts, Processed, Pipelines, Activity and Settings tabs; Pipelines; Entities and one entity; Subscribers;
   Access) inside the fe sdk `AppFrame`. Posts shows what the source gave, untouched; Processed shows what the AI passes
-  made of it — tags, verdict, extraction summary and the answering provider as an icon whose tooltip names the model,
-  cost, latency and prompt version; hosted pages join as
-  consumers forward to them. On screen it says source, group, section, harvest and subscriber, never pipeline, host
+  made of it — a card in the Posts card's look with tags, verdict, extraction summary and the answering AI's brand mark
+  (`@wow-two-beta/fe/domain/aiBrands`, resolved from the model id first, the provider key next) whose tooltip names the
+  model, cost, latency, tokens and prompt version; the Posts and Processed tab labels carry the source's totals
+  (`Posts 88`) and a pill first in the filter row reads the match count (`12 of 88`) only while a search or filter
+  narrows; hosted pages join as consumers forward to them. On screen it says source, group, section, harvest and subscriber, never pipeline, host
   lane, tenant, container or scope names. It takes
   `fe-harvest` by `workspace:*`, through its `exports` only — the way a product would; the package never imports
   `apps/`.

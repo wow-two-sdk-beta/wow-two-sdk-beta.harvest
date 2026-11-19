@@ -238,20 +238,101 @@ describe('remembered post browsing', () => {
 });
 
 describe('post list review refinements', () => {
-  it('shows removable advanced constraints, matched count and single-language context', async () => {
-    const wrapper = mount(SourcePostsTab, { props: { source: source(), view: 'cards' }, attachTo: document.body });
+  it('shows removable advanced constraints, the matched count pill and the single language', async () => {
+    const wrapper = mount(SourcePostsTab, {
+      props: { source: { ...source(), postCount: 4 }, view: 'cards' },
+      attachTo: document.body,
+    });
     wrappers.push(wrapper);
     await flushPromises();
     const vm = wrapper.vm as unknown as { setFilter(key: string, value: string | null): void };
     vm.setFilter('eventTiming', 'upcoming');
     await flushPromises();
-    expect(wrapper.text()).toContain('1 post · Russian');
+    expect(wrapper.get('[role="status"]').text()).toBe('1 of 4');
+    expect(wrapper.text()).not.toContain('1 post ·');
     const remove = wrapper.get('button[aria-label="Remove Event timing: Upcoming filter"]');
     await remove.trigger('click');
     await flushPromises();
     expect(query().mock.calls.at(-1)?.[1].filters).toEqual({});
     expect(wrapper.find('ul[aria-label="Posts"] [aria-label="Russian"]').exists()).toBe(false);
     expect(wrapper.find('button[aria-label="Language"]').exists()).toBe(false);
+  });
+
+  it('shows no count pill while nothing narrows the list, and `Updating…` while a filter reloads', async () => {
+    const wrapper = mount(SourcePostsTab, {
+      props: { source: { ...source(), postCount: 4 }, view: 'cards' },
+      attachTo: document.body,
+    });
+    wrappers.push(wrapper);
+    await flushPromises();
+    const status = () => wrapper.get('span[role="status"][aria-live="polite"]');
+    expect(status().text()).toBe('');
+    expect(wrapper.text()).not.toMatch(/\d+ posts?\b/);
+    let finish!: (value: ReturnType<typeof ok>) => void;
+    query().mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const vm = wrapper.vm as unknown as { setFilter(key: string, value: string | null): void };
+    vm.setFilter('eventTiming', 'upcoming');
+    await nextTick();
+    expect(status().text()).toBe('Updating…');
+    finish(ok(page([post('one')])));
+    await flushPromises();
+    expect(status().text()).toBe('1 of 4');
+    vm.setFilter('eventTiming', null);
+    await flushPromises();
+    expect(status().text()).toBe('');
+  });
+
+  it('counts a search against the source total, and falls back to the sections when the host sends none', async () => {
+    vi.useFakeTimers();
+    const unsent = { ...source(), sections: [{ posts: 3 }, { posts: 2 }] } as unknown as SourceOverviewModel;
+    const wrapper = mount(SourcePostsTab, { props: { source: unsent, view: 'cards' }, attachTo: document.body });
+    wrappers.push(wrapper);
+    await flushPromises();
+    await wrapper.get('input[aria-label="Search posts"]').setValue('concert');
+    await vi.advanceTimersByTimeAsync(300);
+    await flushPromises();
+    expect(wrapper.get('span[role="status"][aria-live="polite"]').text()).toBe('1 of 5');
+  });
+
+  it('names the language of a one-language source in a pill after the filters, and drops it once several exist', async () => {
+    const wrapper = mount(SourcePostsTab, { props: { source: source(), view: 'cards' }, attachTo: document.body });
+    wrappers.push(wrapper);
+    await flushPromises();
+    const group = wrapper.get('[role="group"][aria-label="Filter posts"]');
+    const pill = group.get('[data-tone="outline"]');
+    expect(pill.text()).toBe('Russian');
+    expect(group.element.lastElementChild?.contains(pill.element)).toBe(true);
+    expect(wrapper.find('[role="group"][aria-label="Language"]').exists()).toBe(false);
+
+    query().mockResolvedValue(
+      ok(
+        page([post('one'), post('two', { language: 'uz' })], {
+          facets: [
+            {
+              key: 'language',
+              label: 'Language',
+              options: [
+                { value: 'ru', label: 'Russian', count: 1 },
+                { value: 'uz', label: 'Uzbek', count: 1 },
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+    const several = mount(SourcePostsTab, {
+      props: { source: source('source-2'), view: 'cards' },
+      attachTo: document.body,
+    });
+    wrappers.push(several);
+    await flushPromises();
+    expect(several.get('[role="group"][aria-label="Filter posts"]').find('[data-tone="outline"]').exists()).toBe(false);
+    expect(several.find('[role="group"][aria-label="Language"]').exists()).toBe(true);
   });
 
   it('shows removed state in rows and explicit event timing in both views', async () => {

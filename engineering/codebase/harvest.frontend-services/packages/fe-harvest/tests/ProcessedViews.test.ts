@@ -1,4 +1,4 @@
-import { defineComponent, h, type PropType } from 'vue';
+import { defineComponent, h, nextTick, type PropType } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ResultExtensions } from '@wow-two-beta/fe/foundation/results';
@@ -7,19 +7,29 @@ import type { SourceOverviewModel, SourceProcessedPage, SourceProcessedPostModel
 import { createHarvestClient } from '../src/kit';
 import ChoicePicker from '../src/admin/harvestConsole/ChoicePicker.vue';
 import SourceProcessedTab from '../src/admin/harvestConsole/SourceProcessedTab.vue';
+import ProcessedPostCard from '../src/admin/harvestConsole/ProcessedPostCard.vue';
+import ProviderMark from '../src/admin/harvestConsole/ProviderMark.vue';
 import {
+  answerGroups,
   answerLine,
   costText,
   eventLines,
   latencyText,
   listingLines,
-  providerKindOf,
+  markLabel,
   provenanceLines,
+  tokenCount,
+  tokensText,
   unsureFields,
+  unsureFlags,
 } from '../src/admin/harvestConsole/ProcessedWords';
 
 let session: HarvestConsole;
-vi.mock('../src/admin/harvestConsole/HarvestConsole', () => ({ useHarvestConsole: () => session }));
+const sectionParts = vi.fn((pipelineId: string) => ({ name: pipelineId, locale: 'ru' }));
+vi.mock('../src/admin/harvestConsole/HarvestConsole', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/admin/harvestConsole/HarvestConsole')>()),
+  useHarvestConsole: () => session,
+}));
 const wrappers: ReturnType<typeof mount>[] = [];
 afterEach(() => {
   for (const wrapper of wrappers.splice(0)) wrapper.unmount();
@@ -33,7 +43,13 @@ const LinkStub = defineComponent({
   },
 });
 
-const source = { sourceId: 'afisha', name: 'Afisha.uz' } as SourceOverviewModel;
+const source = {
+  sourceId: 'afisha',
+  name: 'Afisha.uz',
+  family: 'site',
+  processedCount: 8,
+  sections: [{ pipelineId: 'fashion' }],
+} as unknown as SourceOverviewModel;
 
 const runway: SourceProcessedPostModel = {
   postId: 'runway',
@@ -42,6 +58,8 @@ const runway: SourceProcessedPostModel = {
   revision: 2,
   firstSeenAt: new Date().toISOString(),
   state: 'live',
+  language: 'ru',
+  imageUrl: 'https://www.afisha.uz/media/runway.jpg',
   tags: {
     status: 'done',
     current: true,
@@ -62,10 +80,17 @@ const runway: SourceProcessedPostModel = {
       promptVersion: 2,
       costMicroUsd: 300,
       latencyMs: 1840,
+      inputTokens: 1240,
+      outputTokens: 186,
       answeredAt: '2026-11-19T09:00:00Z',
     },
   },
-  classification: { classifier: 'model:x', verdict: 'relevant', reason: 'event under style-fashion' },
+  classification: {
+    classifier: 'model:anthropic/claude-haiku-5-5@post-tags:2',
+    verdict: 'relevant',
+    confidence: 0.94,
+    reason: 'event under style-fashion',
+  },
   extraction: {
     useCase: 'extract-event',
     status: 'done',
@@ -81,13 +106,15 @@ const runway: SourceProcessedPostModel = {
       access: 'ticketed',
       prices: [{ amount: 150000, currency: 'UZS', label: 'entry' }],
     },
-    flags: [{ field: 'occurrences[0].ends', reason: 'unsure' }],
+    flags: [{ field: 'occurrences[0].ends', reason: 'the post states no end', proposed: '2026-11-23' }],
     answer: {
       provider: 'anthropic',
       model: 'claude-haiku-5-5',
       promptVersion: 3,
       costMicroUsd: 1120,
       latencyMs: 2410,
+      inputTokens: 2380,
+      outputTokens: 412,
       answeredAt: '2026-11-19T09:00:00Z',
     },
   },
@@ -110,9 +137,63 @@ const essay: SourceProcessedPostModel = {
   classification: { classifier: 'model:y', verdict: 'irrelevant' },
 };
 
+const showroom: SourceProcessedPostModel = {
+  postId: 'showroom',
+  title: 'Autumn collections at a showroom',
+  revision: 1,
+  firstSeenAt: new Date().toISOString(),
+  state: 'live',
+  language: 'uz',
+  tags: {
+    status: 'done',
+    current: false,
+    entityType: 'event',
+    domains: [
+      { key: 'style-fashion/designer-clothing', label: 'Designer Clothing', primary: true },
+      { key: 'a', label: 'Style & Fashion', primary: false },
+      { key: 'b', label: 'Retail', primary: false },
+      { key: 'c', label: 'Showrooms', primary: false },
+      { key: 'd', label: 'Autumn', primary: false },
+    ],
+    topics: ['showroom', 'autumn', 'collections', 'designers', 'tashkent', 'fashion'],
+    flags: [],
+    answer: {
+      provider: 'google',
+      model: 'gemini-2.5-flash',
+      promptVersion: 2,
+      costMicroUsd: 540,
+      answeredAt: '2026-11-19T09:00:00Z',
+    },
+  },
+  classification: { classifier: 'model:google/gemini-2.5-flash@post-tags:2', verdict: 'uncertain' },
+  extraction: {
+    useCase: 'extract-event',
+    status: 'failed',
+    error: 'no date found',
+    flags: [],
+    answer: { provider: 'openai', model: 'gpt-5-mini', promptVersion: 3, answeredAt: '2026-11-19T10:00:00Z' },
+  },
+};
+const mystery: SourceProcessedPostModel = {
+  postId: 'mystery',
+  title: 'A note',
+  revision: 1,
+  firstSeenAt: new Date().toISOString(),
+  state: 'gone',
+  tags: {
+    status: 'failed',
+    error: 'model unavailable',
+    current: true,
+    domains: [],
+    topics: [],
+    flags: [],
+    answer: { provider: 'acme', model: 'zeta-1', answeredAt: '2026-11-19T09:00:00Z' },
+  },
+};
+
 function show(pages: SourceProcessedPage[]) {
   const query = vi.fn(async () => ResultExtensions.ok(pages.shift() ?? { items: [], total: 0 }));
-  session = { querySourceProcessed: query } as unknown as HarvestConsole;
+  session = { querySourceProcessed: query, sectionParts } as unknown as HarvestConsole;
   const wrapper = mount(SourceProcessedTab, {
     props: { source },
     global: { stubs: { ConsoleLink: LinkStub } },
@@ -130,16 +211,52 @@ describe('processed words', () => {
     expect(costText(undefined)).toBeUndefined();
     expect(latencyText(850)).toBe('850ms');
     expect(latencyText(1840)).toBe('1.8s');
-    expect(answerLine(runway.tags.answer)).toBe('haiku-5-5 · $0.0003 · 1.8s · p2');
+    expect(answerLine(runway.tags.answer)).toBe('haiku-5-5 · $0.0003 · 1.8s · 1.4k tok · p2');
     expect(answerLine(essay.tags.answer)).toBe('gpt-5-mini · p1');
     expect(provenanceLines(runway.tags, runway.extraction)).toEqual([
-      'tags haiku-5-5 · $0.0003 · 1.8s · p2',
-      'event haiku-5-5 · $0.0011 · 2.4s · p3',
+      'tags haiku-5-5 · $0.0003 · 1.8s · 1.4k tok · p2',
+      'event haiku-5-5 · $0.0011 · 2.4s · 2.8k tok · p3',
     ]);
-    expect(providerKindOf('anthropic')).toBe('anthropic');
-    expect(providerKindOf('OpenAI')).toBe('openai');
-    expect(providerKindOf('mistral')).toBe('other');
     expect(unsureFields(runway.tags, runway.extraction)).toEqual(['timeframe', 'occurrences[0].ends']);
+    expect(unsureFlags(runway.tags, runway.extraction)).toEqual([
+      { field: 'timeframe', reason: 'unsure', proposed: 'upcoming' },
+      { field: 'occurrences[0].ends', reason: 'the post states no end', proposed: '2026-11-23' },
+    ]);
+  });
+
+  it('writes tokens as one short count, and names a model by its brand and label', () => {
+    expect(tokenCount(186)).toBe('186');
+    expect(tokenCount(1000)).toBe('1k');
+    expect(tokenCount(1426)).toBe('1.4k');
+    expect(tokenCount(12_400)).toBe('12k');
+    expect(tokensText(runway.tags.answer)).toBe('1.4k tok');
+    expect(tokensText({ outputTokens: 80, answeredAt: 'x' })).toBe('80 tok');
+    expect(tokensText(essay.tags.answer)).toBeUndefined();
+    expect(markLabel('anthropic', 'claude-haiku-5-5')).toBe('Claude Haiku 5.5');
+    expect(markLabel('openai', 'gpt-5-mini')).toBe('OpenAI GPT-5 mini');
+    expect(markLabel('google', 'gemini-2.5-flash')).toBe('Gemini 2.5 Flash');
+    expect(markLabel('acme', 'zeta-1')).toBe('acme zeta-1');
+    expect(markLabel(undefined, undefined)).toBe('Unknown provider');
+  });
+
+  it('groups the answers by model so a card shows one mark per model', () => {
+    expect(answerGroups(runway.tags, runway.extraction)).toEqual([
+      {
+        provider: 'anthropic',
+        model: 'claude-haiku-5-5',
+        label: 'Claude Haiku 5.5',
+        passes: [
+          { name: 'tags', text: '$0.0003 · 1.8s · 1.4k tok' },
+          { name: 'extraction', text: '$0.0011 · 2.4s · 2.8k tok' },
+        ],
+      },
+    ]);
+    expect(answerGroups(showroom.tags, showroom.extraction).map((group) => [group.label, group.passes.length])).toEqual(
+      [
+        ['Gemini 2.5 Flash', 1],
+        ['OpenAI GPT-5 mini', 0],
+      ],
+    );
   });
 
   it('summarizes an event and a listing extraction in a few lines', () => {
@@ -164,12 +281,12 @@ describe('processed words', () => {
 });
 
 describe('processed tab', () => {
-  it('shows each post with its verdict, tags, extraction summary and the provider as an icon', async () => {
+  it('shows each post with its verdict, tags, extraction summary and the answering brand', async () => {
     const { wrapper, query } = show([{ items: [runway, essay], total: 2 }]);
     await flushPromises();
 
     expect(query).toHaveBeenCalledWith('afisha', { limit: 30 }, expect.any(AbortSignal));
-    expect(wrapper.text()).toContain('2 processed posts');
+    expect(wrapper.text()).not.toContain('processed posts');
     const card = wrapper.get(`article[aria-label="${runway.title}"]`);
     expect(card.text()).toContain('Relevant');
     expect(card.text()).toContain('Event');
@@ -182,12 +299,11 @@ describe('processed tab', () => {
     expect(card.get('[aria-label="Event extraction"]').text()).toContain('announcement');
     expect(card.get('[data-line="place"]').text()).toBe('Youth Creativity Palace, Tashkent, UZ');
     expect(card.get('[data-line="terms"]').text()).toContain('150,000 UZS');
-    const mark = card.get('[data-provider]');
-    expect(mark.attributes('data-provider')).toBe('anthropic');
-    expect(mark.attributes('aria-label')).toBe(
-      'Anthropic: tags haiku-5-5 · $0.0003 · 1.8s · p2; event haiku-5-5 · $0.0011 · 2.4s · p3',
-    );
-    expect(card.get('[aria-label^="Unsure:"]').attributes('aria-label')).toBe('Unsure: timeframe, occurrences[0].ends');
+    const mark = card.get('header [role="img"][aria-label="Claude Haiku 5.5"]');
+    expect(mark.get('[data-ai-brand]').attributes('data-ai-brand')).toBe('claude');
+    const unsure = card.get('footer [aria-label^="2 unsure"]');
+    expect(unsure.attributes('aria-label')).toBe('2 unsure: timeframe, occurrences[0].ends');
+    expect(unsure.text()).toBe('? 2 unsure');
     expect(JSON.parse(card.get('a[data-to]').attributes('data-to')!)).toEqual({
       kind: 'source',
       id: 'afisha',
@@ -195,10 +311,62 @@ describe('processed tab', () => {
       post: 'runway',
     });
     const other = wrapper.get(`article[aria-label="${essay.title}"]`);
-    expect(other.get('[data-provider]').attributes('data-provider')).toBe('openai');
+    expect(other.get('header [data-ai-brand]').attributes('data-ai-brand')).toBe('openai');
     expect(other.text()).toContain('Irrelevant');
     expect(other.find('[aria-label="Event extraction"]').exists()).toBe(false);
-    expect(other.find('[aria-label^="Unsure:"]').exists()).toBe(false);
+    expect(other.find('[aria-label*="unsure"]').exists()).toBe(false);
+  });
+
+  it('keeps the filter row free of a count while nothing narrows the list', async () => {
+    const { wrapper } = show([{ items: [runway, essay], total: 2 }]);
+    await flushPromises();
+    const filters = wrapper.get('[role="group"][aria-label="Filter processed posts"]');
+    const status = filters.get('[role="status"][aria-live="polite"]');
+    expect(status.text()).toBe('');
+    expect(filters.element.firstElementChild).toBe(status.element);
+  });
+
+  it('reads `x of y` first in the filter row while a filter narrows the list, `Updating…` while it reloads', async () => {
+    let finish!: (page: SourceProcessedPage) => void;
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce(ResultExtensions.ok({ items: [runway, essay], total: 8 }))
+      .mockImplementationOnce(() => new Promise((resolve) => (finish = (page) => resolve(ResultExtensions.ok(page)))))
+      .mockResolvedValueOnce(ResultExtensions.ok({ items: [runway, essay], total: 8 }));
+    session = { querySourceProcessed: query, sectionParts } as unknown as HarvestConsole;
+    const wrapper = mount(SourceProcessedTab, { props: { source }, global: { stubs: { ConsoleLink: LinkStub } } });
+    wrappers.push(wrapper);
+    await flushPromises();
+    const status = () => wrapper.get('[role="group"] [role="status"][aria-live="polite"]');
+    expect(status().text()).toBe('');
+
+    wrapper.findAllComponents(ChoicePicker)[1]!.vm.$emit('update:modelValue', 'relevant');
+    await nextTick();
+    expect(status().text()).toBe('Updating…');
+    finish({ items: [runway], total: 1 });
+    await flushPromises();
+    expect(status().text()).toBe('1 of 8');
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Clear filters')!
+      .trigger('click');
+    await flushPromises();
+    expect(status().text()).toBe('');
+  });
+
+  it('reads only the match count when the host sends no source total', async () => {
+    const query = vi.fn().mockResolvedValue(ResultExtensions.ok({ items: [runway], total: 1 }));
+    session = { querySourceProcessed: query, sectionParts } as unknown as HarvestConsole;
+    const wrapper = mount(SourceProcessedTab, {
+      props: { source: { ...source, processedCount: undefined } },
+      global: { stubs: { ConsoleLink: LinkStub } },
+    });
+    wrappers.push(wrapper);
+    await flushPromises();
+    wrapper.findAllComponents(ChoicePicker)[0]!.vm.$emit('update:modelValue', 'event');
+    await flushPromises();
+    expect(wrapper.get('[role="group"] [role="status"]').text()).toBe('1 matching');
   });
 
   it('filters by type, verdict and extraction, and pages on with the cursor', async () => {
@@ -238,7 +406,7 @@ describe('processed tab', () => {
       .fn()
       .mockResolvedValueOnce(ResultExtensions.fail({ kind: 'offline' }))
       .mockResolvedValueOnce(ResultExtensions.ok({ items: [], total: 0 }));
-    session = { querySourceProcessed: query } as unknown as HarvestConsole;
+    session = { querySourceProcessed: query, sectionParts } as unknown as HarvestConsole;
     const wrapper = mount(SourceProcessedTab, { props: { source }, global: { stubs: { ConsoleLink: LinkStub } } });
     wrappers.push(wrapper);
     await flushPromises();
@@ -249,6 +417,150 @@ describe('processed tab', () => {
       .trigger('click');
     await flushPromises();
     expect(wrapper.text()).toContain('No processed posts yet.');
+  });
+});
+
+describe('processed card', () => {
+  const card = (post: SourceProcessedPostModel, extra: Record<string, unknown> = {}) => {
+    session = { sectionParts } as unknown as HarvestConsole;
+    const wrapper = mount(ProcessedPostCard, {
+      props: { source, post, ...extra },
+      global: { stubs: { ConsoleLink: LinkStub } },
+    });
+    wrappers.push(wrapper);
+    return wrapper;
+  };
+
+  it('opens with the post image under glass pills and a blur fade, the title over it', () => {
+    const wrapper = card(runway);
+    const header = wrapper.get('header');
+    expect(header.classes()).toContain('aspect-[16/9]');
+    expect(header.get('img').attributes('src')).toBe('https://www.afisha.uz/media/runway.jpg');
+    expect(header.get('img').attributes('alt')).toBe('');
+    expect(header.findAll('[data-tone="glass"], [data-tone="glassSuccess"]').map((pill) => pill.text())).toEqual([
+      'Event',
+      'Relevant',
+    ]);
+    expect(header.get('a[data-to]').text()).toBe(runway.title);
+    expect(header.find('[class*="backdrop-blur-xl"]').exists()).toBe(true);
+    expect(wrapper.find('[data-read-method]').exists()).toBe(false);
+  });
+
+  it('falls back to a source-icon tile with quiet pills for a post without an image, or one whose image fails', async () => {
+    const wrapper = card(essay);
+    const header = wrapper.get('header');
+    expect(header.classes()).not.toContain('aspect-[16/9]');
+    expect(header.classes()).toContain('min-h-20');
+    expect(header.find('img').exists()).toBe(false);
+    expect(header.find('[data-read-method="site"]').exists()).toBe(true);
+    expect(header.find('[data-tone="glass"]').exists()).toBe(false);
+    expect(header.find('[data-tone="info"]').exists()).toBe(true);
+
+    const failing = card(runway);
+    await failing.get('header img').trigger('error');
+    expect(failing.get('header').classes()).toContain('min-h-20');
+    expect(failing.find('header img').exists()).toBe(false);
+  });
+
+  it('shows a post removed from its source, and the language unless every post of the source shares it', () => {
+    const gone = card(mystery);
+    expect(gone.get('header').text()).toContain('removed');
+    const wrapper = card(showroom);
+    expect(wrapper.get('header').text()).toContain('Uzbek');
+    expect(card(showroom, { hiddenLanguage: 'uz' }).get('header').text()).not.toContain('Uzbek');
+    expect(card(runway).get('header').text()).toContain('Russian');
+    expect(card(runway, { hiddenLanguage: 'ru' }).get('header').text()).not.toContain('Russian');
+  });
+
+  it('keeps the tags to a primary domain, two more and four topics, the rest behind a count', () => {
+    const wrapper = card(showroom);
+    const tags = wrapper.get('ul[aria-label="Tags"]');
+    const text = tags.findAll('li').map((item) => item.text());
+    expect(text).toEqual([
+      'Designer Clothing',
+      'Style & Fashion',
+      'Retail',
+      '+2',
+      '#showroom',
+      '#autumn',
+      '#collections',
+      '#designers',
+      '+2',
+      'tags from an earlier text',
+    ]);
+    expect(tags.findAll('[aria-label^="More"]').map((item) => item.attributes('aria-label'))).toEqual([
+      'More domains: Showrooms, Autumn',
+      'More topics: tashkent, fashion',
+    ]);
+    expect(card(runway).find('[aria-label^="More"]').exists()).toBe(false);
+  });
+
+  it('shows a failed tagging as one line, and a failed extraction as a warning with its error', () => {
+    const failed = card(mystery);
+    expect(failed.get('[role="status"]').text()).toBe('Tagging failed · model unavailable');
+    expect(failed.find('ul[aria-label="Tags"]').exists()).toBe(false);
+    const wrapper = card(showroom);
+    const panel = wrapper.get('[aria-label="Event extraction"]');
+    expect(panel.get('[data-tone="warning"]').text()).toBe('failed');
+    expect(panel.text()).toContain('no date found');
+    expect(panel.find('[data-line]').exists()).toBe(false);
+  });
+
+  it('names the verdict reason, confidence and classifier, and each unsure field with its reason and proposal', async () => {
+    const wrapper = card(runway);
+    const verdict = wrapper.get('header [data-tone="glassSuccess"]');
+    await verdict.trigger('focus');
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain('event under style-fashion');
+    });
+    expect(document.body.textContent).toContain('94% confident');
+    expect(document.body.textContent).toContain('model:anthropic/claude-haiku-5-5@post-tags:2');
+    const unsure = wrapper.get('footer [aria-label^="2 unsure"]');
+    await unsure.trigger('focus');
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain('the post states no end → 2026-11-23');
+    });
+    expect(document.body.textContent).toContain('timeframe');
+  });
+
+  it('draws the brand of each provider: Claude, OpenAI, Gemini, and a neutral chip for an unknown one', () => {
+    const brands = [runway, essay, showroom, mystery].map((post) =>
+      card(post).get('header [data-ai-brand]').attributes('data-ai-brand'),
+    );
+    expect(brands).toEqual(['claude', 'openai', 'gemini', 'unknown']);
+    expect(card(mystery).get('header [role="img"]').attributes('aria-label')).toBe('acme zeta-1');
+  });
+
+  it('shows one mark per answering model in the footer, with cost, latency, tokens and the answer time', () => {
+    const wrapper = card(runway);
+    const footer = wrapper.get('footer');
+    expect(footer.findAll('[data-ai-brand]').map((mark) => mark.attributes('data-ai-brand'))).toEqual(['claude']);
+    expect(footer.text()).toContain('Claude Haiku 5.5');
+    expect(footer.get('[data-pass="tags"]').text()).toBe('· tags $0.0003 · 1.8s · 1.4k tok');
+    expect(footer.get('[data-pass="extraction"]').text()).toBe('· extraction $0.0011 · 2.4s · 2.8k tok');
+    expect(footer.get('time').attributes('datetime')).toBe('2026-11-19T09:00:00Z');
+
+    const mixed = card(showroom).get('footer');
+    expect(mixed.findAll('[data-ai-brand]').map((mark) => mark.attributes('data-ai-brand'))).toEqual([
+      'gemini',
+      'openai',
+    ]);
+    expect(mixed.text()).toContain('Gemini 2.5 Flash');
+    expect(mixed.text()).toContain('OpenAI GPT-5 mini');
+    expect(mixed.get('time').attributes('datetime')).toBe('2026-11-19T10:00:00Z');
+    expect(card(essay).find('[data-pass]').exists()).toBe(false);
+  });
+
+  it('lists the model, cost, latency, tokens and prompt in the mark tooltip', async () => {
+    const mark = mount(ProviderMark, {
+      props: { provider: 'google', model: 'gemini-2.5-flash', lines: ['tags gemini-2.5-flash · $0.0005 · p2'] },
+    });
+    wrappers.push(mark);
+    expect(mark.get('[role="img"]').attributes('aria-label')).toBe('Gemini 2.5 Flash');
+    await mark.get('[role="img"]').trigger('focus');
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain('tags gemini-2.5-flash · $0.0005 · p2');
+    });
   });
 });
 
