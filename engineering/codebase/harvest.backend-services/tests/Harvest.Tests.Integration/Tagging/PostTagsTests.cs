@@ -1,3 +1,4 @@
+using System.Globalization;
 using AwesomeAssertions;
 using Harvest.Tests.Integration.Posts;
 using Microsoft.Extensions.DependencyInjection;
@@ -55,7 +56,9 @@ public sealed class PostTagsTests
         var call = host.Caller.Requests.Should().ContainSingle().Subject;
         call.System.Should().Contain("\nstyle-fashion/womens-fashion — Women's Fashion\n").And.NotContain("\nevents —")
             .And.NotContain("\ngenres —").And.NotContain("\nsensitive-topics —");
-        call.User.Should().StartWith("Tashkent Fashion Week\nunknown\nnone\nunknown\nunknown\nen\nModa haftaligi");
+        string seen = post.FirstSeenAtUtc.UtcDateTime.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        call.User.Should().StartWith($"Tashkent Fashion Week\nunknown\nnone\nunknown\nunknown; first seen {seen}\nen\nModa haftaligi",
+            "an unknown publication date reads the post's first capture");
 
         host.Clock.Advance(TimeSpan.FromHours(1));
         var edited = await host.SaveAsync("fw", "Tashkent Fashion Week", "Moda haftaligi yanvarga ko'chdi.");

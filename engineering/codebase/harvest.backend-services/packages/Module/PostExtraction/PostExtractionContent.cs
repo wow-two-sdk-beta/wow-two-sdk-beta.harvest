@@ -44,8 +44,10 @@ internal static class PostExtractionContent
 
     /// <summary>Builds the prompt variables: the post fields <c>title</c>, <c>text</c> (cut), <c>sourceCategory</c>,
     /// <c>language</c>, <c>dates</c>, <c>place</c>, <c>prices</c>, <c>postedAt</c>, and the tags <c>entityType</c>,
-    /// <c>domains</c>, <c>about</c>, <c>timeframe</c>, <c>titleEn</c>; an absent value reads <c>unknown</c> or <c>none</c>.</summary>
-    internal static Dictionary<string, string?> Variables(PostEnvelope envelope, string? sourceCategory, ExtractionTags tags, int maxTextChars) => new()
+    /// <c>domains</c>, <c>about</c>, <c>timeframe</c>, <c>titleEn</c>; an absent value reads <c>unknown</c> or <c>none</c>.
+    /// <paramref name="firstSeen"/> bounds an unknown publication date.</summary>
+    internal static Dictionary<string, string?> Variables(PostEnvelope envelope, string? sourceCategory, ExtractionTags tags, int maxTextChars,
+        DateTimeOffset? firstSeen = null) => new()
     {
         ["title"] = envelope.Title?.Trim() ?? "",
         ["text"] = PostTagsContent.Cut(envelope.Text, maxTextChars),
@@ -54,7 +56,7 @@ internal static class PostExtractionContent
         ["dates"] = PostTagsContent.Dates(envelope.Dates),
         ["place"] = PostTagsContent.Place(envelope.Location),
         ["prices"] = Prices(envelope.Prices),
-        ["postedAt"] = PostTagsContent.PostedAt(envelope.PostedAt),
+        ["postedAt"] = PostTagsContent.PostedAt(envelope.PostedAt, firstSeen),
         ["entityType"] = tags.EntityType,
         ["domains"] = tags.Domains.Count == 0 ? "none"
             : string.Join(", ", tags.Domains.OrderByDescending(domain => domain.Primary).Select(domain => domain.Node)),

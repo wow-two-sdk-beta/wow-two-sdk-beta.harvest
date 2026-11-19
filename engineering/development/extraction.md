@@ -50,6 +50,7 @@ Prompt text lives in the shared AI database; keep drafts outside the repository.
 - Variables, both use cases: `{{title}}`, `{{text}}`, `{{sourceCategory}}`, `{{language}}`, `{{dates}}`, `{{place}}`,
   `{{prices}}`, `{{postedAt}}`, and the post's tags `{{entityType}}`, `{{domains}}` (nodes, primary first), `{{about}}`,
   `{{timeframe}}`, `{{titleEn}}`. Any other placeholder is refused; `{{text}}` belongs in `userTemplate`.
+- `{{postedAt}}` renders as for tagging (`post-tags.md`): an unknown publication date reads the post's first capture.
 - The prompt asks for quotes copied exactly from the title or text: the check is verbatim, on whole tokens.
 
 ```sh

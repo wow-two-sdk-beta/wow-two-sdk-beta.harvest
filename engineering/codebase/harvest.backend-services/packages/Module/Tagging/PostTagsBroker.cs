@@ -288,7 +288,8 @@ internal sealed class PostTagsBroker(
             Subject = $"{PostTagsConstants.SubjectPrefix}{post.Id:D}@{post.Revision}",
             Version = settings.PromptVersion,
             Models = settings.Models,
-            Variables = PostTagsContent.Variables(post.Base, SourceCategory(subject), taxonomy.Value.Rendered, settings.MaxTextChars),
+            Variables = PostTagsContent.Variables(post.Base, SourceCategory(subject), taxonomy.Value.Rendered, settings.MaxTextChars,
+                post.FirstSeenAtUtc),
         }, ct);
         if (response is not Result<AiRunModel>.Success { Value: var run })
             return CallResult.Unavailable("prompt-unavailable");

@@ -180,7 +180,7 @@ internal sealed class PostExtractionBroker(
             Subject = $"{PostTagsConstants.SubjectPrefix}{post.Id:D}@{post.Revision}",
             Version = settings.PromptVersions.TryGetValue(useCase, out var pinned) ? pinned : null,
             Models = settings.Models,
-            Variables = PostExtractionContent.Variables(post.Base, SourceCategory(subject), tags, settings.MaxTextChars),
+            Variables = PostExtractionContent.Variables(post.Base, SourceCategory(subject), tags, settings.MaxTextChars, post.FirstSeenAtUtc),
         }, ct);
         if (response is not Result<AiRunModel>.Success { Value: var run })
             return CallResult.Unavailable("prompt-unavailable");

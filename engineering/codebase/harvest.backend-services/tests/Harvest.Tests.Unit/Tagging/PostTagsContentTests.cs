@@ -86,6 +86,18 @@ public sealed class PostTagsContentTests
         full["taxonomy"].Should().Be("a — A");
     }
 
+    [Fact]
+    public void PostedAt_ShouldReadTheFirstCapture_WhenThePublisherGaveNoDate()
+    {
+        var seen = new DateTimeOffset(2026, 11, 16, 19, 15, 0, TimeSpan.Zero);
+
+        PostTagsContent.Variables(new PostEnvelope { Extraction = Stamp }, null, "taxonomy", 4000, seen)["postedAt"]
+            .Should().Be("unknown; first seen 2026-11-16");
+        PostTagsContent.PostedAt(new PostTimestamp { Value = "2026-11-03", Precision = DatePrecision.Day }, seen)
+            .Should().Be("2026-11-03", "a stated publication date wins over the first capture");
+        PostTagsContent.PostedAt(null).Should().Be("unknown");
+    }
+
     [Theory]
     [InlineData("harvest:post:0193a0b1-0000-7000-8000-000000000001@4", true, 4)]
     [InlineData("harvest:post:0193a0b1-0000-7000-8000-000000000001", true, null)]

@@ -41,11 +41,11 @@ internal sealed class PostTagsSubjectSource(
         if (tagging)
         {
             var taxonomy = await PostTagsStore.ReadTaxonomyAsync(dataSource, cancellationToken);
-            return PostTagsContent.Variables(envelope, category, taxonomy.Rendered, options.Value.MaxTextChars);
+            return PostTagsContent.Variables(envelope, category, taxonomy.Rendered, options.Value.MaxTextChars, post.Post.FirstSeenAtUtc);
         }
         var tags = await PostExtractionStore.ReadTagsAsync(dataSource, postId, PostTagsContent.Hash(envelope), cancellationToken);
         return tags is not null && PostExtractionConstants.UseCaseFor(tags.EntityType) == useCase
-            ? PostExtractionContent.Variables(envelope, category, tags, extraction.Value.MaxTextChars)
+            ? PostExtractionContent.Variables(envelope, category, tags, extraction.Value.MaxTextChars, post.Post.FirstSeenAtUtc)
             : null;
     }
 

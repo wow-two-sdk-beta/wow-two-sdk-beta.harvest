@@ -39,8 +39,9 @@ internal static class PostTagsContent
 
     /// <summary>Builds the prompt variables: <c>title</c>, <c>text</c> (cut), <c>sourceCategory</c>, <c>language</c>,
     /// <c>dates</c>, <c>place</c>, <c>postedAt</c> and <c>taxonomy</c>; an absent value reads <c>unknown</c> or
-    /// <c>none</c>, never empty.</summary>
-    internal static Dictionary<string, string?> Variables(PostEnvelope envelope, string? sourceCategory, string taxonomy, int maxTextChars) => new()
+    /// <c>none</c>, never empty. <paramref name="firstSeen"/> bounds an unknown publication date.</summary>
+    internal static Dictionary<string, string?> Variables(PostEnvelope envelope, string? sourceCategory, string taxonomy, int maxTextChars,
+        DateTimeOffset? firstSeen = null) => new()
     {
         ["title"] = envelope.Title?.Trim() ?? "",
         ["text"] = Cut(envelope.Text, maxTextChars),
@@ -48,7 +49,7 @@ internal static class PostTagsContent
         ["language"] = envelope.Language?.Code ?? "und",
         ["dates"] = Dates(envelope.Dates),
         ["place"] = Place(envelope.Location),
-        ["postedAt"] = PostedAt(envelope.PostedAt),
+        ["postedAt"] = PostedAt(envelope.PostedAt, firstSeen),
         ["taxonomy"] = taxonomy,
     };
 
@@ -70,14 +71,24 @@ internal static class PostTagsContent
         return mentions.Length == 0 ? "unknown" : string.Join(", ", mentions);
     }
 
-    /// <summary>Renders the publication date as <c>yyyy-MM-dd</c>, the publisher's own calendar date, or <c>unknown</c>.</summary>
-    internal static string PostedAt(PostTimestamp? postedAt)
+    /// <summary>Renders the publication date as <c>yyyy-MM-dd</c>, the publisher's own calendar date, or <c>unknown</c>;
+    /// an unknown one reads <c>unknown; first seen yyyy-MM-dd</c> when the post's first capture is given, since the post
+    /// was published by then and a model can still place the post's dates before or after it.</summary>
+    internal static string PostedAt(PostTimestamp? postedAt, DateTimeOffset? firstSeen = null)
+    {
+        if (Published(postedAt) is { } published)
+            return published;
+        return firstSeen is { } seen
+            ? "unknown; first seen " + seen.UtcDateTime.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : "unknown";
+    }
+
+    private static string? Published(PostTimestamp? postedAt)
     {
         if (postedAt?.Value is not { Length: >= 10 } value)
-            return "unknown";
+            return null;
         if (DateOnly.TryParseExact(value[..10], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
             return date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         return DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed)
-            ? parsed.UtcDateTime.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : "unknown";
+            ? parsed.UtcDateTime.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : null;
     }
 }

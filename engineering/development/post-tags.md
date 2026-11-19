@@ -33,7 +33,8 @@ Prompt text lives in the shared AI database; keep drafts outside the repository.
 - Variables: `{{title}}`, `{{text}}`, `{{sourceCategory}}`, `{{language}}`, `{{dates}}`, `{{place}}`, `{{postedAt}}`
   and `{{taxonomy}}`; any other placeholder is refused. `{{taxonomy}}` belongs in `systemTemplate`, so the provider's
   prompt cache holds it; `{{text}}` in `userTemplate`.
-- `postedAt` is the publication date as `yyyy-MM-dd`, or `unknown`; the prompt judges `timeframe` against it.
+- `postedAt` is the publication date as `yyyy-MM-dd`; with no publisher date it reads `unknown; first seen yyyy-MM-dd`,
+  the post's first capture, since the post was out by then, else `unknown`. The prompt judges `timeframe` against it.
 - The answer schema is code-owned (`PostTagsDefinition.OutputSchema`): `entityType` (`event` · `listing` · `none` ·
   `unsure`), `domains` (`[{node, primary}]`, taxonomy keys), `topics`, `about`, `timeframe` (`upcoming` · `ongoing` ·
   `past` · `evergreen` · `unsure`), `items`, `language`, `confidence` (0–1), `titleEn`, `flags`
