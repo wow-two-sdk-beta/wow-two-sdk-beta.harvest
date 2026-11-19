@@ -26,12 +26,13 @@ public sealed class SourceModuleFixture : IAsyncLifetime
 {
     public FakeTimeProvider Clock { get; } = new(new DateTimeOffset(2026, 11, 10, 9, 0, 0, TimeSpan.Zero));
     public ServiceProvider Services { get; private set; } = null!;
+    public string ConnectionString { get; private set; } = null!;
 
     async Task IAsyncLifetime.InitializeAsync()
     {
-        string connectionString = (await PostgresServer.SharedAsync()).NewDatabase("source_conformance");
+        ConnectionString = (await PostgresServer.SharedAsync()).NewDatabase("source_conformance");
         var services = new ServiceCollection().AddLogging().AddSingleton<TimeProvider>(Clock);
-        services.AddHarvest().Configure(options => options.ConnectionString = connectionString);
+        services.AddHarvest().Configure(options => options.ConnectionString = ConnectionString);
         services.AddHarvestFetching();
         services.AddHarvestReaders().AddHarvestExtraction().AddHarvestPosts().AddHarvestDelivery().AddHarvestSources();
         services.AddHarvestEngine();
@@ -48,10 +49,11 @@ public sealed class SourceClientFixture : IAsyncLifetime
     private WebApiTestHost<Program> host = null!;
     public TimeProvider Clock => host.Clock;
     public ServiceProvider Services { get; private set; } = null!;
+    public string ConnectionString { get; private set; } = null!;
 
     async Task IAsyncLifetime.InitializeAsync()
     {
-        string connectionString = (await PostgresServer.SharedAsync()).NewDatabase("source_client_conformance");
+        string connectionString = ConnectionString = (await PostgresServer.SharedAsync()).NewDatabase("source_client_conformance");
         host = new WebApiTestHost<Program>
         {
             ConfigureConfigurationHook = configuration => configuration.AddInMemoryCollection(new Dictionary<string, string?>

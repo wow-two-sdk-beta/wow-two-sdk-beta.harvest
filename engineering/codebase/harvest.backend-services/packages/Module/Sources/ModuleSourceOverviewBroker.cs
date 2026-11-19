@@ -22,11 +22,12 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Sources;
 /// <summary>Reads the console's Sources area over the registry, run, post and delivery tables.</summary>
 /// <remarks>Sources and pipelines come through <see cref="IRegistrationBroker"/>; the rest is one query per table
 /// for the whole container, so an overview costs the same few round trips however many sources it holds.</remarks>
-internal sealed class ModuleSourceOverviewBroker(
+internal sealed partial class ModuleSourceOverviewBroker(
     [FromKeyedServices(HarvestModuleConstants.ServiceKey)] NpgsqlDataSource dataSource,
     IRegistrationBroker registry,
     TimeProvider time,
-    IEnumerable<ISourceAdapter> adapters) : ISourceOverviewBroker
+    IEnumerable<ISourceAdapter> adapters,
+    IServiceProvider services) : ISourceOverviewBroker
 {
     /// <inheritdoc />
     public async Task<Result<IReadOnlyList<SourceOverviewModel>>> ListOverviewAsync(Guid containerId, CancellationToken cancellationToken = default)

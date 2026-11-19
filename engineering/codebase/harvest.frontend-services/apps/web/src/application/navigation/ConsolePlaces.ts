@@ -22,6 +22,8 @@ export function placeLocation(place: ConsolePlace): RouteLocationRaw {
           ...(place.run ? { runId: place.run } : {}),
         },
       };
+    case 'entity':
+      return { name: 'entity', params: { id: place.id } };
     case 'subscribers':
       return { name: 'subscribers', query: place.section ? { section: place.section } : {} };
     default:

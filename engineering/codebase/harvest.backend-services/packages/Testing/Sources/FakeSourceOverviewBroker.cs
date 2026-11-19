@@ -28,6 +28,8 @@ public sealed class FakeSourceOverviewBroker(
     IDeliveryBroker? delivery = null,
     TimeProvider? time = null) : ISourceOverviewBroker
 {
+    private readonly Dictionary<Guid, ProcessedAnswerSeed> answers = [];
+
     private TimeProvider Clock => time ?? TimeProvider.System;
 
     /// <inheritdoc />
@@ -120,6 +122,87 @@ public sealed class FakeSourceOverviewBroker(
                 }
                 return Result<SourcePostPage>.Ok(selection.Complete());
             }, Result<SourcePostPage>.Fail);
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<SourceProcessedPage>> QuerySourceProcessedAsync(Guid sourceId, SourceProcessedQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        if (SourceProcessedQueryRules.Check(sourceId, query, out var after) is { } invalid)
+            return Result<SourceProcessedPage>.Fail(invalid);
+        if (await registry.GetSourceAsync(sourceId, cancellationToken) is not Result<SourceModel>.Success { Value: var source })
+            return Result<SourceProcessedPage>.Fail(RegistrationErrors.SourceNotFound(sourceId));
+
+        var matches = new List<SourceProcessedPostModel>();
+        foreach (var listed in SourcePosts(source))
+        {
+            ProcessedAnswerSeed? seed;
+            PostClassification? classification;
+            lock (posts.Gate)
+            {
+                seed = answers.GetValueOrDefault(listed.PostId);
+                classification = posts.Find(listed.PostId)?.Base.Classification;
+            }
+            if (seed is null)
+                continue;
+            var post = Processed(listed, seed, classification);
+            if ((query.EntityType is null || post.Tags.EntityType == query.EntityType)
+                && (query.Verdict is null || post.Classification?.Verdict == query.Verdict)
+                && (query.Extracted is null || (post.Extraction?.Status == "done") == query.Extracted))
+                matches.Add(post);
+        }
+        var page = matches.Where(post => SourceProcessedQueryRules.After(post, after)).Take(query.Limit + 1).ToList();
+        var items = page.Take(query.Limit).ToList();
+        return Result<SourceProcessedPage>.Ok(new SourceProcessedPage(items,
+            page.Count > query.Limit ? SourceProcessedQueryRules.Cursor(sourceId, query, items[^1]) : null, matches.Count));
+    }
+
+    /// <summary>Stores a post's AI answers, as the passes would have left them; a later seed for the post replaces it.</summary>
+    /// <param name="seed">The answers.</param>
+    public void SeedAnswers(ProcessedAnswerSeed seed)
+    {
+        ArgumentNullException.ThrowIfNull(seed);
+        lock (posts.Gate)
+            answers[seed.PostId] = seed;
+    }
+
+    private static SourceProcessedPostModel Processed(SourcePostModel post, ProcessedAnswerSeed seed, PostClassification? classification) => new()
+    {
+        PostId = post.PostId,
+        Title = post.Title,
+        Url = post.Url,
+        Revision = post.Revision,
+        FirstSeenAt = post.FirstSeenAt,
+        Classification = classification,
+        Tags = new ProcessedTagsModel
+        {
+            Status = seed.Status, Error = seed.Error, Current = true, EntityType = seed.EntityType,
+            Domains = [.. seed.Domains.Select((key, index) => new ProcessedDomainModel(key, key, index == 0))],
+            Topics = seed.Topics, About = seed.About, Timeframe = seed.Timeframe, TitleEn = seed.TitleEn,
+            Confidence = seed.Confidence, Flags = seed.Flags, Answer = Answer(seed.Model, seed.PromptVersion, seed.AnsweredAtUtc),
+        },
+        Extraction = seed.Extraction is { } extraction
+            && extraction.UseCase == (seed.EntityType == "event" ? "extract-event" : seed.EntityType == "listing" ? "extract-listing" : null)
+            ? new ProcessedExtractionModel
+            {
+                UseCase = extraction.UseCase, Status = extraction.Status, Role = extraction.Role,
+                Event = extraction.Status == "done" ? extraction.Event : null,
+                Listing = extraction.Status == "done" ? extraction.Listing : null,
+                Flags = extraction.Flags, Answer = Answer(extraction.Model, extraction.PromptVersion, seed.AnsweredAtUtc),
+            }
+            : null,
+    };
+
+    /// <summary>The fake keeps no inference log, so an answer has no cost or latency.</summary>
+    private static ProcessedAnswerModel Answer(string? route, int? promptVersion, DateTimeOffset at)
+    {
+        var slash = route?.IndexOf('/', StringComparison.Ordinal) ?? -1;
+        return new ProcessedAnswerModel
+        {
+            Provider = slash > 0 ? route![..slash] : null, Model = slash > 0 ? route![(slash + 1)..] : route,
+            PromptVersion = promptVersion, AnsweredAt = at,
+        };
     }
 
     private IReadOnlyList<SourcePostModel> SourcePosts(SourceModel source)

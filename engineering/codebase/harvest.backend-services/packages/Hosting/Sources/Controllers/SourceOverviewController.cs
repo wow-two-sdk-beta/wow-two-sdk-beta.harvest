@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Containers;
+using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Posts;
 using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
 using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
@@ -66,6 +67,44 @@ public sealed class SourceOverviewController(ISourceOverviewBroker overview, IRe
             return this.ToProblem(error);
         return (await overview.QuerySourcePostsAsync(sourceId, query, ct)).Match<IActionResult>(
             value => Ok(ApiResponse<SourcePostPage>.Ok(value)), this.ToProblem);
+    }
+
+    /// <summary>Lists one page of the visible source's processed posts: tags, verdict and extraction summary, with
+    /// each answer's provider, model, prompt version, cost and latency.</summary>
+    /// <param name="sourceId">The source.</param>
+    /// <param name="entityType">The tags' entity type: <c>event</c>, <c>listing</c>, <c>none</c> or <c>unsure</c>.</param>
+    /// <param name="verdict">The verdict: <c>relevant</c>, <c>irrelevant</c> or <c>uncertain</c>.</param>
+    /// <param name="extracted">Whether a done extraction answer must exist.</param>
+    /// <param name="limit">The page size, 1–90.</param>
+    /// <param name="cursor">The cursor a previous page returned.</param>
+    /// <param name="ct">The token that cancels the request.</param>
+    [HttpGet("/" + RegistrationRouteConstants.Sources + "/{sourceId:guid}/" + SourceRouteConstants.Processed)]
+    [Authorize(Policy = HarvestScopeConstants.PostsRead)]
+    [ProducesResponseType<ApiResponse<SourceProcessedPage>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Processed(Guid sourceId,
+        [FromQuery(Name = SourceRouteConstants.EntityTypeParameter)] string? entityType,
+        [FromQuery(Name = SourceRouteConstants.VerdictParameter)] string? verdict,
+        [FromQuery(Name = SourceRouteConstants.ExtractedParameter)] bool? extracted,
+        [FromQuery(Name = SourceRouteConstants.LimitParameter)] int limit = SourceProcessedQuery.DefaultLimit,
+        [FromQuery(Name = SourceRouteConstants.CursorParameter)] string? cursor = null, CancellationToken ct = default)
+    {
+        if (await SourceAccessErrorAsync(sourceId, ct) is { } error)
+            return this.ToProblem(error);
+        ClassificationVerdict? parsed = null;
+        if (!string.IsNullOrEmpty(verdict))
+        {
+            if (!Enum.TryParse<ClassificationVerdict>(verdict, ignoreCase: true, out var value) || !Enum.IsDefined(value)
+                || verdict.Any(char.IsDigit))
+                return this.ToProblem(RegistrationErrors.Invalid("The verdict must be relevant, irrelevant or uncertain."));
+            parsed = value;
+        }
+        var query = new SourceProcessedQuery
+        {
+            EntityType = string.IsNullOrEmpty(entityType) ? null : entityType, Verdict = parsed, Extracted = extracted,
+            Limit = limit, Cursor = string.IsNullOrEmpty(cursor) ? null : cursor,
+        };
+        return (await overview.QuerySourceProcessedAsync(sourceId, query, ct)).Match<IActionResult>(
+            value => Ok(ApiResponse<SourceProcessedPage>.Ok(value)), this.ToProblem);
     }
 
     private async Task<AppError?> SourceAccessErrorAsync(Guid sourceId, CancellationToken ct)

@@ -14,14 +14,15 @@ import SourceHeader from './SourceHeader.vue';
 import SourceOverviewTab from './SourceOverviewTab.vue';
 import SourcePipelinesTab from './SourcePipelinesTab.vue';
 import SourcePostsTab from './SourcePostsTab.vue';
+import SourceProcessedTab from './SourceProcessedTab.vue';
 import SourceSettingsTab from './SourceSettingsTab.vue';
 import { useHarvestConsole, type SourceTab } from './HarvestConsole';
 import type { GalleryView } from './SourceWords';
 
 /**
- * One source on its own page, as Wheelhouse opens a product: the header card over four tabs — Overview, Posts,
- * Activity and, for operators, Settings. Each tab is its own place, `/sources/{id}/{tab}`, so a tab change goes
- * through the host app's router.
+ * One source on its own page, as Wheelhouse opens a product: the header card over its tabs — Overview, Posts (what the
+ * source gave), Processed (what the AI made of it, on a client that reads it), Activity and, for operators, Settings.
+ * Each tab is its own place, `/sources/{id}/{tab}`, so a tab change goes through the host app's router.
  */
 defineOptions({ name: 'SourcePanel' });
 const props = withDefaults(defineProps<{ sourceId: string; tab?: SourceTab; view?: GalleryView }>(), {
@@ -39,6 +40,7 @@ const postCount = computed(
 const tabs = computed(() => [
   { value: 'overview' as const, label: 'Overview' },
   { value: 'posts' as const, label: 'Posts', count: postCount.value },
+  ...(session.canReadProcessed.value ? [{ value: 'processed' as const, label: 'Processed' }] : []),
   ...(session.client.value?.pipelineStages ? [{ value: 'pipelines' as const, label: 'Pipelines' }] : []),
   { value: 'activity' as const, label: 'Activity' },
   ...(canSet.value ? [{ value: 'settings' as const, label: 'Settings' }] : []),
@@ -77,6 +79,7 @@ function choose(value: string) {
       <TabsGroupPanel :value="props.tab" class="min-w-0">
         <SourceOverviewTab v-if="props.tab === 'overview'" :source="source" />
         <SourcePostsTab v-else-if="props.tab === 'posts'" :source="source" :view="props.view" />
+        <SourceProcessedTab v-else-if="props.tab === 'processed'" :source="source" />
         <SourcePipelinesTab v-else-if="props.tab === 'pipelines'" :source="source" />
         <SourceActivityTab v-else-if="props.tab === 'activity'" :source="source" />
         <SourceSettingsTab v-else-if="props.tab === 'settings' && canSet" :source="source" />

@@ -38,7 +38,8 @@ import { ageOf, agoOf, eventDatesOf, imageSrcOf, timingOf, webUrlOf, type Galler
  * fades into the image. The dates and publication age share a line when they fit. Missing images show the source icon
  * and failed images show an unavailable-image icon. The grid fits as many columns of 17rem or more as the page allows. The pool
  * keeps posts of every kind; a subscriber receives only its matches. A post opens on its own page, with its facts and
- * revisions — revisions never show in the list.
+ * revisions — revisions never show in the list. This is the raw view: only what the source gave and its reader mapped,
+ * no AI tag, verdict or extraction; those show on the Processed tab.
  */
 defineOptions({ name: 'SourcePostsTab' });
 const props = withDefaults(defineProps<{ source: SourceOverviewModel; view?: GalleryView }>(), { view: 'rows' });

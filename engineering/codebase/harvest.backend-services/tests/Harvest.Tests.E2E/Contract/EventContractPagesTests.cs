@@ -43,7 +43,7 @@ public sealed class EventContractPagesTests
     public async Task Pages_ShouldEqualTheCheckedInContract()
     {
         string database = (await PostgresServer.SharedAsync()).NewDatabase("contract");
-        // The shared AI module on, with Ocharo's wanted pair and the scripted caller, for case 11 alone: tagging stays off,
+        // The shared AI module on, with Ocharo's wanted pair and the scripted caller, for cases 11 and 12: tagging stays off,
         // so no other case queues or carries an answer.
         var caller = new ScriptedAiModelCaller();
         await using var host = HarvestApiFixture.CreateHost(database, new Dictionary<string, string?>
@@ -284,6 +284,37 @@ public sealed class EventContractPagesTests
         files.Add(new("11-estimated.json", ["post.new:undated", "post.changed:classified", "post.changed:estimated", "post.changed:stated"],
             normalizer.Normalize(estimatedBytes)));
 
+        // 12: SCFD's English title. A Russian post arrives untitled in English; its tags pass writes a title and a domain off
+        // the wanted pair, so `titles` appears with the same revision as the verdict; a later capture changes the Russian
+        // title and the English one stays, because the tags stay on the post until a new answer replaces them.
+        var expo = await SaveAsync(Simple(Tick(), "textile-expo-2026", "Выставка текстиля и швейного оборудования"));
+        caller.Enqueue(ScriptedAiModelCaller.Answer(TagsAnswer("business-and-finance", "textile-expo", "Textile and Sewing Equipment Exhibition")));
+        Tick();
+        (await scope.ServiceProvider.GetRequiredService<IPostTagsBroker>().RunAsync(expo.Id)).ValueOrThrow().NewRevision.Should().Be(2);
+        (await SaveAsync(Simple(Tick(), "textile-expo-2026", "Международная выставка текстиля и швейного оборудования"))).Revision.Should().Be(3);
+        var (titledBytes, titledPage) = await PullAsync(Next(estimatedPage), 3);
+        var titled = Events(titledPage);
+        titled.Should().OnlyContain(item => item.GetProperty("postId").GetGuid() == expo.Id);
+        titled.Select(item => item.GetProperty("type").GetString() + ":" + item.GetProperty("revision").GetInt32())
+            .Should().Equal("post.new:1", "post.changed:2", "post.changed:3");
+        var titledData = titled.Select(item => item.GetProperty("data")).ToArray();
+        titledData[0].TryGetProperty("titles", out _).Should().BeFalse("a post with no tags answer carries no titles");
+        titledData[0].GetProperty("title").GetString().Should().Be("Выставка текстиля и швейного оборудования");
+        foreach (var data in titledData.Skip(1))
+        {
+            var titles = data.GetProperty("titles").EnumerateArray().ToArray();
+            titles.Should().ContainSingle();
+            titles[0].GetProperty("text").GetString().Should().Be("Textile and Sewing Equipment Exhibition");
+            titles[0].GetProperty("language").GetString().Should().Be("en");
+            titles[0].GetProperty("machine").GetBoolean().Should().BeTrue();
+            data.EnumerateObject().Select(property => property.Name).Take(3).Should().Equal("schema", "title", "titles");
+        }
+        titledData[1].GetProperty("title").GetString().Should().Be("Выставка текстиля и швейного оборудования");
+        titledData[2].GetProperty("title").GetString().Should().Be("Международная выставка текстиля и швейного оборудования");
+        titledData[1].GetProperty("classification").GetProperty("verdict").GetString().Should().Be("irrelevant");
+        files.Add(new("12-english-title.json", ["post.new:untitled", "post.changed:english-title", "post.changed:english-title-kept"],
+            normalizer.Normalize(titledBytes)));
+
         delivered.Should().NotContain(rejected.Id, "a post the subscription's filter rejects is never delivered");
         files.Add(new("manifest.json", [], Manifest(files)));
         ContractFolder.WriteOrVerify(files, Environment.GetEnvironmentVariable(WriteSwitch) == "1");
@@ -333,12 +364,13 @@ public sealed class EventContractPagesTests
         }
     }
 
-    private static string TagsAnswer() => JsonSerializer.Serialize(new
-    {
-        entityType = "event", domains = new[] { new { node = "style-fashion", primary = true } }, topics = new[] { "fashion-week" },
-        about = "a fashion week", timeframe = "upcoming", items = 1, language = "ru", confidence = 0.9, titleEn = "Tashkent Fashion Week",
-        flags = Array.Empty<object>(),
-    });
+    private static string TagsAnswer(string domain = "style-fashion", string topic = "fashion-week", string titleEn = "Tashkent Fashion Week") =>
+        JsonSerializer.Serialize(new
+        {
+            entityType = "event", domains = new[] { new { node = domain, primary = true } }, topics = new[] { topic },
+            about = "a fashion week", timeframe = "upcoming", items = 1, language = "ru", confidence = 0.9, titleEn,
+            flags = Array.Empty<object>(),
+        });
 
     private static string EventAnswer() => JsonSerializer.Serialize(new
     {

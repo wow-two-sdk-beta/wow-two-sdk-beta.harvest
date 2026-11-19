@@ -994,6 +994,7 @@ describe('a source', () => {
     expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toEqual([
       'Overview',
       'Posts 4',
+      'Processed',
       'Pipelines',
       'Activity',
     ]);

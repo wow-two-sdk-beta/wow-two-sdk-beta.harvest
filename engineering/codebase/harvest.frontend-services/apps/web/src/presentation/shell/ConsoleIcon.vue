@@ -4,6 +4,7 @@ export const ConsoleIconPaths = {
   home: 'M3 10.5 12 3l9 7.5 M5 9v11h14V9 M10 20v-6h4v6',
   sources: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18 M3 12h18 M12 3c5 5 5 13 0 18 M12 3c-5 5-5 13 0 18',
   pipelines: 'M3 10h4v4H3z M10 10h4v4h-4z M17 10h4v4h-4z M7 12h3 M14 12h3',
+  entities: 'M4 5h7v6H4z M13 5h7v6h-7z M4 13h7v6H4z M16.5 13.5a3 3 0 1 0 0 6 3 3 0 0 0 0-6',
   group: 'M3 7V5c0-1.1.9-2 2-2h2 M17 3h2c1.1 0 2 .9 2 2v2 M21 17v2c0 1.1-.9 2-2 2h-2 M7 21H5c-1.1 0-2-.9-2-2v-2',
   subscribers:
     'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7 M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6 M16 4.5a3.5 3.5 0 0 1 0 6.5 M18 14.5c1.8.8 3 2.9 3 5.5',

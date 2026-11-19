@@ -21,6 +21,8 @@ afterEach(() => {
 /** The demo's Afisha.uz, the one harvested source. */
 const Afisha = '/sources/00000000-0000-4000-8000-000000000200';
 const FashionPipeline = '/pipelines/00000000-0000-4000-8000-000000000005';
+/** The demo's Tashkent Fashion Week entity. */
+const FashionWeek = '00000000-0000-4000-8000-000000000900';
 
 /** Mounts the demo console at `path`, routed as in the browser but over memory history. */
 async function renderAt(path: string) {
@@ -38,10 +40,13 @@ const places = [
   ['/sources', 'Sources', 'Sources', 'Sources'],
   [Afisha, 'Afisha.uz', 'Afisha.uz', 'Sections being harvested'],
   [`${Afisha}/posts`, 'Afisha.uz', 'Afisha.uz', 'Posts'],
+  [`${Afisha}/processed`, 'Afisha.uz', 'Afisha.uz', 'Filter processed posts'],
   [`${Afisha}/activity`, 'Afisha.uz', 'Afisha.uz', 'Runs'],
   [`${Afisha}/settings`, 'Afisha.uz', 'Afisha.uz', 'Reading'],
   ['/pipelines', 'Pipelines', 'Pipelines', 'Pipelines'],
   [FashionPipeline, 'Fashion', 'Fashion', 'Section pipelines'],
+  ['/entities', 'Entities', 'Entities', 'Entities'],
+  [`/entities/${FashionWeek}`, 'Entity', 'Entities', 'Entity'],
   ['/subscribers', 'Subscribers', 'Subscribers', 'Subscribers'],
   ['/access', 'Access', 'Access', 'This session'],
 ] as const;
@@ -74,6 +79,7 @@ describe('console routes', () => {
       'Collect',
       'Sources',
       'Pipelines',
+      'Entities',
       'Deliver',
       'Subscribers',
       'System',
@@ -85,6 +91,21 @@ describe('console routes', () => {
     expect(wrapper.get('[aria-label="Open source"]').text()).toContain('Afisha.uz');
     expect(wrapper.get('[data-app-frame-bar]').text()).toContain('Afisha');
     expect(wrapper.find('[aria-label="Workspace"]').exists()).toBe(false);
+  });
+
+  it('shows what the AI made of a post, and links an entity post to its post page', async () => {
+    const { router, wrapper } = await renderAt(`${Afisha}/processed`);
+    await vi.waitFor(() => expect(wrapper.findAll('article[aria-label]').length).toBeGreaterThan(0));
+    const show = wrapper.get('article[aria-label="Показ мод The Fashion Show Line 2026"]');
+    expect(show.text()).toContain('Relevant');
+    expect(show.get('[data-provider]').attributes('aria-label')).toContain('haiku-5-5 · $0.0003 · 1.8s · p2');
+    expect(show.get('[aria-label="Event extraction"]').text()).toContain('Youth Creativity Palace');
+    const href = show.get('a').attributes('href')!;
+    expect(href).toMatch(new RegExp(`^${Afisha}/posts/`));
+
+    await router.push(`/entities/${FashionWeek}`);
+    await vi.waitFor(() => expect(wrapper.find('[aria-label="Entity"]').exists()).toBe(true));
+    expect(wrapper.get(`a[href="${href}"]`).text()).toContain('Показ мод The Fashion Show Line 2026');
   });
 
   it('opens a pipeline from the directory and links to a specific run audit', async () => {

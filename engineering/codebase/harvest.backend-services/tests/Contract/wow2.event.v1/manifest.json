@@ -84,12 +84,21 @@
     },
     {
       "name": "11-estimated.json",
-      "sha256": "dfbaa740b1a25774e2a6a5ad800286b0f09f13cab171dfeb42fa2e1af70b27ce",
+      "sha256": "88b2d83897f125319eb628c37f71ead0c6009923caab5204930bc2e6ef2d49ee",
       "cases": [
         "post.new:undated",
         "post.changed:classified",
         "post.changed:estimated",
         "post.changed:stated"
+      ]
+    },
+    {
+      "name": "12-english-title.json",
+      "sha256": "407dd7699789ce1f6a7dab88e6dafee2634fd3c9175acbb69285f085132a69ae",
+      "cases": [
+        "post.new:untitled",
+        "post.changed:english-title",
+        "post.changed:english-title-kept"
       ]
     }
   ]

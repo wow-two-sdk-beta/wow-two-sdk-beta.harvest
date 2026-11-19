@@ -13,6 +13,7 @@ export interface ConsoleAccount {
 /** The tabs of a source's page, as the trail names them. @internal */
 const SourceTabLabels: Readonly<Record<string, string>> = {
   'source-posts': 'Posts',
+  'source-processed': 'Processed',
   'source-pipelines': 'Pipelines',
   'source-run': 'Run audit',
   'source-activity': 'Activity',
@@ -89,6 +90,8 @@ const crumbs = computed(() => {
       ...(detail ? [{ label: detail }] : []),
     ];
   }
+  if (routeName.value === 'entity')
+    return [...head, { label: page.label, href: router.resolve({ name: page.route }).href }, { label: 'Entity' }];
   if (!isSource.value) return [...head, { label: page.label }];
   const source = session.overviewOf(id);
   const group = source ? session.groupOf(source.groupId) : undefined;

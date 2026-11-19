@@ -20,3 +20,7 @@ export type {
   RunAttemptModel,
   RunOperationModel,
 } from './PipelineStagesModel';
+export type * from './ProcessedModels';
+export { SourceProcessedLimits } from './ProcessedModels';
+export type * from './EntityModels';
+export { EntityRouteConstants } from './EntityModels';

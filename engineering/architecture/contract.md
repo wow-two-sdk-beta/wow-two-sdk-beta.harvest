@@ -74,7 +74,7 @@
 | `PUT api/pipelines/{id}` with `limits` | `pipelines:manage`, operator | nothing (403); the same edit without `limits` follows the row above |
 | `POST api/sources/groups` · `PUT api/sources/{id}` · `PUT api/sources/{id}/reading` | `harvest:manage-sources`: `sources:manage` held by the operator | nothing (403), a browser session's `sources:manage` included |
 | `GET api/sources/overview` · `GET api/sources/groups` | `pipelines:read` (no `sources:read` exists) | the pool and its own tenant's; another tenant's is 404 |
-| `GET api/sources/{id}/posts` · `GET api/posts/{id}/revisions` | `posts:read` | sources and posts of the pool and its own tenant's; another tenant's is 404 |
+| `GET api/sources/{id}/posts` · `GET api/sources/{id}/processed` · `GET api/posts/{id}/revisions` | `posts:read` | sources and posts of the pool and its own tenant's; another tenant's is 404 |
 | `GET api/entities` · `api/entities/{id}` · `api/entities/{id}/posts` · `api/entities/calendar` · `api/entities/events` | `posts:read` (no `entities:read` exists) | entities of the pool and its own tenant's containers; another tenant's container, or an entity of another container, is 404 |
 
 - Keys: Identity.Auth `Identity/ApiKeys` (`ApiKey` scheme, no local pass); `/api/system/status` stays open.
@@ -237,6 +237,7 @@ The module's `Module.*` registration extensions likewise opt each capability in 
 | 1 | `ModuleEntitiesBroker` (Module, `Entities/`) | `AddHarvestEntityReads()`, which `AddHarvestEntities()` and Hosting call |
 | 2/3 | `ApiEntitiesBroker` (Client) | `AddHarvestEntityClient()` after `AddHarvestClient`; the caller needs `posts:read` |
 | fake | `FakeEntitiesBroker` (Testing) over the registry and post fakes; `Seed` stands in for resolution, `Append` adds a change | constructed |
+| fe | `createEntitiesClient` (`fe-harvest/kit`, also `createHarvestClient().entities`) over the same routes; the models in `fe-harvest/contracts` (`EntityModels.ts`) | the console's Entities page |
 
 - Conformance: `EntitiesBrokerConformance` runs against all three; it seeds through `SeedAsync` (the module's writers
   for the module and client, `Seed` for the fake), so the client form always targets the in-process host.
@@ -253,6 +254,7 @@ stores. Groups and display names are `IRegistrationBroker`'s; the reading pace i
 | `ListOverviewAsync(containerId)` | one `SourceOverviewModel` per registered source, by name: operational `state`, persisted `sourceState`, `permission`, `lastHarvest` with its work `kind`, `nextHarvestAt`, `newPostsDaily` (14 UTC days, today last), `sections` (one per pipeline), `health` | `NotFound` container |
 | `ListSourcePostsAsync(sourceId, limit = 200)` | `SourcePostModel` newest first: title, kind, state, revision, first seen, last changed, the section that first captured it, stated start, URL, the first image's source URL (never a `fileRef`) | `NotFound` source · `Validation` limit outside 1–500 |
 | `QuerySourcePostsAsync(sourceId, query)` | `SourcePostPage` with matching items, an optional continuation cursor, counts and facets over the full query | `NotFound` source · `Validation` unsupported filters, limits or cursor |
+| `QuerySourceProcessedAsync(sourceId, query)` | `SourceProcessedPage` newest first seen first: every surviving post with a `post-tags` answer — its `ProcessedTagsModel` (entity type, domains with labels, topics, about, timeframe, English title, flags), its `classification`, the extraction of its tagged type about the same content with an event or listing summary — each answer's `ProcessedAnswerModel` (provider, model, prompt version, cost and latency from the inference log); `nextCursor`, `total` | `NotFound` source · `Validation` entity type, limit outside 1–90, a cursor of another source or filters (`SourceProcessedQueryRules`) |
 | `ListPostRevisionsAsync(containerId, postId)` | `PostRevisionModel` newest first: `revision`, `at`, `changed`; empty for a post from before `006` | `NotFound` post in the container |
 
 - For an active source with open/granted permission, operational `state` is `harvesting` while a run is queued or
@@ -270,7 +272,13 @@ stores. Groups and display names are `IRegistrationBroker`'s; the reading pace i
   those writes instead of treating an ignored `paused` field as a successful update.
 - The post resolve writes `harvest_post_revisions` on create (`changed = {created}`) and on each revision rise, naming
   the top-level `base` fields that changed (never `extraction`, `fieldSources`, `flags`).
+- The processed read picks the tags answer a post's own resolve picks (the done answer about its current title and
+  text, else the newest done one, else the newest attempt) and the extraction about that answer's content; cost and
+  latency are the answer's attempt as the AI module's inference log holds it, read by the post revision it answered,
+  and absent on a host without the log; the fake keeps no log. It carries no post text beyond the title, and its
+  summaries leave out the evidence quotes.
 - Routes: `GET api/sources/overview?containerId`, `GET api/sources/{id}/posts?limit`,
+  `GET api/sources/{id}/processed?entityType&verdict&extracted&limit&cursor`,
   `GET api/posts/{id}/revisions` (`containerId` optional; without it the caller's visible containers are searched),
   and the registry's `GET`/`POST api/sources/groups`, `PUT api/sources/{id}`.
 
@@ -279,8 +287,10 @@ stores. Groups and display names are `IRegistrationBroker`'s; the reading pace i
 | 1 | `ModuleSourceOverviewBroker` (Module, `Sources/`) | `AddHarvestSources()` |
 | 2/3 | `ApiSourceOverviewBroker` (Client) | `AddHarvestSourceClient()` after `AddHarvestClient` |
 | fake | `FakeSourceOverviewBroker` (Testing) over the registry, run, post and delivery fakes | constructed |
+| fe | `createHarvestClient` (`fe-harvest/kit`): `listSourceOverview`, `querySourcePosts`, `querySourceProcessed` | the console's Sources pages |
 
-- Conformance: `SourceOverviewBrokerConformance` runs against all three; groups, names and `maxPages` join
+- Conformance: `SourceOverviewBrokerConformance` runs against all three, seeding answers through `SeedAnswersAsync`
+  (`ProcessedAnswerSeed`: SQL rows for the module and client, `SeedAnswers` for the fake); groups, names and `maxPages` join
   `RegistrationBrokerConformance`, the reading pace `RunBrokerConformance`.
 
 ### Stages, discoveries and Posts queries

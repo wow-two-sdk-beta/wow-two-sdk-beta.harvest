@@ -15,6 +15,21 @@ public static class SourceRouteConstants
     /// <summary>Holds the paged Posts query beneath a source's posts collection.</summary>
     public const string PostQuery = Posts + "/query";
 
+    /// <summary>Holds a source's processed posts, under <c>api/sources/{sourceId}</c>.</summary>
+    public const string Processed = "processed";
+
+    /// <summary>Holds the processed posts' entity type parameter.</summary>
+    public const string EntityTypeParameter = "entityType";
+
+    /// <summary>Holds the processed posts' verdict parameter.</summary>
+    public const string VerdictParameter = "verdict";
+
+    /// <summary>Holds the processed posts' has-extraction parameter.</summary>
+    public const string ExtractedParameter = "extracted";
+
+    /// <summary>Holds the opaque cursor parameter.</summary>
+    public const string CursorParameter = "cursor";
+
     /// <summary>Holds a source's reading pace, under <c>api/sources/{sourceId}</c>.</summary>
     public const string Reading = "reading";
 

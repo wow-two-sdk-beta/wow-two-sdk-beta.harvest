@@ -13,6 +13,7 @@ import type {
   SourcePostQuery,
   SourceSectionOverviewModel,
 } from '@wow-two-beta/fe-harvest/contracts';
+import { demoEntities, demoProcessedPage } from './DemoAiData';
 
 /** One synthetic source: its group, how it is read, the sections its reader lists and its earlier daily posts. */
 interface DemoSource {
@@ -560,6 +561,10 @@ export function createDemoHarvestClient(): HarvestClient {
     };
   }
 
+  /** The AI's synthetic reading of Afisha.uz and the entities it found, built on first use. */
+  let entities: ReturnType<typeof demoEntities> | undefined;
+  const entitiesOf = () => (entities ??= demoEntities(afisha.id, sourcePosts(afisha.id), fixed));
+
   const reply = (data: unknown) => Response.json({ data });
   const missing = () => Response.json({ title: 'Not found in this demo workspace' }, { status: 404 });
   const transport: typeof globalThis.fetch = async (input, init) => {
@@ -580,6 +585,24 @@ export function createDemoHarvestClient(): HarvestClient {
       if (resource === 'sources' && itemId === 'groups') return reply(inContainer ? groups : []);
       if (resource === 'sources' && itemId && path[3] === 'posts')
         return reply(sourcePosts(itemId).slice(0, Number(url.searchParams.get('limit') ?? 200)));
+      if (resource === 'sources' && itemId && path[3] === 'processed')
+        return reply(demoProcessedPage(sourcePosts(itemId), url.searchParams));
+      if (resource === 'entities') {
+        if (!inContainer) return missing();
+        const data = entitiesOf();
+        if (itemId === 'calendar') return reply(data.calendar(url.searchParams));
+        if (itemId === 'events')
+          return reply({ data: [], next: url.searchParams.get('cursor') ?? '0', hasMore: false });
+        if (itemId && path[3] === 'posts') {
+          const page = data.posts(itemId, url.searchParams);
+          return page ? reply(page) : missing();
+        }
+        if (itemId) {
+          const entity = data.get(itemId);
+          return entity ? reply({ ...entity, containerId }) : missing();
+        }
+        return reply(data.search(url.searchParams).map((entity) => ({ ...entity, containerId })));
+      }
       if (resource === 'sources' && itemId && path[3] === 'capabilities') {
         const demo = demoOf(itemId);
         return demo

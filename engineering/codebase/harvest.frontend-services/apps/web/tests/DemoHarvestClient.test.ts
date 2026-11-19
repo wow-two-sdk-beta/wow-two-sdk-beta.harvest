@@ -93,4 +93,40 @@ describe('standalone demo client', () => {
     controller.abort();
     expect((await first.listContainers(controller.signal)).ok).toBe(false);
   });
+
+  it('serves the AI views: processed posts with their provenance, and entities with their years, posts and calendar', async () => {
+    const api = createDemoHarvestClient();
+    const containers = await api.listContainers();
+    if (!containers.ok) throw new Error('Demo container missing');
+    const container = containers.value[0]!.id;
+    const overview = await api.listSourceOverview(container);
+    if (!overview.ok) throw new Error('Demo overview missing');
+    const afisha = overview.value[0]!.sourceId;
+    const processed = await api.querySourceProcessed!(afisha, {});
+    if (!processed.ok) throw new Error('Demo processed posts missing');
+    expect(processed.value.total).toBeGreaterThan(3);
+    expect(processed.value.items.some((post) => post.tags.answer.provider === 'openai')).toBe(true);
+    const relevant = await api.querySourceProcessed!(afisha, { verdict: 'relevant', extracted: true });
+    expect(relevant.ok && relevant.value.items.every((post) => post.extraction?.status === 'done')).toBe(true);
+    const paged = await api.querySourceProcessed!(afisha, { limit: 2 });
+    expect(paged.ok && paged.value.nextCursor).toBeTruthy();
+
+    const entities = api.entities!;
+    const found = await entities.search(container, { q: 'fashion week' });
+    if (!found.ok) throw new Error('Demo entities missing');
+    const week = found.value[0]!;
+    expect(week).toMatchObject({ name: 'Tashkent Fashion Week', cadence: 'annual', containerId: container });
+    expect(week.years.some((year) => year.predicted)).toBe(true);
+    const timeline = await entities.get(container, week.id);
+    expect(timeline.ok && timeline.value.years.length).toBeGreaterThan(2);
+    const posts = await entities.posts(container, week.id, { limit: 200 });
+    expect(posts.ok && posts.value.data.map((post) => post.role)).toContain('update');
+    const today = new Date();
+    const next = new Date(today);
+    next.setDate(next.getDate() + 365);
+    const iso = (date: Date) => date.toISOString().slice(0, 10);
+    const calendar = await entities.calendar(container, { from: iso(today), to: iso(next) });
+    expect(calendar.ok && calendar.value.some((entry) => entry.occurrence.predicted)).toBe(true);
+    expect((await entities.get('another-container', week.id)).ok).toBe(false);
+  });
 });

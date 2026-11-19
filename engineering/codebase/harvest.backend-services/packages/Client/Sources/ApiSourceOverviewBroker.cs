@@ -25,6 +25,23 @@ internal sealed class ApiSourceOverviewBroker(HttpClient http) : ISourceOverview
             $"{RegistrationRouteConstants.Sources}/{sourceId}/{SourceRouteConstants.PostQuery}", query, cancellationToken);
 
     /// <inheritdoc />
+    public Task<Result<SourceProcessedPage>> QuerySourceProcessedAsync(Guid sourceId, SourceProcessedQuery query, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        var parameters = new List<string> { $"{SourceRouteConstants.LimitParameter}={query.Limit}" };
+        if (query.EntityType is { } type)
+            parameters.Add($"{SourceRouteConstants.EntityTypeParameter}={Uri.EscapeDataString(type)}");
+        if (query.Verdict is { } verdict)
+            parameters.Add($"{SourceRouteConstants.VerdictParameter}={verdict.ToString().ToLowerInvariant()}");
+        if (query.Extracted is { } extracted)
+            parameters.Add($"{SourceRouteConstants.ExtractedParameter}={(extracted ? "true" : "false")}");
+        if (query.Cursor is { } cursor)
+            parameters.Add($"{SourceRouteConstants.CursorParameter}={Uri.EscapeDataString(cursor)}");
+        return HarvestDataHttp.SendAsync<SourceProcessedPage>(http, HttpMethod.Get,
+            $"{RegistrationRouteConstants.Sources}/{sourceId}/{SourceRouteConstants.Processed}?{string.Join('&', parameters)}", null, cancellationToken);
+    }
+
+    /// <inheritdoc />
     public Task<Result<IReadOnlyList<PostRevisionModel>>> ListPostRevisionsAsync(Guid containerId, Guid postId, CancellationToken cancellationToken = default) =>
         HarvestDataHttp.SendAsync<IReadOnlyList<PostRevisionModel>>(http, HttpMethod.Get,
             $"{PostRouteConstants.Posts}/{postId}/{SourceRouteConstants.Revisions}?{RegistrationRouteConstants.ContainerIdParameter}={containerId}",

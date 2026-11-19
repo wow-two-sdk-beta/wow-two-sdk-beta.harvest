@@ -30,6 +30,15 @@ public interface ISourceOverviewBroker
     /// <returns>A page and its facet counts, or a validation or source lookup error.</returns>
     Task<Result<SourcePostPage>> QuerySourcePostsAsync(Guid sourceId, SourcePostQuery query, CancellationToken cancellationToken = default);
 
+    /// <summary>Lists one page of the source's posts the AI passes processed — every surviving post with a
+    /// <c>post-tags</c> answer — with its tags, verdict and extraction summary, newest first seen first.</summary>
+    /// <param name="sourceId">The source.</param>
+    /// <param name="query">The filters, page size and cursor (<see cref="SourceProcessedQueryRules"/>).</param>
+    /// <param name="cancellationToken">The token that cancels the call.</param>
+    /// <returns>The page and the total over its filters; <c>NotFound</c> for an unknown source, <c>Validation</c> for
+    /// a filter, limit or cursor the rules refuse.</returns>
+    Task<Result<SourceProcessedPage>> QuerySourceProcessedAsync(Guid sourceId, SourceProcessedQuery query, CancellationToken cancellationToken = default);
+
     /// <summary>Lists a post's revisions, newest first; a post from before revisions were kept has none.</summary>
     /// <param name="containerId">The container that owns the post.</param>
     /// <param name="postId">The post.</param>

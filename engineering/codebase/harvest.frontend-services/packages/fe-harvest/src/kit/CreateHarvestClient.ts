@@ -25,7 +25,10 @@ import type {
   SourcePostQuery,
   PostRevisionModel,
   PostProcessingModel,
+  SourceProcessedPage,
+  SourceProcessedQuery,
 } from '../contracts';
+import { createEntitiesClient, type EntitiesClient } from './CreateEntitiesClient';
 import { createRegistryClient, type RegistryClient, type RegistryClientOptions } from './CreateRegistryClient';
 import type { ScheduleModel } from '../contracts/PipelineModel';
 import type {
@@ -63,6 +66,8 @@ export interface PipelineStagesClient {
 /** Exposes console operations under the same contract for an embedded or remote Harvest. */
 export interface HarvestClient extends RegistryClient {
   readonly pipelineStages?: PipelineStagesClient;
+  /** Reads the entities posts are about; absent on a client that predates the entity reads. */
+  readonly entities?: EntitiesClient;
   /** Reads private source bytes with the same credentials and session lifetime as other API calls. */
   getSourceAsset?(sourceId: string, assetId: string, signal?: AbortSignal): Promise<Result<Blob, ApiFailure>>;
   getSourceCapabilities(id: string, signal?: AbortSignal): Promise<Result<SourceCapabilitiesModel, ApiFailure>>;
@@ -133,6 +138,12 @@ export interface HarvestClient extends RegistryClient {
   getPost(postId: string, containerId: string, signal?: AbortSignal): Promise<Result<PostModel, ApiFailure>>;
   /** Reads a post's revisions, newest first; empty for a post older than revision tracking. */
   listPostRevisions(postId: string, signal?: AbortSignal): Promise<Result<readonly PostRevisionModel[], ApiFailure>>;
+  /** Reads one page of a source's processed posts: tags, verdict and extraction summary, newest first seen first. */
+  querySourceProcessed?(
+    sourceId: string,
+    query: SourceProcessedQuery,
+    signal?: AbortSignal,
+  ): Promise<Result<SourceProcessedPage, ApiFailure>>;
   /** Reads saved processing results within the post's container, optionally for one source. */
   listPostProcessing?(
     postId: string,
@@ -241,6 +252,44 @@ function postPage(value: unknown): Result<SourcePostPage, ApiFailure> {
     : ResultExtensions.fail(ApiFailureFactory.create('protocol'));
 }
 
+/** Validates a processed page's items and counts before a card reads them. */
+function processedPage(value: unknown): Result<SourceProcessedPage, ApiFailure> {
+  const page = value as Partial<SourceProcessedPage> | null;
+  const valid =
+    page &&
+    Array.isArray(page.items) &&
+    page.items.every(
+      (item) =>
+        item &&
+        typeof item.postId === 'string' &&
+        typeof item.title === 'string' &&
+        item.tags !== null &&
+        typeof item.tags === 'object' &&
+        typeof item.tags.status === 'string' &&
+        Array.isArray(item.tags.domains),
+    ) &&
+    (page.nextCursor == null || typeof page.nextCursor === 'string') &&
+    typeof page.total === 'number' &&
+    Number.isSafeInteger(page.total) &&
+    page.total >= 0;
+  return valid
+    ? ResultExtensions.ok(page as SourceProcessedPage)
+    : ResultExtensions.fail(ApiFailureFactory.create('protocol'));
+}
+
+/** Writes a processed query as the route's query string, leaving out what the caller did not set. */
+function processedQuery(query: SourceProcessedQuery): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries({
+      entityType: query.entityType,
+      verdict: query.verdict,
+      extracted: query.extracted === undefined ? undefined : String(query.extracted),
+      limit: query.limit === undefined ? undefined : String(query.limit),
+      cursor: query.cursor,
+    }).filter((entry): entry is [string, string] => entry[1] !== undefined && entry[1] !== ''),
+  );
+}
+
 /** Builds an authenticated, form-agnostic console client. Credentials stay only in the caller's memory. */
 export function createHarvestClient(options: RegistryClientOptions = {}): HarvestClient {
   const api = createApiClient({
@@ -256,6 +305,7 @@ export function createHarvestClient(options: RegistryClientOptions = {}): Harves
   const signalOf = (signal?: AbortSignal) => (signal === undefined ? {} : { signal });
   return {
     ...createRegistryClient(options),
+    entities: createEntitiesClient(options),
     getSourceAsset: (sourceId, assetId, signal) =>
       api.get(`/api/sources/${encodeURIComponent(sourceId)}/assets/${encodeURIComponent(assetId)}`, {
         ...signalOf(signal),
@@ -390,6 +440,12 @@ export function createHarvestClient(options: RegistryClientOptions = {}): Harves
       api.get(`/api/posts/${encodeURIComponent(postId)}/revisions`, {
         ...signalOf(signal),
         decode: list<PostRevisionModel>,
+      }),
+    querySourceProcessed: (sourceId, query, signal) =>
+      api.get(`/api/sources/${encodeURIComponent(sourceId)}/processed`, {
+        query: processedQuery(query),
+        ...signalOf(signal),
+        decode: processedPage,
       }),
     listPostProcessing: (postId, containerId, signal, sourceId) =>
       api.get(`/api/posts/${encodeURIComponent(postId)}/processing`, {

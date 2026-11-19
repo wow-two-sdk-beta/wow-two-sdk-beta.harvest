@@ -9,7 +9,10 @@ Defer to `wow-two-ws/conventions/development/frontend/`.
   registry contract), `./kit` (`createRegistryClient`) and `./admin` (the console's provider and page panels). It peers `@wow-two-beta/fe` at `>=0.0.n <0.1.0`, `n` the pinned
   version; `check:package` enforces it and fails when one of the three exports is missing.
 - `apps/web` is `@harvest/web`, private: the console, one route per page (Home; Sources and a source with its
-  Overview, Posts, Activity and Settings tabs; Subscribers; Access) inside the fe sdk `AppFrame`; hosted pages join as
+  Overview, Posts, Processed, Pipelines, Activity and Settings tabs; Pipelines; Entities and one entity; Subscribers;
+  Access) inside the fe sdk `AppFrame`. Posts shows what the source gave, untouched; Processed shows what the AI passes
+  made of it — tags, verdict, extraction summary and the answering provider as an icon whose tooltip names the model,
+  cost, latency and prompt version; hosted pages join as
   consumers forward to them. On screen it says source, group, section, harvest and subscriber, never pipeline, host
   lane, tenant, container or scope names. It takes
   `fe-harvest` by `workspace:*`, through its `exports` only — the way a product would; the package never imports

@@ -5,14 +5,17 @@ screens a console composes.
 
 - **Kit** — `createRegistryClient` reads containers, sources and pipelines from the consumer's own backend (Form 1, the
   default same-origin client) or the running Harvest service (Forms 2 and 3, `createRegistryClient({ baseUrl, apiKey })`).
+  `createEntitiesClient` reads the entities posts are about over `api/entities`: search, an entity's years, its posts,
+  the calendar and the change feed.
 - **Admin** — the console's page panels; the service's own console composes them, and a central console or a
   product's admin page imports the same export.
 - **Console** — `HarvestConsoleProvider` opens one console session (the connection, the open workspace and its data)
   and shares it with page panels in the operator's words — source, group, section, harvest, subscriber: `HomePanel`;
   `SourcesGallery` (groups as tiles, then each group's sources as cards or rows, with search and state filters,
   `SourceGroupsDialog` behind its Groups button); `SourcePanel` (a source's header card over its Overview, Posts,
-  Activity and, for operators, Settings tabs; a post opens on its own page, `PostPanel`, with its images, facts and revisions);
-  `SubscribersPanel`; `AccessPanel`. A section is turned on from the adapter's own section list, never a typed URL.
+  Processed, Activity and, for operators, Settings tabs; Posts shows what the source gave, Processed what the AI made of
+  it; a post opens on its own page, `PostPanel`, with its images, facts and revisions); `EntitiesPanel` and
+  `EntityPanel` (the entities posts are about, each with its years, runs and posts); `SubscribersPanel`; `AccessPanel`. A section is turned on from the adapter's own section list, never a typed URL.
   `ContainerSwitch` and `HarvestConnectPanel` fill the host's frame and signed-out screen. Pass the same
   `feedback` bus to the provider and the host's `FeedbackToastHost` to show command and refresh notices. The
   `ConsoleNotices` panel serves hosts that use inline feedback. The
@@ -41,8 +44,8 @@ The panels are styled with Tailwind utilities on the fe sdk theme; add the packa
 
 | Export | Holds |
 |---|---|
-| `./contracts` | `TenantModel`, `ApiKeyModel`, `ContainerModel`, `SourceModel`, `PipelineModel`, `ScheduleModel`, the Sources area's `SourceOverviewModel`, `SourceGroupModel`, `SourcePostModel` and `PostRevisionModel`, the enum labels, `RegistrationRouteConstants`, `HarvestScopeConstants`, `ApiKeyConstants` |
-| `./kit` | `createRegistryClient`, `createHarvestClient` |
+| `./contracts` | `TenantModel`, `ApiKeyModel`, `ContainerModel`, `SourceModel`, `PipelineModel`, `ScheduleModel`, the Sources area's `SourceOverviewModel`, `SourceGroupModel`, `SourcePostModel`, `SourceProcessedPostModel` and `PostRevisionModel`, the entity reads' `EntitySummaryModel`, `EntityTimelineModel`, `EntityPostModel`, `EntityCalendarEntryModel` and `EntityEventModel`, the enum labels, `RegistrationRouteConstants`, `HarvestScopeConstants`, `ApiKeyConstants` |
+| `./kit` | `createRegistryClient`, `createHarvestClient`, `createEntitiesClient` |
 | `./admin` | `HarvestConsoleProvider`, `useHarvestConsole` and the page panels it serves |
 
 The contracts export run, host-health, post/link, subscription, delivery-event and cursor-page models too.

@@ -73,6 +73,7 @@ export const routes: RouteConfig = [
       },
       sourceTab('sources/:id', 'source', 'Source', 'overview'),
       sourceTab('sources/:id/posts', 'source-posts', 'Posts', 'posts'),
+      sourceTab('sources/:id/processed', 'source-processed', 'Processed', 'processed'),
       {
         path: 'sources/:id/posts/:postId',
         id: 'source-post',
@@ -108,6 +109,24 @@ export const routes: RouteConfig = [
       pipelinePage(`${StagePath}/logs`, 'pipeline-stage-logs', 'Logs', 'logs'),
       pipelinePage(`${StagePath}/discoveries`, 'pipeline-stage-discoveries', 'Discoveries', 'discoveries'),
       pipelinePage(`${StagePath}/runs/:runId`, 'pipeline-stage-run', 'Run audit', 'logs'),
+      {
+        path: 'entities',
+        id: 'entities',
+        handle: {
+          title: 'Entities',
+          description: 'The events and listings posts are about, each across its years and sources.',
+        },
+        lazy: lazyRoute(() => import('../../presentation/console/pages/EntitiesPage.vue')),
+      },
+      {
+        path: 'entities/:id',
+        id: 'entity',
+        handle: { title: 'Entity' },
+        lazy: lazyPage(
+          () => import('../../presentation/console/pages/EntityPage.vue'),
+          (route) => ({ entityId: String(route.params['id'] ?? '') }),
+        ),
+      },
       {
         path: 'subscribers',
         id: 'subscribers',

@@ -20,6 +20,7 @@ export interface ConsoleSection {
 export const SourceRoutes = [
   'source',
   'source-posts',
+  'source-processed',
   'source-post',
   'source-pipelines',
   'source-run',
@@ -47,6 +48,7 @@ export const ConsoleSections: readonly ConsoleSection[] = [
     destinations: [
       { label: 'Sources', route: 'sources', icon: 'sources', within: SourceRoutes },
       { label: 'Pipelines', route: 'pipelines', icon: 'pipelines', within: PipelineRoutes },
+      { label: 'Entities', route: 'entities', icon: 'entities', within: ['entity'] },
     ],
   },
   { label: 'Deliver', destinations: [{ label: 'Subscribers', route: 'subscribers', icon: 'subscribers' }] },

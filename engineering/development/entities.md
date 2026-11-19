@@ -65,7 +65,9 @@ The layer reads stored extraction answers and needs no AI. `service/HarvestSourc
 
 A product reads entities over `api/entities` under `posts:read`, inside the containers it may see (the pool and its own
 tenant's), or in process through `IEntitiesBroker` (`AddHarvestEntityReads()`, which `AddHarvestEntities()` and Hosting
-add; `AddHarvestEntityClient()` over HTTP). Every route takes `containerId`; an entity of another container is 404.
+add; `AddHarvestEntityClient()` over HTTP). A browser reads them through `fe-harvest`: the models in `./contracts`,
+`createEntitiesClient` in `./kit` (also `createHarvestClient().entities`), and the console's Entities page
+(`EntitiesPanel`, `EntityPanel` in `./admin`), which the operator's session reaches under the same `posts:read`. Every route takes `containerId`; an entity of another container is 404.
 
 | Route | Returns |
 |---|---|
@@ -127,7 +129,6 @@ dotnet HarvestSources.Api.dll entities report
 
 - Per-subscription routing of entity events, and a subscription choosing posts, entities or both, wait for the selector
   (S09); the change feed is read per container.
-- The `fe-harvest` contract mirror of the entity reads (`./contracts`, `./kit`) is not built.
 - The change feed keeps every row; it has no retention policy yet.
 - One relation per extraction answer: a digest post binds the one entity its answer names until extraction returns a
   list.

@@ -30,6 +30,7 @@ public sealed class ModuleSourceOverviewConformanceTests : SourceOverviewBrokerC
     protected override IDeliveryBroker Delivery => scope.ServiceProvider.GetRequiredService<IDeliveryBroker>();
     protected override ISourceOverviewBroker Overview => scope.ServiceProvider.GetRequiredService<ISourceOverviewBroker>();
     protected override TimeProvider Clock => fixture.Clock;
+    protected override Task SeedAnswersAsync(ProcessedAnswerSeed seed) => ProcessedAnswerSeedWriter.WriteAsync(fixture.ConnectionString, seed);
     public void Dispose() => scope.Dispose();
 }
 
@@ -42,6 +43,7 @@ public sealed class ClientSourceOverviewConformanceTests(SourceClientFixture fix
     protected override IDeliveryBroker Delivery => fixture.Services.GetRequiredService<IDeliveryBroker>();
     protected override ISourceOverviewBroker Overview => fixture.Services.GetRequiredService<ISourceOverviewBroker>();
     protected override TimeProvider Clock => fixture.Clock;
+    protected override Task SeedAnswersAsync(ProcessedAnswerSeed seed) => ProcessedAnswerSeedWriter.WriteAsync(fixture.ConnectionString, seed);
 }
 
 /// <summary>Runs the same reads over the test kit's fakes.</summary>
@@ -69,4 +71,10 @@ public sealed class FakeSourceOverviewConformanceTests : SourceOverviewBrokerCon
     protected override TimeProvider Clock => TimeProvider.System;
 
     protected override void OnRunStarted(RunModel run, Guid sourceId) => posts.RegisterRun(run.Id, run.ContainerId, sourceId, run.PipelineId);
+
+    protected override Task SeedAnswersAsync(ProcessedAnswerSeed seed)
+    {
+        overview.SeedAnswers(seed);
+        return Task.CompletedTask;
+    }
 }

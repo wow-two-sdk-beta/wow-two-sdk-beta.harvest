@@ -19,6 +19,9 @@ import type {
   ContainerModel,
   CursorPage,
   DeliveryEvent,
+  EntityCalendarQuery,
+  EntityPostsQuery,
+  EntitySearchQuery,
   PipelineModel,
   PipelineUpdate,
   PostModel,
@@ -32,6 +35,7 @@ import type {
   SourceOverviewModel,
   SourcePostModel,
   SourcePostQuery,
+  SourceProcessedQuery,
   SourceUpdate,
   SubscriptionModel,
   TenantModel,
@@ -42,8 +46,8 @@ import { createHarvestClient, type HarvestClient } from '../../kit';
 import { sameSection, sourceSections, type SourceSection } from './SourceSections';
 import { sourcePauseReason } from './SourcePresentation';
 
-/** The tabs of a source's page, each its own place. */
-export type SourceTab = 'overview' | 'posts' | 'pipelines' | 'activity' | 'settings';
+/** The tabs of a source's page, each its own place: Posts shows what the source gave, Processed what the AI made of it. */
+export type SourceTab = 'overview' | 'posts' | 'processed' | 'pipelines' | 'activity' | 'settings';
 
 /** The views of one pipeline or stage. */
 export type PipelineTab = 'overview' | 'logs' | 'discoveries';
@@ -67,6 +71,8 @@ export type ConsolePlace =
       readonly tab?: PipelineTab;
       readonly run?: string;
     }
+  | { readonly kind: 'entities' }
+  | { readonly kind: 'entity'; readonly id: string }
   | { readonly kind: 'subscribers'; readonly section?: string }
   | { readonly kind: 'access' };
 
@@ -175,6 +181,10 @@ function newestFirst(a: RunModel, b: RunModel) {
 export function createHarvestConsole(options: HarvestConsoleOptions) {
   const client = shallowRef<HarvestClient | null>(options.client ?? null);
   const canReadPostProcessing = computed(() => typeof client.value?.listPostProcessing === 'function');
+  /** Whether the client reads a source's processed posts; an older client hides the Processed tab. */
+  const canReadProcessed = computed(() => typeof client.value?.querySourceProcessed === 'function');
+  /** Whether the client reads entities; an older client hides the Entities page. */
+  const canReadEntities = computed(() => client.value?.entities !== undefined);
   const connecting = ref(client.value !== null);
   const connected = computed(() => client.value !== null && !connecting.value);
   const pending = ref(false);
@@ -911,6 +921,46 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
     return api ? api.querySourcePosts(sourceId, query, signal) : Promise.resolve(ResultExtensions.fail(offline()));
   }
 
+  /** Reads one page of a source's processed posts. */
+  function querySourceProcessed(sourceId: string, query: SourceProcessedQuery, signal?: AbortSignal) {
+    const api = client.value;
+    return api?.querySourceProcessed
+      ? api.querySourceProcessed(sourceId, query, signal)
+      : Promise.resolve(ResultExtensions.fail(offline()));
+  }
+
+  /** Searches the open container's entities. */
+  function searchEntities(query: EntitySearchQuery, signal?: AbortSignal) {
+    const entities = client.value?.entities;
+    return entities
+      ? entities.search(containerId.value, query, signal)
+      : Promise.resolve(ResultExtensions.fail(offline()));
+  }
+
+  /** Reads one entity of the open container with its occurrences by year. */
+  function readEntity(entityId: string, signal?: AbortSignal) {
+    const entities = client.value?.entities;
+    return entities
+      ? entities.get(containerId.value, entityId, signal)
+      : Promise.resolve(ResultExtensions.fail(offline()));
+  }
+
+  /** Reads one page of an entity's posts. */
+  function readEntityPosts(entityId: string, query: EntityPostsQuery, signal?: AbortSignal) {
+    const entities = client.value?.entities;
+    return entities
+      ? entities.posts(containerId.value, entityId, query, signal)
+      : Promise.resolve(ResultExtensions.fail(offline()));
+  }
+
+  /** Reads the open container's occurrences in a window. */
+  function readEntityCalendar(query: EntityCalendarQuery, signal?: AbortSignal) {
+    const entities = client.value?.entities;
+    return entities
+      ? entities.calendar(containerId.value, query, signal)
+      : Promise.resolve(ResultExtensions.fail(offline()));
+  }
+
   /** Reads a post's facts and revisions together. */
   async function readPost(postId: string, signal?: AbortSignal): Promise<Result<PostDetails, ApiFailure>> {
     const api = client.value;
@@ -1080,6 +1130,13 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
     readPost,
     canReadPostProcessing,
     readPostProcessing,
+    canReadProcessed,
+    querySourceProcessed,
+    canReadEntities,
+    searchEntities,
+    readEntity,
+    readEntityPosts,
+    readEntityCalendar,
   };
 }
 

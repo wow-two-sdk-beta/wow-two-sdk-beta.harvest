@@ -13,14 +13,15 @@ pnpm dev:demo
 ```
 
 Demo mode injects an in-memory `HarvestClient` with synthetic sources, editable pipelines, posts, run transitions,
-adapter metadata and resumable delivery. Changes live in one tab; Reset demo creates a fresh instance. It makes no
+adapter metadata, resumable delivery, the AI's reading of Afisha.uz's posts and four entities with their years, posts
+and calendar (`apps/web/src/integration/demo/DemoAiData.ts`). Changes live in one tab; Reset demo creates a fresh instance. It makes no
 backend, source or provider requests and needs no API key. Demo activation is a build/dev mode, never a URL parameter.
 
 For real runtime development, set `VITE_API_TARGET` and use `pnpm dev:http`. The development proxy forwards API calls
 to that local API. An embedding frontend wraps its pages in `HarvestConsoleProvider` from
 `@wow-two-beta/fe-harvest/admin`, which may take its own `HarvestClient`, and places the page panels (`HomePanel`,
 `SourcesPanel`, `PipelinesPanel`, `PipelinePanel`, `RunsPanel`, `PostsPanel`, `SubscriptionsPanel`, `HostsPanel`,
-`AccessPanel`) on its own routes. The optional `connectionManaged` prop leaves connection ownership with that caller. The demo uses it so its
+`AccessPanel`, `EntitiesPanel`, `EntityPanel`) on its own routes. The optional `connectionManaged` prop leaves connection ownership with that caller. The demo uses it so its
 synthetic client cannot be replaced by an accidental real API connection.
 
 ## Shared service access

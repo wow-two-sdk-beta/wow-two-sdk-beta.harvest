@@ -33,6 +33,11 @@ public abstract class SourceOverviewBrokerConformance
     /// <summary>Gets the implementation's clock.</summary>
     protected abstract TimeProvider Clock { get; }
 
+    /// <summary>Writes a post's AI answers into the implementation's store, as the tagging and extraction passes would
+    /// have left them about the post's current title and text.</summary>
+    /// <param name="seed">The answers.</param>
+    protected abstract Task SeedAnswersAsync(ProcessedAnswerSeed seed);
+
     /// <summary>Lets a form whose post store checks run references learn a run the case started.</summary>
     /// <param name="run">The started run.</param>
     /// <param name="sourceId">The run's source.</param>
@@ -208,6 +213,126 @@ public abstract class SourceOverviewBrokerConformance
             .Type.Should().Be(AppErrorType.Validation);
     }
 
+    /// <summary>The processed read lists every post with a tags answer — with its domains, verdict and extraction
+    /// summary — and filters by entity type, verdict and extraction before paging.</summary>
+    [Fact]
+    public async Task QuerySourceProcessed_ShouldListTaggedPostsWithTheirVerdictAndExtraction()
+    {
+        var context = await ContextAsync();
+        var at = Clock.GetUtcNow();
+        var runway = await SavePostAsync(context, "runway", "Tashkent Fashion Week", ClassificationVerdict.Relevant);
+        var flat = await SavePostAsync(context, "flat", "2 xonali kvartira ijaraga", ClassificationVerdict.Irrelevant);
+        var essay = await SavePostAsync(context, "essay", "Notes on autumn fabrics", ClassificationVerdict.Irrelevant);
+        await SavePostAsync(context, "untagged", "Not tagged yet", null);
+        await SeedAnswersAsync(new ProcessedAnswerSeed
+        {
+            PostId = runway, EntityType = "event", Domains = ["style-fashion/womens-fashion", "style-fashion"],
+            Topics = ["fashion-week"], About = "a fashion week", TitleEn = "Tashkent Fashion Week", Confidence = 0.9m,
+            Flags = [new ProcessedFlagModel("timeframe", "unsure", "upcoming")], AnsweredAtUtc = at,
+            Extraction = new ProcessedExtractionSeed
+            {
+                Event = new ProcessedEventSummary
+                {
+                    Name = "Tashkent Fashion Week", OriginalName = "Ташкентская неделя моды", EditionLabel = "2026",
+                    Occurrences = [new ProcessedOccurrenceModel("2026-11-21", "2026-11-23", "day", "stated")],
+                    Venue = "Hilton", City = "Tashkent", Country = "UZ", Format = "runway", Access = "ticketed",
+                    Prices = [new ProcessedPriceModel(150000m, "UZS", "entry")], Status = "scheduled",
+                },
+            },
+        });
+        await SeedAnswersAsync(new ProcessedAnswerSeed
+        {
+            PostId = flat, EntityType = "listing", Domains = ["real-estate"], Model = "openai/gpt-5-mini", PromptVersion = 4,
+            AnsweredAtUtc = at,
+            Extraction = new ProcessedExtractionSeed
+            {
+                UseCase = "extract-listing", Model = "openai/gpt-5-mini", PromptVersion = 3,
+                Listing = new ProcessedListingSummary
+                {
+                    OfferType = "rent", Price = new ProcessedPriceModel(500m, "USD", "month"), Rooms = 2, AreaM2 = 54m,
+                    District = "Chilonzor", City = "Tashkent",
+                },
+            },
+        });
+        await SeedAnswersAsync(new ProcessedAnswerSeed { PostId = essay, EntityType = "none", Timeframe = "evergreen", AnsweredAtUtc = at });
+
+        var all = Value(await Overview.QuerySourceProcessedAsync(context.Source.Id, new()));
+
+        all.Total.Should().Be(3);
+        all.NextCursor.Should().BeNull();
+        all.Items.Select(post => post.PostId).Should().BeEquivalentTo([runway, flat, essay]);
+        var shown = all.Items.Single(post => post.PostId == runway);
+        shown.Title.Should().Be("Tashkent Fashion Week");
+        shown.Url.Should().Be($"https://{context.Source.Handle}/runway");
+        shown.Classification!.Verdict.Should().Be(ClassificationVerdict.Relevant);
+        shown.Tags.Should().Match<ProcessedTagsModel>(tags => tags.Status == "done" && tags.Current && tags.EntityType == "event"
+            && tags.About == "a fashion week" && tags.TitleEn == "Tashkent Fashion Week" && tags.Confidence == 0.9m
+            && tags.Timeframe == "upcoming" && tags.Topics.SequenceEqual(new[] { "fashion-week" }));
+        shown.Tags.Domains.Select(domain => (domain.Key, domain.Primary)).Should()
+            .Equal(("style-fashion/womens-fashion", true), ("style-fashion", false));
+        shown.Tags.Domains.Should().OnlyContain(domain => domain.Label.Length > 0);
+        shown.Tags.Flags.Should().ContainSingle().Which.Should().Be(new ProcessedFlagModel("timeframe", "unsure", "upcoming"));
+        shown.Tags.Answer.Should().Match<ProcessedAnswerModel>(answer => answer.Provider == "anthropic"
+            && answer.Model == "claude-haiku-5-5" && answer.PromptVersion == 1);
+        var extraction = shown.Extraction!;
+        extraction.Should().Match<ProcessedExtractionModel>(value => value.UseCase == "extract-event" && value.Status == "done"
+            && value.Role == "announcement" && value.Answer.PromptVersion == 2 && value.Listing == null);
+        extraction.Event.Should().BeEquivalentTo(new ProcessedEventSummary
+        {
+            Name = "Tashkent Fashion Week", OriginalName = "Ташкентская неделя моды", EditionLabel = "2026",
+            Occurrences = [new ProcessedOccurrenceModel("2026-11-21", "2026-11-23", "day", "stated")],
+            Venue = "Hilton", City = "Tashkent", Country = "UZ", Format = "runway", Access = "ticketed",
+            Prices = [new ProcessedPriceModel(150000m, "UZS", "entry")], Status = "scheduled",
+        });
+        var listing = all.Items.Single(post => post.PostId == flat);
+        listing.Tags.Answer.Should().Match<ProcessedAnswerModel>(answer => answer.Provider == "openai" && answer.Model == "gpt-5-mini");
+        listing.Extraction!.Listing.Should().BeEquivalentTo(new ProcessedListingSummary
+        {
+            OfferType = "rent", Price = new ProcessedPriceModel(500m, "USD", "month"), Rooms = 2, AreaM2 = 54m,
+            District = "Chilonzor", City = "Tashkent",
+        });
+        all.Items.Single(post => post.PostId == essay).Extraction.Should().BeNull();
+
+        Ids(await Overview.QuerySourceProcessedAsync(context.Source.Id, new() { EntityType = "event" })).Should().Equal(runway);
+        Ids(await Overview.QuerySourceProcessedAsync(context.Source.Id, new() { Verdict = ClassificationVerdict.Irrelevant }))
+            .Should().BeEquivalentTo([flat, essay]);
+        Ids(await Overview.QuerySourceProcessedAsync(context.Source.Id, new() { Extracted = true })).Should().BeEquivalentTo([runway, flat]);
+        Ids(await Overview.QuerySourceProcessedAsync(context.Source.Id, new() { Extracted = false })).Should().Equal(essay);
+    }
+
+    /// <summary>A cursor continues the same source and filters below the first page; the rules refuse a bad filter,
+    /// size or cursor, and an unknown source is not found.</summary>
+    [Fact]
+    public async Task QuerySourceProcessed_ShouldPageWithItsCursor_AndRefuseABadQuery()
+    {
+        var context = await ContextAsync();
+        var ids = new List<Guid>();
+        for (var index = 0; index < 3; index++)
+        {
+            var id = await SavePostAsync(context, $"page-{index}", $"Exhibition {index}", ClassificationVerdict.Relevant);
+            await SeedAnswersAsync(new ProcessedAnswerSeed { PostId = id, Domains = ["style-fashion"], AnsweredAtUtc = Clock.GetUtcNow() });
+            ids.Add(id);
+        }
+
+        var first = Value(await Overview.QuerySourceProcessedAsync(context.Source.Id, new() { Limit = 2 }));
+        first.Items.Should().HaveCount(2);
+        first.Total.Should().Be(3);
+        first.NextCursor.Should().NotBeNullOrEmpty();
+        var next = Value(await Overview.QuerySourceProcessedAsync(context.Source.Id, new() { Limit = 2, Cursor = first.NextCursor }));
+        next.Items.Should().ContainSingle();
+        next.NextCursor.Should().BeNull();
+        first.Items.Concat(next.Items).Select(post => post.PostId).Should().BeEquivalentTo(ids);
+
+        Error(await Overview.QuerySourceProcessedAsync(context.Source.Id, new() { Cursor = first.NextCursor, EntityType = "event" }))
+            .Type.Should().Be(AppErrorType.Validation);
+        Error(await Overview.QuerySourceProcessedAsync(context.Source.Id, new() { Cursor = "not-a-cursor" })).Type.Should().Be(AppErrorType.Validation);
+        Error(await Overview.QuerySourceProcessedAsync(context.Source.Id, new() { Limit = 0 })).Type.Should().Be(AppErrorType.Validation);
+        Error(await Overview.QuerySourceProcessedAsync(context.Source.Id, new() { Limit = SourceProcessedQuery.MaxLimit + 1 }))
+            .Type.Should().Be(AppErrorType.Validation);
+        Error(await Overview.QuerySourceProcessedAsync(context.Source.Id, new() { EntityType = "article" })).Type.Should().Be(AppErrorType.Validation);
+        Error(await Overview.QuerySourceProcessedAsync(Guid.NewGuid(), new())).Type.Should().Be(AppErrorType.NotFound);
+    }
+
     /// <summary>A post's creation and each rise of its revision are recorded with the base fields that changed.</summary>
     [Fact]
     public async Task ListPostRevisions_ShouldRecordCreationAndChangedFields_WhenThePostChanges()
@@ -303,6 +428,16 @@ public abstract class SourceOverviewBrokerConformance
         Title = title, Text = title, Kind = PostKind.Event,
         Extraction = new ExtractionStamp { NormVersion = "test@1", RulesVersion = "test@1" },
     };
+
+    private async Task<Guid> SavePostAsync(Context context, string key, string title, ClassificationVerdict? verdict) =>
+        Value(await Posts.SaveCaptureAsync(context.Container, context.Source.Id, null, Capture(context, key), Envelope(title) with
+        {
+            Classification = verdict is { } value
+                ? new PostClassification { Classifier = "model:anthropic/claude-haiku-5-5@post-tags:1", Verdict = value, Confidence = 0.9 }
+                : null,
+        })).Post.Id;
+
+    private static IEnumerable<Guid> Ids(Result<SourceProcessedPage> result) => Value(result).Items.Select(post => post.PostId);
 
     private static string Unique() => Guid.NewGuid().ToString("N")[..12];
 
