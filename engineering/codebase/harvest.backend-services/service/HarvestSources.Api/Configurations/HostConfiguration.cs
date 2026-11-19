@@ -15,6 +15,7 @@ public static partial class HostConfiguration
         builder.AddRentalTermsAi();
         builder.AddPostTagsAi();
         builder.AddPostExtractionAi();
+        builder.AddEntities();
         return builder.Configuration["HarvestSources:Audience"] switch
         {
             null or "internal" => builder.AddSources().AddProviderSettings().AddSourceAssets().AddSourceControllers(),

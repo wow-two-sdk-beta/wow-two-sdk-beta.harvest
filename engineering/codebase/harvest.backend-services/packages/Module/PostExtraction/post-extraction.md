@@ -35,3 +35,5 @@ never writes the post.
 - Outcomes: `done` stores the answer and clears the queue row; `failed` (refused, schema-invalid, provider errors, an
   answer outside the schema) and `unavailable` (no runner, use case or prompt; a provider without key) store the
   status, no answer, and retry after `RetryDelay` × attempts, capped at a day. A failure never replaces a done answer.
+- Entities: a done answer queues the post's `entity-resolve` row in the same transaction while `Harvest:Entities:Enabled`
+  is set; the Entities lane (`../Entities/entities.md`) reads the answer, never this lane.

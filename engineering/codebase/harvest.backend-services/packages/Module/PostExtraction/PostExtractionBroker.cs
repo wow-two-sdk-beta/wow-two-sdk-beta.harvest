@@ -9,6 +9,7 @@ using WoW.Two.Sdk.Beta.Be.Ai.Prompts;
 using WoW.Two.Sdk.Beta.Be.Ai.Runs;
 using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Entities;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
@@ -150,7 +151,7 @@ internal sealed class PostExtractionBroker(
             : time.GetUtcNow() + TimeSpan.FromTicks(Math.Min(MaxRetryDelay.Ticks, options.Value.RetryDelay.Ticks * Math.Max(1, attempts)));
         await PostExtractionStore.WriteAsync(dataSource, new PostExtractionRecord(post.ContainerId, post.Id, hash, useCase, post.Revision,
             call.Status, call.Reason, model.PromptVersion, final?.PromptHash, model.InferenceId, model.Model, call.Answer, attempts, retry),
-            time.GetUtcNow(), ct);
+            time.GetUtcNow(), ct, queueEntities: services.GetService<EntityGate>()?.Enabled == true);
         return model with { Stored = true };
     }
 

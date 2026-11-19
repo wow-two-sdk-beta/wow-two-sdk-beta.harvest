@@ -117,7 +117,8 @@ the step contract. Every type references the BCL and the kernel only.
 - The schema in the SQL migrations is the shared seam between lanes: `001-baseline`, `002-drop-escalation` (no
   ladder), `003-fetching`, `004-posts-delivery`, `005-subscription-filter`, `006-source-groups` (source groups, display
   names, the post revision log), through `011-taxonomy` (the IAB 3.1 category tree), `012-post-tags` (tagging answers
-  and the post work queue) and `013-post-extractions` (Layer 2 answers and their queue kinds). Each lane maps the tables
+  and the post work queue), `013-post-extractions` (Layer 2 answers and their queue kinds) and `014-entities` (entities,
+  occurrences, relations, keep-apart pairs, unsure flags and the `entity-resolve` queue kind). Each lane maps the tables
   its folder's lead doc names.
 - `Capture.ContentProjection` drives the content hash; a capture row exists only when it changes.
 - Source readers can retain their versioned native field envelope in page metadata's `sourceFields`; extraction
@@ -180,6 +181,11 @@ the step contract. Every type references the BCL and the kernel only.
   when `IPostExtractionDemand` wants its (entity type, domain) pair; the answer is stored per post, content and use case
   in `harvest_post_extractions` with verbatim evidence for every date, price and rental term, and is not part of the
   post or its delivery events until the entity layer reads it; `development/extraction.md`
+- a done extraction answer queues the post's entity resolution in the same transaction when `Harvest:Entities:Enabled`
+  is set; resolution binds the post with a role (`announcement`, `update`, `report`, `mention`) to one event or listing
+  in `harvest_entity_relations`, keeps edition history in `harvest_entity_occurrences`, flags a weak or ambiguous match
+  instead of binding it, and never writes the post or a delivery event (entity reads and feeds are step D);
+  `development/entities.md`
 - delivery stores immutable revision snapshots; `wow2.event.v1` selects the event projection while retaining post identity and provenance
 - a post the subscription holds whose newest revision fails its filter or section arrives once as `post.unmatched`
   (that revision's identity, number and payload); later failing revisions, a restore from gone included, are withheld,

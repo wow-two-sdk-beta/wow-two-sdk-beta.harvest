@@ -1,4 +1,5 @@
 using Npgsql;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Entities;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Posts;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
 
@@ -99,8 +100,10 @@ internal static class PostExtractionStore
     }
 
     /// <summary>Stores an answer and settles its queue row in one transaction: a done answer clears the row for its
-    /// content; any other outcome sets the retry time and error. A failed or unavailable answer never replaces a done one.</summary>
-    internal static async Task WriteAsync(NpgsqlDataSource dataSource, PostExtractionRecord record, DateTimeOffset now, CancellationToken ct)
+    /// content and, with <paramref name="queueEntities"/>, queues the post's entity resolution; any other outcome sets the
+    /// retry time and error. A failed or unavailable answer never replaces a done one.</summary>
+    internal static async Task WriteAsync(NpgsqlDataSource dataSource, PostExtractionRecord record, DateTimeOffset now, CancellationToken ct,
+        bool queueEntities = false)
     {
         bool done = record.Status == "done" && record.Answer is not null;
         await using var connection = await dataSource.OpenConnectionAsync(ct);
@@ -129,6 +132,8 @@ internal static class PostExtractionStore
             WHERE post_id=@post AND kind=@kind AND content_hash=@hash AND NOT @done
             """, ct, ("post", record.PostId), ("kind", record.UseCase), ("hash", record.ContentHash), ("done", done),
             ("retry", record.RetryAtUtc), ("error", record.Error));
+        if (done && queueEntities)
+            await EntityStore.QueueAsync(connection, transaction, record.ContainerId, record.PostId, record.ContentHash, now, ct);
         await transaction.CommitAsync(ct);
     }
 

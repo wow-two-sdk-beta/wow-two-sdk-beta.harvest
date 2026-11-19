@@ -27,6 +27,7 @@
 | Working rules for agents | `engineering/development/rules.md` |
 | AI post tagging (Layer 1): prompt, verbs, rollout | `engineering/development/post-tags.md` |
 | AI extraction (Layer 2): use cases, demand, evidence, verbs | `engineering/development/extraction.md` |
+| Entities: events, listings, roles, cadence, unsure flags, verbs | `engineering/development/entities.md` |
 | OLX rental-terms processing | `engineering/development/olx-ai.md` |
 | Repository — how it was created, GitHub settings, rollout state | `engineering/development/development.md` § Repository |
 | Deploy / ops — local Compose, service access, Ocharo provisioning, integrations | `engineering/deployment/deployment.md` |

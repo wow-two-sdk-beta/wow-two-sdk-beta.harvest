@@ -37,6 +37,10 @@ await app.Services.MigrateHarvestOnStartupAsync(); // create, check, migrate, ch
   `AddHarvestPostExtraction()` and `AddHarvestPostExtractionWorker()`; done tags queue it only for the pairs
   `IPostExtractionDemand` wants (by default `PostExtractionOptions.Wanted`). It stores evidence-checked answers and
   never writes the post.
+- `IEntityBroker` — the entity layer over the stored extraction answers, no model call: `AddHarvestEntities()` and
+  `AddHarvestEntitiesWorker()`; a done answer queues resolution only when `EntityOptions.Enabled` is set. Each post binds
+  with a role to one event (occurrences, cadence, a predicted next run) or one listing (offers across authors and
+  sites); weak matches are flagged, never merged.
 - Fetching, readers, extraction, posts, delivery and the engine register explicitly through their `Module.*` namespaces.
 - Direct HTTP obeys host policy and reports refusals. No external transport, challenge solver or model provider is bound; the post-tags and extraction passes reference the AI contract only.
 - `AddHarvestApiKeys()` — answers core's `ApiKey` scheme from the key table and the operator key, for a host that serves
