@@ -6,8 +6,8 @@ using WoW.Two.Sdk.Beta.Be.Ai.Prompts;
 using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Foundation.Serialization;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
-using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Ocharo;
 
 namespace HarvestSources.Api.Tagging;
 
@@ -18,10 +18,10 @@ namespace HarvestSources.Api.Tagging;
 ///   - <c>run --post &lt;id&gt; [--dry-run]</c> tags one post and prints the answer; a dry run writes nothing
 ///   - <c>backfill [--since &lt;date&gt;] [--limit N] [--source &lt;id&gt;]</c> queues stored posts without a done answer
 ///   - <c>report [--since &lt;date&gt;]</c> prints counts, flags, cost and p95 latency as one JSON line, no post text
-///   - <c>relevance [--since &lt;date&gt;]</c> compares <c>ocharo-fashion-v1</c>'s verdict with the tags' verdict for
-///     Ocharo's pair (<c>event</c> under <c>style-fashion</c>) over stored posts, as one JSON line of counts with invalid
-///     answers, cost per tagged post and p95 latency; no post text
-///   - <c>relevance --disagreements [--since &lt;date&gt;] [--limit N]</c> prints instead one JSON line listing the posts
+///   - <c>relevance --filter &lt;key&gt; --wanted &lt;type:domain,…&gt; [--since &lt;date&gt;]</c> compares a registered
+///     delivery filter's verdict with the tags' verdict for the named pairs (<c>event:style-fashion</c>) over stored
+///     posts, as one JSON line of counts with invalid answers, cost per tagged post and p95 latency; no post text
+///   - <c>relevance --filter … --wanted … --disagreements [--since &lt;date&gt;] [--limit N]</c> prints instead one JSON line listing the posts
 ///     whose rules verdict and tags verdict disagree (default 50): an operator review that carries each post's scrubbed,
 ///     clipped title; Wheelhouse's one-off command keeps a last line whole only up to 16 KiB, so a long list wants a lower
 ///     <c>--limit</c>
@@ -38,7 +38,7 @@ public static class PostTagsVerb
                post-tags run --post <id> [--dry-run]
                post-tags backfill [--since <date>] [--limit <n>] [--source <id>]
                post-tags report [--since <date>]
-               post-tags relevance [--since <date>] [--disagreements [--limit <n>]]
+               post-tags relevance --filter <key> --wanted <type:domain[,type:domain]> [--since <date>] [--disagreements [--limit <n>]]
         """;
 
     /// <summary>Runs one sub-command against the built internal host's services.</summary>
@@ -178,13 +178,11 @@ public static class PostTagsVerb
         TextWriter error, CancellationToken ct)
     {
         bool disagreements = options.ContainsKey("disagreements");
-        if (!VerbArguments.Only(options, "since", "disagreements", "limit") || !VerbArguments.TrySince(options, out var since)
-            || (!disagreements && options.ContainsKey("limit")) || !VerbArguments.TryInt(options, "limit", DefaultDisagreements, out var limit))
+        if (!VerbArguments.Only(options, "filter", "wanted", "since", "disagreements", "limit") || !VerbArguments.TrySince(options, out var since)
+            || (!disagreements && options.ContainsKey("limit")) || !VerbArguments.TryInt(options, "limit", DefaultDisagreements, out var limit)
+            || options.GetValueOrDefault("filter") is not { Length: > 0 } filter || Wanted(options.GetValueOrDefault("wanted")) is not { } wanted)
             return await UsageAsync(error);
-        var request = new PostTagsRelevanceRequest
-        {
-            RulesFilterKey = OcharoFashionFilter.FilterKey, Wanted = [OcharoRelevanceFilter.Wanted], SinceUtc = since,
-        };
+        var request = new PostTagsRelevanceRequest { RulesFilterKey = filter, Wanted = wanted, SinceUtc = since };
         if (disagreements)
         {
             var listed = await tags.DisagreementsAsync(request, limit, ct);
@@ -198,6 +196,23 @@ public static class PostTagsVerb
             return await VerbArguments.RefusedAsync(error, result);
         await output.WriteLineAsync(JsonSerializer.Serialize(report, JsonOptionsConstants.Default));
         return 0;
+    }
+
+    /// <summary>Reads <c>type:domain</c> pairs, comma separated; none when a pair lacks either side. The broker checks the
+    /// entity type and the taxonomy key.</summary>
+    private static IReadOnlyList<PostExtractionWant>? Wanted(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+        var pairs = new List<PostExtractionWant>();
+        foreach (var pair in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            int colon = pair.IndexOf(':');
+            if (colon <= 0 || colon == pair.Length - 1)
+                return null;
+            pairs.Add(new PostExtractionWant { EntityType = pair[..colon], Domain = pair[(colon + 1)..] });
+        }
+        return pairs.Count == 0 ? null : pairs;
     }
 
     /// <summary>Names a template placeholder the pass never supplies, or a required one that is missing.</summary>

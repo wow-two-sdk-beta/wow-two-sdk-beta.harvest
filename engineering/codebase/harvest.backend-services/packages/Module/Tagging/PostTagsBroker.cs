@@ -290,6 +290,8 @@ internal sealed class PostTagsBroker(
             Models = settings.Models,
             Variables = PostTagsContent.Variables(post.Base, SourceCategory(subject), taxonomy.Value.Rendered, settings.MaxTextChars,
                 post.FirstSeenAtUtc),
+            // The answer's parse maps an out-of-list value to its fallback and flags it (AnswerNormalizer).
+            CheckEnums = false,
         }, ct);
         if (response is not Result<AiRunModel>.Success { Value: var run })
             return CallResult.Unavailable("prompt-unavailable");

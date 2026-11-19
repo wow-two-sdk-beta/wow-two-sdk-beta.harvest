@@ -54,8 +54,8 @@ printing only use case, version, content hash and ID. It refuses an existing inc
 | `post-tags run --post <id> [--dry-run]` | tags one post now and prints the answer; a dry run stores nothing and raises no revision |
 | `post-tags backfill [--since <date>] [--limit N] [--source <id>]` | queues stored posts whose current title and text have no done answer (default limit 1000) |
 | `post-tags report [--since <date>]` | one JSON line: answers by status, entity type and primary domain, flags by proposed value, queue depth, attempts, cost and p95 latency from the inference log; no post text |
-| `post-tags relevance [--since <date>]` | the shadow report (S15): one JSON line comparing `ocharo-fashion-v1`'s verdict with the tags' verdict for Ocharo's pair; no post text |
-| `post-tags relevance --disagreements [--since <date>] [--limit N]` | an operator review: one JSON line listing the posts the rules and the tags disagree on; carries scrubbed titles -> § Disagreements |
+| `post-tags relevance --filter <key> --wanted <type:domain[,…]> [--since <date>]` | the shadow report (S15): one JSON line comparing a registered delivery filter's verdict with the tags' verdict for the named pairs; no post text |
+| `post-tags relevance --filter … --wanted … --disagreements [--since <date>] [--limit N]` | an operator review: one JSON line listing the posts the rules and the tags disagree on; carries scrubbed titles -> § Disagreements |
 
 Re-runs over named posts, listed sources or every source, with `--prompt-before`, `--since` and `--dry-run`, and eval sets
 from stored posts: the `processing` verb and `api/processing` routes (`ai-operations.md`).
@@ -65,7 +65,7 @@ from stored posts: the `processing` verb and `api/processing` routes (`ai-operat
 - `harvest_post_tags`, keyed by `(post_id, content_hash)`: prompt version and hash, inference id, model, the validated
   fields and flags, `status` `done` · `failed` · `unavailable`. A failed or unavailable answer never replaces a done one.
 - The post carries the newest done answer: tags tier `SmallModel` with keys `type:{entityType}`, `domain:{node}` and
-  each ancestor node, `topic:{slug}`; `extras.postTags.titleEn`. A subscription filter `tag:domain:style-fashion`
+  each ancestor node, `topic:{slug}`, `timeframe:{value}` (every value, `unsure` included); `extras.postTags.titleEn`. A subscription filter `tag:domain:style-fashion`
   therefore matches a post tagged `style-fashion/womens-fashion`.
 - `wow2.event.v1` projects `extras.postTags.titleEn` as `titles` (`machine: true`, English), so a subscriber reads it
   beside the source title: `../architecture/contract.md` § Source host.
@@ -102,9 +102,10 @@ answer, the post keeps exactly its readers' envelope.
 
 ## Shadow report (S15)
 
-`post-tags relevance` counts the current posts whose sources are all `auto` and that changed since `--since` (seven days
-back by default), split by `ocharo-fashion-v1`'s verdict (rules yes, rules no) and by the tags' verdict for Ocharo's
-pair `event` + `style-fashion` — the same mapping as the classification:
+`post-tags relevance --filter <key> --wanted <type:domain[,…]>` counts the current posts whose sources are all `auto`
+and that changed since `--since` (seven days back by default), split by the named filter's verdict (rules yes, rules no)
+and by the tags' verdict for the named pairs — the same mapping as the classification. The verb names no product's
+filter; the example compares `--filter ocharo-fashion-v1 --wanted event:style-fashion`:
 
 ```json
 {"sinceUtc":"…","rules":"ocharo-fashion-v1","wanted":["event:style-fashion"],"posts":4,
@@ -123,7 +124,7 @@ pair `event` + `style-fashion` — the same mapping as the classification:
 
 ## Disagreements
 
-`post-tags relevance --disagreements [--since <date>] [--limit N]` prints one JSON line instead of the counts, over the same
+`post-tags relevance --filter … --wanted … --disagreements [--since <date>] [--limit N]` prints one JSON line instead of the counts, over the same
 posts, rules verdict and tag verdict as the shadow report. It is an **operator review that prints post titles** — the
 only `post-tags` output that does; read it where the report's counts would be read, never forward it to a subscriber.
 

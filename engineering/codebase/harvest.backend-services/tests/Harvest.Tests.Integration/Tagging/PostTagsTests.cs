@@ -39,7 +39,7 @@ public sealed class PostTagsTests
         post.Revision.Should().Be(2);
         post.Base.Tags.Should().OnlyContain(tag => tag.Tier == ExtractionTier.SmallModel && tag.Version == "post-tags@1");
         post.Base.Tags.Select(tag => tag.Tag).Should().Equal("type:event", "domain:style-fashion/womens-fashion", "domain:style-fashion",
-            "topic:fashion-week");
+            "topic:fashion-week", "timeframe:upcoming");
         post.Base.Extras[PostTagsConstants.ExtrasNamespace].GetProperty("titleEn").GetString().Should().Be("Tashkent Fashion Week");
         (await host.ScalarAsync<string[]>("SELECT changed FROM harvest_post_revisions WHERE post_id=@post AND revision=2", ("post", post.Id)))
             .Should().Equal("extras", "tags");
@@ -63,7 +63,7 @@ public sealed class PostTagsTests
         host.Clock.Advance(TimeSpan.FromHours(1));
         var edited = await host.SaveAsync("fw", "Tashkent Fashion Week", "Moda haftaligi yanvarga ko'chdi.");
         edited.Post.Revision.Should().Be(3);
-        edited.Post.Base.Tags.Should().HaveCount(4, "the last answer stays on the post until a new one replaces it");
+        edited.Post.Base.Tags.Should().HaveCount(5, "the last answer stays on the post until a new one replaces it");
         (await host.ScalarAsync<long>(WorkCount, ("post", post.Id))).Should().Be(1, "a new text queues tagging again");
     }
 
@@ -150,7 +150,7 @@ public sealed class PostTagsTests
             FROM harvest_post_tags t, jsonb_array_elements(t.flags) f WHERE t.post_id=@post
             """, ("post", saved.Post.Id))).Should().Be("domains:style-fashion/textiles,topics:текстиль");
         PostHost.Value(await host.Posts.GetPostAsync(host.ContainerId, saved.Post.Id)).Base.Tags.Select(tag => tag.Tag)
-            .Should().Equal("type:event", "domain:business-and-finance", "topic:textile");
+            .Should().Equal("type:event", "domain:business-and-finance", "topic:textile", "timeframe:upcoming");
 
         var report = (await host.Tags.ReportAsync()).ValueOrThrow();
         report.Statuses.Should().Equal(new Dictionary<string, long> { ["done"] = 1 });

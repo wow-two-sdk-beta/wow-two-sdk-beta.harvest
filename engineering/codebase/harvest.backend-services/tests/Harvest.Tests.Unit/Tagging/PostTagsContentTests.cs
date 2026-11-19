@@ -37,7 +37,7 @@ public sealed class PostTagsContentTests
         var tagged = PostTagsOverlay.Apply(Envelope() with { Tags = [mapped] }, Stored());
 
         tagged.Tags.Select(tag => tag.Tag).Should().Equal("fashion", "type:event", "domain:style-fashion/womens-fashion",
-            "domain:style-fashion", "domain:business-and-finance", "topic:fashion-week");
+            "domain:style-fashion", "domain:business-and-finance", "topic:fashion-week", "timeframe:upcoming");
         tagged.Tags.Skip(1).Should().OnlyContain(tag => tag.Tier == ExtractionTier.SmallModel && tag.Version == "post-tags@3"
             && tag.Score == 0.9);
         tagged.Tags[0].Should().Be(mapped);
@@ -119,5 +119,6 @@ public sealed class PostTagsContentTests
     };
 
     private static StoredPostTags Stored() => new("event",
-        [new("business-and-finance", false), new("style-fashion/womens-fashion", true)], ["fashion-week"], "Tashkent Fashion Week", 0.9m, 3);
+        [new("business-and-finance", false), new("style-fashion/womens-fashion", true)], ["fashion-week"], "Tashkent Fashion Week", 0.9m, 3,
+        Timeframe: "upcoming");
 }

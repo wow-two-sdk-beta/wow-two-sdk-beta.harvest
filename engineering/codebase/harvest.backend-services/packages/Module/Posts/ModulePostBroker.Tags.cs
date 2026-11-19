@@ -103,7 +103,7 @@ internal sealed partial class ModulePostBroker
     {
         await using var command = PostSql.Command(connection, transaction, """
             SELECT t.entity_type,t.domains::text,t.topics,t.title_en,t.confidence,t.prompt_version,t.model,
-                e.post_id IS NOT NULL,e.answer->>'format',(e.answer->'occurrences'->0)::text
+                e.post_id IS NOT NULL,e.answer->>'format',(e.answer->'occurrences'->0)::text,t.timeframe
             FROM harvest_post_tags t
             LEFT JOIN harvest_post_extractions e ON e.post_id=t.post_id AND e.content_hash=t.content_hash
                 AND e.use_case=@useCase AND e.status='done' AND t.entity_type='event'
@@ -115,7 +115,7 @@ internal sealed partial class ModulePostBroker
         var tags = new StoredPostTags(reader.GetString(0), PostTagsStore.Read(reader.GetString(1), new List<PostTagsDomain>()),
             reader.GetFieldValue<string[]>(2), reader.IsDBNull(3) ? null : reader.GetString(3),
             reader.IsDBNull(4) ? null : reader.GetDecimal(4), reader.IsDBNull(5) ? null : reader.GetInt32(5),
-            reader.IsDBNull(6) ? null : reader.GetString(6));
+            reader.IsDBNull(6) ? null : reader.GetString(6), reader.IsDBNull(10) ? null : reader.GetString(10));
         return (tags, StoredEventExtraction.Read(reader.GetBoolean(7), reader.IsDBNull(8) ? null : reader.GetString(8),
             reader.IsDBNull(9) ? null : reader.GetString(9)));
     }

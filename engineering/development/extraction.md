@@ -97,8 +97,9 @@ values are `null` or `unknown`, and every list pick allows `unsure`, which flags
   one: `cancelled` · `postponed` · `sold-out` · `withdrawn`. Whether a later ad is the same author's update is the
   entity layer's call; the model reads the post alone.
 - `flags`: `[{field, reason, proposed}]`, the model's own plus the check's.
-- Normalizing (`AnswerNormalizer`, before the strict read; the AI runner's own check, `OutputSchemaCheck`, covers only
-  top-level properties, so nested and list values reach this lane unchecked): a value outside its enum becomes the enum's `unsure` member,
+- Normalizing (`AnswerNormalizer`, before the strict read; both passes run with `AiRunRequest.CheckEnums` false, so the
+  AI runner checks the answer's shape and types but leaves every out-of-list value, top-level ones such as `format`
+  included, to this repair): a value outside its enum becomes the enum's `unsure` member,
   else its `unknown` one, else `null` for a nullable field (`relation.status`, `price.period`), plus a flag
   `{field: <json path>, reason: "value outside the list", proposed: <the value, 40 characters>}` -- a required enum with
   none of these, a wrong JSON type and a missing field still reject the answer (`failed`, `answer-invalid`). In a list

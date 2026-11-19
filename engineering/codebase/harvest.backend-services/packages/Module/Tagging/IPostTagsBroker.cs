@@ -157,8 +157,8 @@ public sealed record PostTagsFlagCount
 /// <summary>Represents which rules, pairs and window a relevance report compares.</summary>
 public sealed record PostTagsRelevanceRequest
 {
-    /// <summary>Gets the key of the registered delivery filter whose verdict is the rules side, such as
-    /// <c>ocharo-fashion-v1</c>.</summary>
+    /// <summary>Gets the key of the registered delivery filter whose verdict is the rules side, as the operator names
+    /// it.</summary>
     public required string RulesFilterKey { get; init; }
 
     /// <summary>Gets the (entity type, domain) pairs a tag verdict matches, such as <c>event</c> + <c>style-fashion</c>.</summary>

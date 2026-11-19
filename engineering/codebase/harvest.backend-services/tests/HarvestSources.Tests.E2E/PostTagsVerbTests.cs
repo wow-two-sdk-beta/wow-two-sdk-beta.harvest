@@ -227,7 +227,7 @@ public sealed class PostTagsVerbTests
 
         const string Feeds = "SELECT count(*) FROM harvest_subscription_event";
         long before = await ScalarAsync<long>(database, Feeds);
-        var report = await RunAsync(host.Services, ["relevance", "--since", "2020-01-01"]);
+        var report = await RunAsync(host.Services, ["relevance", "--filter", "ocharo-fashion-v1", "--wanted", "event:style-fashion", "--since", "2020-01-01"]);
 
         report.Exit.Should().Be(0, report.Error);
         report.Output.Trim().Should().NotContain("\n").And.NotContain("Fashline").And.NotContain("gallery").And.NotContain("jazz");
@@ -259,8 +259,12 @@ public sealed class PostTagsVerbTests
         added.GetProperty("kind").GetString().Should().Be("event");
         relevance.Should().NotContain(item => item.PostId == jazz || item.PostId == waiting);
 
-        (await RunAsync(host.Services, ["relevance", "--since", "not-a-date"])).Exit.Should().Be(2);
+        (await RunAsync(host.Services, ["relevance", "--filter", "ocharo-fashion-v1", "--wanted", "event:style-fashion", "--since", "not-a-date"])).Exit.Should().Be(2);
         (await RunAsync(host.Services, ["relevance", "--rules", "x"])).Exit.Should().Be(2);
+        (await RunAsync(host.Services, ["relevance", "--since", "2020-01-01"])).Exit.Should().Be(2, "the filter and the pairs are named");
+        (await RunAsync(host.Services, ["relevance", "--filter", "ocharo-fashion-v1", "--wanted", "event"])).Exit.Should().Be(2);
+        (await RunAsync(host.Services, ["relevance", "--filter", "no-such-filter", "--wanted", "event:style-fashion"])).Exit
+            .Should().Be(1, "an unregistered filter is refused");
     }
 
     [Fact]
@@ -314,7 +318,7 @@ public sealed class PostTagsVerbTests
         var untagged = await SaveAsync("later", "Book club", "Readers meet on Friday.", null);
 
         long tagRows = await ScalarAsync<long>(database, "SELECT count(*) FROM harvest_post_tags");
-        var review = await RunAsync(host.Services, ["relevance", "--disagreements", "--since", "2020-01-01"]);
+        var review = await RunAsync(host.Services, ["relevance", "--filter", "ocharo-fashion-v1", "--wanted", "event:style-fashion", "--disagreements", "--since", "2020-01-01"]);
 
         review.Exit.Should().Be(0, review.Error);
         review.Output.TrimEnd().Split('\n').Should().ContainSingle("the verb prints one JSON line");
@@ -356,19 +360,19 @@ public sealed class PostTagsVerbTests
         items.Single(item => item.GetProperty("postId").GetString() == rulesNoTagsUnsure.ToString("D"))
             .GetProperty("title").GetString().Should().Be("Джаз вечер");
 
-        var capped = await RunAsync(host.Services, ["relevance", "--disagreements", "--limit", "3"]);
+        var capped = await RunAsync(host.Services, ["relevance", "--filter", "ocharo-fashion-v1", "--wanted", "event:style-fashion", "--disagreements", "--limit", "3"]);
         capped.Exit.Should().Be(0, capped.Error);
         capped.Output.TrimEnd().Split('\n').Should().ContainSingle();
         using (var cappedItems = JsonDocument.Parse(capped.Output))
             cappedItems.RootElement.GetProperty("items").EnumerateArray().Select(item => item.GetProperty("postId").GetString())
                 .Should().Equal([.. yes, no[0]], "--limit keeps the first N");
-        using (var one = JsonDocument.Parse((await RunAsync(host.Services, ["relevance", "--disagreements", "--limit", "1"])).Output))
+        using (var one = JsonDocument.Parse((await RunAsync(host.Services, ["relevance", "--filter", "ocharo-fashion-v1", "--wanted", "event:style-fashion", "--disagreements", "--limit", "1"])).Output))
             one.RootElement.GetProperty("items").GetArrayLength().Should().Be(1);
 
-        (await RunAsync(host.Services, ["relevance", "--limit", "3"])).Exit.Should().Be(2, "a limit belongs to the review");
-        (await RunAsync(host.Services, ["relevance", "--disagreements", "--limit", "0"])).Exit.Should().Be(2);
-        (await RunAsync(host.Services, ["relevance", "--disagreements", "--limit", "1001"])).Exit.Should().Be(1);
-        (await RunAsync(host.Services, ["relevance", "--disagreements", "yes"])).Exit.Should().Be(2);
+        (await RunAsync(host.Services, ["relevance", "--filter", "ocharo-fashion-v1", "--wanted", "event:style-fashion", "--limit", "3"])).Exit.Should().Be(2, "a limit belongs to the review");
+        (await RunAsync(host.Services, ["relevance", "--filter", "ocharo-fashion-v1", "--wanted", "event:style-fashion", "--disagreements", "--limit", "0"])).Exit.Should().Be(2);
+        (await RunAsync(host.Services, ["relevance", "--filter", "ocharo-fashion-v1", "--wanted", "event:style-fashion", "--disagreements", "--limit", "1001"])).Exit.Should().Be(1);
+        (await RunAsync(host.Services, ["relevance", "--filter", "ocharo-fashion-v1", "--wanted", "event:style-fashion", "--disagreements", "yes"])).Exit.Should().Be(2);
 
         static string[] Ids(params Guid[] ids) => [.. ids.Select(id => id.ToString("D")).Order(StringComparer.Ordinal)];
     }

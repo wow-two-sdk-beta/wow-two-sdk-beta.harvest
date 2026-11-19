@@ -12,7 +12,8 @@ internal sealed record StoredPostTags(
     string? TitleEn,
     decimal? Confidence,
     int? PromptVersion,
-    string? Model = null);
+    string? Model = null,
+    string? Timeframe = null);
 
 /// <summary>Writes a stored answer onto a resolved envelope, beside the tags the readers mapped.</summary>
 /// <remarks>A post's <c>base</c> is derived from its readings on every resolve, so the answer is applied there rather
@@ -26,6 +27,7 @@ internal static class PostTagsOverlay
     ///   - <c>domain:{node}</c> for each node, primary first, and each node's ancestors, so a tier-1 tag filter matches a
     ///     post tagged deeper
     ///   - <c>topic:{slug}</c> per topic
+    ///   - <c>timeframe:{value}</c>, every value, <c>unsure</c> included
     /// </remarks>
     internal static PostEnvelope Apply(PostEnvelope resolved, StoredPostTags? stored)
     {
@@ -40,6 +42,8 @@ internal static class PostTagsOverlay
             foreach (var node in Lineage(domain.Node))
                 keys.Add(PostTagsConstants.DomainTagPrefix + node);
         keys.AddRange(stored.Topics.Select(topic => PostTagsConstants.TopicTagPrefix + topic));
+        if (!string.IsNullOrWhiteSpace(stored.Timeframe))
+            keys.Add(PostTagsConstants.TimeframeTagPrefix + stored.Timeframe);
 
         var tags = resolved.Tags.Where(tag => tag.Tier != ExtractionTier.SmallModel).ToList();
         foreach (var key in keys.Distinct(StringComparer.Ordinal))

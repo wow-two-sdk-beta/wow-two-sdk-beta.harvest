@@ -29,4 +29,8 @@ public static class PostTagsConstants
 
     /// <summary>The tag prefix of an open English topic: <c>topic:textile</c>.</summary>
     public const string TopicTagPrefix = "topic:";
+
+    /// <summary>The tag prefix of the answer's timeframe: <c>timeframe:upcoming</c>, <c>timeframe:ongoing</c>,
+    /// <c>timeframe:past</c>, <c>timeframe:evergreen</c>, <c>timeframe:unsure</c>.</summary>
+    public const string TimeframeTagPrefix = "timeframe:";
 }
