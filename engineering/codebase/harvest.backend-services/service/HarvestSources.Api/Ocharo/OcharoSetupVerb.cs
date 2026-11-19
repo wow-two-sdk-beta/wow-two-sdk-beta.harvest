@@ -11,18 +11,23 @@ namespace HarvestSources.Api.Ocharo;
 /// <summary>Answers <c>ocharo setup</c>: the same idempotent setup as <c>POST api/ocharo/sources/setup</c>, run on the
 /// deployed host's services, so a platform job provisions Ocharo's tenant and subscriptions with no operator token.</summary>
 /// <remarks>
-///   - <c>ocharo setup [--group &lt;id&gt;]... [--tenant &lt;slug&gt;] [--instagram] [--schedules] [--model-processing &lt;mode&gt;] [--run] [--refresh]</c>; each <c>--group</c>
+///   - <c>ocharo setup [--group &lt;id&gt;]... [--tenant &lt;slug&gt;] [--instagram] [--schedules] [--model-processing &lt;mode&gt;] [--selector [--selector-reset]] [--run] [--refresh]</c>; each <c>--group</c>
 ///     selects a publisher from the registry, and none selects every publisher with a collector; <c>--tenant</c> names
 ///     the owning tenant, <c>ocharo</c> by default, such as a second tenant for an isolation check
 ///   - <c>--instagram</c> includes the registry's supported Instagram routes, keeping their schedules off; it cannot
 ///     be combined with <c>--refresh</c>, because Instagram captures recent media and does not refresh known posts
 ///   - <c>--model-processing off|manual|auto</c> sets that mode on every selected source: new sources register with it and
 ///     existing ones are updated; without it new sources register <c>off</c> and existing ones keep their mode
+///   - <c>--selector</c> also provisions the tenant's <c>ocharo-events</c> selector subscription from the shipped selector
+///     file: created when missing, kept as it is when it exists, so a client's edits survive; every publisher the file lists
+///     must already have a source group in the container, else the verb refuses and names the <c>--group</c> to add.
+///     <c>--selector-reset</c>, only with <c>--selector</c>, puts the file's selector back on the existing subscription as a
+///     selector change by <c>ocharo setup</c>; a file equal to the stored selector keeps the version
 ///   - <c>--schedules</c> enables the other registry cadences, on existing pipelines too, keeping a tuned interval; <c>--run</c> queues one bounded capture run per pipeline
 ///     for the running worker; <c>--refresh</c> queues one refresh run per pipeline, which re-reads every known post so
 ///     a changed reader emits new revisions
-///   - stderr carries the report; the last stdout line is one JSON object with the tenant, container, subscriptions
-///     and queued runs
+///   - stderr carries the report; the last stdout line is one JSON object with the tenant, container, subscriptions,
+///     with <c>--selector</c> the selector subscription's id and version, and queued runs
 ///   - <c>ocharo status [--group &lt;id&gt;]... [--tenant &lt;slug&gt;]</c> writes nothing: its last stdout line names
 ///     the tenant and, per channel, each schedule's cadence and next due time and the latest run of its kind, short
 ///     enough for a platform job's last-line readout
@@ -33,7 +38,7 @@ public static class OcharoSetupVerb
     /// <summary>Holds the verb's name, the first process argument.</summary>
     public const string Name = "ocharo";
 
-    private const string Usage = "Usage: ocharo setup [--group <id>]... [--tenant <slug>] [--instagram] [--schedules] [--model-processing <off|manual|auto>] [--run] [--refresh]\n"
+    private const string Usage = "Usage: ocharo setup [--group <id>]... [--tenant <slug>] [--instagram] [--schedules] [--model-processing <off|manual|auto>] [--selector [--selector-reset]] [--run] [--refresh]\n"
         + "       ocharo status [--group <id>]... [--tenant <slug>]";
 
     /// <summary>Runs the verb over the host's services.</summary>
@@ -48,7 +53,8 @@ public static class OcharoSetupVerb
     {
         if (arguments is ["status", ..])
             return await StatusAsync(services, arguments, output, error, ct);
-        if (!TryParse(arguments, out var groups, out var tenant, out var schedules, out var includeInstagram, out var kinds, out var modelProcessing))
+        if (!TryParse(arguments, out var groups, out var tenant, out var schedules, out var includeInstagram, out var kinds, out var modelProcessing,
+                out var selector, out var selectorReset))
         {
             await error.WriteLineAsync(Usage);
             return 2;
@@ -66,7 +72,8 @@ public static class OcharoSetupVerb
             return 1;
         }
 
-        var setup = await provisioner.EnsureAsync(schedules, ct, includeInstagram, groups.Count == 0 ? null : groups, tenant, modelProcessing);
+        var setup = await provisioner.EnsureAsync(schedules, ct, includeInstagram, groups.Count == 0 ? null : groups, tenant, modelProcessing,
+            selector, selectorReset);
         if (setup is not Result<OcharoSetup>.Success { Value: var value })
         {
             await error.WriteLineAsync("ocharo setup refused: " + ((Result<OcharoSetup>.Failure)setup).Error.Message);
@@ -93,20 +100,28 @@ public static class OcharoSetupVerb
 
         foreach (var source in value.Sources)
             await error.WriteLineAsync($"{source.GroupId}/{source.ChannelId}: pipeline {source.PipelineId}, subscription {source.SubscriptionId}");
+        if (value.SelectorSubscriptionId is { } selectorId)
+            await error.WriteLineAsync($"selector {OcharoSelector.Current.Name}: subscription {selectorId}, version {value.SelectorVersion}");
         await error.WriteLineAsync($"tenant {value.TenantId}, container {value.ContainerId}, {value.Sources.Count} subscription(s), {runs.Count} run(s) queued");
-        await output.WriteLineAsync(JsonSerializer.Serialize(new
+        var result = new OrderedDictionary<string, object?>
         {
-            tenantId = value.TenantId,
-            containerId = value.ContainerId,
-            subscriptions = value.Sources.Select(source => new
+            ["tenantId"] = value.TenantId,
+            ["containerId"] = value.ContainerId,
+            ["subscriptions"] = value.Sources.Select(source => new
             {
                 groupId = source.GroupId,
                 channelId = source.ChannelId,
                 pipelineId = source.PipelineId,
                 subscriptionId = source.SubscriptionId,
-            }),
-            runs,
-        }));
+            }).ToArray(),
+        };
+        if (value.SelectorSubscriptionId is not null)
+        {
+            result["selectorSubscriptionId"] = value.SelectorSubscriptionId;
+            result["selectorVersion"] = value.SelectorVersion;
+        }
+        result["runs"] = runs;
+        await output.WriteLineAsync(JsonSerializer.Serialize(result));
         return 0;
     }
 
@@ -188,7 +203,7 @@ public static class OcharoSetupVerb
     private static string Snake<TEnum>(TEnum value) where TEnum : struct, Enum => JsonNamingPolicy.SnakeCaseLower.ConvertName(value.ToString());
 
     private static bool TryParse(IReadOnlyList<string> arguments, out List<string> groups, out string tenant, out bool schedules,
-        out bool includeInstagram, out List<WorkKind> kinds, out ModelProcessingMode? modelProcessing)
+        out bool includeInstagram, out List<WorkKind> kinds, out ModelProcessingMode? modelProcessing, out bool selector, out bool selectorReset)
     {
         groups = [];
         tenant = OcharoSourceProvisioner.DefaultTenantSlug;
@@ -196,6 +211,8 @@ public static class OcharoSetupVerb
         includeInstagram = false;
         kinds = [];
         modelProcessing = null;
+        selector = false;
+        selectorReset = false;
         if (arguments is not ["setup", ..])
             return false;
         for (var index = 1; index < arguments.Count; index++)
@@ -219,6 +236,12 @@ public static class OcharoSetupVerb
                 case "--instagram":
                     includeInstagram = true;
                     break;
+                case "--selector":
+                    selector = true;
+                    break;
+                case "--selector-reset":
+                    selectorReset = true;
+                    break;
                 case "--run" when !kinds.Contains(WorkKind.Capture):
                     kinds.Add(WorkKind.Capture);
                     break;
@@ -231,6 +254,6 @@ public static class OcharoSetupVerb
                     return false;
             }
         }
-        return true;
+        return !selectorReset || selector;
     }
 }

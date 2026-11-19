@@ -4,4 +4,11 @@ namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Ocharo;
 /// <param name="TenantId">The Ocharo tenant.</param>
 /// <param name="ContainerId">The tenant's private event-candidate container.</param>
 /// <param name="Sources">The pipelines and filtered pull routes.</param>
-public sealed record OcharoSetup(Guid TenantId, Guid ContainerId, IReadOnlyList<OcharoSourceRegistration> Sources);
+public sealed record OcharoSetup(Guid TenantId, Guid ContainerId, IReadOnlyList<OcharoSourceRegistration> Sources)
+{
+    /// <summary>Gets the tenant's <c>ocharo-events</c> selector subscription when setup was asked for it, else null.</summary>
+    public Guid? SelectorSubscriptionId { get; init; }
+
+    /// <summary>Gets the version of that subscription's selector as it stands, from 1; null when setup was not asked for it.</summary>
+    public int? SelectorVersion { get; init; }
+}

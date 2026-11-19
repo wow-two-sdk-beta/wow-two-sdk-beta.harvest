@@ -9,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Containers;
+using WoW.Two.Sdk.Beta.Be.Harvest.Delivery;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
 using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
@@ -216,6 +217,141 @@ public sealed class OcharoSetupVerbTests
         (await ModesAsync(host)).Should().OnlyContain(mode => mode == ModelProcessingMode.Auto);
     }
 
+    /// <summary>The publishers <c>ocharo-selector.json</c> lists; CAEx's calendar is a selected channel, so the default setup lacks it.</summary>
+    private static readonly string[] SelectorGroups = ["afisha", "anons", "caex", "uzexpocentre"];
+
+    [Fact]
+    public async Task Setup_WithSelector_ShouldCreateOneSubscription_AndReuseIt()
+    {
+        await using var host = await StartAsync();
+
+        var first = await Run(host.Services, SelectorSetup());
+        var again = await Run(host.Services, SelectorSetup());
+
+        first.Exit.Should().Be(0, first.Error);
+        again.Exit.Should().Be(0, again.Error);
+        var created = Last(first.Output);
+        var reused = Last(again.Output);
+        created.GetProperty("selectorVersion").GetInt32().Should().Be(1);
+        reused.GetProperty("selectorSubscriptionId").GetGuid().Should().Be(created.GetProperty("selectorSubscriptionId").GetGuid());
+        reused.GetProperty("selectorVersion").GetInt32().Should().Be(1);
+        first.Error.Should().Contain("selector ocharo-events: subscription " + created.GetProperty("selectorSubscriptionId").GetGuid());
+
+        var stored = Assert.Single(await SelectorSubscriptionsAsync(host));
+        stored.Id.Should().Be(created.GetProperty("selectorSubscriptionId").GetGuid());
+        stored.Name.Should().Be("ocharo-events");
+        stored.Schema.Should().Be("wow2.event.v1");
+        stored.State.Should().Be(SubscriptionState.Active);
+        stored.Backfill.Should().Be(BackfillMode.Live);
+        stored.PipelineId.Should().BeNull();
+        stored.FilterKey.Should().BeNull();
+        stored.SelectorVersion.Should().Be(1);
+        stored.Context.Should().Equal(new Dictionary<string, string> { ["catalog"] = "ocharo-fashion" });
+        stored.Selector!.EntityTypes.Should().Equal("event");
+        stored.Selector.ExcludeTimeframes.Should().Equal("past");
+        var include = stored.Selector.Sources.Include;
+        include.Select(reference => reference.Context["sourceGroup"]).Should().Equal(SelectorGroups);
+        include.Single(reference => reference.Context["sourceGroup"] == "caex").Context["defaultKind"].Should().Be("exhibition");
+        (await GroupNamesAsync(host, include.Select(reference => reference.GroupId!.Value))).Should()
+            .Equal("Afisha Uzbekistan", "ANONS Uzbekistan", "CAEx Uzbekistan", "Uzexpocentre");
+        reused.GetProperty("subscriptions").GetArrayLength().Should().BePositive("the per-pipeline filter subscriptions keep being created");
+    }
+
+    [Fact]
+    public async Task Setup_WithoutSelector_ShouldCreateNoSelectorSubscription_AndPrintNoSelectorFields()
+    {
+        await using var host = await StartAsync();
+
+        var setup = await Run(host.Services, ["setup", "--group", "afisha"]);
+
+        setup.Exit.Should().Be(0, setup.Error);
+        Last(setup.Output).TryGetProperty("selectorSubscriptionId", out _).Should().BeFalse();
+        Last(setup.Output).TryGetProperty("selectorVersion", out _).Should().BeFalse();
+        (await SelectorSubscriptionsAsync(host)).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Setup_WithSelectorReset_ShouldKeepTheVersion_WhenTheFileIsUnchanged()
+    {
+        await using var host = await StartAsync();
+        (await Run(host.Services, SelectorSetup())).Exit.Should().Be(0);
+
+        var reset = await Run(host.Services, [.. SelectorSetup(), "--selector-reset"]);
+
+        reset.Exit.Should().Be(0, reset.Error);
+        Last(reset.Output).GetProperty("selectorVersion").GetInt32().Should().Be(1, "a selector equal to the stored one writes nothing");
+        (await SelectorSubscriptionsAsync(host)).Should().ContainSingle().Which.SelectorVersion.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Setup_WithSelector_ShouldKeepAClientsEdit_AndOnlyAResetPutsTheFileBack()
+    {
+        await using var host = await StartAsync();
+        var created = Last((await Run(host.Services, SelectorSetup())).Output);
+        var id = created.GetProperty("selectorSubscriptionId").GetGuid();
+        using (var scope = host.Services.CreateScope())
+        {
+            var delivery = scope.ServiceProvider.GetRequiredService<IDeliveryBroker>();
+            var edited = Assert.IsType<Result<SelectorChangeModel>.Success>(await delivery.SetSelectorAsync(id, new()
+            {
+                Selector = (await SelectorSubscriptionsAsync(host)).Single().Selector! with { ExcludeTopics = ["marathon"] },
+                ChangedBy = "a client",
+            })).Value;
+            edited.Subscription.SelectorVersion.Should().Be(2);
+        }
+
+        var kept = Last((await Run(host.Services, SelectorSetup())).Output);
+        kept.GetProperty("selectorVersion").GetInt32().Should().Be(2);
+        (await SelectorSubscriptionsAsync(host)).Single().Selector!.ExcludeTopics.Should().Equal("marathon");
+
+        var reset = await Run(host.Services, [.. SelectorSetup(), "--selector-reset"]);
+        reset.Exit.Should().Be(0, reset.Error);
+        Last(reset.Output).GetProperty("selectorVersion").GetInt32().Should().Be(3);
+        Last(reset.Output).GetProperty("selectorSubscriptionId").GetGuid().Should().Be(id);
+        (await SelectorSubscriptionsAsync(host)).Single().Selector!.ExcludeTopics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Setup_WithSelector_ShouldRefuseAMissingGroup()
+    {
+        await using var host = await StartAsync();
+
+        var refused = await Run(host.Services, ["setup", "--group", "afisha", "--selector"]);
+
+        refused.Exit.Should().Be(1);
+        refused.Error.Should().Contain("Group anons is not provisioned in the Ocharo container; run setup with --group anons.");
+        refused.Output.Should().BeEmpty();
+        (await SelectorSubscriptionsAsync(host)).Should().BeEmpty();
+
+        var provisioned = await Run(host.Services, SelectorSetup());
+        provisioned.Exit.Should().Be(0, provisioned.Error);
+        (await SelectorSubscriptionsAsync(host)).Should().ContainSingle();
+    }
+
+    private static string[] SelectorSetup() => ["setup", .. SelectorGroups.SelectMany(group => new[] { "--group", group }), "--selector"];
+
+    private static JsonElement Last(string output) => JsonDocument.Parse(output.TrimEnd().Split('\n')[^1]).RootElement;
+
+    private static async Task<List<SubscriptionModel>> SelectorSubscriptionsAsync(WebApplication host)
+    {
+        using var scope = host.Services.CreateScope();
+        var registry = scope.ServiceProvider.GetRequiredService<IRegistrationBroker>();
+        var tenant = Assert.IsType<Result<IReadOnlyList<TenantModel>>.Success>(await registry.ListTenantsAsync()).Value.Single(item => item.Slug == "ocharo");
+        var subscriptions = Assert.IsType<Result<IReadOnlyList<SubscriptionModel>>.Success>(
+            await scope.ServiceProvider.GetRequiredService<IDeliveryBroker>().ListSubscriptionsAsync(tenant.Id)).Value;
+        return [.. subscriptions.Where(subscription => subscription.Kind == SubscriptionKind.Selector)];
+    }
+
+    private static async Task<string[]> GroupNamesAsync(WebApplication host, IEnumerable<Guid> ids)
+    {
+        using var scope = host.Services.CreateScope();
+        var registry = scope.ServiceProvider.GetRequiredService<IRegistrationBroker>();
+        var tenant = Assert.IsType<Result<IReadOnlyList<TenantModel>>.Success>(await registry.ListTenantsAsync()).Value.Single(item => item.Slug == "ocharo");
+        var container = Assert.IsType<Result<IReadOnlyList<ContainerModel>>.Success>(await registry.ListContainersAsync(tenant.Id)).Value.Single();
+        var groups = Assert.IsType<Result<IReadOnlyList<SourceGroupModel>>.Success>(await registry.ListSourceGroupsAsync(container.Id)).Value;
+        return [.. ids.Select(id => groups.Single(group => group.Id == id).Name)];
+    }
+
     private static async Task<List<ModelProcessingMode>> ModesAsync(WebApplication host)
     {
         using var scope = host.Services.CreateScope();
@@ -239,6 +375,7 @@ public sealed class OcharoSetupVerbTests
     [InlineData("ocharo setup --model-processing")]
     [InlineData("ocharo setup --model-processing loud")]
     [InlineData("ocharo setup --model-processing auto --model-processing off")]
+    [InlineData("ocharo setup --selector-reset")]
     public async Task Setup_answers_its_usage_without_serving(string commandLine)
     {
         string[] args = commandLine.Split(' ');

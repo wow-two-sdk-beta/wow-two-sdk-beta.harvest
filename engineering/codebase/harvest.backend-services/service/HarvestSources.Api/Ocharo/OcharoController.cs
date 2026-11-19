@@ -24,6 +24,7 @@ public sealed class OcharoController(OcharoSourceProvisioner provisioner) : Cont
     /// <summary>Creates missing private registry rows; repeated calls preserve existing operator settings.</summary>
     [HttpPost("setup")]
     public async Task<IActionResult> Setup([FromBody] OcharoSetupRequest request, CancellationToken cancellationToken) =>
-        (await provisioner.EnsureAsync(request.EnableSchedules, cancellationToken, request.IncludeInstagram, request.GroupIds)).Match<IActionResult>(
+        (await provisioner.EnsureAsync(request.EnableSchedules, cancellationToken, request.IncludeInstagram, request.GroupIds,
+            selector: request.Selector, selectorReset: request.SelectorReset)).Match<IActionResult>(
             value => Ok(ApiResponse<OcharoSetup>.Ok(value)), this.ToProblem);
 }

@@ -1,0 +1,24 @@
+{
+  "format": "ocharo-selector@1",
+  "name": "ocharo-events",
+  "schema": "wow2.event.v1",
+  "context": { "catalog": "ocharo-fashion" },
+  "selector": {
+    "entityTypes": ["event"],
+    "domains": [
+      { "key": "style-fashion", "except": ["style-fashion/beauty", "style-fashion/personal-care", "style-fashion/body-art"] },
+      { "key": "business-and-finance/industries/apparel-industry" }
+    ],
+    "topics": ["textile", "textiles", "ikat", "garment", "garments", "clothing", "apparel", "fashion-show",
+      "fashion-week", "runway", "couture", "menswear", "womenswear", "childrenswear", "streetwear", "denim", "suzani", "footwear"],
+    "excludeDomains": [],
+    "excludeTopics": [],
+    "excludeTimeframes": ["past"]
+  },
+  "sources": [
+    { "group": "afisha" },
+    { "group": "anons" },
+    { "group": "caex", "context": { "defaultKind": "exhibition" } },
+    { "group": "uzexpocentre", "context": { "defaultKind": "trade-fair" } }
+  ]
+}

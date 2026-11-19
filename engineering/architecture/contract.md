@@ -542,13 +542,15 @@ operator setup (`HarvestSources:Audience` `internal` only):
 |---|---|---|---|
 | GET | `/api/ocharo/sources/presets` | operator `tenants:manage` | original preset keys, names, seeds and authority |
 | GET | `/api/ocharo/sources/registry` | operator `tenants:manage` | `{ format, reviewedOn, groups }`; a read neither provisions nor fetches |
-| POST | `/api/ocharo/sources/setup` | operator `tenants:manage` | `{ tenantId, containerId, sources: [{ sourceKey, seed, groupId, channelId, eventFamily?, sourceId, pipelineId, subscriptionId }] }` |
+| POST | `/api/ocharo/sources/setup` | operator `tenants:manage` | `{ tenantId, containerId, sources: [{ sourceKey, seed, groupId, channelId, eventFamily?, sourceId, pipelineId, subscriptionId }], selectorSubscriptionId?, selectorVersion? }` |
 
 - The registry (`sources/Module/Ocharo/ocharo-event-sources.json`, [review](../research/ocharo-source-registry.md))
   lists each publisher, its channels and each channel's collection mode: `harvest` (installed reader), `provider`
   (installed opt-in integration; credentials and publisher access required), `planned`, `manual`, `reference`. Rank
   measures relevance, not readiness; only owned channels with an installed collector can be provisioned.
-- Setup takes `{ enableSchedules: false, includeInstagram: false, groupIds?: string[] }`. Without `groupIds` it keeps
+- Setup takes `{ enableSchedules: false, includeInstagram: false, groupIds?: string[], selector: false, selectorReset: false }`;
+  `selector` provisions the one `ocharo-events` selector subscription (`sources/Module/Ocharo/ocharo-selector.json`) and
+  keeps a client's edits, `selectorReset` also writes the file's selector over it, and a reset without `selector` is refused. Without `groupIds` it keeps
   the original five website scopes and, when asked, the registry's default Instagram routes; explicit IDs select every eligible
   channel in those groups. An unknown group, or a group with no eligible channel, fails before any row is written.
   CAEx is selectable explicitly and has no link-check schedule. Instagram accounts have separate publisher sources

@@ -29,6 +29,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Ocharo/ocharo-event-sources.json" LogicalName="Ocharo.EventSources.json" />
+    <EmbeddedResource Include="Ocharo/ocharo-selector.json" LogicalName="Ocharo.Selector.json" />
   </ItemGroup>
 
 </Project>

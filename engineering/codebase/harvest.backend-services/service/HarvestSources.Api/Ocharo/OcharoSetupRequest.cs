@@ -10,4 +10,12 @@ public sealed record OcharoSetupRequest
 
     /// <summary>Explicit publisher groups to set up. Null keeps the original preset selection.</summary>
     public IReadOnlyList<string>? GroupIds { get; init; }
+
+    /// <summary>Also provisions the tenant's <c>ocharo-events</c> selector subscription from the shipped selector file; every
+    /// publisher it lists must already have a source group in the container.</summary>
+    public bool Selector { get; init; }
+
+    /// <summary>Puts the shipped selector back on an existing <c>ocharo-events</c> subscription, a change by
+    /// <c>ocharo setup</c>; needs <see cref="Selector"/>.</summary>
+    public bool SelectorReset { get; init; }
 }

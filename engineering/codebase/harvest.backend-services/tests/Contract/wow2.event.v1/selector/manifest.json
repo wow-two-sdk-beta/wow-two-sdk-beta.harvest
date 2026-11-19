@@ -1,0 +1,26 @@
+{
+  "schema": "wow2.event.v1",
+  "files": [
+    {
+      "name": "subscription.json",
+      "sha256": "61e59326db7640a12ab74e97e65cd62d5f21cf80122eb68371f9748093b358ad",
+      "cases": [
+        "subscription"
+      ]
+    },
+    {
+      "name": "01-match.json",
+      "sha256": "9cc1c06b829212682583b9dec4a0ad1545394c2bd833c8592586c816dc905a15",
+      "cases": [
+        "post.new:match"
+      ]
+    },
+    {
+      "name": "02-change.json",
+      "sha256": "9c77c87701dcd4c742d805839c6fc9847ed0944270c0c1404d15b3a6cb0ba7c5",
+      "cases": [
+        "post.unmatched:resync"
+      ]
+    }
+  ]
+}

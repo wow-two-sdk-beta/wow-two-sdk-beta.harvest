@@ -22,17 +22,26 @@ public sealed class OcharoSourceProvisioner(IRegistrationBroker registry, IDeliv
     /// <summary>Creates missing registry rows and filtered subscriptions. Cadences start disabled unless requested; a
     /// request also switches on the registry cadences of pipelines that already exist. A source with no group joins
     /// its publisher's group, named as the registry names the publisher, and a source with no display name gets one;
-    /// a group or name an operator set is kept.</summary>
+    /// a group or name an operator set is kept. With <c>selector</c> it also provisions Ocharo's one selector
+    /// subscription, <c>ocharo-events</c> (<see cref="OcharoSelector"/>).</summary>
     /// <remarks>Repeat calls reuse identities. Call setup through one operator host at a time; the registry rejects conflicting creates.
     /// <paramref name="tenantSlug"/> names the owning tenant, <c>ocharo</c> by default; another slug gives that tenant its own
     /// private container and subscriptions, such as an isolation probe.
     /// <paramref name="modelProcessing"/> sets the mode of every selected source: a new source registers with it and an existing one
     /// is updated. Without it a new source registers <see cref="ModelProcessingMode.Off"/> and an existing source keeps the mode it
-    /// has, so a source an operator switched to <c>manual</c> or <c>auto</c> never makes a later setup refuse.</remarks>
+    /// has, so a source an operator switched to <c>manual</c> or <c>auto</c> never makes a later setup refuse.
+    /// <paramref name="selector"/> binds the shipped selector file to the container's source groups and creates the tenant's
+    /// <c>ocharo-events</c> subscription over it, live from now on; one that already exists, whatever its state short of
+    /// archived, is kept as it is so a client's edits survive. Every publisher the file lists must already have a source
+    /// group in the container, so a selected setup that skips one refuses before the subscription is touched.
+    /// <paramref name="selectorReset"/> puts the file's selector back on an existing subscription as a selector change by
+    /// <c>ocharo setup</c>; a file equal to the stored selector changes nothing, so the version stays.</remarks>
     public async Task<Result<OcharoSetup>> EnsureAsync(bool enableSchedules = false, CancellationToken cancellationToken = default,
         bool includeInstagram = false, IReadOnlyList<string>? groupIds = null, string tenantSlug = DefaultTenantSlug,
-        ModelProcessingMode? modelProcessing = null)
+        ModelProcessingMode? modelProcessing = null, bool selector = false, bool selectorReset = false)
     {
+        if (selectorReset && !selector)
+            return Invalid("A selector reset needs the selector: ask for both.");
         OcharoSourceRegistry catalog = OcharoSourceRegistry.Current;
         var selection = groupIds?.ToHashSet(StringComparer.Ordinal);
         if (selection is not null && (selection.Count == 0 || selection.Count != groupIds!.Count
@@ -177,10 +186,35 @@ public sealed class OcharoSourceProvisioner(IRegistrationBroker registry, IDeliv
                     GroupId = group.Id, ChannelId = channel.Id, EventFamily = channel.EventFamily,
                 });
             }
-            return Result<OcharoSetup>.Ok(new(tenant.Id, container.Id, rows));
+            SubscriptionModel? selected = selector ? await EnsureSelectorAsync(tenant, container, subscriptions, selectorReset, cancellationToken) : null;
+            return Result<OcharoSetup>.Ok(new(tenant.Id, container.Id, rows)
+            {
+                SelectorSubscriptionId = selected?.Id, SelectorVersion = selected?.SelectorVersion,
+            });
         }
         catch (ProvisioningFailure failure) { return Result<OcharoSetup>.Fail(failure.Error); }
         finally { SetupGate.Release(); }
+    }
+
+    /// <summary>Binds the shipped selector to the container's source groups, then creates the tenant's selector subscription
+    /// or, on a reset, puts the file's selector on the one that exists.</summary>
+    private async Task<SubscriptionModel> EnsureSelectorAsync(TenantModel tenant, ContainerModel container,
+        IReadOnlyList<SubscriptionModel> subscriptions, bool reset, CancellationToken cancellationToken)
+    {
+        OcharoSelector file = OcharoSelector.Current;
+        var groups = Value(await registry.ListSourceGroupsAsync(container.Id, cancellationToken));
+        SubscriptionSelector resolved = Value(file.Resolve(groups));
+        SubscriptionModel? existing = subscriptions.FirstOrDefault(item => item.Kind == SubscriptionKind.Selector
+            && item.Name == file.Name && item.State != SubscriptionState.Archived);
+        if (existing is null)
+            return Value(await delivery.SubscribeAsync(new()
+            {
+                TenantId = tenant.Id, ContainerId = container.Id, Name = file.Name, Selector = resolved, Schema = file.Schema,
+                Context = file.Context, Backfill = BackfillMode.Live,
+            }, cancellationToken));
+        if (!reset)
+            return existing;
+        return Value(await delivery.SetSelectorAsync(existing.Id, new() { Selector = resolved, ChangedBy = "ocharo setup" }, cancellationToken)).Subscription;
     }
 
     /// <summary>Reads what setup owns on this target, writing nothing: the tenant, its container and each selected channel's

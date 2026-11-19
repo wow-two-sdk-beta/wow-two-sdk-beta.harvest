@@ -130,8 +130,8 @@ database, API audience and operator credentials.
 
 ## Provisioning Ocharo on a target
 
-`dotnet HarvestSources.Api.dll ocharo setup --group afisha [--model-processing <off|manual|auto>] [--run]` runs on the
-target's own settings through Wheelhouse Run, with no listener and no operator token.
+`dotnet HarvestSources.Api.dll ocharo setup --group afisha [--model-processing <off|manual|auto>] [--selector [--selector-reset]] [--run]`
+runs on the target's own settings through Wheelhouse Run, with no listener and no operator token.
 
 - It creates or reuses tenant `ocharo`, the private container `ocharo-events`, one pipeline per harvest channel of each
   selected publisher and one `wow2.event.v1` subscription per pipeline (filter `ocharo-fashion-v1`, context
@@ -148,12 +148,25 @@ target's own settings through Wheelhouse Run, with no listener and no operator t
   (a different sharing or robots posture still refuses). harvest-dev switches Afisha with
   `ocharo setup --group afisha --model-processing auto`; `sources processing --list` reads the result
   (`ai-operations.md` § Setting the mode from the host).
+- `--selector` also provisions Ocharo's one selector subscription, `ocharo-events` (schema `wow2.event.v1`, context
+  `catalog=ocharo-fashion`, live from now on), from the file the image ships, `ocharo-selector.json`: the type, domain,
+  topic and timeframe clauses and the four publishers it follows (Afisha, ANONS, CAEx, Uzexpocentre; Hunarmand stays
+  out while it is paused). The file names publishers by registry id, so setup binds each to the container's source group
+  of that name and adds `sourceGroup` and `sourceName` to that ref's context, where the payload `context` carries
+  them. Every listed publisher needs its group first, so run the groups together
+  (`ocharo setup --group afisha --group anons --group caex --group uzexpocentre --selector`; CAEx's calendar is a
+  selected channel the default setup lacks); a missing one refuses with `Group {id} is not provisioned in the Ocharo
+  container; run setup with --group {id}.`, after the channel rows are written, so adding the group and repeating the
+  verb finishes it. Repeating the verb keeps the subscription as it is, a client's edits included; `--selector-reset`
+  (only with `--selector`) puts the file's selector back as a selector change by `ocharo setup`, and a file equal to the
+  stored selector keeps the version. The per-pipeline `ocharo-fashion-v1` subscriptions keep being created beside it
+  until they retire.
 - `--run` queues one bounded capture run per pipeline for the running worker. `--refresh` queues one refresh run per
   pipeline: the worker re-reads every known post, so a changed reader emits `post.changed` for each post whose
   projection changed.
 - The last stdout line is one JSON object: `tenantId`, `containerId`, `subscriptions` (`groupId`, `channelId`,
-  `pipelineId`, `subscriptionId`) and `runs` (`pipelineId`, `kind`, `runId`); `runs` lists only runs this call
-  queued. A consumer's `ClientGrantsJson` entry takes that `tenantId`.
+  `pipelineId`, `subscriptionId`), with `--selector` `selectorSubscriptionId` and `selectorVersion`, and `runs`
+  (`pipelineId`, `kind`, `runId`); `runs` lists only runs this call queued. A consumer's `ClientGrantsJson` entry takes that `tenantId`.
 - `--tenant <slug>` gives another tenant its own private container, pipelines and subscriptions;
   `ocharo setup --group afisha --tenant isolation-check` creates the empty second tenant whose subscription a
   consumer's token must not read (SCFD answers `404`).
@@ -163,8 +176,8 @@ and, per channel, each schedule's cadence, next due time and latest run of its k
 `afisha/fashion capture 6h due 11-10T19:12Z last partial/page_limit 11-10T13:12Z; check 1d due …`; it exits `1`
 when setup has not run for the tenant.
 
-The HTTP form, `POST /api/ocharo/sources/setup`, takes `{ enableSchedules, includeInstagram, groupIds? }` with the
-operator key or token: `engineering/architecture/contract.md` § Source host.
+The HTTP form, `POST /api/ocharo/sources/setup`, takes `{ enableSchedules, includeInstagram, groupIds?, selector,
+selectorReset }` with the operator key or token: `engineering/architecture/contract.md` § Source host.
 
 ## Private source media
 
