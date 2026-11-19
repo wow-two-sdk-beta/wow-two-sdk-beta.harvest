@@ -35,6 +35,8 @@ The layer reads stored extraction answers and needs no AI. `service/HarvestSourc
 - On a content change: the new title or text is tagged, then extracted, then resolved again; the post's binding moves
   with its content, and the old content's relation to another entity drops.
 - On enabling the layer over stored answers: `entities backfill` queues every answered post with no relation or flag.
+- On a re-run (`ai-operations.md`): a re-run's done extraction queues resolution carrying the run, so
+  `processing status` follows it until the post is resolved again.
 
 ## How a post binds
 

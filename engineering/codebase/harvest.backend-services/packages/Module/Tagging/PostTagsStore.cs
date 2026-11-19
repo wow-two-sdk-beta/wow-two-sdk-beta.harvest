@@ -5,26 +5,55 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Persistence;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Posts;
 using WoW.Two.Sdk.Beta.Be.Harvest.Posts;
+using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
 
-/// <summary>Represents a post as the pass reads it: the post, whether AI may read its title and text, and the section
-/// hint for <c>sourceCategory</c>.</summary>
-internal sealed record PostTagsSubject(PostModel Post, bool Current, bool AiAllowed, string? Section);
+/// <summary>Represents a post as the pass reads it: the post, the strictest model-processing mode of the sources supplying
+/// its title and text, and the section hint for <c>sourceCategory</c>.</summary>
+internal sealed record PostTagsSubject(PostModel Post, bool Current, ModelProcessingMode Mode, string? Section)
+{
+    /// <summary>Gets whether work nobody named may send the post to a model: every source is <c>auto</c>.</summary>
+    internal bool Automatic => Mode == ModelProcessingMode.Auto;
 
-/// <summary>Represents one claimed queue row.</summary>
-internal sealed record PostTagsClaim(Guid PostId, Guid ContainerId, byte[] ContentHash, int Attempts);
+    /// <summary>Gets whether an operator who names the post may send it to a model: no source is <c>off</c>.</summary>
+    internal bool Explicit => Mode != ModelProcessingMode.Off;
+
+    /// <summary>Gets whether a queued row may run: an automatic one needs <c>auto</c>, an explicit one any mode but <c>off</c>.</summary>
+    internal bool Allows(bool explicitRow) => explicitRow ? Explicit : Automatic;
+}
+
+/// <summary>Represents one claimed queue row; a re-run's row carries its run and whether an operator named the post.</summary>
+internal sealed record PostTagsClaim(Guid PostId, Guid ContainerId, byte[] ContentHash, int Attempts, Guid? RunId = null, bool Explicit = false);
 
 /// <summary>Holds the pass's SQL over <c>harvest_post_work</c>, <c>harvest_post_tags</c> and <c>harvest_taxonomy_nodes</c>.</summary>
 internal static class PostTagsStore
 {
     /// <summary>The condition, over post alias <c>p</c>, that the links supplying the title and text exist and that
-    /// every one of their sources allows AI; a source's opt-out keeps its words away from the model.</summary>
-    internal const string AiAllowedSql = """
+    /// every one of their sources processes automatically (<c>auto</c>): what any queue nobody named needs. A source in
+    /// <c>manual</c> or <c>off</c> mode keeps its words away from automatic work.</summary>
+    internal const string AutoSql = """
         EXISTS(SELECT 1 FROM harvest_post_links l WHERE l.post_id=p.id AND l.id::text IN (p.field_prov->>'title',p.field_prov->>'text'))
         AND NOT EXISTS(SELECT 1 FROM harvest_post_links l JOIN harvest_sources s ON s.id=l.source_id
-            WHERE l.post_id=p.id AND l.id::text IN (p.field_prov->>'title',p.field_prov->>'text') AND NOT s.ai_allowed)
+            WHERE l.post_id=p.id AND l.id::text IN (p.field_prov->>'title',p.field_prov->>'text') AND s.model_processing<>'auto')
         """;
+
+    /// <summary>The strictest mode, over post alias <c>p</c>, of the sources supplying the title and text: <c>off</c> when
+    /// none supplies them or any is off, <c>manual</c> when any is manual, else <c>auto</c>.</summary>
+    internal const string ModeSql = """
+        (SELECT CASE WHEN count(*)=0 OR bool_or(s.model_processing='off') THEN 'off'
+                     WHEN bool_or(s.model_processing='manual') THEN 'manual' ELSE 'auto' END
+         FROM harvest_post_links l JOIN harvest_sources s ON s.id=l.source_id
+         WHERE l.post_id=p.id AND l.id::text IN (p.field_prov->>'title',p.field_prov->>'text'))
+        """;
+
+    /// <summary>Reads a mode <see cref="ModeSql"/> returns.</summary>
+    internal static ModelProcessingMode ParseMode(string mode) => mode switch
+    {
+        "auto" => ModelProcessingMode.Auto,
+        "manual" => ModelProcessingMode.Manual,
+        _ => ModelProcessingMode.Off,
+    };
 
     /// <summary>Reads the active taxonomy as <c>key — label</c> lines in key order, so the rendered system prompt stays
     /// byte-identical between calls and the provider's prompt cache holds.</summary>
@@ -49,10 +78,11 @@ internal static class PostTagsStore
     {
         await using var connection = await dataSource.OpenConnectionAsync(ct);
         Guid containerId;
-        bool current, allowed;
+        bool current;
+        ModelProcessingMode mode;
         string? section;
         await using (var command = PostSql.Command(connection, null, $"""
-                         SELECT p.container_id,p.merged_into IS NULL AND p.purged_at IS NULL,{AiAllowedSql},section.name
+                         SELECT p.container_id,p.merged_into IS NULL AND p.purged_at IS NULL,{ModeSql},section.name
                          FROM harvest_posts p
                          LEFT JOIN LATERAL (
                              SELECT pl.name FROM harvest_post_links l
@@ -70,11 +100,11 @@ internal static class PostTagsStore
                 return null;
             containerId = reader.GetGuid(0);
             current = reader.GetBoolean(1);
-            allowed = reader.GetBoolean(2);
+            mode = ParseMode(reader.GetString(2));
             section = reader.IsDBNull(3) ? null : reader.GetString(3);
         }
         var post = await ModulePostBroker.ReadPostAsync(connection, null, containerId, postId, ct);
-        return post is null ? null : new PostTagsSubject(post, current, allowed, section);
+        return post is null ? null : new PostTagsSubject(post, current, mode, section);
     }
 
     /// <summary>Reads the base of a post's revision from a delivered snapshot, for an eval subject that names a revision
@@ -101,15 +131,16 @@ internal static class PostTagsStore
                   WHERE kind=@kind AND not_before<=@now AND (lease_until IS NULL OR lease_until<@now)
                   ORDER BY not_before,post_id LIMIT @batch FOR UPDATE SKIP LOCKED) due
             WHERE w.post_id=due.post_id AND w.kind=@kind
-            RETURNING w.post_id,w.container_id,w.content_hash,w.attempts
+            RETURNING w.post_id,w.container_id,w.content_hash,w.attempts,w.run_id,w.explicit
             """, ("owner", owner), ("until", now + lease), ("kind", PostTagsConstants.WorkKind), ("now", now), ("batch", batch));
         await using var reader = await command.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
-            claims.Add(new(reader.GetGuid(0), reader.GetGuid(1), reader.GetFieldValue<byte[]>(2), reader.GetInt32(3)));
+            claims.Add(new(reader.GetGuid(0), reader.GetGuid(1), reader.GetFieldValue<byte[]>(2), reader.GetInt32(3),
+                reader.IsDBNull(4) ? null : reader.GetGuid(4), reader.GetBoolean(5)));
         return claims;
     }
 
-    /// <summary>Removes a post's queued tagging: the post is gone, merged, empty or its source opted out.</summary>
+    /// <summary>Removes a post's queued tagging: the post is gone, merged, empty or its source's mode refuses the row.</summary>
     internal static async Task DropAsync(NpgsqlDataSource dataSource, Guid postId, CancellationToken ct)
     {
         await using var connection = await dataSource.OpenConnectionAsync(ct);
@@ -131,7 +162,7 @@ internal static class PostTagsStore
               AND (btrim(COALESCE(p.base->>'title',''))<>'' OR btrim(COALESCE(p.base->>'text',''))<>'')
               AND (CAST(@source AS uuid) IS NULL OR EXISTS(SELECT 1 FROM harvest_post_links l
                    WHERE l.post_id=p.id AND l.source_id=@source AND l.retired_at IS NULL))
-              AND {AiAllowedSql}
+              AND {AutoSql}
               AND NOT EXISTS(SELECT 1 FROM harvest_post_tags t WHERE t.post_id=p.id AND t.content_hash={hash} AND t.status='done')
             ORDER BY p.last_changed_at DESC,p.id LIMIT @limit
             ON CONFLICT (post_id,kind) DO UPDATE SET content_hash=EXCLUDED.content_hash,queued_at=EXCLUDED.queued_at,
@@ -184,7 +215,7 @@ internal static class PostTagsStore
             LEFT JOIN harvest_post_tags t ON t.post_id=p.id AND t.content_hash={hash} AND t.status='done'
             WHERE p.merged_into IS NULL AND p.purged_at IS NULL AND p.last_changed_at>=@since
               AND (btrim(COALESCE(p.base->>'title',''))<>'' OR btrim(COALESCE(p.base->>'text',''))<>'')
-              AND {AiAllowedSql}
+              AND {AutoSql}
             """, ("since", since));
         await using var reader = await command.ExecuteReaderAsync(ct);
         var none = Array.Empty<PostTagsDomain>();

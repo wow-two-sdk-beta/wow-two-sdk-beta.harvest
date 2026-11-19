@@ -18,7 +18,7 @@ never writes the post and never calls a model.
   (`EntityReadStore`) page it on `(tx, id)` below the snapshot horizon; cursors (`EntityCursors`) bind to their container
   or entity. Subscription delivery never reads it.
 - Queue: `PostExtractionStore.WriteAsync` queues `entity-resolve` for the answer's content in its own transaction when
-  `Harvest:Entities:Enabled` is set (`EntityGate`); `entities backfill` queues answered posts with neither a relation
+  `Harvest:Entities:Enabled` is set (`EntityGate`), carrying a re-run's `run_id` so its status follows the resolution; `entities backfill` queues answered posts with neither a relation
   nor a flag. The worker re-checks the post and its hash, resolves under the container's advisory lock
   (`entities:{container}`) and drops a row whose post moved on.
 - Names (`EntityNames`): `name_key` is the sorted Latin words of a name, Cyrillic transliterated to Uzbek Latin,

@@ -17,11 +17,15 @@ takes only an `extract-event` answer's format, as its classification's kind, and
 - Queue: the Posts lane queues in the write's transaction — after a done tags answer about the current content, and on
   any resolve whose content already has done tags — keyed by the same title-and-text hash, so the tag-only revision
   queues nothing and a changed text queues again once its new tags are done. `extract backfill` queues stored posts for
-  pairs added later. The worker re-checks the post, its hash, its tags and the demand before each call.
+  pairs added later. Automatic queueing needs every source supplying the title and text in `auto` mode; an explicit row
+  (named posts, listed sources, `run --post` tags) also serves `manual`. The worker re-checks the post, its hash, its tags, the mode and
+  the demand before each call; a re-run's row (`run_id`) skips the demand and needs only tags of the use case's entity
+  type. `QueueAsync(force: true)` queues over a done answer for a re-run, and a done answer passes its run to the
+  entity queue.
 - Call: use case `extract-event` or `extract-listing`, versioned, `KeepOutputs` true, the code-owned schema
   (`PostExtractionDefinitions`); variables `title`, `text` (cut to `MaxTextChars`), `sourceCategory`, `language`,
   `dates`, `place`, `prices`, `postedAt`, and the tags `entityType`, `domains`, `about`, `timeframe`, `titleEn`. Routes
-  come from `Harvest:Processing:Extraction:Models`, default `anthropic/claude-sonnet-5-5`; `PromptVersions` pins a
+  come from `Harvest:Processing:Extraction:Models`, default `anthropic/claude-haiku-5-5`; `PromptVersions` pins a
   version per use case.
 - Normalizing: `PostExtractionDefinitions.Parse` runs `AnswerNormalizer` before the strict read, so a model value the
   schema lacks no longer discards the answer. A value outside an enum becomes `unsure` (else `unknown`, else `null`

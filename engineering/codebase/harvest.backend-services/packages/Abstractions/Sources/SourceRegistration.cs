@@ -29,8 +29,21 @@ public sealed record SourceRegistration
     /// <summary>Gets the operator's harvesting switch.</summary>
     public SourcePermission Permission { get; init; } = SourcePermission.Open;
 
-    /// <summary>Gets whether model tiers and embeddings may read the source's text.</summary>
-    public bool AiAllowed { get; init; } = true;
+    /// <summary>Gets whether a model may read the source's text: <see cref="ModelProcessing"/> is not
+    /// <see cref="ModelProcessingMode.Off"/>. The older switch: <c>true</c> maps to <see cref="ModelProcessingMode.Auto"/>
+    /// and <c>false</c> to <see cref="ModelProcessingMode.Off"/>; send one of the two.</summary>
+    public bool AiAllowed
+    {
+        get => ModelProcessing != ModelProcessingMode.Off;
+        init
+        {
+            if (value != AiAllowed)
+                ModelProcessing = value ? ModelProcessingMode.Auto : ModelProcessingMode.Off;
+        }
+    }
+
+    /// <summary>Gets how a model may process the source's posts; automatic by default.</summary>
+    public ModelProcessingMode ModelProcessing { get; init; } = ModelProcessingMode.Auto;
 
     /// <summary>Gets whether posts read from the source may serve every tenant from the pool.</summary>
     public bool PoolShareable { get; init; } = true;

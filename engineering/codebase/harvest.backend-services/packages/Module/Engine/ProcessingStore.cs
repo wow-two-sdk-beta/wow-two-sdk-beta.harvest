@@ -80,7 +80,9 @@ internal static class ProcessingStore
         var registry = services.GetRequiredService<IRegistrationBroker>();
         if (await registry.GetSourceAsync(frozen.Source.Id, ct) is not Result<SourceModel>.Success { Value: var source })
             return new(new StepResult { Outcome = FetchOutcome.CapabilityUnavailable, Message = "The source is unavailable." });
-        if (CaptureProcessors.Preflight(processor, source, frozen.Stage!) is { } error)
+        // A manual source keeps a run started by hand, but no longer a scheduled one queued before the switch.
+        bool automatic = source.ModelProcessing == ModelProcessingMode.Manual && await ScheduledAsync(database, item.RunId, ct);
+        if (CaptureProcessors.Preflight(processor, source, frozen.Stage!, automatic) is { } error)
             return new(new StepResult { Outcome = FetchOutcome.CapabilityUnavailable, Message = error.Message });
 
         var (capture, link) = InputIds(item);
@@ -101,6 +103,13 @@ internal static class ProcessingStore
             ? await processor.ProcessAsync(input, ct)
             : await trace.RunAsync("process-capture", () => processor.ProcessAsync(input, ct),
                 result => new(Input: 1, Output: result.Output is null ? 0 : 1));
+    }
+
+    private static async Task<bool> ScheduledAsync(NpgsqlDataSource database, Guid runId, CancellationToken ct)
+    {
+        await using var connection = await database.OpenConnectionAsync(ct);
+        await using var command = EngineSql.Command(connection, null, "SELECT trigger='schedule' FROM harvest_runs WHERE id=@run", ("run", runId));
+        return await command.ExecuteScalarAsync(ct) is true;
     }
 
     private static async Task<(Guid PostId, string Fields)?> LoadReadingAsync(NpgsqlDataSource database, FrozenRun frozen,

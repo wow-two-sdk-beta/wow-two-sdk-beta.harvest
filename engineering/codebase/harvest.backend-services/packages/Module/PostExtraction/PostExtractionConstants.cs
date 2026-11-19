@@ -19,7 +19,7 @@ public static class PostExtractionConstants
     public const string SectionName = "Harvest:Processing:Extraction";
 
     /// <summary>The model route used when the host names none.</summary>
-    public const string DefaultModel = "anthropic/claude-sonnet-5-5";
+    public const string DefaultModel = "anthropic/claude-haiku-5-5";
 
     /// <summary>The taxonomy key whose primary domain fills the event answer's <c>fashion</c> block.</summary>
     public const string FashionDomain = "style-fashion";

@@ -51,7 +51,8 @@ before a model call.
 
 ## First operator trial
 
-1. In OLX **Settings**, explicitly enable **Model processing**.
+1. In OLX **Settings**, set **Model processing** to **Automatic**, or **Manual** to allow only Process runs started
+   by hand (`ai-operations.md`).
 2. On the intended section's Process stage, select **Rental terms with evidence**, the configured
    `provider/model` route and the saved positive prompt version.
 3. Keep scheduling on demand and start with a small batch of saved captures. **Run now** starts processing in place.
@@ -60,7 +61,9 @@ before a model call.
 5. Review a labeled Russian/Uzbek sample before enabling unattended processing. Record accuracy, rejected outputs,
    tokens, priced cost and latency; `priced=false` means no price was configured, not a free call.
 
-Changing source AI permission affects queued work when the worker starts processing it. An already started
+Changing the source's mode affects queued work when the worker starts processing it: `off` refuses every run, and
+`manual` refuses a scheduled run, enabling an automatic Process schedule, and a scheduled run queued before the switch,
+while **Run now** still processes. An already started
 processing operation may finish; opting out does not cancel a request already in progress. Successful results are
 keyed by capture, processor, model route and prompt version. The same successful configuration is skipped; a new
 capture or prompt pin is eligible.

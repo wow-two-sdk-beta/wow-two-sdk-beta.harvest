@@ -1,5 +1,6 @@
 import type {
   ConsentBasis,
+  ModelProcessingMode,
   RobotsPolicy,
   SourceCompleteness,
   SourceCoverage,
@@ -24,7 +25,10 @@ export interface SourceModel {
   readonly completeness: SourceCompleteness;
   readonly posture: SourcePosture;
   readonly permission: SourcePermission;
+  /** Whether a model may read the source's text at all: `modelProcessing` is not `off`. */
   readonly aiAllowed: boolean;
+  /** How a model may process the source's posts: `off`, `manual` (operator runs only) or `auto`. */
+  readonly modelProcessing: ModelProcessingMode;
   readonly poolShareable: boolean;
   readonly robotsPolicy: RobotsPolicy;
   readonly consentBasis: ConsentBasis;

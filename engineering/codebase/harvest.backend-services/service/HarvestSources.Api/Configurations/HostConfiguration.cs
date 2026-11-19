@@ -1,4 +1,5 @@
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Registration;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Reprocessing;
 
 namespace HarvestSources.Api.Configurations;
 
@@ -16,6 +17,8 @@ public static partial class HostConfiguration
         builder.AddPostTagsAi();
         builder.AddPostExtractionAi();
         builder.AddEntities();
+        builder.AddAiApiForOperators();
+        builder.Services.AddHarvestPostReprocessing();
         return builder.Configuration["HarvestSources:Audience"] switch
         {
             null or "internal" => builder.AddSources().AddProviderSettings().AddSourceAssets().AddSourceControllers(),
@@ -33,6 +36,7 @@ public static partial class HostConfiguration
         await app.MigrateRentalTermsAiLocallyAsync(app.Lifetime.ApplicationStopping);
         await app.Services.ReconcileHarvestSourceSectionsAsync(app.Lifetime.ApplicationStopping);
         await app.SeedPipelineStagesAsync(app.Lifetime.ApplicationStopping);
+        app.MapAiApiForOperators();
         return app;
     }
 }

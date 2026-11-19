@@ -221,6 +221,7 @@ public sealed partial class FakeRegistrationBroker(TimeProvider? time = null) : 
         if (registration.Authority is < 0 or > 100
             || !SourceConstants.RetentionClasses.Contains(registration.RetentionClass)
             || (registration.CheckPolicy is { } checkPolicy && !SourceConstants.CheckPolicies.Contains(checkPolicy))
+            || !Enum.IsDefined(registration.ModelProcessing)
             || (registration.CapabilityPolicy is { } policy && !IsValid(policy)))
             return Fail<SourceModel>(RegistrationErrors.Invalid("The source is malformed."));
 
@@ -241,7 +242,7 @@ public sealed partial class FakeRegistrationBroker(TimeProvider? time = null) : 
                 Completeness = registration.Completeness,
                 Posture = registration.Posture,
                 Permission = registration.Permission,
-                AiAllowed = registration.AiAllowed,
+                ModelProcessing = registration.ModelProcessing,
                 PoolShareable = registration.PoolShareable,
                 RobotsPolicy = registration.RobotsPolicy,
                 ConsentBasis = registration.ConsentBasis,
@@ -285,6 +286,9 @@ public sealed partial class FakeRegistrationBroker(TimeProvider? time = null) : 
     {
         if (update.ClearGroup && update.GroupId is not null)
             return Fail<SourceModel>(RegistrationErrors.Invalid("Set a group or clear it, not both."));
+        var (mode, modeConflict) = update.ResolveModelProcessing();
+        if (modeConflict || mode is { } requested && !Enum.IsDefined(requested))
+            return Fail<SourceModel>(RegistrationErrors.Invalid("Set modelProcessing, or aiAllowed that agrees with it."));
         // A blank name clears the display name; any other name must fit.
         var displayName = string.IsNullOrWhiteSpace(update.Name) ? null : Name(update.Name, RegistrationConstants.MaxNameLength);
         if (!string.IsNullOrWhiteSpace(update.Name) && displayName is null)
@@ -315,8 +319,8 @@ public sealed partial class FakeRegistrationBroker(TimeProvider? time = null) : 
                 source = source with { Name = displayName };
             if (update.Paused is { } paused && source.State != (paused ? SourceState.Paused : SourceState.Active))
                 source = source with { State = paused ? SourceState.Paused : SourceState.Active, StateSinceUtc = Clock.GetUtcNow() };
-            if (update.AiAllowed is { } aiAllowed)
-                source = source with { AiAllowed = aiAllowed };
+            if (mode is { } processing)
+                source = source with { ModelProcessing = processing };
             sources[index] = source;
             return Ok(source);
         }

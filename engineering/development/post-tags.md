@@ -20,8 +20,9 @@ Tagging needs the shared AI module (`Harvest:Processing:Ai:Enabled`, internal au
 | `Harvest__Processing__Tags__PromptVersion` | none | pins a version; none takes the `production` label, else the newest |
 | `Harvest__Processing__Tags__BatchSize` · `PollInterval` · `RetryDelay` · `LeaseDuration` | `10` · `5s` · `15m` · `2m` | worker pace; a failure retries after `RetryDelay` × attempts, at most a day |
 
-- Only sources with **Model processing** on (`AiAllowed`) send words to the model: every source supplying the post's
-  title and text must allow it, checked again when the worker runs.
+- **Model processing** is a mode per source (`ai-operations.md`): post writes and `backfill` queue only posts whose every
+  source supplying the title and text is `auto`; `run --post` and a re-run naming posts or listing sources also serve `manual`; `off`
+  sends nothing. The worker reads the mode again when it claims a row.
 - `Harvest:Worker:Enabled=false` stops this worker with the engine's.
 
 ## Register the prompt
@@ -54,6 +55,9 @@ printing only use case, version, content hash and ID. It refuses an existing inc
 | `post-tags report [--since <date>]` | one JSON line: answers by status, entity type and primary domain, flags by proposed value, queue depth, attempts, cost and p95 latency from the inference log; no post text |
 | `post-tags relevance [--since <date>]` | the shadow report (S15): one JSON line comparing `ocharo-fashion-v1`'s verdict with the tags' verdict for Ocharo's pair; no post text |
 
+Re-runs over named posts, listed sources or every source, with `--prompt-before`, `--since` and `--dry-run`, and eval sets
+from stored posts: the `processing` verb and `api/processing` routes (`ai-operations.md`).
+
 ## Results
 
 - `harvest_post_tags`, keyed by `(post_id, content_hash)`: prompt version and hash, inference id, model, the validated
@@ -63,7 +67,9 @@ printing only use case, version, content hash and ID. It refuses an existing inc
   therefore matches a post tagged `style-fashion/womens-fashion`.
 - Unsure values and unknown nodes gather as flags; `report` counts them by proposed value for the prompt or taxonomy fix
   (scfd-entity-model #9).
-- Eval subjects: `harvest:post:{id}@{revision}` resolves to the same variables for the AI eval bench.
+- A re-run's done answer replaces the done one for the same content in place; the inference log keeps both.
+- Eval subjects: `harvest:post:{id}@{revision}` resolves to the same variables for the AI eval bench, for `post-tags` and
+  both extraction use cases (`ai-operations.md` § Evals from stored posts).
 
 ## Classification (S16)
 
@@ -92,7 +98,7 @@ answer, the post keeps exactly its readers' envelope.
 
 ## Shadow report (S15)
 
-`post-tags relevance` counts the current posts whose sources allow the model and that changed since `--since` (seven days
+`post-tags relevance` counts the current posts whose sources are all `auto` and that changed since `--since` (seven days
 back by default), split by `ocharo-fashion-v1`'s verdict (rules yes, rules no) and by the tags' verdict for Ocharo's
 pair `event` + `style-fashion` — the same mapping as the classification:
 
@@ -108,5 +114,5 @@ pair `event` + `style-fashion` — the same mapping as the classification:
 - `costPerPostMicroUsd`: the use case's cost since `--since` over the counted posts with a done answer; attempts and
   p95 latency come from the inference log, as `report`'s do.
 - The rules verdict is the registered filter's own `Matches`, run on the stored post; nothing is written.
-- Ocharo's sources are provisioned with Model processing off: turn it on for the sources to compare (Afisha first) and
+- Ocharo's sources are provisioned with Model processing `off`: set the sources to compare (Afisha first) to `auto` and
   enable tagging, or the report counts none of their posts.

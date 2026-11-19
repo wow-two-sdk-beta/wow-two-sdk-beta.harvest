@@ -37,6 +37,10 @@ await app.Services.MigrateHarvestOnStartupAsync(); // create, check, migrate, ch
   `AddHarvestPostExtraction()` and `AddHarvestPostExtractionWorker()`; done tags queue it only for the pairs
   `IPostExtractionDemand` wants (by default `PostExtractionOptions.Wanted`). It stores evidence-checked answers and
   never writes the post.
+- `IPostReprocessingBroker` — the operators' controls over the AI passes: `AddHarvestPostReprocessing()`; re-runs over
+  named posts, listed sources or every source through the passes' own queue (dry runs priced from the inference log),
+  their progress, and eval sets sampled from stored posts. Each source's `ModelProcessingMode` (`off`, `manual`,
+  `auto`) gates what reaches a model.
 - `IEntityBroker` — the entity layer over the stored extraction answers, no model call: `AddHarvestEntities()` and
   `AddHarvestEntitiesWorker()`; a done answer queues resolution only when `EntityOptions.Enabled` is set. Each post binds
   with a role to one event (occurrences, cadence, a predicted next run) or one listing (offers across authors and

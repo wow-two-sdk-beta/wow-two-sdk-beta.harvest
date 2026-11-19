@@ -17,7 +17,8 @@ internal static partial class VerbArguments
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
     };
 
-    /// <summary>Reads <c>--name value</c> pairs; <c>--dry-run</c> takes no value. A repeated or valueless option fails.</summary>
+    /// <summary>Reads <c>--name value</c> pairs; <c>--dry-run</c> and <c>--all-sources</c> take no value. A repeated or
+    /// valueless option fails.</summary>
     internal static bool TryOptions(IReadOnlyList<string> arguments, out Dictionary<string, string?> options)
     {
         options = new Dictionary<string, string?>(StringComparer.Ordinal);
@@ -26,7 +27,7 @@ internal static partial class VerbArguments
             if (!arguments[index].StartsWith("--", StringComparison.Ordinal) || arguments[index].Length == 2)
                 return false;
             string name = arguments[index][2..];
-            if (name == "dry-run")
+            if (name is "dry-run" or "all-sources")
             {
                 if (!options.TryAdd(name, null))
                     return false;
@@ -62,6 +63,27 @@ internal static partial class VerbArguments
         return !options.TryGetValue(name, out var raw)
             || int.TryParse(raw, NumberStyles.None, CultureInfo.InvariantCulture, out value) && value > 0;
     }
+
+    /// <summary>Reads an optional comma-separated list of ids; false when one is not a GUID.</summary>
+    internal static bool TryIds(IReadOnlyDictionary<string, string?> options, string name, out IReadOnlyList<Guid> ids)
+    {
+        ids = [];
+        if (!options.TryGetValue(name, out var raw))
+            return true;
+        var parsed = new List<Guid>();
+        foreach (var part in (raw ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (!Guid.TryParseExact(part, "D", out var id))
+                return false;
+            parsed.Add(id);
+        }
+        ids = parsed;
+        return parsed.Count > 0;
+    }
+
+    /// <summary>Reads an optional comma-separated list of words.</summary>
+    internal static IReadOnlyList<string> List(IReadOnlyDictionary<string, string?> options, string name) =>
+        options.TryGetValue(name, out var raw) ? (raw ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) : [];
 
     /// <summary>Reads a JSON prompt draft from a file or, for <c>-</c>, standard input; null with a message when unreadable.</summary>
     internal static async Task<(PromptDraft? Draft, string? Error)> ReadDraftAsync(string file, Stream input, CancellationToken ct)

@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { Button } from '@wow-two-beta/fe/presentation/actions';
 import { SwitchInput, TextInput } from '@wow-two-beta/fe/presentation/forms';
-import type { PipelineModel, SourceOverviewModel } from '../../contracts';
+import type { ModelProcessingMode, PipelineModel, SourceOverviewModel } from '../../contracts';
 import ChoicePicker from './ChoicePicker.vue';
 import ConsoleLink from './ConsoleLink.vue';
 import SourceProfilePipelines from './SourceProfilePipelines.vue';
@@ -114,11 +114,28 @@ function setSourceReading(on: boolean) {
   if (!canManageSource.value || pending.value || readingReason.value) return;
   void session.setSourcePaused(props.source.sourceId, !on);
 }
-const aiAllowed = computed(() => sourceModel.value?.aiAllowed);
-function setAiAllowed(allowed: boolean) {
-  if (!canManageSource.value || pending.value || typeof aiAllowed.value !== 'boolean' || aiAllowed.value === allowed)
-    return;
-  void session.updateSource(props.source.sourceId, { aiAllowed: allowed });
+/* Model processing: off sends nothing, manual only what an operator runs by name, auto every new post. A host before
+   the mode reports only aiAllowed, read as auto or off. */
+const modelProcessing = computed<ModelProcessingMode | undefined>(() => {
+  const model = sourceModel.value;
+  if (!model) return undefined;
+  if (model.modelProcessing) return model.modelProcessing;
+  return model.aiAllowed === true ? 'auto' : model.aiAllowed === false ? 'off' : undefined;
+});
+const modelChoices: readonly { readonly value: ModelProcessingMode; readonly label: string }[] = [
+  { value: 'off', label: 'Off' },
+  { value: 'manual', label: 'Manual' },
+  { value: 'auto', label: 'Automatic' },
+];
+const modelNotes: Readonly<Record<ModelProcessingMode, string>> = {
+  off: 'Nothing from this source is sent to a model, not even on an operator run.',
+  manual:
+    'Nothing queues on its own; operator runs that name its posts or list this source, and Process stages started by hand, may use a model.',
+  auto: 'New posts queue model processing, and scheduled Process stages send saved text to their configured model.',
+};
+function setModelProcessing(mode: ModelProcessingMode) {
+  if (!canManageSource.value || pending.value || !modelProcessing.value || modelProcessing.value === mode) return;
+  void session.updateSource(props.source.sourceId, { modelProcessing: mode });
 }
 const pace = computed(() => String(Math.round(props.source.health.minDelayMs / 1000)));
 const paceChoices = computed(() =>
@@ -366,21 +383,24 @@ function saveName() {
             />
           </dd>
           <dt class="text-muted-foreground">Model processing</dt>
-          <dd class="flex items-center gap-2 font-semibold">
-            <SwitchInput
-              :model-value="aiAllowed === true"
-              :is-disabled="pending || typeof aiAllowed !== 'boolean'"
-              v-bind="{ 'aria-label': `Allow model processing for ${props.source.name}` }"
-              @update:model-value="setAiAllowed"
+          <dd>
+            <ChoicePicker
+              :model-value="modelProcessing ?? 'off'"
+              :choices="modelChoices"
+              :label="`Model processing for ${props.source.name}`"
+              :is-disabled="pending || !modelProcessing"
+              placeholder="Unavailable"
+              @update:model-value="setModelProcessing"
             />
-            {{ aiAllowed === true ? 'Enabled' : aiAllowed === false ? 'Disabled' : 'Unavailable' }}
           </dd>
         </dl>
         <p class="mt-3 text-xs text-muted-foreground">
           {{ readingReason || 'Disabling the source preserves each section’s settings.' }}
         </p>
         <p class="mt-2 text-xs text-muted-foreground">
-          Model processing lets Process stages send saved text to their configured model.
+          {{
+            modelProcessing ? modelNotes[modelProcessing] : 'Model processing is unavailable until the source loads.'
+          }}
         </p>
       </section>
 

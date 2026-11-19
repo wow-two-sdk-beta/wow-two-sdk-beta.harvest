@@ -5,7 +5,7 @@ tags subscriptions and later steps rely on — entity type, IAB domains, open En
 
 | Implements | Over |
 |---|---|
-| `IPostTagsBroker` (this lane's own seam: run, backfill, report, the relevance shadow report, the worker's tick) · `IEvalSubjectSource` for `harvest:post:{id}@{revision}` | the shared AI contract `WoW2.Sdk.Beta.Be.Ai.Abstractions` (`IAiRunner`, `IPromptsBroker`, `IInferencesBroker`); the Posts lane's resolve and the Delivery lane's `post.changed` append |
+| `IPostTagsBroker` (this lane's own seam: run, backfill, report, the relevance shadow report, the worker's tick) · `IEvalSubjectSource` for `harvest:post:{id}@{revision}`, resolving `post-tags`, `extract-event` and `extract-listing` inputs | the shared AI contract `WoW2.Sdk.Beta.Be.Ai.Abstractions` (`IAiRunner`, `IPromptsBroker`, `IInferencesBroker`); the Posts lane's resolve and the Delivery lane's `post.changed` append |
 
 - Owns: `harvest_taxonomy_nodes` (011), `harvest_post_tags` and `harvest_post_work` (012).
 - Taxonomy: IAB Tech Lab Content Taxonomy 3.1 (CC BY 3.0) — its 34 subject domains and their 623 descendants, keyed by
@@ -14,7 +14,12 @@ tags subscriptions and later steps rely on — entity type, IAB domains, open En
   as `extension` rows.
 - Queue: a post write whose title or text has no `done` answer queues `post-tags` in `harvest_post_work`, inside the
   write's transaction — only when `Harvest:Processing:Tags:Enabled` is set, the host composes the AI module, and every
-  source supplying the title and text has `AiAllowed`. `post-tags backfill` queues stored posts the same way.
+  source supplying the title and text is in `auto` mode (`PostTagsStore.AutoSql`). `post-tags backfill` queues stored
+  posts the same way. A re-run's row (Reprocessing lane) carries `run_id` and `explicit`; an explicit row (named posts,
+  listed sources, `run --post`) also runs under `manual`. The worker reads the strictest mode (`ModeSql`) when it claims a row.
+- Re-run cascade: a done answer for a row with a run compares what extraction reads (entity type, domains, about,
+  timeframe, English title) before and after, and queues extraction forced, with the run, when it changed and the demand
+  wants the pair, or when the run asked for the tagged type's use case (over sources, for a pair the demand wants) (`ModulePostBroker.QueueRerunExtractionAsync`).
 - Loop guard: `content_hash` is the SHA-256 of title and text only, so the tag-only revision the write-back creates
   keeps its hash, finds its own `done` answer and queues nothing.
 - Call: use case `post-tags`, versioned, `KeepOutputs` true, the code-owned schema (`PostTagsDefinition.OutputSchema`);

@@ -143,6 +143,7 @@ export function createDemoHarvestClient(): HarvestClient {
     permission: 'open',
     robotsPolicy: 'obey',
     aiAllowed: false,
+    modelProcessing: 'off',
     poolShareable: true,
     consentBasis: 'none',
     authority: 50,

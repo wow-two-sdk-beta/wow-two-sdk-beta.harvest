@@ -25,6 +25,8 @@ export type SourceCoverage = 'whole' | 'filtered' | 'single';
 export type SourceCompleteness = 'complete' | 'window' | 'none';
 export type SourcePosture = 'official' | 'licensedProvider' | 'ownFetch' | 'consentedIntake';
 export type SourcePermission = 'open' | 'restricted' | 'granted' | 'denied';
+/** How a model may process a source's posts: never, on operator runs only, or automatically. */
+export type ModelProcessingMode = 'off' | 'manual' | 'auto';
 export type RobotsPolicy = 'obey' | 'ignore';
 export type ConsentBasis = 'owner' | 'submitter' | 'none';
 export type SourceState = 'active' | 'paused' | 'unavailable' | 'previewUnavailable' | 'quotaExhausted' | 'retired';

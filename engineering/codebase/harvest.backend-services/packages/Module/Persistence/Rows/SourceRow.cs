@@ -31,7 +31,19 @@ internal sealed class SourceRow
 
     public required SourcePermission Permission { get; set; }
 
+    /// <summary>Gets or sets the older switch, kept in step for code before migration 016: true only for
+    /// <see cref="ModelProcessingMode.Auto"/>, so older code never queues a manual source.</summary>
     public required bool AiAllowed { get; set; }
+
+    /// <summary>Gets or sets how a model may process the source's posts (016).</summary>
+    public required ModelProcessingMode ModelProcessing { get; set; }
+
+    /// <summary>Sets <see cref="ModelProcessing"/> and keeps <see cref="AiAllowed"/> in step.</summary>
+    public void SetModelProcessing(ModelProcessingMode mode)
+    {
+        ModelProcessing = mode;
+        AiAllowed = mode == ModelProcessingMode.Auto;
+    }
 
     public required bool PoolShareable { get; set; }
 

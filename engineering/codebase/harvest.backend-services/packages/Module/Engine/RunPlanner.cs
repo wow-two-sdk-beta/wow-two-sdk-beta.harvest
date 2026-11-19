@@ -42,7 +42,8 @@ internal static class RunPlanner
         if (stage?.Disabled is true)
             return Result<Guid>.Fail(AppErrorFactory.Conflict("This stage is disabled."));
         if (kind == WorkKind.Process
-            && await CaptureProcessors.PreflightAsync(CaptureProcessors.Resolve(services, stage), source, stage!, ct) is { } processingError)
+            && await CaptureProcessors.PreflightAsync(CaptureProcessors.Resolve(services, stage), source, stage!, ct,
+                automatic: scheduleId is not null) is { } processingError)
             return Result<Guid>.Fail(processingError);
 
         await using (NpgsqlCommand active = EngineSql.Command(connection, transaction,

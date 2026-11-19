@@ -18,7 +18,9 @@ internal sealed record PostTagsRecord(
     Guid? InferenceId,
     string? Model,
     ValidatedPostTags? Tags,
-    DateTimeOffset? RetryAtUtc);
+    DateTimeOffset? RetryAtUtc,
+    Guid? RunId = null,
+    bool Explicit = false);
 
 /// <summary>Represents what storing an answer did to the post.</summary>
 internal sealed record PostTagsWriteResult(bool Stored, int? NewRevision);
@@ -49,6 +51,8 @@ internal sealed partial class ModulePostBroker
         var now = Now();
         bool done = record.Status == "done" && record.Tags is not null;
         var tags = record.Tags;
+        string? before = done && record.RunId is not null
+            ? await ExtractionInputsAsync(connection, transaction, record.PostId, record.ContentHash, ct) : null;
         await PostSql.ExecuteAsync(connection, transaction, """
             INSERT INTO harvest_post_tags(post_id,content_hash,container_id,revision,prompt_version,prompt_hash,inference_id,model,
                 entity_type,domains,topics,about,timeframe,items,language,confidence,title_en,flags,status,error,created_at)
@@ -75,8 +79,11 @@ internal sealed partial class ModulePostBroker
             await DeliveryEventWriter.AppendAsync(connection, transaction, updated, "post.changed", null, null, now, postFilters, ct);
             revised = updated.Revision;
         }
-        if (done && current)
-            await QueueExtractionAsync(connection, transaction, record.ContainerId, record.PostId, record.ContentHash, now, ct);
+        if (done && current && record.RunId is { } runId)
+            await QueueRerunExtractionAsync(connection, transaction, record, runId,
+                before != await ExtractionInputsAsync(connection, transaction, record.PostId, record.ContentHash, ct), now, ct);
+        else if (done && current)
+            await QueueExtractionAsync(connection, transaction, record.ContainerId, record.PostId, record.ContentHash, now, ct, record.Explicit);
         await PostSql.ExecuteAsync(connection, transaction, """
             UPDATE harvest_post_work SET lease_owner=NULL,lease_until=NULL WHERE post_id=@post AND kind=@kind;
             DELETE FROM harvest_post_work WHERE post_id=@post AND kind=@kind AND content_hash=@hash AND @done;
@@ -99,7 +106,7 @@ internal sealed partial class ModulePostBroker
                 e.post_id IS NOT NULL,e.answer->>'format',(e.answer->'occurrences'->0)::text
             FROM harvest_post_tags t
             LEFT JOIN harvest_post_extractions e ON e.post_id=t.post_id AND e.content_hash=t.content_hash
-                AND e.use_case=@useCase AND e.status='done'
+                AND e.use_case=@useCase AND e.status='done' AND t.entity_type='event'
             WHERE t.post_id=@post AND t.status='done' ORDER BY t.content_hash=@hash DESC,t.created_at DESC LIMIT 1
             """, ("post", postId), ("hash", contentHash), ("useCase", PostExtractionConstants.EventUseCase));
         await using var reader = await command.ExecuteReaderAsync(ct);
@@ -113,8 +120,17 @@ internal sealed partial class ModulePostBroker
             reader.IsDBNull(9) ? null : reader.GetString(9)));
     }
 
+    /// <summary>Reads what extraction takes from a done tags answer — entity type, domains, about, timeframe and English
+    /// title — as one comparable text, or null when the content has no done answer.</summary>
+    private static async Task<string?> ExtractionInputsAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid postId,
+        byte[] contentHash, CancellationToken ct) =>
+        await PostSql.ScalarAsync(connection, transaction, """
+            SELECT jsonb_build_array(entity_type,domains,about,timeframe,title_en)::text FROM harvest_post_tags
+            WHERE post_id=@post AND content_hash=@hash AND status='done'
+            """, ct, ("post", postId), ("hash", contentHash)) as string;
+
     /// <summary>Queues post-tags for a post whose title and text have no done answer, when tagging is on and every source
-    /// supplying them allows AI; a waiting row takes the newer content and starts its attempts over.</summary>
+    /// supplying them processes automatically; a waiting row takes the newer content and starts its attempts over.</summary>
     private async Task QueueTagsAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid containerId, Guid postId,
         WoW.Two.Sdk.Beta.Be.Harvest.Extraction.PostEnvelope resolved, byte[] contentHash, DateTimeOffset now, CancellationToken ct)
     {
@@ -125,7 +141,7 @@ internal sealed partial class ModulePostBroker
             SELECT p.id,@kind,p.container_id,@hash,@now,@now FROM harvest_posts p
             WHERE p.container_id=@container AND p.id=@post AND p.merged_into IS NULL AND p.purged_at IS NULL
               AND NOT EXISTS(SELECT 1 FROM harvest_post_tags t WHERE t.post_id=p.id AND t.content_hash=@hash AND t.status='done')
-              AND {PostTagsStore.AiAllowedSql}
+              AND {PostTagsStore.AutoSql}
             ON CONFLICT (post_id,kind) DO UPDATE SET content_hash=EXCLUDED.content_hash,queued_at=EXCLUDED.queued_at,
                 not_before=EXCLUDED.not_before,attempts=0,last_error=NULL
             WHERE harvest_post_work.content_hash<>EXCLUDED.content_hash

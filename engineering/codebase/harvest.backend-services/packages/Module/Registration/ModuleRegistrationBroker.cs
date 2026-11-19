@@ -48,7 +48,8 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
             var checkPolicy = source.CheckPolicyId is { } id
                 ? await db.CheckPolicies.AsNoTracking().Where(policy => policy.Id == id).Select(policy => policy.Key).SingleOrDefaultAsync(ct)
                 : null;
-            if (await CaptureProcessors.PreflightAsync(CaptureProcessors.Resolve(services, options), source.ToModel(checkPolicy), options, ct) is { } error)
+            if (await CaptureProcessors.PreflightAsync(CaptureProcessors.Resolve(services, options), source.ToModel(checkPolicy), options, ct,
+                    automatic: true) is { } error)
                 return error;
         }
         return null;
@@ -259,7 +260,8 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
             Completeness = registration.Completeness,
             Posture = registration.Posture,
             Permission = registration.Permission,
-            AiAllowed = registration.AiAllowed,
+            AiAllowed = registration.ModelProcessing == ModelProcessingMode.Auto,
+            ModelProcessing = registration.ModelProcessing,
             PoolShareable = registration.PoolShareable,
             RobotsPolicy = registration.RobotsPolicy,
             ConsentBasis = registration.ConsentBasis,
@@ -307,6 +309,11 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
     {
         if (update.ClearGroup && update.GroupId is not null)
             return Result<SourceModel>.Fail(RegistrationErrors.Invalid("Set a group or clear it, not both."));
+        var (mode, modeConflict) = update.ResolveModelProcessing();
+        if (modeConflict)
+            return Result<SourceModel>.Fail(RegistrationErrors.Invalid("Set modelProcessing, or aiAllowed that agrees with it."));
+        if (mode is { } requested && !Enum.IsDefined(requested))
+            return Result<SourceModel>.Fail(RegistrationErrors.Invalid("Model processing is off, manual or auto."));
         string? displayName = null;
         if (update.Name is not null && !string.IsNullOrWhiteSpace(update.Name))
         {
@@ -318,7 +325,7 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
 
         // Queue creation and source pauses share this transaction lock, so a successful pause cannot race a new run.
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        if (update.Paused is not null || update.AiAllowed is not null)
+        if (update.Paused is not null || mode is not null)
             await db.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(hashtextextended('harvest:scheduler',0))", cancellationToken);
         var row = await db.Sources.FromSqlInterpolated($"SELECT * FROM harvest_sources WHERE id = {sourceId} FOR UPDATE")
             .SingleOrDefaultAsync(cancellationToken);
@@ -348,8 +355,8 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
             row.State = paused ? SourceState.Paused : SourceState.Active;
             row.StateSince = Now();
         }
-        if (update.AiAllowed is { } aiAllowed)
-            row.AiAllowed = aiAllowed;
+        if (mode is { } processing)
+            row.SetModelProcessing(processing);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 

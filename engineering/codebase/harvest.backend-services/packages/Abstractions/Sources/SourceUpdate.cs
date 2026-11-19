@@ -1,6 +1,6 @@
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 
-/// <summary>Represents a change to a source's name, group, master pause or model access; omitted values keep what is stored.</summary>
+/// <summary>Represents a change to a source's name, group, master pause or model processing; omitted values keep what is stored.</summary>
 public sealed record SourceUpdate
 {
     /// <summary>Gets the display name; a blank one clears it, so the source shows its handle again.</summary>
@@ -16,7 +16,23 @@ public sealed record SourceUpdate
     /// Only active or operator-paused sources may change this switch.</summary>
     public bool? Paused { get; init; }
 
-    /// <summary>Gets whether model processors and embeddings may read the source's text. A Process stage still selects
-    /// its processor and model route.</summary>
+    /// <summary>Gets whether model processors and embeddings may read the source's text: the older switch, <c>true</c>
+    /// for <see cref="ModelProcessingMode.Auto"/> and <c>false</c> for <see cref="ModelProcessingMode.Off"/>. A Process
+    /// stage still selects its processor and model route.</summary>
     public bool? AiAllowed { get; init; }
+
+    /// <summary>Gets how a model may process the source's posts; it wins over <see cref="AiAllowed"/>, and the two must
+    /// agree when both are given.</summary>
+    public ModelProcessingMode? ModelProcessing { get; init; }
+
+    /// <summary>Gets the mode this update sets, or null when it keeps the stored one; a validation error when
+    /// <see cref="AiAllowed"/> and <see cref="ModelProcessing"/> disagree.</summary>
+    /// <returns>The mode, and whether the two switches conflict.</returns>
+    public (ModelProcessingMode? Mode, bool Conflict) ResolveModelProcessing() => (ModelProcessing, AiAllowed) switch
+    {
+        ({ } mode, { } allowed) => (mode, allowed != (mode != ModelProcessingMode.Off)),
+        ({ } mode, null) => (mode, false),
+        (null, { } allowed) => (allowed ? ModelProcessingMode.Auto : ModelProcessingMode.Off, false),
+        _ => (null, false),
+    };
 }

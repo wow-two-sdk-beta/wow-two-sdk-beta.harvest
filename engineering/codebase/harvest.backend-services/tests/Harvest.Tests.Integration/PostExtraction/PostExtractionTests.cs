@@ -44,7 +44,7 @@ public sealed class PostExtractionTests
             SELECT status || '|' || role || '|' || model || '|' || prompt_version || '|' || (inference_id IS NOT NULL) || '|' || revision
                 || '|' || attempts || '|' || jsonb_array_length(flags)
             FROM harvest_post_extractions WHERE post_id=@post AND use_case='extract-event'
-            """, ("post", saved.Post.Id))).Should().Be("done|announcement|anthropic/claude-sonnet-5-5|1|true|2|1|0");
+            """, ("post", saved.Post.Id))).Should().Be("done|announcement|anthropic/claude-haiku-5-5|1|true|2|1|0");
         using (var answer = JsonDocument.Parse(await AnswerAsync(host, saved.Post.Id)))
         {
             var root = answer.RootElement;

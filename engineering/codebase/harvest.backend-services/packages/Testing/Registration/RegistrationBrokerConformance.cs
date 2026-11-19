@@ -648,6 +648,39 @@ public abstract class RegistrationBrokerConformance
         Value(await Broker.GetSourceAsync(source.Id)).AiAllowed.Should().BeTrue();
     }
 
+    /// <summary>The operator sets the model-processing mode; <c>aiAllowed</c> reads true unless the mode is off, the older
+    /// switch maps to auto or off, and an update whose two switches disagree is refused.</summary>
+    [Fact]
+    public async Task UpdateSource_ShouldSetTheModelProcessingMode_AndMapTheOlderSwitch()
+    {
+        var (container, source) = await SourceAsync(SourceCoverage.Whole);
+        source.ModelProcessing.Should().Be(ModelProcessingMode.Auto, "a source registers with automatic processing by default");
+
+        var manual = Value(await Broker.UpdateSourceAsync(source.Id, new SourceUpdate { ModelProcessing = ModelProcessingMode.Manual }));
+        manual.ModelProcessing.Should().Be(ModelProcessingMode.Manual);
+        manual.AiAllowed.Should().BeTrue("a manual source may still reach a model on an operator run");
+        Value(await Broker.UpdateSourceAsync(source.Id, new SourceUpdate { Name = "Kept" })).ModelProcessing.Should().Be(ModelProcessingMode.Manual);
+        Value(await Broker.UpdateSourceAsync(source.Id, new SourceUpdate { AiAllowed = false })).ModelProcessing.Should().Be(ModelProcessingMode.Off);
+        Value(await Broker.UpdateSourceAsync(source.Id, new SourceUpdate { AiAllowed = true })).ModelProcessing.Should().Be(ModelProcessingMode.Auto);
+        Value(await Broker.UpdateSourceAsync(source.Id, new SourceUpdate { ModelProcessing = ModelProcessingMode.Manual, AiAllowed = true }))
+            .ModelProcessing.Should().Be(ModelProcessingMode.Manual);
+        (await Broker.UpdateSourceAsync(source.Id, new SourceUpdate { ModelProcessing = ModelProcessingMode.Manual, AiAllowed = false }))
+            .Should().BeOfType<Result<SourceModel>.Failure>().Which.Error.Type.Should().Be(AppErrorType.Validation);
+        Value(await Broker.GetSourceAsync(source.Id)).ModelProcessing.Should().Be(ModelProcessingMode.Manual);
+
+        var registered = Value(await Broker.RegisterSourceAsync(new SourceRegistration
+        {
+            ContainerId = container.Id, Family = SourceFamily.Site, Handle = "manual.example", Coverage = SourceCoverage.Whole,
+            Completeness = SourceCompleteness.Complete, Posture = SourcePosture.OwnFetch, ModelProcessing = ModelProcessingMode.Manual,
+        }));
+        registered.ModelProcessing.Should().Be(ModelProcessingMode.Manual);
+        Value(await Broker.RegisterSourceAsync(new SourceRegistration
+        {
+            ContainerId = container.Id, Family = SourceFamily.Site, Handle = "closed.example", Coverage = SourceCoverage.Whole,
+            Completeness = SourceCompleteness.Complete, Posture = SourcePosture.OwnFetch, AiAllowed = false,
+        })).ModelProcessing.Should().Be(ModelProcessingMode.Off);
+    }
+
     /// <summary>A group of another container, an unknown group or source, or a group set and cleared at once is refused.</summary>
     [Fact]
     public async Task UpdateSource_ShouldFail_WhenTheGroupOrSourceCannotTakeIt()

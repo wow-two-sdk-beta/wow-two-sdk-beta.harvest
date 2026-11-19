@@ -23,7 +23,7 @@
 | `GetContainerAsync(id)` · `ListContainersAsync(tenantId?)` | one · a tenant's or every container | `NotFound` |
 | `RegisterSourceAsync(SourceRegistration)` | `SourceModel`; handle normalized per family, permissive posture defaults | `NotFound` container · `Validation` handle, authority, retention class, check policy, capability policy · `Conflict` handle |
 | `GetSourceAsync(id)` · `ListSourcesAsync(containerId)` | one · by family and handle | `NotFound` |
-| `UpdateSourceAsync(id, SourceUpdate)` | `SourceModel` with its display `name`, `groupId`, optional master `paused` state and `aiAllowed` model access; an omitted value keeps what is stored, a blank name clears it, `clearGroup` ungroups | `NotFound` source, group · `Validation` name over 200, a group of another container, a group with `clearGroup` · `Conflict` master-pause change on an unavailable or retired source |
+| `UpdateSourceAsync(id, SourceUpdate)` | `SourceModel` with its display `name`, `groupId`, optional master `paused` state and `modelProcessing` mode (`off` · `manual` · `auto`; the older `aiAllowed` sets `auto` or `off`); an omitted value keeps what is stored, a blank name clears it, `clearGroup` ungroups | `NotFound` source, group · `Validation` name over 200, a group of another container, a group with `clearGroup`, `aiAllowed` disagreeing with `modelProcessing` · `Conflict` master-pause change on an unavailable or retired source |
 | `DeclareSourceGroupAsync(SourceGroupDeclaration)` | `SourceGroupModel`; a name the container holds in any case returns that group unchanged | `NotFound` container · `Validation` blank or long name, description over 1000 |
 | `ListSourceGroupsAsync(containerId)` | the container's groups, by name | `NotFound` |
 | `DeclarePipelineAsync(PipelineDeclaration)` | `PipelineModel` with its schedule rows; `active` over an open or granted source, else `pendingApproval` | `NotFound` container, source · `Validation` source of another container, denied source, filtered source without scope, schedules, step overrides, limits · `Conflict` same `(container, source, scope key)` |
@@ -32,8 +32,13 @@
 
 - Normalization: web handles reduce to their IDNA host; Telegram handles become `tg:{username}`; the scope key is `*`
   for the whole source, else the normalized URL (sorted query, no fragment) and the parameters sorted by name.
-- Posture switches ship permissive (`permission` open, `aiAllowed`, `poolShareable`, `robotsPolicy` obey); a ban or a
-  takedown is one row's update. `posture` is required and gates nothing.
+- Posture switches ship permissive (`permission` open, `modelProcessing` `auto`, `poolShareable`, `robotsPolicy` obey); a
+  ban or a takedown is one row's update. `posture` is required and gates nothing.
+- `modelProcessing` (`ModelProcessingMode`, migration `016`): `off` sends nothing to a model; `manual` queues nothing on
+  its own, but a re-run naming posts or listing sources, an eval item or a Process stage started by hand may; `auto` also queues on
+  every write and lets scheduled Process stages run. `SourceModel.aiAllowed` stays on the wire, true unless the mode is
+  `off`; on a registration or an update `aiAllowed` `true`/`false` maps to `auto`/`off`, and `modelProcessing` wins.
+  A post takes the strictest mode of the sources supplying its title and text (`../development/ai-operations.md`).
 - `paused: true` persists `SourceState.Paused`; `false` resumes an active/paused source without changing permission,
   individual pipeline states or schedule rows. The source update shares the scheduler transaction lock. Pausing
   prevents new manual/scheduled runs and claims of queued work; an already executing request may finish. Display-name
@@ -343,6 +348,22 @@ operator setup (`HarvestSources:Audience` `internal` only):
 - The host writes nothing to Events or Desk and promotes no candidate; Events pulls and classifies (events-integration #53).
 - `ICaptchaSolver` and the IP broker JSON protocol: [integration-providers.md](../research/integration-providers.md).
   No provider credential reaches registry rows, captures or delivery.
+
+### AI operator controls
+
+With shared AI on (`Harvest:Processing:Ai:Enabled`, `internal` only), the host serves the AI passes' operator controls,
+each mirrored by a `processing` verb, and mounts the AI module's own API
+([ai-operations](../development/ai-operations.md)):
+
+| Method | Route | Policy | Result |
+|---|---|---|---|
+| POST | `/api/processing/reruns` | `harvest:manage-storage`: `containers:manage` held by the operator | `PostRerunModel`: `202` with `runId` and its status route, or `200` for `dryRun`; queued, skipped and refused counts and a cost estimate per use case |
+| GET | `/api/processing/reruns/{runId}` | the same | `PostRerunStatusModel`: the counts it queued with and, per work kind, the rows still waiting, running or retrying |
+| POST | `/api/processing/eval-sets` | the same | `PostEvalSetModel`: a seeded sample of stored posts added to an AI eval set |
+| any | `/api/ai/*` (`MapAiApi`) | each route's own `ai.*` scope, which an operator holds; a live SCFD caller | the AI module's use cases, prompts, labels, prices, runs, inference log, eval sets, eval runs and reports |
+
+- A tenant key reaches none of them (`403`); without shared AI, `api/ai` is not mapped (`404`) and the processing
+  routes refuse (`409`).
 
 ### Marketplace sources
 

@@ -3,33 +3,50 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using WoW.Two.Sdk.Beta.Be.Ai.Evals;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
 
-/// <summary>Resolves <c>harvest:post:{id}@{revision}</c> eval subjects to the post-tags prompt variables, once, when an
-/// eval item is added: title, text (cut), the category hint, language, dates, place, publication date and taxonomy.</summary>
-/// <remarks>The current post answers its own revision, or a subject with no revision; an older revision answers from a
-/// delivered snapshot when one exists. A post whose sources do not allow AI resolves to nothing.</remarks>
+/// <summary>Resolves <c>harvest:post:{id}@{revision}</c> eval subjects to the prompt variables of the use case the set
+/// evaluates, once, when an eval item is added — exactly as the passes build them.</summary>
+/// <remarks>
+///   - <c>post-tags</c>: title, text (cut), the category hint, language, dates, place, publication date and taxonomy
+///   - <c>extract-event</c> and <c>extract-listing</c>: the post fields with prices, and the done tags for the revision's
+///     title and text; a subject whose tags name another entity type, or none yet, resolves to nothing
+///   - the current post answers its own revision, or a subject with no revision; an older revision answers from a
+///     delivered snapshot when one exists
+///   - a post whose sources have model processing <c>off</c> resolves to nothing; <c>manual</c> resolves, as an operator
+///     adding an item names the post
+/// </remarks>
 internal sealed class PostTagsSubjectSource(
     [FromKeyedServices(HarvestModuleConstants.ServiceKey)] NpgsqlDataSource dataSource,
-    IOptions<PostTagsOptions> options) : IEvalSubjectSource
+    IOptions<PostTagsOptions> options,
+    IOptions<PostExtractionOptions> extraction) : IEvalSubjectSource
 {
     public string Prefix => PostTagsConstants.SubjectPrefix;
 
     public async Task<IReadOnlyDictionary<string, string?>?> ResolveAsync(string useCase, string subject, CancellationToken cancellationToken = default)
     {
-        if (useCase != PostTagsConstants.UseCase || !TryParse(subject, out var postId, out var revision))
+        bool tagging = useCase == PostTagsConstants.UseCase;
+        if (!tagging && !PostExtractionConstants.UseCases.Contains(useCase) || !TryParse(subject, out var postId, out var revision))
             return null;
         var post = await PostTagsStore.ReadSubjectAsync(dataSource, postId, cancellationToken);
-        if (post is not { AiAllowed: true })
+        if (post is not { Explicit: true })
             return null;
         var envelope = revision is null || revision == post.Post.Revision ? post.Post.Base
             : await PostTagsStore.ReadDeliveredBaseAsync(dataSource, postId, revision.Value, cancellationToken);
         if (envelope is null)
             return null;
-        var taxonomy = await PostTagsStore.ReadTaxonomyAsync(dataSource, cancellationToken);
         var category = envelope.SourceTags.Count > 0 ? string.Join(" › ", envelope.SourceTags.Take(5)) : post.Section;
-        return PostTagsContent.Variables(envelope, category, taxonomy.Rendered, options.Value.MaxTextChars);
+        if (tagging)
+        {
+            var taxonomy = await PostTagsStore.ReadTaxonomyAsync(dataSource, cancellationToken);
+            return PostTagsContent.Variables(envelope, category, taxonomy.Rendered, options.Value.MaxTextChars);
+        }
+        var tags = await PostExtractionStore.ReadTagsAsync(dataSource, postId, PostTagsContent.Hash(envelope), cancellationToken);
+        return tags is not null && PostExtractionConstants.UseCaseFor(tags.EntityType) == useCase
+            ? PostExtractionContent.Variables(envelope, category, tags, extraction.Value.MaxTextChars)
+            : null;
     }
 
     /// <summary>Parses <c>harvest:post:{id}</c> or <c>harvest:post:{id}@{revision}</c>.</summary>

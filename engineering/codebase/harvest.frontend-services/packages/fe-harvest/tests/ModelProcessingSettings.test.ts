@@ -3,14 +3,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref, shallowRef } from 'vue';
 import type { HarvestConsole } from '../src/admin/harvestConsole/HarvestConsole';
 import PipelineStageSettings from '../src/admin/harvestConsole/PipelineStageSettings.vue';
+import ChoicePicker from '../src/admin/harvestConsole/ChoicePicker.vue';
 import SourceSettingsTab from '../src/admin/harvestConsole/SourceSettingsTab.vue';
-import type { PipelineStageModel, PipelineStageOptions, SourceOverviewModel, SourceUpdate } from '../src/contracts';
+import type {
+  ModelProcessingMode,
+  PipelineStageModel,
+  PipelineStageOptions,
+  SourceOverviewModel,
+  SourceUpdate,
+} from '../src/contracts';
 
 let session: HarvestConsole;
 vi.mock('../src/admin/harvestConsole/HarvestConsole', () => ({ useHarvestConsole: () => session }));
 
 const wrappers: VueWrapper[] = [];
 const aiAllowed = ref<boolean>();
+const modelProcessing = ref<ModelProcessingMode>();
 const hasSourceScope = ref(true);
 const saveStage = vi.fn(async () => ({ ok: true, value: true }));
 const source: SourceOverviewModel = {
@@ -27,6 +35,7 @@ const source: SourceOverviewModel = {
 
 beforeEach(() => {
   aiAllowed.value = false;
+  modelProcessing.value = undefined;
   hasSourceScope.value = true;
   saveStage.mockClear();
   session = {
@@ -40,9 +49,10 @@ beforeEach(() => {
     pipelines: ref([]),
     sectionsOf: () => [],
     canCapture: () => false,
-    sourceOf: () => ({ aiAllowed: aiAllowed.value, state: 'active' }),
+    sourceOf: () => ({ aiAllowed: aiAllowed.value, modelProcessing: modelProcessing.value, state: 'active' }),
     updateSource: vi.fn(async (_sourceId: string, update: SourceUpdate) => {
-      aiAllowed.value = update.aiAllowed;
+      modelProcessing.value = update.modelProcessing;
+      aiAllowed.value = update.modelProcessing === undefined ? undefined : update.modelProcessing !== 'off';
       return true;
     }),
   } as unknown as HarvestConsole;
@@ -151,30 +161,51 @@ function mountSourceSettings() {
   return wrapper;
 }
 
-const modelSwitch = '[role="switch"][aria-label="Allow model processing for OLX Uzbekistan"]';
+const modelPicker = '[aria-label="Model processing for OLX Uzbekistan"]';
+
+function picker(settings: VueWrapper) {
+  return settings
+    .findAllComponents(ChoicePicker)
+    .find((candidate) => (candidate.props() as { label: string }).label === 'Model processing for OLX Uzbekistan')!;
+}
+
+function shown(settings: VueWrapper) {
+  return picker(settings).props() as { modelValue: string; isDisabled: boolean };
+}
 
 describe('source model processing settings', () => {
-  it('saves opt-in and opt-out independently of source and section schedules', async () => {
+  it('saves off, manual and automatic independently of source and section schedules', async () => {
+    modelProcessing.value = 'off';
     const settings = mountSourceSettings();
-    const control = settings.get<HTMLInputElement>(modelSwitch);
-    expect(control.element.checked).toBe(false);
+    expect(shown(settings).modelValue).toBe('off');
+    expect(settings.text()).toContain('Nothing from this source is sent to a model');
 
-    await control.setValue(true);
-    expect(session.updateSource).toHaveBeenNthCalledWith(1, 'olx', { aiAllowed: true });
-    expect(control.element.checked).toBe(true);
+    picker(settings).vm.$emit('update:modelValue', 'manual');
+    await flushPromises();
+    expect(session.updateSource).toHaveBeenNthCalledWith(1, 'olx', { modelProcessing: 'manual' });
+    expect(shown(settings).modelValue).toBe('manual');
+    expect(settings.text()).toContain('operator runs that name its posts or list this source');
 
-    await control.setValue(false);
-    expect(session.updateSource).toHaveBeenNthCalledWith(2, 'olx', { aiAllowed: false });
-    expect(control.element.checked).toBe(false);
+    picker(settings).vm.$emit('update:modelValue', 'auto');
+    await flushPromises();
+    expect(session.updateSource).toHaveBeenNthCalledWith(2, 'olx', { modelProcessing: 'auto' });
+    expect(shown(settings).modelValue).toBe('auto');
+  });
+
+  it('reads an older host that reports only aiAllowed as automatic or off', () => {
+    aiAllowed.value = true;
+    expect(shown(mountSourceSettings()).modelValue).toBe('auto');
+    aiAllowed.value = false;
+    expect(shown(mountSourceSettings()).modelValue).toBe('off');
   });
 
   it('waits for a known setting and requires source management access', () => {
     aiAllowed.value = undefined;
     const settings = mountSourceSettings();
-    expect(settings.get<HTMLInputElement>(modelSwitch).element.disabled).toBe(true);
+    expect(shown(settings).isDisabled).toBe(true);
     expect(session.updateSource).not.toHaveBeenCalled();
 
     hasSourceScope.value = false;
-    expect(mountSourceSettings().find(modelSwitch).exists()).toBe(false);
+    expect(mountSourceSettings().find(modelPicker).exists()).toBe(false);
   });
 });

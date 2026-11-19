@@ -1,5 +1,5 @@
 import type { SourceListingSummary } from './ListingModels';
-import type { SourcePermission, SourceFamily, SourceState, WorkKind } from './RegistrationEnums';
+import type { ModelProcessingMode, SourcePermission, SourceFamily, SourceState, WorkKind } from './RegistrationEnums';
 
 /** How a source is doing, as the overview decides it: a run in flight, a host or harvest problem, harvesting, or idle. */
 export type SourceOverviewState = 'harvesting' | 'healthy' | 'needsAttention' | 'idle';
@@ -115,8 +115,10 @@ export interface SourceUpdate {
   readonly clearGroup?: boolean;
   /** Pauses the source without changing individual pipeline choices. */
   readonly paused?: boolean;
-  /** Allows Process stages to use a model on the source's saved readings. */
+  /** The older switch: `true` sets `auto`, `false` sets `off`. */
   readonly aiAllowed?: boolean;
+  /** How a model may process the source's posts; wins over `aiAllowed`, which must agree when both are sent. */
+  readonly modelProcessing?: ModelProcessingMode;
 }
 
 /** Sets the gap between two page reads of a source's host, 1000 to 60000 ms. */

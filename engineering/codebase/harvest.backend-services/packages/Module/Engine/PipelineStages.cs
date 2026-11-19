@@ -155,7 +155,7 @@ public sealed class PipelineStages(
             if (seedOnly && exists)
                 return Result<bool>.Ok(false);
             if (!disabled && await CaptureProcessors.PreflightAsync(CaptureProcessors.Resolve(services, schedule.Stage),
-                    source, schedule.Stage, ct) is { } processingError)
+                    source, schedule.Stage, ct, automatic: true) is { } processingError)
                 return Result<bool>.Fail(processingError);
         }
         if ((schedule.Kind is WorkKind.Discover or WorkKind.Harvest) && schedule.Enabled && schedule.Mode != ScheduleMode.Manual)

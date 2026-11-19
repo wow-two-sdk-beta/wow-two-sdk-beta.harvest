@@ -119,6 +119,8 @@ internal static partial class RegistrationRules
             return RegistrationErrors.Invalid($"The retention class '{registration.RetentionClass}' is not seeded.");
         if (registration.CheckPolicy is { } checkPolicy && !SourceConstants.CheckPolicies.Contains(checkPolicy))
             return RegistrationErrors.Invalid($"The check policy '{checkPolicy}' is not seeded.");
+        if (!Enum.IsDefined(registration.ModelProcessing))
+            return RegistrationErrors.Invalid("Model processing is off, manual or auto.");
 
         return registration.CapabilityPolicy is { } policy ? ValidateCapabilityPolicy(policy) : null;
     }

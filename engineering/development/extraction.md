@@ -16,7 +16,7 @@ Extraction needs the shared AI module (`Harvest:Processing:Ai:Enabled`, internal
 | Setting | Default | Meaning |
 |---|---|---|
 | `Harvest__Processing__Extraction__Wanted__0__EntityType` · `__Domain` | none | a wanted pair: `event` or `listing`, and a taxonomy key; empty queues nothing |
-| `Harvest__Processing__Extraction__Models__0` | `anthropic/claude-sonnet-5-5` | routes tried in order; a provider without a key leaves the list |
+| `Harvest__Processing__Extraction__Models__0` | `anthropic/claude-haiku-5-5` | routes tried in order; a provider without a key leaves the list. Haiku matched Sonnet on the extraction evals at about 1/20 of the cost |
 | `Harvest__Processing__Extraction__PromptVersions__extract-event` · `__extract-listing` | none | pins a version; none takes the `production` label, else the newest |
 | `Harvest__Processing__Extraction__MaxTextChars` | `6000` | characters of text the prompt receives, and the window quotes must fall in |
 | `Harvest__Processing__Extraction__BatchSize` · `PollInterval` · `RetryDelay` · `LeaseDuration` | `10` · `5s` · `15m` · `2m` | worker pace; a failure retries after `RetryDelay` × attempts, at most a day |
@@ -25,7 +25,9 @@ Extraction needs the shared AI module (`Harvest:Processing:Ai:Enabled`, internal
 - A post qualifies when its done tags have the pair's entity type and any taxonomy node at or under the key.
 - The pairs stand in for the subscription selector (S09): it will register its own `IPostExtractionDemand`, and the
   setting then goes unused.
-- Only sources with **Model processing** on (`AiAllowed`) send words to the model, checked again when the worker runs.
+- **Model processing** is a mode per source (`ai-operations.md`): automatic extraction needs every source supplying the
+  title and text to be `auto`; `run --post`, a re-run naming posts or listing sources and the extraction that follows them serve `manual`
+  too; `off` sends nothing. The worker reads the mode again when it claims a row.
 - `Harvest:Worker:Enabled=false` stops this worker with the engine's.
 
 ## When it runs
@@ -35,6 +37,9 @@ Extraction needs the shared AI module (`Harvest:Processing:Ai:Enabled`, internal
 - On a content change: a new title or text queues tagging first; once its tags are done, extraction queues for the new
   content. The tag-only revision keeps its content hash and queues nothing.
 - On a new wanted pair: `extract backfill` queues stored posts whose current tags match.
+- On a re-run (`ai-operations.md`): a re-run of `extract-event` or `extract-listing` queues over the done answer; a
+  re-run of `post-tags` queues extraction when the tags extraction reads changed and the demand wants the pair, or when
+  the run asked for the tagged type's use case. The done answer for the same content is replaced in place.
 
 ## Register the prompts
 
@@ -138,6 +143,9 @@ values are `null` or `unknown`, and every list pick allows `unsure`, which flags
 | `extract backfill [--since <date>] [--limit N]` | queues stored posts whose current tags match a wanted pair and have no done answer (default limit 1000) |
 | `extract report [--since <date>]` | one JSON line per use case: answers by status and relation role, flags by proposed value, queue depth, attempts, cost and p95 latency from the inference log; no post text |
 
+Re-runs with `--prompt-before`, `--since` and `--dry-run`, and eval sets from stored posts: the `processing` verb and
+`api/processing` routes (`ai-operations.md`).
+
 ## Results
 
 - `harvest_post_extractions`, keyed by `(post_id, content_hash, use_case)`: revision, prompt version and hash, inference
@@ -160,4 +168,6 @@ values are `null` or `unknown`, and every list pick allows `unsure`, which flags
 - `wow2.event.v1` emits `starts.certainty` and `ends.certainty`, `stated` or `estimated` (`../architecture/contract.md`).
 - Prompts never read an estimate as the post's own: the `dates` variable of both passes leaves estimated dates out.
 - The dedup number signature stays the readers' own dates and prices.
-- Eval subjects for the two use cases come with build plan step E.
+- Eval subjects: `harvest:post:{id}@{revision}` resolves both use cases' variables exactly as the pass builds them, from
+  the done tags for that revision's title and text; a subject tagged with the other entity type resolves to nothing
+  (`ai-operations.md` § Evals from stored posts).

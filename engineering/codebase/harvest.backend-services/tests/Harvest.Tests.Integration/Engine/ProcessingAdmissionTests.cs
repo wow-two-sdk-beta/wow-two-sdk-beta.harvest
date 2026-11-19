@@ -117,6 +117,48 @@ public sealed class ProcessingAdmissionTests
     }
 
     [Fact]
+    public async Task ManualSource_ShouldRunAProcessStageStartedByHand_ButNoScheduledOne()
+    {
+        var processor = new RecordingProcessor();
+        await using var host = await EngineHost.StartAsync(services => services.AddKeyedSingleton<ICaptureProcessor>(processor.Key, processor));
+        var registration = await host.RegisterAsync();
+        await using var scope = host.Services.CreateAsyncScope();
+        var services = scope.ServiceProvider;
+        var registry = services.GetRequiredService<IRegistrationBroker>();
+        var runs = services.GetRequiredService<IRunBroker>();
+        var engine = services.GetRequiredService<HarvestEngine>();
+        var stages = services.GetRequiredService<PipelineStages>();
+        var pipeline = (await registry.GetPipelineAsync(registration.PipelineId)).ValueOrThrow();
+        var source = (await registry.GetSourceAsync(pipeline.SourceId)).ValueOrThrow();
+        var capture = await SaveReadingAsync(services, pipeline, source, host.Clock.GetUtcNow());
+        var every = TimeSpan.FromHours(1);
+        await SetPromptAsync(services, pipeline, source, processor.Key, 1, every);
+        (await engine.QueueDueAsync()).Should().Be(1, "a scheduled run queued while the source was automatic");
+
+        source = (await registry.UpdateSourceAsync(source.Id, new SourceUpdate { ModelProcessing = ModelProcessingMode.Manual })).ValueOrThrow();
+        source.AiAllowed.Should().BeTrue();
+        (await host.DrainAsync()).Should().Be(1);
+        processor.Calls.Should().BeEmpty("a manual source no longer runs a scheduled Process stage");
+        var automatic = new ScheduleDeclaration
+        {
+            Kind = WorkKind.Process, Enabled = true, Mode = ScheduleMode.Interval, Every = every,
+            Stage = new() { BatchSize = 5, Processor = processor.Key, Model = "fixture/model", PromptVersion = 1 },
+        };
+        (await stages.SaveAsync(pipeline, source, automatic, false, CancellationToken.None))
+            .Should().BeOfType<Result<bool>.Failure>().Which.Error.Message.Should().Contain("manual for this source");
+
+        host.Clock.Advance(TimeSpan.FromMinutes(6)); // past the refused item's retry delay
+        (await runs.StartAsync(pipeline.Id, WorkKind.Process)).ValueOrThrow().Status.Should().Be(RunStatus.Queued);
+        (await host.DrainAsync()).Should().Be(1);
+        processor.Calls.Should().Equal((capture.CaptureId!.Value, (int?)1));
+
+        (await registry.UpdateSourceAsync(source.Id, new SourceUpdate { ModelProcessing = ModelProcessingMode.Off })).ValueOrThrow();
+        host.Clock.Advance(TimeSpan.FromMinutes(1));
+        (await runs.StartAsync(pipeline.Id, WorkKind.Process)).Should().BeOfType<Result<RunModel>.Failure>()
+            .Which.Error.Message.Should().Contain("disabled for this source");
+    }
+
+    [Fact]
     public async Task PromptVersion_ShouldStayFrozenAndReprocessTheSameCaptureOnlyWhenItsPinChanges()
     {
         var processor = new RecordingProcessor();

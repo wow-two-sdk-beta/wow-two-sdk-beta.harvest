@@ -1,6 +1,7 @@
 using Npgsql;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Delivery;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Reprocessing;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Posts;
@@ -36,9 +37,10 @@ internal sealed partial class ModulePostBroker
 
     /// <summary>Queues Layer 2 extraction for a post's content once its tags are done: the use case of the tagged entity
     /// type, when the demand gate wants a pair the tags match and the content has no done answer for it.</summary>
-    /// <remarks>Runs inside the write's transaction; a host without AI or demand skips it before any query.</remarks>
+    /// <remarks>Runs inside the write's transaction; a host without AI or demand skips it before any query. Tags an
+    /// operator asked for (<paramref name="explicitRow"/>) queue extraction under a <c>manual</c> source too.</remarks>
     private async Task QueueExtractionAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid containerId, Guid postId,
-        byte[] contentHash, DateTimeOffset now, CancellationToken ct)
+        byte[] contentHash, DateTimeOffset now, CancellationToken ct, bool explicitRow = false)
     {
         if (!extraction.Enabled)
             return;
@@ -46,6 +48,30 @@ internal sealed partial class ModulePostBroker
         if (wanted.Count == 0 || await PostExtractionStore.ReadTagsAsync(connection, transaction, postId, contentHash, ct) is not { } tags)
             return;
         if (PostExtractionDemand.Match(wanted, tags.EntityType, tags.Domains) is { } useCase)
-            await PostExtractionStore.QueueAsync(connection, transaction, containerId, postId, contentHash, useCase, now, ct);
+            await PostExtractionStore.QueueAsync(connection, transaction, containerId, postId, contentHash, useCase, now, ct,
+                explicitRow: explicitRow);
+    }
+
+    /// <summary>Queues the extraction a re-run's done tags lead to, carrying the run: forced (a done answer is replaced)
+    /// when the run asked for the tagged type's use case, or when the tags extraction reads changed and the demand wants
+    /// the pair; otherwise as after any tags.</summary>
+    /// <remarks>A run over listed or all sources asks only for what the demand wants; one over named posts for any post
+    /// tagged with the use case's entity type.</remarks>
+    private async Task QueueRerunExtractionAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, PostTagsRecord record, Guid runId,
+        bool changed, DateTimeOffset now, CancellationToken ct)
+    {
+        if (!extraction.Enabled
+            || await PostExtractionStore.ReadTagsAsync(connection, transaction, record.PostId, record.ContentHash, ct) is not { } tags
+            || PostExtractionConstants.UseCaseFor(tags.EntityType) is not { } useCase)
+            return;
+        var wanted = await extraction.WantedAsync(ct);
+        bool demanded = PostExtractionDemand.Match(wanted, tags.EntityType, tags.Domains) == useCase;
+        var (asked, named) = await ReprocessingStore.AskedAsync(connection, transaction, runId, ct);
+        if (asked.Contains(useCase) && (named || demanded) || changed && demanded)
+            await PostExtractionStore.QueueAsync(connection, transaction, record.ContainerId, record.PostId, record.ContentHash, useCase, now, ct,
+                runId, record.Explicit, force: true);
+        else if (demanded)
+            await PostExtractionStore.QueueAsync(connection, transaction, record.ContainerId, record.PostId, record.ContentHash, useCase, now, ct,
+                runId, record.Explicit);
     }
 }

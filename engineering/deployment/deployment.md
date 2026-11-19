@@ -166,9 +166,9 @@ A profile is data (`sources/Module/Marketplace/MarketplaceProfiles.cs`); another
   the verb keeps every existing row.
 - `--schedules` enables capture every 2 h for OLX, Joymee and BirBir, plus OLX's daily link check, keeping tuned intervals.
   A run reads at most 60 ads. The 64-page budget applies to catalog pages.
-- `--allow-ai` opens the OLX, Joymee and BirBir collection sources to model processors (`aiAllowed`), so a Process
-  stage can run `rental-terms@1`; the import sources stay closed. Setup creates collected sources closed and never
-  closes an opened one.
+- `--allow-ai` opens the OLX, Joymee and BirBir collection sources to model processors (`modelProcessing` `auto`), so a
+  Process stage can run `rental-terms@1`; the import sources stay closed (`off`). Setup creates collected sources closed
+  and never closes an opened or `manual` one.
 - `--run` queues one bounded capture per active collection pipeline. BirBir has separate direct collection and
   import sections. The BirBir and Domtut import subscriptions report `importOnly: true`.
 - Haven's credential is a tenant API key named `haven-supply` with `events:read` only, sent as `X-Api-Key`.
@@ -277,7 +277,7 @@ Existing stage settings take precedence over the seed on restart.
 
 Process uses saved readings. Its `Processor` defaults to `saved-reading@1`, which takes no model. For rental terms,
 select `rental-terms@1`, set `Model` to a registered route and open the source to models (`marketplace setup
---allow-ai`, or `aiAllowed` on the source update). Configure `Harvest:Processing:OpenAi:Models` with model IDs and
+--allow-ai`, or `modelProcessing` on the source update; `manual` allows Process runs started by hand only). Configure `Harvest:Processing:OpenAi:Models` with model IDs and
 provide `Harvest__Processing__OpenAi__ApiKey` through the environment or secret store. A model processor's results are
 stored under `{processor}:{model}`; a model without a model processor is refused.
 Stages can filter saved captures by title and publication time.

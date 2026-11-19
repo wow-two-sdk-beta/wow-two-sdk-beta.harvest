@@ -36,7 +36,8 @@ Not packable (`Directory.Build.props` by path: XML docs and warnings as errors, 
 ## Pins
 
 - Core pin: `BackendSdkVersion` `10.0.113-beta`; Identity `10.0.30-beta` supplies API-key auth and the BFF client.
-- AI pin: `AiSdkVersion` `10.0.4-beta` — `Ai.Abstractions` in Module, `Ai.Module` and `Ai.Providers` in the host,
+- AI pin: `AiSdkVersion` `10.0.4-beta` — `Ai.Abstractions` in Module, `Ai.Module`, `Ai.Providers` and `Ai.Hosting`
+  (the `api/ai` routes, operators only) in the host,
   `Ai.Testing` (`ScriptedAiModelCaller`) in the Integration and source E2E tiers.
 - The Client takes client-credentials tokens through the be sdk's `Http.Auth`; `Harvest.Tests.Unit` uses Identity's
   `FakeTokenIssuer`.

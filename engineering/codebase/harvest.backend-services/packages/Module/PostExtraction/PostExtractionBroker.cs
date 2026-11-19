@@ -37,8 +37,8 @@ internal sealed class PostExtractionBroker(
         var subject = await PostTagsStore.ReadSubjectAsync(dataSource, postId, cancellationToken);
         if (subject is null || !subject.Current)
             return Result<PostExtractionRunModel>.Fail(AppErrorFactory.NotFound("Post not found, or merged or purged."));
-        if (!subject.AiAllowed)
-            return Result<PostExtractionRunModel>.Fail(AppErrorFactory.Forbidden("A source supplying the post's title or text does not allow AI."));
+        if (!subject.Explicit)
+            return Result<PostExtractionRunModel>.Fail(AppErrorFactory.Forbidden("A source supplying the post's title or text has model processing off."));
         if (!PostTagsContent.HasContent(subject.Post.Base))
             return Result<PostExtractionRunModel>.Fail(AppErrorFactory.Validation("The post has no title or text to extract."));
         var hash = PostTagsContent.Hash(subject.Post.Base);
@@ -46,7 +46,7 @@ internal sealed class PostExtractionBroker(
             return Result<PostExtractionRunModel>.Fail(AppErrorFactory.Conflict("Tag the post first: its current title and text have no done post-tags answer."));
         if (PostExtractionConstants.UseCaseFor(tags.EntityType) is not { } useCase)
             return Result<PostExtractionRunModel>.Fail(AppErrorFactory.Validation("The post's tags name neither an event nor a listing."));
-        return Result<PostExtractionRunModel>.Ok(await ExtractAsync(subject, tags, useCase, hash, attempts: 1, dryRun, cancellationToken));
+        return Result<PostExtractionRunModel>.Ok(await ExtractAsync(subject, tags, useCase, hash, attempts: 1, dryRun, null, cancellationToken));
     }
 
     /// <inheritdoc />
@@ -115,13 +115,17 @@ internal sealed class PostExtractionBroker(
                 var hash = subject is null ? null : PostTagsContent.Hash(subject.Post.Base);
                 var tags = hash is not null && hash.AsSpan().SequenceEqual(claim.ContentHash)
                     ? await PostExtractionStore.ReadTagsAsync(dataSource, claim.PostId, hash, cancellationToken) : null;
-                if (subject is not { Current: true, AiAllowed: true } || tags is null || !PostTagsContent.HasContent(subject.Post.Base)
-                    || PostExtractionDemand.Match(wanted, tags.EntityType, tags.Domains) != claim.UseCase)
+                // The mode is read now: auto for any row, any mode but off for a row an operator named. A re-run's row
+                // was chosen for its use case already; it needs only tags of the use case's entity type, not the demand.
+                if (subject is not { Current: true } || !subject.Allows(claim.Explicit) || tags is null || !PostTagsContent.HasContent(subject.Post.Base)
+                    || (claim.RunId is null
+                        ? PostExtractionDemand.Match(wanted, tags.EntityType, tags.Domains)
+                        : PostExtractionConstants.UseCaseFor(tags.EntityType)) != claim.UseCase)
                 {
                     await PostExtractionStore.DropAsync(dataSource, claim, cancellationToken);
                     continue;
                 }
-                await ExtractAsync(subject, tags, claim.UseCase, hash!, claim.Attempts, dryRun: false, cancellationToken);
+                await ExtractAsync(subject, tags, claim.UseCase, hash!, claim.Attempts, dryRun: false, claim.RunId, cancellationToken);
             }
             catch (Exception error) when (error is not OperationCanceledException)
             {
@@ -132,7 +136,7 @@ internal sealed class PostExtractionBroker(
     }
 
     private async Task<PostExtractionRunModel> ExtractAsync(PostTagsSubject subject, ExtractionTags tags, string useCase, byte[] hash, int attempts,
-        bool dryRun, CancellationToken ct)
+        bool dryRun, Guid? runId, CancellationToken ct)
     {
         var post = subject.Post;
         var call = await CallAsync(subject, tags, useCase, ct);
@@ -152,7 +156,7 @@ internal sealed class PostExtractionBroker(
         var retry = call.Status == "done" ? (DateTimeOffset?)null
             : time.GetUtcNow() + TimeSpan.FromTicks(Math.Min(MaxRetryDelay.Ticks, options.Value.RetryDelay.Ticks * Math.Max(1, attempts)));
         var revised = await posts.WriteExtractionAsync(new PostExtractionRecord(post.ContainerId, post.Id, hash, useCase, post.Revision,
-            call.Status, call.Reason, model.PromptVersion, final?.PromptHash, model.InferenceId, model.Model, call.Answer, attempts, retry),
+            call.Status, call.Reason, model.PromptVersion, final?.PromptHash, model.InferenceId, model.Model, call.Answer, attempts, retry, runId),
             queueEntities: services.GetService<EntityGate>()?.Enabled == true, ct);
         return model with { Stored = true, NewRevision = revised };
     }

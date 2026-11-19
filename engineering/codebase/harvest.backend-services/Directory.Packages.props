@@ -38,6 +38,7 @@
     <PackageVersion Include="WoW2.Sdk.Beta.Be.Identity.Testing" Version="$(IdentitySdkVersion)" />
     <PackageVersion Include="WoW2.Sdk.Beta.Be.Files.Client" Version="10.0.6-beta" />
     <PackageVersion Include="WoW2.Sdk.Beta.Be.Ai.Abstractions" Version="$(AiSdkVersion)" />
+    <PackageVersion Include="WoW2.Sdk.Beta.Be.Ai.Hosting" Version="$(AiSdkVersion)" />
     <PackageVersion Include="WoW2.Sdk.Beta.Be.Ai.Module" Version="$(AiSdkVersion)" />
     <PackageVersion Include="WoW2.Sdk.Beta.Be.Ai.Providers" Version="$(AiSdkVersion)" />
     <PackageVersion Include="WoW2.Sdk.Beta.Be.Ai.Testing" Version="$(AiSdkVersion)" />

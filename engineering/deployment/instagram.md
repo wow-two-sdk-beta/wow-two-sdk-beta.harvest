@@ -25,7 +25,7 @@ through the normal SCFD registry; fixed provider transport safety bounds are cod
 ## Profiles and limits in tables
 
 Register one source per Instagram account in a private test container with `family=instagram`, `handle=teplofest`,
-`posture=official`, `coverage=filtered`, `completeness=window`, `checkPolicy=none`, `aiAllowed=false` and
+`posture=official`, `coverage=filtered`, `completeness=window`, `checkPolicy=none`, `modelProcessing=off` and
 `poolShareable=false`. The registry declares the publisher name, group and account URL. Teplo Fest (`teplofest`)
 and Teplo Store (`teplostore_2022`) are distinct sources under the Teplo Store group, using the same Instagram adapter
 and Meta connection. A source's Pipelines view manages only its declared publisher profile. Its ordinary pipeline

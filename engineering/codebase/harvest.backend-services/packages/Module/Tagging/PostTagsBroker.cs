@@ -41,11 +41,11 @@ internal sealed class PostTagsBroker(
         var subject = await PostTagsStore.ReadSubjectAsync(dataSource, postId, cancellationToken);
         if (subject is null || !subject.Current)
             return Result<PostTagsRunModel>.Fail(AppErrorFactory.NotFound("Post not found, or merged or purged."));
-        if (!subject.AiAllowed)
-            return Result<PostTagsRunModel>.Fail(AppErrorFactory.Forbidden("A source supplying the post's title or text does not allow AI."));
+        if (!subject.Explicit)
+            return Result<PostTagsRunModel>.Fail(AppErrorFactory.Forbidden("A source supplying the post's title or text has model processing off."));
         if (!PostTagsContent.HasContent(subject.Post.Base))
             return Result<PostTagsRunModel>.Fail(AppErrorFactory.Validation("The post has no title or text to tag."));
-        return Result<PostTagsRunModel>.Ok(await TagAsync(subject, attempts: 1, dryRun, cancellationToken));
+        return Result<PostTagsRunModel>.Ok(await TagAsync(subject, attempts: 1, dryRun, null, explicitRow: true, cancellationToken));
     }
 
     /// <inheritdoc />
@@ -157,12 +157,14 @@ internal sealed class PostTagsBroker(
             try
             {
                 var subject = await PostTagsStore.ReadSubjectAsync(dataSource, claim.PostId, cancellationToken);
-                if (subject is null || !subject.Current || !subject.AiAllowed || !PostTagsContent.HasContent(subject.Post.Base))
+                // The mode is read now, not when the row was queued: auto for any row, and for a row an operator named
+                // any mode but off.
+                if (subject is null || !subject.Current || !subject.Allows(claim.Explicit) || !PostTagsContent.HasContent(subject.Post.Base))
                 {
                     await PostTagsStore.DropAsync(dataSource, claim.PostId, cancellationToken);
                     continue;
                 }
-                await TagAsync(subject, claim.Attempts, dryRun: false, cancellationToken);
+                await TagAsync(subject, claim.Attempts, dryRun: false, claim.RunId, claim.Explicit, cancellationToken);
             }
             catch (Exception error) when (error is not OperationCanceledException)
             {
@@ -172,7 +174,8 @@ internal sealed class PostTagsBroker(
         return claims.Count;
     }
 
-    private async Task<PostTagsRunModel> TagAsync(PostTagsSubject subject, int attempts, bool dryRun, CancellationToken ct)
+    private async Task<PostTagsRunModel> TagAsync(PostTagsSubject subject, int attempts, bool dryRun, Guid? runId, bool explicitRow,
+        CancellationToken ct)
     {
         var post = subject.Post;
         var hash = PostTagsContent.Hash(post.Base);
@@ -193,7 +196,7 @@ internal sealed class PostTagsBroker(
             : time.GetUtcNow() + TimeSpan.FromTicks(Math.Min(MaxRetryDelay.Ticks, options.Value.RetryDelay.Ticks * Math.Max(1, attempts)));
         var write = await posts.WriteTagsAsync(new PostTagsRecord(post.ContainerId, post.Id, hash, post.Revision, call.Status, call.Reason,
             model.PromptVersion, call.Run is { Attempts.Count: > 0 } hashed ? hashed.Final.PromptHash : null, model.InferenceId, model.Model,
-            call.Tags, retry), ct);
+            call.Tags, retry, runId, explicitRow), ct);
         return model with { Stored = write.Stored, NewRevision = write.NewRevision };
     }
 

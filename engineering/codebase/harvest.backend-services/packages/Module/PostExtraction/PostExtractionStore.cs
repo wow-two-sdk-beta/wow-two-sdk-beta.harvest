@@ -5,8 +5,10 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
 
-/// <summary>Represents one claimed queue row: the post, its use case and the content it waits to process.</summary>
-internal sealed record PostExtractionClaim(Guid PostId, string UseCase, Guid ContainerId, byte[] ContentHash, int Attempts);
+/// <summary>Represents one claimed queue row: the post, its use case and the content it waits to process; a re-run's row
+/// carries its run and whether an operator named the post.</summary>
+internal sealed record PostExtractionClaim(Guid PostId, string UseCase, Guid ContainerId, byte[] ContentHash, int Attempts,
+    Guid? RunId = null, bool Explicit = false);
 
 /// <summary>Represents one extraction answer to store: a done answer carries the validated answer, role and flags.</summary>
 internal sealed record PostExtractionRecord(
@@ -23,7 +25,8 @@ internal sealed record PostExtractionRecord(
     string? Model,
     ValidatedExtraction? Answer,
     int Attempts,
-    DateTimeOffset? RetryAtUtc);
+    DateTimeOffset? RetryAtUtc,
+    Guid? RunId = null);
 
 /// <summary>Holds the extraction's SQL over <c>harvest_post_extractions</c>, its <c>harvest_post_work</c> kinds and the
 /// done <c>harvest_post_tags</c> answers it reads.</summary>
@@ -53,20 +56,31 @@ internal static class PostExtractionStore
     }
 
     /// <summary>Queues one use case for a post's content inside a post write's transaction, unless that content already
-    /// has a done answer or a source supplying the title or text does not allow AI; a waiting row takes newer content.</summary>
+    /// has a done answer or a source supplying the title or text refuses the row; a waiting row takes newer content.</summary>
+    /// <remarks>
+    ///   - a row nobody named needs every source in <c>auto</c> mode; an <paramref name="explicitRow"/> any mode but <c>off</c>
+    ///   - <paramref name="force"/> (a re-run) queues even over a done answer and re-arms a waiting row for the same
+    ///     content, unless a worker holds it
+    ///   - <paramref name="runId"/> marks the row with its re-run; a row keeps its run and explicit mark when automatic
+    ///     work takes it over
+    /// </remarks>
     internal static Task<int> QueueAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid containerId, Guid postId,
-        byte[] contentHash, string useCase, DateTimeOffset now, CancellationToken ct) =>
+        byte[] contentHash, string useCase, DateTimeOffset now, CancellationToken ct, Guid? runId = null, bool explicitRow = false,
+        bool force = false) =>
         PostSql.ExecuteAsync(connection, transaction, $"""
-            INSERT INTO harvest_post_work(post_id,kind,container_id,content_hash,queued_at,not_before)
-            SELECT p.id,@kind,p.container_id,@hash,@now,@now FROM harvest_posts p
+            INSERT INTO harvest_post_work(post_id,kind,container_id,content_hash,queued_at,not_before,run_id,explicit)
+            SELECT p.id,@kind,p.container_id,@hash,@now,@now,CAST(@run AS uuid),@explicit FROM harvest_posts p
             WHERE p.container_id=@container AND p.id=@post AND p.merged_into IS NULL AND p.purged_at IS NULL
-              AND NOT EXISTS(SELECT 1 FROM harvest_post_extractions e
-                  WHERE e.post_id=p.id AND e.content_hash=@hash AND e.use_case=@kind AND e.status='done')
-              AND {PostTagsStore.AiAllowedSql}
+              AND (@force OR NOT EXISTS(SELECT 1 FROM harvest_post_extractions e
+                  WHERE e.post_id=p.id AND e.content_hash=@hash AND e.use_case=@kind AND e.status='done'))
+              AND (@explicit AND {PostTagsStore.ModeSql}<>'off' OR NOT @explicit AND {PostTagsStore.AutoSql})
             ON CONFLICT (post_id,kind) DO UPDATE SET content_hash=EXCLUDED.content_hash,queued_at=EXCLUDED.queued_at,
-                not_before=EXCLUDED.not_before,attempts=0,last_error=NULL
+                not_before=EXCLUDED.not_before,attempts=0,last_error=NULL,run_id=COALESCE(EXCLUDED.run_id,harvest_post_work.run_id),
+                explicit=harvest_post_work.explicit OR EXCLUDED.explicit
             WHERE harvest_post_work.content_hash<>EXCLUDED.content_hash
-            """, ct, ("kind", useCase), ("hash", contentHash), ("now", now), ("container", containerId), ("post", postId));
+               OR @force AND (harvest_post_work.lease_owner IS NULL OR harvest_post_work.lease_until<@now)
+            """, ct, ("kind", useCase), ("hash", contentHash), ("now", now), ("container", containerId), ("post", postId),
+            ("run", runId), ("explicit", explicitRow), ("force", force));
 
     /// <summary>Claims up to <paramref name="batch"/> due extractions under a lease, counting the attempt.</summary>
     internal static async Task<IReadOnlyList<PostExtractionClaim>> ClaimAsync(NpgsqlDataSource dataSource, string owner, DateTimeOffset now,
@@ -80,11 +94,12 @@ internal static class PostExtractionStore
                   WHERE kind=ANY(@kinds) AND not_before<=@now AND (lease_until IS NULL OR lease_until<@now)
                   ORDER BY not_before,post_id,kind LIMIT @batch FOR UPDATE SKIP LOCKED) due
             WHERE w.post_id=due.post_id AND w.kind=due.kind
-            RETURNING w.post_id,w.kind,w.container_id,w.content_hash,w.attempts
+            RETURNING w.post_id,w.kind,w.container_id,w.content_hash,w.attempts,w.run_id,w.explicit
             """, ("owner", owner), ("until", now + lease), ("kinds", PostExtractionConstants.UseCases.ToArray()), ("now", now), ("batch", batch));
         await using var reader = await command.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
-            claims.Add(new(reader.GetGuid(0), reader.GetString(1), reader.GetGuid(2), reader.GetFieldValue<byte[]>(3), reader.GetInt32(4)));
+            claims.Add(new(reader.GetGuid(0), reader.GetString(1), reader.GetGuid(2), reader.GetFieldValue<byte[]>(3), reader.GetInt32(4),
+                reader.IsDBNull(5) ? null : reader.GetGuid(5), reader.GetBoolean(6)));
         return claims;
     }
 
@@ -133,7 +148,7 @@ internal static class PostExtractionStore
             """, ct, ("post", record.PostId), ("kind", record.UseCase), ("hash", record.ContentHash), ("done", done),
             ("retry", record.RetryAtUtc), ("error", record.Error));
         if (done && queueEntities)
-            await EntityStore.QueueAsync(connection, transaction, record.ContainerId, record.PostId, record.ContentHash, now, ct);
+            await EntityStore.QueueAsync(connection, transaction, record.ContainerId, record.PostId, record.ContentHash, now, ct, record.RunId);
     }
 
     /// <summary>Queues stored posts whose current title and text have done tags matching a wanted pair and no done answer
@@ -152,7 +167,7 @@ internal static class PostExtractionStore
                 JOIN harvest_post_tags t ON t.post_id=p.id AND t.content_hash={hash} AND t.status='done'
                 WHERE p.merged_into IS NULL AND p.purged_at IS NULL
                   AND (CAST(@since AS timestamptz) IS NULL OR p.last_changed_at>=@since)
-                  AND {PostTagsStore.AiAllowedSql}
+                  AND {PostTagsStore.AutoSql}
                   AND EXISTS(SELECT 1 FROM wanted w,jsonb_array_elements(t.domains) d WHERE w.entity_type=t.entity_type
                       AND (d->>'node'=w.domain OR left(d->>'node',length(w.domain)+1)=w.domain || '/'))
                   AND NOT EXISTS(SELECT 1 FROM harvest_post_extractions e WHERE e.post_id=p.id AND e.content_hash=t.content_hash

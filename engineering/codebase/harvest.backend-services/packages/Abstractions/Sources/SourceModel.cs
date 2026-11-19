@@ -36,8 +36,22 @@ public sealed record SourceModel
     /// <summary>Gets the operator's harvesting switch.</summary>
     public required SourcePermission Permission { get; init; }
 
-    /// <summary>Gets whether model tiers and embeddings may read the source's text.</summary>
-    public required bool AiAllowed { get; init; }
+    /// <summary>Gets whether a model may read the source's text at all: <see cref="ModelProcessing"/> is not
+    /// <see cref="ModelProcessingMode.Off"/>. Kept for older callers and stored runs: setting it maps <c>true</c> to
+    /// <see cref="ModelProcessingMode.Auto"/> and <c>false</c> to <see cref="ModelProcessingMode.Off"/>, unless
+    /// <see cref="ModelProcessing"/> already agrees.</summary>
+    public bool AiAllowed
+    {
+        get => ModelProcessing != ModelProcessingMode.Off;
+        init
+        {
+            if (value != AiAllowed)
+                ModelProcessing = value ? ModelProcessingMode.Auto : ModelProcessingMode.Off;
+        }
+    }
+
+    /// <summary>Gets how a model may process the source's posts: never, on operator runs only, or automatically.</summary>
+    public ModelProcessingMode ModelProcessing { get; init; }
 
     /// <summary>Gets whether posts read from the source may serve every tenant from the pool.</summary>
     public required bool PoolShareable { get; init; }

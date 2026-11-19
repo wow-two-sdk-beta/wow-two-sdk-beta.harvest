@@ -61,7 +61,7 @@ internal static class RegistrationMapper
         Completeness = row.Completeness,
         Posture = row.Posture,
         Permission = row.Permission,
-        AiAllowed = row.AiAllowed,
+        ModelProcessing = row.ModelProcessing,
         PoolShareable = row.PoolShareable,
         RobotsPolicy = row.RobotsPolicy,
         ConsentBasis = row.ConsentBasis,

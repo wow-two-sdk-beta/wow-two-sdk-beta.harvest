@@ -297,15 +297,16 @@ internal static class EntityStore
     /// <summary>Queues a post's resolution for its content inside the extraction's transaction; a waiting row takes newer
     /// content and starts its attempts over.</summary>
     internal static Task<int> QueueAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid containerId, Guid postId,
-        byte[] contentHash, DateTimeOffset now, CancellationToken ct) =>
+        byte[] contentHash, DateTimeOffset now, CancellationToken ct, Guid? runId = null) =>
         PostSql.ExecuteAsync(connection, transaction, """
-            INSERT INTO harvest_post_work(post_id,kind,container_id,content_hash,queued_at,not_before)
-            SELECT p.id,@kind,p.container_id,@hash,@now,@now FROM harvest_posts p
+            INSERT INTO harvest_post_work(post_id,kind,container_id,content_hash,queued_at,not_before,run_id)
+            SELECT p.id,@kind,p.container_id,@hash,@now,@now,CAST(@run AS uuid) FROM harvest_posts p
             WHERE p.container_id=@container AND p.id=@post AND p.merged_into IS NULL AND p.purged_at IS NULL
             ON CONFLICT (post_id,kind) DO UPDATE SET content_hash=EXCLUDED.content_hash,queued_at=EXCLUDED.queued_at,
-                not_before=EXCLUDED.not_before,attempts=0,last_error=NULL
+                not_before=EXCLUDED.not_before,attempts=0,last_error=NULL,run_id=COALESCE(EXCLUDED.run_id,harvest_post_work.run_id)
             WHERE harvest_post_work.content_hash<>EXCLUDED.content_hash
-            """, ct, ("kind", EntityConstants.WorkKind), ("hash", contentHash), ("now", now), ("container", containerId), ("post", postId));
+            """, ct, ("kind", EntityConstants.WorkKind), ("hash", contentHash), ("now", now), ("container", containerId), ("post", postId),
+            ("run", runId));
 
     /// <summary>Claims up to <paramref name="batch"/> due resolutions under a lease, counting the attempt.</summary>
     internal static async Task<IReadOnlyList<EntityClaim>> ClaimAsync(NpgsqlDataSource dataSource, string owner, DateTimeOffset now, TimeSpan lease,

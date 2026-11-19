@@ -57,6 +57,7 @@ internal sealed class HarvestDbContext(DbContextOptions<HarvestDbContext> option
         source.Property(row => row.Completeness).HasConversion(Text<SourceCompleteness>());
         source.Property(row => row.Posture).HasConversion(Text<SourcePosture>());
         source.Property(row => row.Permission).HasConversion(Text<SourcePermission>());
+        source.Property(row => row.ModelProcessing).HasConversion(Text<ModelProcessingMode>());
         source.Property(row => row.RobotsPolicy).HasConversion(Text<RobotsPolicy>());
         source.Property(row => row.ConsentBasis).HasConversion(Text<ConsentBasis>());
         source.Property(row => row.State).HasConversion(Text<SourceState>());
