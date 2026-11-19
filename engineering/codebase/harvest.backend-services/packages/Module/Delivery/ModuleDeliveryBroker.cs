@@ -26,6 +26,8 @@ internal sealed class ModuleDeliveryBroker(
     public async Task<Result<SubscriptionModel>> SubscribeAsync(SubscriptionDeclaration declaration, CancellationToken cancellationToken = default)
     {
         if (declaration?.Context is null) return Invalid<SubscriptionModel>("A subscription and its routing context are required.");
+        if (declaration.Selector is not null) return Invalid<SubscriptionModel>("Selector subscriptions are not built yet.");
+        if (declaration.PipelineId is null) return Invalid<SubscriptionModel>("A channel subscription needs its pipeline.");
         if (!Enum.IsDefined(declaration.Backfill) || (declaration.Backfill == BackfillMode.Since) != declaration.BackfillSinceUtc.HasValue)
             return Invalid<SubscriptionModel>("A since-backfill requires its lower bound; other modes do not accept one.");
         if (declaration.BackfillSinceUtc > time.GetUtcNow())
@@ -138,6 +140,14 @@ internal sealed class ModuleDeliveryBroker(
             : EncodeCursor(subscriptionId, rows[^1].TransactionId, rows[^1].Id);
         return Result<CursorPage<DeliveryEvent>>.Ok(new CursorPage<DeliveryEvent> { Data = rows.Select(row => row.Event).ToArray(), Next = next, HasMore = hasMore });
     }
+
+    /// <inheritdoc />
+    public Task<Result<SelectorChangeModel>> SetSelectorAsync(Guid subscriptionId, SelectorChange change, CancellationToken cancellationToken = default) =>
+        Task.FromResult(Invalid<SelectorChangeModel>("Selector subscriptions are not built yet."));
+
+    /// <inheritdoc />
+    public Task<Result<SubscriptionModel>> SetStateAsync(Guid subscriptionId, SubscriptionState state, CancellationToken cancellationToken = default) =>
+        Task.FromResult(Invalid<SubscriptionModel>("Selector subscriptions are not built yet."));
 
     private static async Task<SubscriptionModel?> ReadSubscriptionAsync(NpgsqlConnection connection, NpgsqlTransaction? transaction, Guid id, CancellationToken ct)
     {

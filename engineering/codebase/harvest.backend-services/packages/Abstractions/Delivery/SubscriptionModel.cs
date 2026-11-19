@@ -1,6 +1,6 @@
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Delivery;
 
-/// <summary>Represents one tenant's interest — a channel, tags or keywords — with its own event log and delivery.</summary>
+/// <summary>Represents one tenant's interest — a channel, tags, keywords or a selector — with its own event log and delivery.</summary>
 public sealed record SubscriptionModel
 {
     /// <summary>Gets the subscription's identifier.</summary>
@@ -12,8 +12,18 @@ public sealed record SubscriptionModel
     /// <summary>Gets what the subscription follows.</summary>
     public required SubscriptionKind Kind { get; init; }
 
-    /// <summary>Gets the pipeline a channel subscription follows; null for tag and keyword subscriptions.</summary>
+    /// <summary>Gets the pipeline a channel subscription follows; null for tag, keyword and selector subscriptions.</summary>
     public Guid? PipelineId { get; init; }
+
+    /// <summary>Gets the subscription's name, which Events binds an intake source to as <c>selector:{name}</c>; set for a
+    /// selector subscription and null for the other kinds.</summary>
+    public string? Name { get; init; }
+
+    /// <summary>Gets the selector a selector subscription follows; null for the other kinds.</summary>
+    public SubscriptionSelector? Selector { get; init; }
+
+    /// <summary>Gets the version of <see cref="Selector"/>, from 1, raised by each change; null for the other kinds.</summary>
+    public int? SelectorVersion { get; init; }
 
     /// <summary>Gets the tag keys or keyword sets a pool subscription matches.</summary>
     public IReadOnlyList<string> Rules { get; init; } = [];

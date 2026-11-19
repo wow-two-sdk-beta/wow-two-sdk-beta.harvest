@@ -39,6 +39,8 @@ public sealed class FakeDeliveryBroker : IDeliveryBroker
     public async Task<Result<SubscriptionModel>> SubscribeAsync(SubscriptionDeclaration declaration, CancellationToken cancellationToken = default)
     {
         if (declaration?.Context is null) return Invalid<SubscriptionModel>("A subscription and its routing context are required.");
+        if (declaration.Selector is not null) return Invalid<SubscriptionModel>("Selector subscriptions are not built yet.");
+        if (declaration.PipelineId is not { } pipelineId) return Invalid<SubscriptionModel>("A channel subscription needs its pipeline.");
         if (!Enum.IsDefined(declaration.Backfill) || (declaration.Backfill == BackfillMode.Since) != declaration.BackfillSinceUtc.HasValue
             || declaration.BackfillSinceUtc > time.GetUtcNow() || declaration.Schema is { Length: > 200 }
             || declaration.Context.Count > 64 || declaration.Context.Any(pair => string.IsNullOrWhiteSpace(pair.Key) || pair.Key.Length > 256 || pair.Value is null || pair.Value.Length > 4096))
@@ -50,7 +52,7 @@ public sealed class FakeDeliveryBroker : IDeliveryBroker
             return Missing<SubscriptionModel>("Active tenant not found.");
         if (await registry.GetContainerAsync(declaration.ContainerId, cancellationToken) is not Result<ContainerModel>.Success { Value: var container }
             || (container.Kind != ContainerKind.Pool && container.TenantId != declaration.TenantId)
-            || await registry.GetPipelineAsync(declaration.PipelineId, cancellationToken) is not Result<PipelineModel>.Success { Value: var pipeline }
+            || await registry.GetPipelineAsync(pipelineId, cancellationToken) is not Result<PipelineModel>.Success { Value: var pipeline }
             || pipeline.ContainerId != declaration.ContainerId)
             return Missing<SubscriptionModel>("Pipeline not found in an accessible container.");
         lock (posts.Gate)
@@ -58,7 +60,7 @@ public sealed class FakeDeliveryBroker : IDeliveryBroker
             var now = time.GetUtcNow();
             var subscription = new SubscriptionModel
             {
-                Id = Guid.CreateVersion7(now), TenantId = declaration.TenantId, PipelineId = declaration.PipelineId, Kind = SubscriptionKind.Channel,
+                Id = Guid.CreateVersion7(now), TenantId = declaration.TenantId, PipelineId = pipelineId, Kind = SubscriptionKind.Channel,
                 Mode = DeliveryMode.Pull, Context = JsonSerializer.Deserialize<Dictionary<string, string>>(JsonSerializer.Serialize(declaration.Context, TestWireJson.Options))!,
                 Schema = declaration.Schema, FilterKey = declaration.FilterKey, Backfill = declaration.Backfill, State = SubscriptionState.Active, CreatedAtUtc = now,
             };
@@ -105,6 +107,14 @@ public sealed class FakeDeliveryBroker : IDeliveryBroker
             }));
         }
     }
+
+    /// <inheritdoc />
+    public Task<Result<SelectorChangeModel>> SetSelectorAsync(Guid subscriptionId, SelectorChange change, CancellationToken cancellationToken = default) =>
+        Task.FromResult(Invalid<SelectorChangeModel>("Selector subscriptions are not built yet."));
+
+    /// <inheritdoc />
+    public Task<Result<SubscriptionModel>> SetStateAsync(Guid subscriptionId, SubscriptionState state, CancellationToken cancellationToken = default) =>
+        Task.FromResult(Invalid<SubscriptionModel>("Selector subscriptions are not built yet."));
 
     private void Observe(PostModel post, string type, Guid? runId, Guid? linkId)
     {

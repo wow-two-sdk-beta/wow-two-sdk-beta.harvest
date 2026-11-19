@@ -1,6 +1,6 @@
 # wow-two-sdk-beta.harvest — Contract
 
-*Last updated: 2026-11-19*
+*Last updated: 2026-11-20*
 
 > Everything in `packages/Abstractions`: the registry broker every form implements, and the seams the engine lanes and
 > source readers build against. Interfaces and models only — no DI, options or I/O. Rules:
@@ -76,6 +76,7 @@
 | `GET api/sources/overview` · `GET api/sources/groups` | `pipelines:read` (no `sources:read` exists) | the pool and its own tenant's; another tenant's is 404 |
 | `GET api/sources/{id}/posts` · `GET api/sources/{id}/processed` · `GET api/posts/{id}/revisions` | `posts:read` | sources and posts of the pool and its own tenant's; another tenant's is 404 |
 | `GET api/entities` · `api/entities/{id}` · `api/entities/{id}/posts` · `api/entities/calendar` · `api/entities/events` | `posts:read` (no `entities:read` exists) | entities of the pool and its own tenant's containers; another tenant's container, or an entity of another container, is 404 |
+| `PUT api/subscriptions/{id}/selector` · `PUT api/subscriptions/{id}/state` · `POST api/subscriptions/preview` | `subscriptions:manage` | its own tenant's subscriptions and containers (a preview names the caller's own tenant); another tenant's subscription or container is 404 |
 
 - Keys: Identity.Auth `Identity/ApiKeys` (`ApiKey` scheme, no local pass); `/api/system/status` stays open.
 - The operator key (`Harvest:Operator:ApiKey`, `HarvestModuleOptions.OperatorApiKey`) holds every scope and no tenant;
@@ -165,8 +166,10 @@ the step contract. Every type references the BCL and the kernel only.
   `PUT api/sources/{id}/reading`.
 - `IPostBroker`: `SaveCaptureAsync`, `ObserveLinkAsync`, `GetPostAsync`, `ListPostsAsync`, `MergeAsync`, `UnmergeAsync`.
   Routes: `api/posts`, operator-only `captures`/`observations`, `api/post-merges`.
-- `IDeliveryBroker`: `SubscribeAsync`, `GetSubscriptionAsync`, `ListSubscriptionsAsync`, `PullAsync`.
-  Routes: `api/subscriptions`, `api/subscriptions/{id}/events`.
+- `IDeliveryBroker`: `SubscribeAsync`, `GetSubscriptionAsync`, `ListSubscriptionsAsync`, `PullAsync`, `SetSelectorAsync`,
+  `SetStateAsync`. Routes: `api/subscriptions`, `api/subscriptions/{id}/events`, `api/subscriptions/{id}/selector`,
+  `api/subscriptions/{id}/state`.
+- `ISubscriptionPreviewBroker`: `PreviewAsync`. Route: `api/subscriptions/preview`.
 
 - all successful routes use the same `{ data }` envelope, including `{ data: { data, next, hasMore } }` for pull pages
 - queueing joins an active run of the same pipeline and work kind; only active, permitted pipelines queue work
@@ -193,6 +196,7 @@ the step contract. Every type references the BCL and the kernel only.
   instead of binding it, and never writes the post or a delivery event; § Entities reads them;
   `development/entities.md`
 - delivery stores immutable revision snapshots; `wow2.event.v1` selects the event projection while retaining post identity and provenance
+- a selector subscription follows tags and sources instead of one pipeline: § Subscription selectors
 - a post the subscription holds whose newest revision fails its filter or section arrives once as `post.unmatched`
   (that revision's identity, number and payload); later failing revisions, a restore from gone included, are withheld,
   lifecycle events (`link.state`, `post.merged`, `post.unmerged`, `post.purged`) still arrive, and the next passing
@@ -204,6 +208,224 @@ the step contract. Every type references the BCL and the kernel only.
 `AddHarvestClient` registers the registry. `Client.Runs.AddHarvestRunClient`, `Client.Delivery.AddHarvestDataClient`
 and `Client.Sources.AddHarvestSourceClient` explicitly add the other HTTP brokers under its configured endpoint and key.
 The module's `Module.*` registration extensions likewise opt each capability in separately.
+
+---
+
+## Subscription selectors
+
+A selector subscription (`SubscriptionKind.Selector`) follows Layer 1 tags and sources over one container instead of one
+pipeline, so a client configures what it needs as data: entity types, taxonomy domains, topics, timeframes and sources.
+It keeps one event log and one cursor, and it keeps no pipeline alive. `SubscriptionSelector`, `SelectorRules` and the
+pure `SubscriptionSelectorMatcher` live in `Abstractions/Delivery`; the module, the fake, the preview and the diff all
+call that one matcher, so a selector means the same everywhere.
+
+- One fixed boolean form: `entityTypes ∧ (domains ∨ topics) ∧ ¬excludeDomains ∧ ¬excludeTopics ∧ ¬excludeTimeframes ∧
+  sources`; each domain include carries an `except` list. It expresses AND, OR and NOT without a free expression tree.
+- A selector subscription needs a `name` (`^[a-z0-9][a-z0-9-]{0,63}$`, unique per tenant among non-archived
+  subscriptions); it refuses `filterKey` and `pipelineId`. Events binds an intake source to it as `selector:{name}`.
+- Matching reads the delivered revision's own envelope: `Base.Tags` of tier `SmallModel` (`type:`, `domain:`, `topic:`,
+  `timeframe:`), never `harvest_post_tags`, so the verdict judges exactly what the event carries.
+- A selector subscription's first event for a post is `post.new`, whatever content write came first; lifecycle events
+  of a post it has never seen are withheld.
+- `archived` is terminal; `active` and `suspended` swap. Channel subscriptions are untouched: no data migration.
+
+### The selector's wire
+
+camelCase, enums as labels, nulls omitted (§ Wire):
+
+```jsonc
+{
+  "entityTypes": ["event"],                         // ⊆ {event, listing}; empty = no type clause
+  "domains": [                                       // OR with topics
+    { "key": "style-fashion", "except": ["style-fashion/beauty"] },
+    { "key": "business-and-finance/industries/apparel-industry" }
+  ],
+  "topics": ["textile", "ikat"],                     // whole-token terms
+  "excludeDomains": [],                              // veto
+  "excludeTopics": [],                               // veto
+  "excludeTimeframes": [],                           // veto on the `timeframe:` tag (upcoming|ongoing|past|evergreen|unsure); absent tag → no effect
+  "sources": {
+    "include": [ { "groupId": "…", "context": { "defaultKind": "trade-fair" } } ],  // exactly one of groupId | sourceId | pipelineId
+    "exclude": [ { "sourceId": "…" } ]                                             // no context on exclude refs
+  }
+}
+```
+
+- A request: `SubscriptionDeclaration` with `selector` and `name` (`pipelineId` is now optional: a channel needs it, a
+  selector refuses it); a change: `SelectorChange { selector, windowSinceUtc?, changedBy? }`.
+- A subscription reads back `name`, `selector` and `selectorVersion` (from 1, raised by each change).
+
+### Limits
+
+`SelectorRules` holds them; every form applies them.
+
+- `domains` ≤ 50; `except` ≤ 20 per domain, each strictly under its key; `topics` and `excludeTopics` ≤ 100 each;
+  `excludeDomains` ≤ 50; `excludeTimeframes` ≤ 5; refs ≤ 200 per list; a ref's `context` ≤ 32 pairs (key 1-64 chars,
+  value ≤ 512).
+- Keys match `^[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)*$`; topics match `^[a-z0-9]+(-[a-z0-9]+)*$`, at most 40
+  characters (the Layer 1 slug form); timeframes are `upcoming`, `ongoing`, `past`, `evergreen` or `unsure`.
+- `Normalize` trims, lowercases, drops duplicates and keeps order; a domain listed twice keeps its first place. Source
+  ref contexts keep their keys and values as given.
+- The module also refuses a domain key absent from the active taxonomy, and a ref whose id is not in the subscription's
+  container.
+- A change window defaults to 30 days, reaches back at most 365 days and judges at most 10,000 posts.
+
+### Evaluation
+
+`SubscriptionSelectorMatcher.Evaluate(selector, post facts, sections, schema, subscription context)` is pure and returns
+a verdict (`match`, `noMatch`, `pending`), the clauses that decided it and the merged context. The first step that
+decides ends it:
+
+```text
+input: selector, post facts (envelope, links [linkId, sourceId, groupId, url], primaryLinkId),
+       sections (pipelineId → sourceId, PipelineScope), schema, subscription context
+1  schema == "wow2.event.v1" and envelope.Kind != Event          → noMatch [no-schema]
+2  ref matches link: group = link.groupId | source = link.sourceId
+                     | section: section.sourceId = link.sourceId and section.scope.IncludesUrl(link.url)
+   eligible = links where (include empty or some include ref matches) and no exclude ref matches
+   eligible empty                                                → noMatch [no-source]
+3  context link = primaryLinkId if eligible, else first eligible link (post.Links order)
+   context = subscription context, then contexts of include refs matching the context link,
+             group refs, then source refs, then section refs, each in list order; later keys win
+4  no tag clause (entityTypes, domains, topics, excludeDomains, excludeTopics, excludeTimeframes all empty) → match [sources]
+5  small = envelope.Tags where Tier == SmallModel; small empty   → pending [untagged]
+6  type = value of the "type:" tag or null
+   entityTypes set: type null → pending [unsure-type]; type ∉ entityTypes → noMatch [no-type:{type}]
+7  nodes = MostSpecific(values of "domain:" tags); topics = values of "topic:" tags
+8  any node AtOrUnder an excludeDomains key e                   → noMatch [exclude-domain:{e}]
+   any topic TokenMatch an excludeTopics term t                 → noMatch [exclude-topic:{t}]
+   the "timeframe:" tag value ∈ excludeTimeframes                → noMatch [exclude-timeframe:{t}]  (no tag → no effect)
+9  domains and topics both empty                                 → match [type:{type}] (or [] without entityTypes)
+10 for each domain d: under = nodes AtOrUnder d.key
+     some n in under is under none of d.except                   → hit domain:{d.key}
+     else each except e covering a node in under                 → blocked except:{e}
+   for each topic term t: some topic TokenMatch t                → hit topic:{t}
+11 hits                                                          → match [type:{type}?] + hits
+   else                                                          → noMatch (blocked, or [no-subject])
+AtOrUnder(n, k): n == k or n starts with k + "/"
+TokenMatch(topic, term): term's '-' tokens occur as a contiguous run of topic's '-' tokens
+MostSpecific(set): drop n when another m in set has m starting with n + "/"
+```
+
+- Domain checks use the most specific tagged nodes: `PostTagsOverlay` adds every ancestor, so `domain:style-fashion`
+  sits on each beauty post and `except` must see the leaf.
+- Topic terms match whole hyphen tokens: `clothing` matches `designer-clothing`; `textile` does not match `textiles`.
+  Plurals stay explicit.
+- A post with no `SmallModel` tag, or no `type:` tag while `entityTypes` is set, is **pending**: no event, no
+  `post.unmatched`. The tags' own `post.changed` re-judges it.
+- A `wow2.event.v1` selector needs `Base.Kind == Event`, else `noMatch` (`no-schema`).
+- `excludeTimeframes` reads a `timeframe:` tag on the envelope; a post without one is never vetoed and never pending.
+  The tag comes from the Layer 1 overlay when it writes one; until then the clause has no effect.
+- Clauses: `type:{type}` · `domain:{key}` · `topic:{term}` · `sources` for a match; `except:{key}` ·
+  `exclude-domain:{key}` · `exclude-topic:{term}` · `exclude-timeframe:{value}` · `no-type:{type}` · `no-source` ·
+  `no-schema` · `no-subject` for a `noMatch`; `untagged` · `unsure-type` for a `pending`.
+
+### Deliverability
+
+`SubscriptionSelectorMatcher.Choose(type, verdict, seen, unmatched, stateChanged)` names the one event a write appends
+to a selector subscription's log, or none. Content writes are `post.new`, `post.changed` and `post.extracted`; every
+other type is a lifecycle write (`link.state`, `post.merged`, `post.unmerged`, `post.purged`, `post.relisted`).
+
+| Seen by the subscription | Verdict | Write type | Appends |
+|---|---|---|---|
+| no | match | `post.new` · `post.changed` · `post.extracted` | `post.new` |
+| no | any | lifecycle | nothing |
+| no | noMatch · pending | any | nothing |
+| yes | match | any | the write's own type |
+| yes | any | lifecycle | the write's own type |
+| yes, newest content record `post.unmatched` | noMatch · pending | content | nothing |
+| yes | noMatch | content | `post.unmatched` (once) |
+| yes | pending | content | the write's type only when the post's state changed, else nothing |
+
+"Seen" and "newest content record" are read as `DeliveryEventWriter.AppendAsync` reads them (the lateral `previous` and
+`revision` subqueries over the subscription's log).
+
+### Event additions
+
+- `DeliveryEvent.match` (`SubscriptionMatch`): `{ selectorVersion, verdict: match | noMatch | pending, clauses[] }`;
+  omitted for channel subscriptions. It rides each event and is stored in `harvest_subscription_event.matched`
+  (`{ selectorVersion, verdict, clauses, context }`); it is never written to the shared post, and the `wow2.event.v1`
+  payload bytes stay as they were.
+- Payload: for a selector event, after the schema's render, the top-level `context` is the stored `matched.context`, for
+  any schema: each include ref's opaque `context` is the "defaults in the payload" (a channel's `defaultKind`), and it
+  survives Events' backlog pass, which re-maps from the stored payload. Channel events render byte-identically.
+- `DeliveryEvent.context` stays the subscription's own context.
+- Item id: ingest and subscribe-backfill keep `sha256("{postId:N}:{revision}:{type}")`; a selector change and `adopt` use
+  `sha256("{postId:N}:{revision}:{type}:s{selectorVersion}")`, so a second unmatch or re-match at the same revision is
+  not swallowed by the item's unique index.
+- Reasons: `ingest` (writes), `backfill` (new matches from subscribe, a change or an adopt), `resync` (an unmatch or
+  re-match from a change or an adopt).
+
+### Subscribing, changing and stopping
+
+- `SubscribeAsync` with a `selector`: `name` required and free (`Conflict` when a non-archived subscription of the tenant
+  holds it); `pipelineId` and `filterKey` refused; the container is the pool or the tenant's own; the selector is
+  normalized and validated (limits, taxonomy keys, refs inside the container). One selector subscription follows one
+  container: sources are refs to a group, a source or a section (a pipeline's scope), judged per link; an empty include
+  means the whole container, exclude wins. Backfill `Live` or `Since` appends `post.new` (reason `backfill`) for each
+  match, under the container lock.
+- `SetSelectorAsync`: only on a selector subscription, not archived. A selector equal to the stored one returns
+  `Changed = false` and writes nothing. Otherwise the version rises, and one window re-judges on the same cursor: every
+  post the subscription has any event of, plus live posts changed since `windowSinceUtc` (default 30 days, at most 365, at
+  most 10,000 posts; a larger window is refused and nothing is written). A post held and no longer matching arrives as
+  `post.unmatched` (reason `resync`), an unmatched post that matches again as `post.changed` (`resync`), a live post not
+  held that now matches as `post.new` (`backfill`); a pending post is counted. Item ids carry `:s{version}`. Each version
+  and its counts are kept in `harvest_subscription_selectors`, with `changedBy`.
+- `SetStateAsync`: `active` ↔ `suspended`; any state → `archived`; `archived` → another state is a `Conflict`; the same
+  state returns the subscription unchanged.
+- After a subscribe or a change commits, the module calls each registered selector-change hook with the subscription and
+  the window; a hook's failure is logged and never fails the write.
+
+### Preview
+
+`ISubscriptionPreviewBroker.PreviewAsync(request)` judges a selector, saved or not, over one container's live posts that
+changed since `sinceUtc` (default 30 days, at most 365; at most 5,000 posts, `truncated` past it) and writes nothing.
+Access is as for subscribing: an active tenant, and the pool or the tenant's own container, else `NotFound`.
+
+- Counts by verdict (`matched`, `noMatch`, `pending`), `tagged` (posts with any `SmallModel` tag) and a row per source of
+  each post's context link.
+- Per clause: for each subject term (`domain:{key}`, `topic:{term}`) `adds` counts matched posts that stop matching when
+  that term alone is removed; for each exclusion (`except:{key}`, `exclude-domain:{key}`, `exclude-topic:{term}`,
+  `exclude-timeframe:{value}`, `type`) `removes` counts posts that match once it alone is removed (for `type`:
+  `entityTypes` cleared).
+- `samples` (0-50): the newest matches, titles from `base.title` and `base.extras.postTags.titleEn`. `nearMisses`: up to
+  10 newest `noMatch` posts that one relaxation of the selector admits, `clauses` naming that relaxation.
+
+### Extraction demand and operations
+
+- Demand: the `IPostExtractionDemand` a host opts into is `Harvest:Processing:Extraction:Wanted` united with the (entity
+  type × domain include key) pairs of active selector subscriptions (`SelectorRules.Pairs`; an empty `entityTypes` means
+  event and listing). `except`, topics and exclusions add nothing: the extraction `want` has no topic field. A change
+  invalidates the cached demand and, when extraction is on, backfills the changed window.
+- `ISubscriptionOperationsBroker` (module; the `subscriptions` host verb calls it):
+  - `DiffAsync`: current verdicts of a selector subscription against a registered filter over a window (default 7 days,
+    at most 365, at most 10,000 posts); counts for both, each side only and pending, and the disagreeing posts with
+    their clauses, entity type, domains, topics and timeframe. Stateless; writes nothing.
+  - `ExplainAsync`: one post's current-revision verdict, clauses and merged context, and whether the subscription holds
+    it (`none`, `held`, `unmatched`).
+  - `AdoptAsync`: for a selector subscription of the same tenant and container, writes `post.unmatched` (`resync`) for
+    posts that other subscriptions delivered and the selector rejects, and `post.new` (`backfill`) for matches it never
+    held; a pending post is counted. Item ids carry `:s{version}`; `dryRun` writes nothing and a second run writes
+    nothing.
+
+### The `subscriptions` host verb
+
+`dotnet HarvestSources.Api.dll subscriptions …` on the source host: the report on stderr, the last stdout line one JSON
+object; exit 0 done, 1 refused or not found, 2 usage. `--subscription` takes an id or a name (a name needs
+`--tenant <slug>` when two tenants hold it).
+
+```text
+subscriptions list [--tenant <slug>]
+subscriptions show --subscription <id|name> [--tenant <slug>]
+subscriptions selector --subscription <id|name> [--tenant <slug>] [--set '<selector json>'] [--since <yyyy-mm-dd>] [--by <who>]
+subscriptions state --subscription <id|name> [--tenant <slug>] --state active|suspended|archived
+subscriptions preview --subscription <id|name> [--tenant <slug>] [--since <date>] [--samples N]
+subscriptions diff --subscription <id|name> [--tenant <slug>] --against <filter key> [--since <date>] [--limit N] [--counts-only] [--pending]
+subscriptions explain --subscription <id|name> [--tenant <slug>] --post <id>
+subscriptions adopt --into <id|name> --from <id>[,<id>…] [--tenant <slug>] [--dry-run]
+```
+
+- `selector` without `--set` prints the stored selector; with it, `SetSelectorAsync` (`--by` defaults to `operator`).
 
 ---
 
@@ -227,7 +449,7 @@ The module's `Module.*` registration extensions likewise opt each capability in 
   `entity.merged`, `entity.split`, `occurrence.added`, `occurrence.changed`, `occurrence.confirmed`,
   `occurrence.predicted`, `occurrence.removed`. Its cursor follows the pull rules: `(transaction, row id)` below the
   snapshot horizon, opaque and bound to its container; an older cursor replays, an empty page returns the cursor given.
-- Subscription delivery does not read the feed; per-subscription routing of entity events is the selector's (S09).
+- Subscription delivery does not read the feed; per-subscription routing of entity events is a later selector field.
 - Routes: `GET api/entities?containerId&q&type&domain&limit`, `GET api/entities/{id}?containerId`,
   `GET api/entities/{id}/posts?containerId&year&role&limit&cursor`, `GET api/entities/calendar?containerId&from&to&domain&type`,
   `GET api/entities/events?containerId&cursor&limit&type&domain` (`EntityRouteConstants`); `{ data }` envelope.
@@ -339,6 +561,10 @@ operator setup (`HarvestSources:Audience` `internal` only):
 - Subscriptions request `wow2.event.v1` with filter `ocharo-fashion-v1` and context `catalog=ocharo-fashion`,
   `sourceGroup`, `sourceChannel` and optional `eventFamily`. Existing subscriptions keep their IDs and context; the
   setup response maps them to groups. Each observed event keeps its own source link; groups never auto-merge editions.
+- `ocharo setup --selector [--selector-reset]` (and `selector` / `selectorReset` on the setup route) ensures the tenant's one
+  selector subscription `ocharo-events` from the shipped selector file over the container's groups: created when absent,
+  kept as is when present (a client's edits survive), reset to the file only with `--selector-reset`; the response adds
+  `selectorSubscriptionId` and `selectorVersion`. § Subscription selectors.
 - The event payload keeps canonical source provenance in `links` and registration/ticket/other URLs in
   `contentLinks`. Dates keep their precision and evidence. `starts` and `ends` are `{ value, precision, certainty }`;
   `certainty` is `stated` for a date the post states and `estimated` for one the extraction pass estimated from an

@@ -20,4 +20,10 @@ internal sealed class ApiDeliveryBroker(HttpClient http) : IDeliveryBroker
     public Task<Result<CursorPage<DeliveryEvent>>> PullAsync(Guid subscriptionId, string? cursor = null, int limit = 100, CancellationToken cancellationToken = default) =>
         HarvestDataHttp.SendAsync<CursorPage<DeliveryEvent>>(http, HttpMethod.Get,
             $"{DeliveryRouteConstants.Subscriptions}/{subscriptionId}/events?limit={limit}" + (cursor is null ? string.Empty : $"&cursor={Uri.EscapeDataString(cursor)}"), null, cancellationToken);
+    /// <inheritdoc />
+    public Task<Result<SelectorChangeModel>> SetSelectorAsync(Guid subscriptionId, SelectorChange change, CancellationToken cancellationToken = default) =>
+        HarvestDataHttp.SendAsync<SelectorChangeModel>(http, HttpMethod.Put, DeliveryRouteConstants.Selector(subscriptionId), change, cancellationToken);
+    /// <inheritdoc />
+    public Task<Result<SubscriptionModel>> SetStateAsync(Guid subscriptionId, SubscriptionState state, CancellationToken cancellationToken = default) =>
+        HarvestDataHttp.SendAsync<SubscriptionModel>(http, HttpMethod.Put, DeliveryRouteConstants.State(subscriptionId), new SubscriptionStateChange { State = state }, cancellationToken);
 }

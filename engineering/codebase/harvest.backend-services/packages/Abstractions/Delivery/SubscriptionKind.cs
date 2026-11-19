@@ -11,4 +11,7 @@ public enum SubscriptionKind
 
     /// <summary>Keywords over the pool; it may propose a pipeline, never create one.</summary>
     Keyword,
+
+    /// <summary>Layer 1 tags and sources over one container; it keeps no pipeline alive.</summary>
+    Selector,
 }
