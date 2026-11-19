@@ -40,6 +40,10 @@ public sealed record SourceOverviewModel
     /// <summary>Gets the number of distinct posts this source shows, including posts without a harvest section.</summary>
     public int? PostCount { get; init; }
 
+    /// <summary>Gets the number of the source's non-merged posts that carry a tags answer, whatever its status; it equals
+    /// the total of the unfiltered processed list.</summary>
+    public int? ProcessedCount { get; init; }
+
     /// <summary>Gets the source's post links first seen on each of the last
     /// <see cref="SourceConstants.OverviewDays"/> UTC days, oldest first; the last entry is today.</summary>
     public required IReadOnlyList<int> NewPostsDaily { get; init; }

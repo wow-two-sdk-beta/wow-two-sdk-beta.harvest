@@ -8,13 +8,14 @@ using WoW.Two.Sdk.Beta.Be.Foundation.Serialization;
 using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Posts;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
+using WoW.Two.Sdk.Beta.Be.Harvest.Posts;
 using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
 using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Sources;
 
 /// <summary>Reads a source's processed posts: the tags answer each post carries, its verdict and the extraction answer
-/// about the same content, with each answer's cost and latency from the AI module's inference log.</summary>
+/// about the same content, with each answer's cost, latency and token counts from the AI module's inference log.</summary>
 internal sealed partial class ModuleSourceOverviewBroker
 {
     /// <summary>The most inference rows read per post revision when matching an answer to its attempt.</summary>
@@ -35,14 +36,15 @@ internal sealed partial class ModuleSourceOverviewBroker
             ("source", source.Id), ("container", source.ContainerId), ("type", query.EntityType ?? ""),
             ("verdict", query.Verdict?.ToString().ToLowerInvariant() ?? ""), ("extracted", (object?)query.Extracted),
             ("after", after.HasValue), ("at", after?.At ?? DateTimeOffset.MinValue), ("post", after?.PostId ?? Guid.Empty),
-            ("limit", query.Limit + 1), ("tagsCase", PostTagsConstants.UseCase));
+            ("limit", query.Limit + 1), ("tagsCase", PostTagsConstants.UseCase),
+            ("asset_prefix", $"/api/sources/{source.Id:D}/{SourceRouteConstants.Assets}/"));
         command.Parameters["extracted"].NpgsqlDbType = NpgsqlTypes.NpgsqlDbType.Boolean;
         var rows = new List<ProcessedRow>();
         var total = 0;
         await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
             while (await reader.ReadAsync(cancellationToken))
             {
-                total = reader.GetInt32(33);
+                total = reader.GetInt32(39);
                 if (!reader.IsDBNull(0))
                     rows.Add(ReadProcessed(reader));
             }
@@ -66,12 +68,26 @@ internal sealed partial class ModuleSourceOverviewBroker
     private static readonly string ProcessedSql = $"""
         WITH candidates AS (
             SELECT p.id,p.revision,p.first_seen_at,COALESCE(NULLIF(btrim(p.base->>'title'),''),fl.url) AS title,fl.url,
-                p.base->'classification' AS classification,{PostTagsContent.SqlHash("p.base")} AS hash
+                p.base->'classification' AS classification,{PostTagsContent.SqlHash("p.base")} AS hash,
+                p.kind,p.state,p.base->'postedAt'->>'value' AS posted_at,
+                coalesce(nullif(fl.locale,''),nullif(p.base->'language'->>'code','und')) AS language,fc.pipeline_id,
+                (SELECT CASE WHEN a.file_id IS NULL THEN m.value->>'url' ELSE @asset_prefix || a.id::text END
+                 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(p.base->'media')='array' THEN p.base->'media' ELSE '[]'::jsonb END)
+                     WITH ORDINALITY m(value,position)
+                 LEFT JOIN harvest_source_assets a ON a.source_id=@source AND a.kind='image' AND a.origin_url=m.value->>'url'
+                 WHERE m.value->>'kind'='image' AND m.value->>'url' IS NOT NULL ORDER BY m.position LIMIT 1) AS image_url
             FROM harvest_posts p
             JOIN LATERAL (
-                SELECT l.url FROM harvest_post_links l WHERE l.container_id=p.container_id AND l.post_id=p.id AND l.source_id=@source
+                SELECT l.url,l.locale FROM harvest_post_links l WHERE l.container_id=p.container_id AND l.post_id=p.id AND l.source_id=@source
                 ORDER BY l.first_seen_at,l.id LIMIT 1
             ) fl ON true
+            LEFT JOIN LATERAL (
+                SELECT r.pipeline_id FROM harvest_post_links l
+                JOIN harvest_captures c ON c.container_id=l.container_id AND c.link_id=l.id
+                LEFT JOIN harvest_runs r ON r.id=c.run_id
+                WHERE l.container_id=p.container_id AND l.post_id=p.id AND l.source_id=@source
+                ORDER BY c.captured_at,c.id LIMIT 1
+            ) fc ON true
             WHERE p.container_id=@container AND p.merged_into IS NULL
         ), processed AS (
             SELECT c.*,t.status AS t_status,t.error AS t_error,t.content_hash=c.hash AS t_current,t.entity_type,
@@ -103,13 +119,13 @@ internal sealed partial class ModuleSourceOverviewBroker
             SELECT id,revision,first_seen_at,title,url,classification::text,t_status,t_error,t_current,entity_type,t_domains,
                 topics,about,timeframe,title_en,confidence,t_flags,t_model,t_prompt,t_inference,t_at,t_revision,
                 use_case,e_status,e_error,role,e_answer,e_flags,e_model,e_prompt,e_inference,e_at,e_revision,
-                (SELECT count(*) FROM processed)::int
+                kind,state,posted_at,language,pipeline_id,image_url,(SELECT count(*) FROM processed)::int
             FROM processed WHERE NOT @after OR (first_seen_at,id)<(@at,@post)
             ORDER BY first_seen_at DESC,id DESC LIMIT @limit
         ) page
         UNION ALL
         SELECT NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,
-            NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,(SELECT count(*) FROM processed)::int
+            NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,(SELECT count(*) FROM processed)::int
         """;
 
     private static ProcessedRow ReadProcessed(NpgsqlDataReader reader)
@@ -156,6 +172,12 @@ internal sealed partial class ModuleSourceOverviewBroker
             FirstSeenAt = reader.GetFieldValue<DateTimeOffset>(2),
             Title = reader.GetString(3),
             Url = reader.GetString(4),
+            Kind = Enum.TryParse<PostKind>(reader.GetString(33), true, out var kind) ? kind : PostKind.Other,
+            State = Enum.Parse<PostState>(reader.GetString(34), true),
+            PostedAt = Text(35),
+            Language = Text(36),
+            PipelineId = Id(37),
+            ImageUrl = Text(38),
             Classification = Text(5) is { } classification
                 ? JsonSerializer.Deserialize<PostClassification>(classification, JsonOptionsConstants.Default)
                 : null,
@@ -190,7 +212,11 @@ internal sealed partial class ModuleSourceOverviewBroker
 
     private static ProcessedAnswerModel Priced(ProcessedAnswerModel answer, AttemptKey? key, IReadOnlyDictionary<Guid, InferenceModel> attempts) =>
         key is not null && attempts.TryGetValue(key.InferenceId, out var attempt)
-            ? answer with { CostMicroUsd = attempt.CostMicroUsd, LatencyMs = attempt.LatencyMs }
+            ? answer with
+            {
+                CostMicroUsd = attempt.CostMicroUsd, LatencyMs = attempt.LatencyMs,
+                InputTokens = attempt.InputTokens, OutputTokens = attempt.OutputTokens,
+            }
             : answer;
 
     /// <summary>Splits the stored <c>{provider}/{model}</c> route into its provider and model.</summary>

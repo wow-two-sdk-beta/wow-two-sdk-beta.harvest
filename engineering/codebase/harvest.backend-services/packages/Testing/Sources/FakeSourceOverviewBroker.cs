@@ -47,10 +47,13 @@ public sealed class FakeSourceOverviewBroker(
         var allRuns = runs.Snapshot().Where(run => run.ContainerId == containerId).ToList();
         IReadOnlyList<FakePostBroker.LinkView> links;
         Dictionary<(Guid Post, Guid Source), Guid?> firstPipelines;
+        Dictionary<Guid, int> processed;
         lock (posts.Gate)
         {
             links = posts.Links(containerId);
             firstPipelines = FirstPipelines(links.Where(link => posts.Find(link.PostId) is { MergedInto: null }));
+            processed = links.Where(link => answers.ContainsKey(link.PostId) && posts.Find(link.PostId) is { MergedInto: null })
+                .GroupBy(link => link.SourceId).ToDictionary(group => group.Key, group => group.Select(link => link.PostId).Distinct().Count());
         }
 
         var overviews = new List<SourceOverviewModel>();
@@ -86,6 +89,7 @@ public sealed class FakeSourceOverviewBroker(
                 NextHarvestAt = sections.Where(section => section.Harvesting && section.NextDueAt is not null).Min(section => section.NextDueAt),
                 PostCount = links.Where(link => link.SourceId == source.Id).Select(link => link.PostId).Distinct()
                     .Count(postId => posts.Find(postId) is { MergedInto: null }),
+                ProcessedCount = processed.GetValueOrDefault(source.Id),
                 NewPostsDaily = Daily(links.Where(link => link.SourceId == source.Id), now),
                 Sections = sections,
                 Health = health,
@@ -174,6 +178,12 @@ public sealed class FakeSourceOverviewBroker(
         Url = post.Url,
         Revision = post.Revision,
         FirstSeenAt = post.FirstSeenAt,
+        Kind = post.Kind,
+        State = post.State,
+        PostedAt = post.PostedAt,
+        Language = post.Language,
+        PipelineId = post.PipelineId,
+        ImageUrl = post.ImageUrl,
         Classification = classification,
         Tags = new ProcessedTagsModel
         {
@@ -194,7 +204,7 @@ public sealed class FakeSourceOverviewBroker(
             : null,
     };
 
-    /// <summary>The fake keeps no inference log, so an answer has no cost or latency.</summary>
+    /// <summary>The fake keeps no inference log, so an answer has no cost, latency or token counts.</summary>
     private static ProcessedAnswerModel Answer(string? route, int? promptVersion, DateTimeOffset at)
     {
         var slash = route?.IndexOf('/', StringComparison.Ordinal) ?? -1;
@@ -230,6 +240,7 @@ public sealed class FakeSourceOverviewBroker(
                     StartsAt = post.Base.Dates.FirstOrDefault(date => date.Role == DateRole.Start)?.Value,
                     EndsAt = post.Base.Dates.FirstOrDefault(date => date.Role == DateRole.End)?.Value,
                     PostedAt = post.Base.PostedAt?.Value,
+                    Language = post.Base.Language is { Code: var code } && code != "und" ? code : null,
                     ImageUrls = [.. post.Base.Media.Where(media => media.Kind == MediaKind.Image).Select(media => media.Url).Take(SourceConstants.MaxPostImages)],
                     Url = first.Url,
                     ImageUrl = post.Base.Media.FirstOrDefault(media => media.Kind == MediaKind.Image)?.Url,

@@ -14,7 +14,7 @@ export interface PostClassificationModel {
   readonly kind?: string;
 }
 
-/** Mirrors `ProcessedAnswerModel`: who answered, with which prompt, at what cost and how fast. */
+/** Mirrors `ProcessedAnswerModel`: who answered, with which prompt, at what cost, how fast and with how many tokens. */
 export interface ProcessedAnswerModel {
   /** `anthropic`, `openai` or another provider; absent when no model answered. */
   readonly provider?: string;
@@ -25,6 +25,10 @@ export interface ProcessedAnswerModel {
   readonly costMicroUsd?: number;
   /** The attempt's wall-clock time in milliseconds, from the inference log. */
   readonly latencyMs?: number;
+  /** The attempt's input tokens, cached ones included, from the inference log. */
+  readonly inputTokens?: number;
+  /** The attempt's output tokens, reasoning included, from the inference log. */
+  readonly outputTokens?: number;
   readonly answeredAt: string;
 }
 
@@ -129,6 +133,18 @@ export interface SourceProcessedPostModel {
   readonly url?: string;
   readonly revision: number;
   readonly firstSeenAt: string;
+  /** The post's `PostKind`, such as `event` or `news`; omitted by an older host. */
+  readonly kind?: string;
+  /** The post's rolled-up existence state, such as `live`. */
+  readonly state: string;
+  /** When the post itself was published at its source; omitted when its reader cannot tell. */
+  readonly postedAt?: string;
+  /** The locale of the source's post link, or the post's extracted language. */
+  readonly language?: string;
+  /** The section whose run first captured the post from this source; omitted when no run did. */
+  readonly pipelineId?: string;
+  /** The post's first image, using the private stored copy when available; omitted when it has none. */
+  readonly imageUrl?: string;
   readonly tags: ProcessedTagsModel;
   readonly classification?: PostClassificationModel;
   readonly extraction?: ProcessedExtractionModel;

@@ -45,6 +45,7 @@ internal sealed partial class ModuleSourceOverviewBroker(
         var active = await ActiveSourcesAsync(connection, containerId, cancellationToken);
         var daily = await DailyAsync(connection, containerId, now, cancellationToken);
         var (sourcePosts, sectionPosts) = await PostCountsAsync(connection, containerId, cancellationToken);
+        var processed = await ProcessedCountsAsync(connection, containerId, cancellationToken);
         var subscribers = await SubscribersAsync(connection, containerId, cancellationToken);
         var favicons = await FaviconsAsync(connection, containerId, cancellationToken);
         var addresses = new Dictionary<Guid, SourceAddress>();
@@ -82,6 +83,7 @@ internal sealed partial class ModuleSourceOverviewBroker(
                 LastHarvest = lastHarvest,
                 NextHarvestAt = sections.Where(section => section.Harvesting && section.NextDueAt is not null).Min(section => section.NextDueAt),
                 PostCount = sourcePosts.GetValueOrDefault(source.Id),
+                ProcessedCount = processed.GetValueOrDefault(source.Id),
                 NewPostsDaily = SourceOverviewRules.DailySeries(daily.GetValueOrDefault(source.Id) ?? [], now),
                 Sections = sections,
                 Health = health,
@@ -401,6 +403,20 @@ internal sealed partial class ModuleSourceOverviewBroker(
             if (!reader.IsDBNull(1)) sections.Add(reader.GetGuid(1), reader.GetInt32(2));
         }
         return (sources, sections);
+    }
+
+    /// <summary>Counts each source's processed posts by the rule the processed list's unfiltered total uses: the source's
+    /// non-merged posts with at least one <c>harvest_post_tags</c> row, whatever its status.</summary>
+    private static async Task<Dictionary<Guid, int>> ProcessedCountsAsync(NpgsqlConnection connection, Guid containerId, CancellationToken ct)
+    {
+        await using var command = PostSql.Command(connection, null, """
+            SELECT l.source_id,count(DISTINCT l.post_id)::int
+            FROM harvest_post_links l
+            JOIN harvest_posts p ON p.container_id=@container AND p.id=l.post_id AND p.merged_into IS NULL
+            WHERE l.container_id=@container AND EXISTS (SELECT 1 FROM harvest_post_tags t WHERE t.post_id=l.post_id)
+            GROUP BY l.source_id
+            """, ("container", containerId));
+        return await CountsAsync(command, ct);
     }
 
     /// <summary>Counts each pipeline's active subscriptions.</summary>

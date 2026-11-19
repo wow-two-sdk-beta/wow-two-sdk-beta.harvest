@@ -41,6 +41,7 @@ const runway: SourceProcessedPostModel = {
   url: 'https://www.afisha.uz/ru/fashion/1',
   revision: 2,
   firstSeenAt: new Date().toISOString(),
+  state: 'live',
   tags: {
     status: 'done',
     current: true,
@@ -96,6 +97,7 @@ const essay: SourceProcessedPostModel = {
   title: 'A guide to the season’s fabrics',
   revision: 1,
   firstSeenAt: new Date().toISOString(),
+  state: 'live',
   tags: {
     status: 'done',
     current: true,

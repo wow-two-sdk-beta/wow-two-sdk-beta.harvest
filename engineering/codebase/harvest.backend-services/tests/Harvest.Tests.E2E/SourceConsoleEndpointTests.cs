@@ -56,7 +56,7 @@ public sealed class SourceConsoleEndpointTests(HarvestApiFixture fixture)
         await ExpectAsync(admin.PutAsJsonAsync($"/api/pipelines/{lane.PipelineId}", Edit(lane, new { maxPages = 51 })), HttpStatusCode.BadRequest);
 
         var overview = (await DataAsync(await admin.GetAsync($"/api/sources/overview?containerId={lane.ContainerId}"))).EnumerateArray().Single();
-        Keys(overview).Should().BeEquivalentTo("sourceId", "name", "family", "handle", "groupId", "state", "sourceState", "permission", "postCount", "newPostsDaily", "sections", "health");
+        Keys(overview).Should().BeEquivalentTo("sourceId", "name", "family", "handle", "groupId", "state", "sourceState", "permission", "postCount", "processedCount", "newPostsDaily", "sections", "health");
         overview.GetProperty("name").GetString().Should().Be("Afisha.uz");
         overview.GetProperty("family").GetString().Should().Be("site");
         overview.GetProperty("state").GetString().Should().Be("healthy");
@@ -70,8 +70,9 @@ public sealed class SourceConsoleEndpointTests(HarvestApiFixture fixture)
         Keys(overview.GetProperty("health")).Should().BeEquivalentTo("hostKey", "minDelayMs", "consecutiveFailures");
 
         var post = await CaptureAsync(admin, lane, "Concert");
-        (await DataAsync(await admin.GetAsync($"/api/sources/overview?containerId={lane.ContainerId}")))
-            .EnumerateArray().Single().GetProperty("postCount").GetInt32().Should().Be(1);
+        var counted = (await DataAsync(await admin.GetAsync($"/api/sources/overview?containerId={lane.ContainerId}"))).EnumerateArray().Single();
+        counted.GetProperty("postCount").GetInt32().Should().Be(1);
+        counted.GetProperty("processedCount").GetInt32().Should().Be(0);
         var posts = (await DataAsync(await admin.GetAsync($"/api/sources/{lane.SourceId}/posts?limit=10"))).EnumerateArray().Single();
         Keys(posts).Should().BeEquivalentTo("postId", "title", "kind", "state", "revision", "firstSeenAt", "lastChangedAt", "url", "imageUrls");
         posts.GetProperty("kind").GetString().Should().Be("event");

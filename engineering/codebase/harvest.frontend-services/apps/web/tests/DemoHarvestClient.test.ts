@@ -106,6 +106,19 @@ describe('standalone demo client', () => {
     if (!processed.ok) throw new Error('Demo processed posts missing');
     expect(processed.value.total).toBeGreaterThan(3);
     expect(processed.value.items.some((post) => post.tags.answer.provider === 'openai')).toBe(true);
+    expect(overview.value[0]!.processedCount).toBe(processed.value.total);
+    expect(new Set(processed.value.items.map((post) => post.tags.answer.provider))).toEqual(
+      new Set(['anthropic', 'openai', 'google']),
+    );
+    const flash = processed.value.items.find((post) => post.tags.answer.provider === 'google');
+    expect(flash?.tags.answer).toMatchObject({ model: 'gemini-2.5-flash' });
+    expect(typeof flash?.tags.answer.inputTokens).toBe('number');
+    expect(typeof flash?.tags.answer.outputTokens).toBe('number');
+    expect(processed.value.items.every((post) => post.state === 'live' && !!post.kind && !!post.pipelineId)).toBe(true);
+    expect(new Set(processed.value.items.map((post) => post.language))).toEqual(new Set(['ru', 'en']));
+    const show = processed.value.items.find((post) => post.title.startsWith('Показ мод'));
+    expect(show).toMatchObject({ kind: 'event', language: 'ru', postedAt: '2026-10-14T09:00:00Z' });
+    expect(show?.imageUrl).toBeTruthy();
     const relevant = await api.querySourceProcessed!(afisha, { verdict: 'relevant', extracted: true });
     expect(relevant.ok && relevant.value.items.every((post) => post.extraction?.status === 'done')).toBe(true);
     const paged = await api.querySourceProcessed!(afisha, { limit: 2 });

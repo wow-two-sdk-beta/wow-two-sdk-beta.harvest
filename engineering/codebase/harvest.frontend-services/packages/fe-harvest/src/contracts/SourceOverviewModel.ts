@@ -87,6 +87,8 @@ export interface SourceOverviewModel {
   /** The earliest next capture among enabled schedules of unpaused sections. */
   readonly nextHarvestAt?: string;
   readonly postCount?: number;
+  /** The source's posts that carry a tags answer of any status: the total of its unfiltered processed list. Omitted by an older host. */
+  readonly processedCount?: number;
   /** New posts per UTC day over 14 days, oldest first; the last entry is today. */
   readonly newPostsDaily: readonly number[];
   readonly sections: readonly SourceSectionOverviewModel[];

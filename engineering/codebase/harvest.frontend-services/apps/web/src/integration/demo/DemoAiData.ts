@@ -17,9 +17,14 @@ export interface DemoPost {
   readonly postId: string;
   readonly title?: string;
   readonly kind: string;
+  readonly state?: string;
   readonly revision: number;
   readonly firstSeenAt: string;
+  readonly postedAt?: string;
+  readonly language?: string;
+  readonly pipelineId?: string;
   readonly url?: string;
+  readonly imageUrl?: string;
 }
 
 /** A local day `offset` days from today, as `yyyy-MM-dd`. @internal */
@@ -31,25 +36,35 @@ function day(offset: number, years = 0) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-/** An answer's provenance: who answered, the cost and latency the inference log recorded. @internal */
+/** An answer's provenance: who answered, the cost, latency and tokens the inference log recorded. @internal */
 function answer(
   model: string,
   costMicroUsd: number,
   latencyMs: number,
   promptVersion: number,
   at: string,
+  tokens?: readonly [input: number, output: number],
 ): ProcessedAnswerModel {
   const [provider, id] = model.split('/');
-  return { provider, model: id, promptVersion, costMicroUsd, latencyMs, answeredAt: at };
+  return {
+    provider,
+    model: id,
+    promptVersion,
+    costMicroUsd,
+    latencyMs,
+    ...(tokens ? { inputTokens: tokens[0], outputTokens: tokens[1] } : {}),
+    answeredAt: at,
+  };
 }
 
 const Haiku = 'anthropic/claude-haiku-5-5';
 const Mini = 'openai/gpt-5-mini';
+const Flash = 'google/gemini-2.5-flash';
 
 /** The AI's reading of each demo post, by title; a post missing here is not processed yet. @internal */
 function readingOf(
   post: DemoPost,
-): Omit<SourceProcessedPostModel, 'postId' | 'title' | 'url' | 'revision' | 'firstSeenAt'> | undefined {
+): Pick<SourceProcessedPostModel, 'tags' | 'classification' | 'extraction'> | undefined {
   const at = post.firstSeenAt;
   const tags = (value: Partial<ProcessedTagsModel> & Pick<ProcessedTagsModel, 'answer'>): ProcessedTagsModel => ({
     status: 'done',
@@ -71,7 +86,7 @@ function readingOf(
           timeframe: 'upcoming',
           titleEn: 'Fashion show: The Fashion Show Line 2026',
           confidence: 0.94,
-          answer: answer(Haiku, 310, 1840, 2, at),
+          answer: answer(Haiku, 310, 1840, 2, at, [1240, 186]),
         }),
         classification: {
           classifier: 'model:anthropic/claude-haiku-5-5@post-tags:2',
@@ -98,7 +113,7 @@ function readingOf(
             status: 'scheduled',
           },
           flags: [],
-          answer: answer(Haiku, 1120, 2410, 3, at),
+          answer: answer(Haiku, 1120, 2410, 3, at, [2380, 412]),
         },
       };
     case 'Autumn collections at a Tashkent showroom':
@@ -111,7 +126,7 @@ function readingOf(
           timeframe: 'upcoming',
           confidence: 0.71,
           flags: [{ field: 'timeframe', reason: 'the post states no date', proposed: 'upcoming' }],
-          answer: answer(Mini, 540, 3120, 2, at),
+          answer: answer(Mini, 540, 3120, 2, at, [1190, 224]),
         }),
         classification: {
           classifier: 'model:openai/gpt-5-mini@post-tags:2',
@@ -134,7 +149,7 @@ function readingOf(
             status: 'scheduled',
           },
           flags: [{ field: 'occurrences[0].starts', reason: 'estimated from the publication date', proposed: day(10) }],
-          answer: answer(Mini, 1680, 4010, 3, at),
+          answer: answer(Mini, 1680, 4010, 3, at, [2410, 468]),
         },
       };
     case 'Five local designers to follow':
@@ -147,7 +162,7 @@ function readingOf(
           about: post.title.startsWith('Five') ? 'profiles of local fashion designers' : 'a guide to seasonal fabrics',
           timeframe: 'evergreen',
           confidence: 0.88,
-          answer: answer(Haiku, 270, 1290, 2, at),
+          answer: answer(Haiku, 270, 1290, 2, at, [1020, 142]),
         }),
         classification: {
           classifier: 'model:anthropic/claude-haiku-5-5@post-tags:2',
@@ -166,10 +181,10 @@ function readingOf(
           timeframe: 'ongoing',
           titleEn: 'Ceramics of Rishtan: a retrospective',
           confidence: 0.9,
-          answer: answer(Haiku, 330, 1560, 2, at),
+          answer: answer(Flash, 180, 1380, 2, at, [1110, 171]),
         }),
         classification: {
-          classifier: 'model:anthropic/claude-haiku-5-5@post-tags:2',
+          classifier: 'model:google/gemini-2.5-flash@post-tags:2',
           verdict: 'irrelevant',
           confidence: 0.9,
           reason: 'off every wanted pair',
@@ -188,7 +203,7 @@ function readingOf(
             { field: 'entityType', reason: 'unsure', proposed: 'event' },
             { field: 'domains', reason: 'unknown node', proposed: 'fine-art/installations' },
           ],
-          answer: answer(Haiku, 290, 1730, 2, at),
+          answer: answer(Haiku, 290, 1730, 2, at, [1080, 158]),
         }),
         classification: {
           classifier: 'model:anthropic/claude-haiku-5-5@post-tags:2',
@@ -211,7 +226,7 @@ function readingOf(
           about: 'a guide to museum exhibitions',
           timeframe: 'ongoing',
           confidence: 0.83,
-          answer: answer(Haiku, 250, 1180, 2, at),
+          answer: answer(Haiku, 250, 1180, 2, at, [960, 131]),
         }),
         classification: {
           classifier: 'model:anthropic/claude-haiku-5-5@post-tags:2',
@@ -223,6 +238,11 @@ function readingOf(
     default:
       return undefined;
   }
+}
+
+/** How many of the demo posts carry a tags answer, as the source overview's `processedCount` reads it. */
+export function demoProcessedCount(posts: readonly DemoPost[]): number {
+  return posts.filter((post) => readingOf(post) !== undefined).length;
 }
 
 /** Answers `GET api/sources/{id}/processed` over the demo posts: filters, then a cursor page of the given size. */
@@ -237,6 +257,12 @@ export function demoProcessedPage(posts: readonly DemoPost[], params: URLSearchP
             url: post.url,
             revision: post.revision,
             firstSeenAt: post.firstSeenAt,
+            kind: post.kind,
+            state: post.state ?? 'live',
+            ...(post.postedAt ? { postedAt: post.postedAt } : {}),
+            ...(post.language ? { language: post.language } : {}),
+            ...(post.pipelineId ? { pipelineId: post.pipelineId } : {}),
+            ...(post.imageUrl ? { imageUrl: post.imageUrl } : {}),
             ...reading,
           },
         ]

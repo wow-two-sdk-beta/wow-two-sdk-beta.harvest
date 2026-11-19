@@ -220,9 +220,21 @@ public abstract class SourceOverviewBrokerConformance
     {
         var context = await ContextAsync();
         var at = Clock.GetUtcNow();
-        var runway = await SavePostAsync(context, "runway", "Tashkent Fashion Week", ClassificationVerdict.Relevant);
+        var pipeline = await PipelineAsync(context);
+        var run = await CancelledRunAsync(context, pipeline);
+        var runway = await SavePostAsync(context, "runway", "Tashkent Fashion Week", ClassificationVerdict.Relevant, run.Id, envelope => envelope with
+        {
+            PostedAt = new PostTimestamp { Value = "2026-11-12T09:30", Precision = DatePrecision.Minute },
+            Language = new PostLanguage { Code = "ru" },
+            Media =
+            [
+                new PostMedia { Kind = MediaKind.Thumbnail, Url = $"https://{context.Source.Handle}/thumb.jpg" },
+                new PostMedia { Kind = MediaKind.Image, Url = $"https://{context.Source.Handle}/poster.jpg" },
+                new PostMedia { Kind = MediaKind.Image, Url = $"https://{context.Source.Handle}/second.jpg" },
+            ],
+        });
         var flat = await SavePostAsync(context, "flat", "2 xonali kvartira ijaraga", ClassificationVerdict.Irrelevant);
-        var essay = await SavePostAsync(context, "essay", "Notes on autumn fabrics", ClassificationVerdict.Irrelevant);
+        var essay = await SavePostAsync(context, "essay", "Notes on autumn fabrics", ClassificationVerdict.Irrelevant, shape: envelope => envelope with { Kind = PostKind.News });
         await SavePostAsync(context, "untagged", "Not tagged yet", null);
         await SeedAnswersAsync(new ProcessedAnswerSeed
         {
@@ -265,6 +277,12 @@ public abstract class SourceOverviewBrokerConformance
         shown.Title.Should().Be("Tashkent Fashion Week");
         shown.Url.Should().Be($"https://{context.Source.Handle}/runway");
         shown.Classification!.Verdict.Should().Be(ClassificationVerdict.Relevant);
+        shown.Should().Match<SourceProcessedPostModel>(post => post.Kind == PostKind.Event && post.State == PostState.Live
+            && post.PostedAt == "2026-11-12T09:30" && post.Language == "ru" && post.PipelineId == pipeline.Id
+            && post.ImageUrl == $"https://{context.Source.Handle}/poster.jpg");
+        all.Items.Single(post => post.PostId == flat).Should().Match<SourceProcessedPostModel>(post => post.Kind == PostKind.Event
+            && post.State == PostState.Live && post.PostedAt == null && post.Language == null && post.PipelineId == null && post.ImageUrl == null);
+        all.Items.Single(post => post.PostId == essay).Kind.Should().Be(PostKind.News);
         shown.Tags.Should().Match<ProcessedTagsModel>(tags => tags.Status == "done" && tags.Current && tags.EntityType == "event"
             && tags.About == "a fashion week" && tags.TitleEn == "Tashkent Fashion Week" && tags.Confidence == 0.9m
             && tags.Timeframe == "upcoming" && tags.Topics.SequenceEqual(new[] { "fashion-week" }));
@@ -298,6 +316,35 @@ public abstract class SourceOverviewBrokerConformance
             .Should().BeEquivalentTo([flat, essay]);
         Ids(await Overview.QuerySourceProcessedAsync(context.Source.Id, new() { Extracted = true })).Should().BeEquivalentTo([runway, flat]);
         Ids(await Overview.QuerySourceProcessedAsync(context.Source.Id, new() { Extracted = false })).Should().Equal(essay);
+        Single(await Overview.ListOverviewAsync(context.Container)).ProcessedCount.Should().Be(all.Total);
+    }
+
+    /// <summary>A source's processed count is the total of its unfiltered processed list: its non-merged posts with a tags
+    /// answer of any status, never another source's posts or a post still untagged.</summary>
+    [Fact]
+    public async Task ListOverview_ShouldCountProcessedPostsPerSource_ByTheProcessedListsRule()
+    {
+        var context = await ContextAsync();
+        var other = await SourceAsync(context.Container, "c-" + Unique() + ".example");
+        var at = Clock.GetUtcNow();
+        var tagged = await SavePostAsync(context, "tagged", "Tagged exhibition", ClassificationVerdict.Relevant);
+        var failed = await SavePostAsync(context, "failed", "Tags failed", null);
+        await SavePostAsync(context, "untagged", "Not tagged yet", null);
+        var foreign = Value(await Posts.SaveCaptureAsync(context.Container, other.Id, null, Capture(context, "foreign"), Envelope("Foreign exhibition"))).Post.Id;
+        await SeedAnswersAsync(new ProcessedAnswerSeed { PostId = tagged, Domains = ["style-fashion"], AnsweredAtUtc = at });
+        await SeedAnswersAsync(new ProcessedAnswerSeed { PostId = failed, Status = "failed", Error = "rate-limited", EntityType = null, AnsweredAtUtc = at });
+        await SeedAnswersAsync(new ProcessedAnswerSeed { PostId = foreign, Domains = ["style-fashion"], AnsweredAtUtc = at });
+
+        var overviews = Value(await Overview.ListOverviewAsync(context.Container));
+
+        var own = overviews.Single(overview => overview.SourceId == context.Source.Id);
+        own.PostCount.Should().Be(3);
+        own.ProcessedCount.Should().Be(2);
+        overviews.Single(overview => overview.SourceId == other.Id).ProcessedCount.Should().Be(1);
+        foreach (var overview in overviews)
+            overview.ProcessedCount.Should().Be(Value(await Overview.QuerySourceProcessedAsync(overview.SourceId, new())).Total);
+        var none = await SourceAsync(context.Container, "d-" + Unique() + ".example");
+        Value(await Overview.ListOverviewAsync(context.Container)).Single(overview => overview.SourceId == none.Id).ProcessedCount.Should().Be(0);
     }
 
     /// <summary>A cursor continues the same source and filters below the first page; the rules refuse a bad filter,
@@ -429,13 +476,17 @@ public abstract class SourceOverviewBrokerConformance
         Extraction = new ExtractionStamp { NormVersion = "test@1", RulesVersion = "test@1" },
     };
 
-    private async Task<Guid> SavePostAsync(Context context, string key, string title, ClassificationVerdict? verdict) =>
-        Value(await Posts.SaveCaptureAsync(context.Container, context.Source.Id, null, Capture(context, key), Envelope(title) with
+    private async Task<Guid> SavePostAsync(Context context, string key, string title, ClassificationVerdict? verdict,
+        Guid? runId = null, Func<PostEnvelope, PostEnvelope>? shape = null)
+    {
+        var envelope = Envelope(title) with
         {
             Classification = verdict is { } value
                 ? new PostClassification { Classifier = "model:anthropic/claude-haiku-5-5@post-tags:1", Verdict = value, Confidence = 0.9 }
                 : null,
-        })).Post.Id;
+        };
+        return Value(await Posts.SaveCaptureAsync(context.Container, context.Source.Id, runId, Capture(context, key), shape?.Invoke(envelope) ?? envelope)).Post.Id;
+    }
 
     private static IEnumerable<Guid> Ids(Result<SourceProcessedPage> result) => Value(result).Items.Select(post => post.PostId);
 

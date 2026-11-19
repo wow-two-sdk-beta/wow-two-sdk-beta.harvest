@@ -13,7 +13,7 @@ import type {
   SourcePostQuery,
   SourceSectionOverviewModel,
 } from '@wow-two-beta/fe-harvest/contracts';
-import { demoEntities, demoProcessedPage } from './DemoAiData';
+import { demoEntities, demoProcessedCount, demoProcessedPage } from './DemoAiData';
 
 /** One synthetic source: its group, how it is read, the sections its reader lists and its earlier daily posts. */
 interface DemoSource {
@@ -227,6 +227,9 @@ export function createDemoHarvestClient(): HarvestClient {
     run(fashion, 8 * 60 + 40, 'completed', { captured: 4, discovered: 4, pages: 1 }),
   ];
 
+  /** The language a synthetic title is written in: Cyrillic is Russian, Latin English. */
+  const languageOf = (title: string) => ({ code: /\p{Script=Cyrillic}/u.test(title) ? 'ru' : 'en', mixed: false });
+
   /** A synthetic post of Afisha.uz, first seen `minutesAgo`. */
   const post = (
     pipeline: PipelineModel,
@@ -242,7 +245,7 @@ export function createDemoHarvestClient(): HarvestClient {
       containerId,
       state: 'live',
       revision,
-      base: { schema: 'wow2.post.v1', kind, title, ...extra },
+      base: { schema: 'wow2.post.v1', kind, title, language: languageOf(title), ...extra },
       links: [
         {
           id: id(),
@@ -471,6 +474,7 @@ export function createDemoHarvestClient(): HarvestClient {
       permission: source.permission,
       ...(lastHarvest ? { lastHarvest: harvestOf(lastHarvest) } : {}),
       ...(nextHarvestAt ? { nextHarvestAt } : {}),
+      processedCount: demoProcessedCount(sourcePosts(source.id)),
       newPostsDaily: [...(demo.history ?? Array.from({ length: 13 }, () => 0)), fresh],
       sections: sectionRows,
       health: host,
@@ -492,6 +496,7 @@ export function createDemoHarvestClient(): HarvestClient {
         ...(startsAt ? { startsAt } : {}),
         ...(endsAt ? { endsAt } : {}),
         ...(row.base.postedAt ? { postedAt: row.base.postedAt.value } : {}),
+        ...(row.base.language ? { language: row.base.language.code } : {}),
         url: row.links[0]?.url,
         ...(row.base.media?.some((item) => item.kind === 'image')
           ? { imageUrl: row.base.media.find((item) => item.kind === 'image')!.url }

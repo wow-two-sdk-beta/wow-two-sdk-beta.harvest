@@ -1,9 +1,11 @@
 using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
+using WoW.Two.Sdk.Beta.Be.Harvest.Posts;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 
 /// <summary>Represents one post a source shows with what the AI passes made of it: its tags, its relevance verdict and,
-/// for an extracted event or listing, a compact extraction summary. It carries no post text beyond the title.</summary>
+/// for an extracted event or listing, a compact extraction summary, beside the post's own card fields (kind, state, image,
+/// language, section and publication time). It carries no post text beyond the title.</summary>
 public sealed record SourceProcessedPostModel
 {
     /// <summary>Gets the post's id.</summary>
@@ -20,6 +22,25 @@ public sealed record SourceProcessedPostModel
 
     /// <summary>Gets when the post was first captured (UTC).</summary>
     public required DateTimeOffset FirstSeenAt { get; init; }
+
+    /// <summary>Gets what the post is; <see cref="PostKind.Other"/> when extraction named no kind.</summary>
+    public PostKind Kind { get; init; } = PostKind.Other;
+
+    /// <summary>Gets the post's rolled-up existence state.</summary>
+    public required PostState State { get; init; }
+
+    /// <summary>Gets when the post itself was published at its source, a partial ISO 8601 value; null when its reader
+    /// cannot tell.</summary>
+    public string? PostedAt { get; init; }
+
+    /// <summary>Gets the locale of this source's post link, or the post's extracted language.</summary>
+    public string? Language { get; init; }
+
+    /// <summary>Gets the section whose run first captured the post from this source; null when no run did.</summary>
+    public Guid? PipelineId { get; init; }
+
+    /// <summary>Gets the first image address, using the private stored copy when available.</summary>
+    public string? ImageUrl { get; init; }
 
     /// <summary>Gets the tags answer the post carries: the done answer about its current title and text, else the
     /// newest done one, else the newest attempt.</summary>
@@ -87,7 +108,7 @@ public sealed record ProcessedDomainModel(string Key, string Label, bool Primary
 public sealed record ProcessedFlagModel(string Field, string Reason, string? Proposed);
 
 /// <summary>Represents an AI answer's provenance: the provider and model that answered, the prompt version, and the
-/// cost and latency the inference log recorded for the attempt.</summary>
+/// cost, latency and token counts the inference log recorded for the attempt.</summary>
 public sealed record ProcessedAnswerModel
 {
     /// <summary>Gets the provider, such as <c>anthropic</c> or <c>openai</c>; none when no model answered.</summary>
@@ -105,6 +126,12 @@ public sealed record ProcessedAnswerModel
 
     /// <summary>Gets the attempt's wall-clock time in milliseconds; none as for <see cref="CostMicroUsd"/>.</summary>
     public long? LatencyMs { get; init; }
+
+    /// <summary>Gets the attempt's input tokens, cached ones included; none as for <see cref="CostMicroUsd"/>.</summary>
+    public long? InputTokens { get; init; }
+
+    /// <summary>Gets the attempt's output tokens, reasoning included; none as for <see cref="CostMicroUsd"/>.</summary>
+    public long? OutputTokens { get; init; }
 
     /// <summary>Gets when the answer was stored (UTC).</summary>
     public required DateTimeOffset AnsweredAt { get; init; }
