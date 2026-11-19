@@ -30,7 +30,10 @@ await app.Services.MigrateHarvestOnStartupAsync(); // create, check, migrate, ch
 - `IPostBroker` — immutable captures, deduplication, field provenance, deletion checks and reviewed merges.
 - `IDeliveryBroker` — pipeline subscriptions and resumable pull events with immutable revision payloads.
 - `ISourceOverviewBroker` — the console's per-source overview, a source's posts and a post's revisions.
+- `IPostTagsBroker` — the Layer 1 `post-tags` pass over the shared AI contract: `AddHarvestPostTags()` and
+  `AddHarvestPostTagsWorker()`; post writes queue it only when `PostTagsOptions.Enabled` is set and the host composes
+  the AI module. Its taxonomy is IAB Tech Lab Content Taxonomy 3.1 (CC BY 3.0).
 - Fetching, readers, extraction, posts, delivery and the engine register explicitly through their `Module.*` namespaces.
-- Direct HTTP obeys host policy and reports refusals. No external transport, challenge solver or model provider is bound.
+- Direct HTTP obeys host policy and reports refusals. No external transport, challenge solver or model provider is bound; the post-tags pass references the AI contract only.
 - `AddHarvestApiKeys()` — answers core's `ApiKey` scheme from the key table and the operator key, for a host that serves
   Harvest's HTTP API.

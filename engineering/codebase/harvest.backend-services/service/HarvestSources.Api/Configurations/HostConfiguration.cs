@@ -13,6 +13,7 @@ public static partial class HostConfiguration
         builder.AddProcessingModels();
         global::Harvest.Api.Configurations.HostConfiguration.Configure(builder);
         builder.AddRentalTermsAi();
+        builder.AddPostTagsAi();
         return builder.Configuration["HarvestSources:Audience"] switch
         {
             null or "internal" => builder.AddSources().AddProviderSettings().AddSourceAssets().AddSourceControllers(),

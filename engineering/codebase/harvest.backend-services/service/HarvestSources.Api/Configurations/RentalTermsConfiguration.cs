@@ -44,10 +44,10 @@ internal static class RentalTermsConfiguration
         (await runner.ApplyPendingAsync("startup", ct)).ValueOrThrow();
     }
 
-    private static bool IsEnabled(IConfiguration configuration) =>
+    internal static bool IsEnabled(IConfiguration configuration) =>
         (configuration["HarvestSources:Audience"] is null or "internal") && configuration.GetValue<bool>(EnabledSetting);
 
-    private static AiModelRef? ParseRoute(string route) =>
+    internal static AiModelRef? ParseRoute(string route) =>
         AiModelRef.TryParse(route, out var model) && model is not null && !model.Provider.Any(char.IsWhiteSpace)
             && !model.Model.Any(char.IsWhiteSpace) ? model : null;
 }

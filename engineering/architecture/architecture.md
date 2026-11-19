@@ -1,6 +1,6 @@
 # SCFD architecture
 
-*Last updated: 2026-11-12*
+*Last updated: 2026-11-19*
 
 One contract, two registrations, one deployed host that composes the module with the source readers, and the engine
 lanes inside the module.
@@ -24,7 +24,7 @@ Client ──HTTP + token or X-Api-Key──► service/HarvestSources.Api
 | Project | Responsibility |
 |---|---|
 | `packages/Abstractions` | the contract — `IRegistrationBroker`, the step-broker and capability seams, captures, `wow2.post.v1`, delivery types; no DI, options or I/O |
-| `packages/Module` | Form 1: the store (own keyed Npgsql data source), the migration set and boot self-test, the registry broker, the API key store; lane folders `Capabilities/` · `Engine/` · `Readers/` · `Extraction/` · `Posts/` · `Delivery/` · `Sources/` |
+| `packages/Module` | Form 1: the store (own keyed Npgsql data source), the migration set and boot self-test, the registry broker, the API key store; lane folders `Capabilities/` · `Engine/` · `Readers/` · `Extraction/` · `Posts/` · `Delivery/` · `Sources/` · `Tagging/` |
 | `packages/Client` | Forms 2/3 over the service's HTTP API, authenticated by a service token or an API key |
 | `packages/Hosting` | shared ASP.NET startup, access policies and HTTP controllers both hosts compose |
 | `packages/Testing` | registry, run, post and delivery fakes and their shared conformance suites |
@@ -41,7 +41,9 @@ Client ──HTTP + token or X-Api-Key──► service/HarvestSources.Api
   `IFetchTransportFactory` supplies a request-local route lease for configured proxy/session integrations. Permission,
   pacing, robots and same-origin redirects still run; unavailable routes fail closed. Routed traffic disables shared
   response caching. Challenges, blocks and rate limits remain outcomes that back off the host.
-- Generic readers use AngleSharp and bounded XML/JSON parsers; extraction runs without model services. Captures and
+- Generic readers use AngleSharp and bounded XML/JSON parsers; extraction runs without model services. The Layer 1
+  `post-tags` pass (`Tagging/`) calls the shared AI runner through the AI contract only, when the host composes the AI
+  module, and writes its tags back through the post's resolve. Captures and
   conditional-response replay bodies stay in PostgreSQL while Files integration is unbound.
 - Hosting explicitly composes all engine lanes and opts into the worker. A library consumer can register the
   brokers without starting background work. `Harvest:Worker:Enabled=false` disables the service's worker.

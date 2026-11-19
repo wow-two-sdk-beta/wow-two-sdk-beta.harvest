@@ -1,6 +1,6 @@
 # wow-two-sdk-beta.harvest — Package registry
 
-*Last updated: 2026-11-12*
+*Last updated: 2026-11-19*
 
 > Every package this repo publishes, one version line per registry, then the source readers that ship only inside the
 > image. Layer rules: wow-two-ws/conventions/development/repo/structure/domain-structure.md § Layers.
@@ -8,7 +8,7 @@
 | Package | Layer | References | Heavy deps | Forms | Consumers |
 |---|---|---|---|---|---|
 | `WoW2.Sdk.Beta.Be.Harvest.Abstractions` | contract | the kernel `WoW2.Sdk.Beta.Be.Abstractions` only; no framework reference | none | all | product Domain/Application projects; `sources/*` |
-| `WoW2.Sdk.Beta.Be.Harvest.Module` | forms | Abstractions, core (Npgsql, EF Core, SQL migrator), Identity.Auth, AngleSharp, Cronos | HTML parser; no browser engine | 1 | products (Form 1), `sources/Module`, both hosts |
+| `WoW2.Sdk.Beta.Be.Harvest.Module` | forms | Abstractions, core (Npgsql, EF Core, SQL migrator), Identity.Auth, the AI contract `WoW2.Sdk.Beta.Be.Ai.Abstractions` (post-tags), AngleSharp, Cronos | HTML parser; no browser engine | 1 | products (Form 1), `sources/Module`, both hosts |
 | `WoW2.Sdk.Beta.Be.Harvest.Client` | forms | Abstractions, core, Identity.Auth | none | 2, 3 | Events, Haven, the ListingShelf view |
 | `WoW2.Sdk.Beta.Be.Harvest.Hosting` | hosting | Module, core, Identity.Client, ASP.NET shared framework | optional durable BFF session cache; no source or provider dependency | 2, 3 | `service/HarvestSources.Api` |
 | `WoW2.Sdk.Beta.Be.Harvest.Testing` | test kit | Abstractions, `WoW2.Sdk.Beta.Be.Testing` | xunit (via be Testing) | all | test projects |
@@ -36,6 +36,8 @@ Not packable (`Directory.Build.props` by path: XML docs and warnings as errors, 
 ## Pins
 
 - Core pin: `BackendSdkVersion` `10.0.113-beta`; Identity `10.0.30-beta` supplies API-key auth and the BFF client.
+- AI pin: `AiSdkVersion` `10.0.3-beta` — `Ai.Abstractions` in Module, `Ai.Module` and `Ai.Providers` in the host,
+  `Ai.Testing` (`ScriptedAiModelCaller`) in the Integration and source E2E tiers.
 - The Client takes client-credentials tokens through the be sdk's `Http.Auth`; `Harvest.Tests.Unit` uses Identity's
   `FakeTokenIssuer`.
 - The console uses the frontend SDK's `AuthProvider`, BFF strategy, request scope and CSRF transport.

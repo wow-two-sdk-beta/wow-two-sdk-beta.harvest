@@ -89,7 +89,8 @@ facts and the delivery event schema. A consumer holding only `events:read` canno
 Development verification uses synthetic descriptions, fake model responses and disposable PostgreSQL. No provider
 key is required for those tests. A real Claude run on saved OLX captures remains a separate acceptance step.
 
-The package pin, `10.0.0-beta`, is published on NuGet. AI commit `d71898b` and tag `be-v10.0.0-beta`
+The package pin moved to `10.0.3-beta` with the post-tags pass (`post-tags.md`); `rental-terms@2` builds and passes
+unchanged on it. The earlier pin, `10.0.0-beta`, is published on NuGet. AI commit `d71898b` and tag `be-v10.0.0-beta`
 passed [publish run 44042733179](https://github.com/wow-two-sdk-beta/wow-two-sdk-beta.ai/actions/runs/44042733179)
 on November 17, 2026. All five packages restored from public NuGet in a clean consumer, which built and passed
 its smoke check. SCFD verification uses that published version without an `AiSdkVersion` override.

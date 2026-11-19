@@ -5,17 +5,18 @@ using Npgsql;
 using WoW.Two.Sdk.Beta.Be.Data.Migrations.Bespoke;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module;
+using WoW.Two.Sdk.Beta.Be.Testing.Data.Migrations.Lint;
 
 namespace Harvest.Tests.Migrations;
 
 /// <summary>The module's migration set over a fresh PostgreSQL database: apply, idempotency, the Apply → Rollback → Apply
-/// round trip, and the shape SQL 001, 002 and 006 promise the lanes.</summary>
+/// round trip, the be sdk lint from 011 on, and the shape SQL 001, 002, 006, 011 and 012 promise the lanes.</summary>
 public sealed class MigrationTests : IAsyncLifetime
 {
     /// <summary>Holds every migration of the set, in order.</summary>
     private static readonly string[] Migrations =
         ["001-baseline", "002-drop-escalation", "003-fetching", "004-posts-delivery", "005-subscription-filter", "006-source-groups",
-            "007-source-assets", "008-pipeline-stages", "009-step-operations", "010-post-unmatched"];
+            "007-source-assets", "008-pipeline-stages", "009-step-operations", "010-post-unmatched", "011-taxonomy", "012-post-tags"];
 
     /// <summary>Holds the escalation columns 002 drops.</summary>
     private const string EscalationColumns =
@@ -31,8 +32,11 @@ public sealed class MigrationTests : IAsyncLifetime
         "harvest_schedules", "harvest_source_assets", "harvest_source_groups", "harvest_source_scopes",
         "harvest_sources", "harvest_subscription_event", "harvest_subscriptions", "harvest_tenants", "harvest_usage",
         "harvest_work_item", "harvest_discoveries", "harvest_discovery_scopes", "harvest_catalog_pages",
-        "harvest_processing_results", "harvest_step_attempts",
+        "harvest_processing_results", "harvest_step_attempts", "harvest_taxonomy_nodes", "harvest_post_tags", "harvest_post_work",
     ];
+
+    /// <summary>The last ordinal applied before the lint ran in this tier.</summary>
+    private const int LintCutoff = 10;
 
     private ServiceProvider services = null!;
     private string connectionString = null!;
@@ -110,7 +114,8 @@ public sealed class MigrationTests : IAsyncLifetime
         Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None));
 
         Unwrap(await Runner.RollbackAsync(targetOrdinal: 5, CancellationToken.None)).Should()
-            .Equal("010-post-unmatched", "009-step-operations", "008-pipeline-stages", "007-source-assets", "006-source-groups");
+            .Equal("012-post-tags", "011-taxonomy", "010-post-unmatched", "009-step-operations", "008-pipeline-stages",
+                "007-source-assets", "006-source-groups");
         (await ColumnCountAsync("table_name = 'harvest_sources' AND column_name IN ('group_id', 'display_name')")).Should().Be(0);
         (await ScalarAsync<bool>("SELECT to_regclass('harvest_source_groups') IS NULL AND to_regclass('harvest_post_revisions') IS NULL")).Should().BeTrue();
 
@@ -155,7 +160,7 @@ public sealed class MigrationTests : IAsyncLifetime
             """);
 
         Unwrap(await Runner.RollbackAsync(targetOrdinal: 7, CancellationToken.None)).Should()
-            .Equal("010-post-unmatched", "009-step-operations", "008-pipeline-stages");
+            .Equal("012-post-tags", "011-taxonomy", "010-post-unmatched", "009-step-operations", "008-pipeline-stages");
 
         (await ScalarAsync<string>("SELECT string_agg(pipeline_id::text, ',') FROM harvest_schedules WHERE kind = 'discover'"))
             .Should().Be(legacy.ToString());
@@ -186,6 +191,32 @@ public sealed class MigrationTests : IAsyncLifetime
             """, "fk_harvest_sources_group");
         await FailsAsync($"UPDATE harvest_sources SET display_name='' WHERE id='{source}'", "ck_harvest_sources_display_name");
         (await ScalarAsync<string>("SELECT indexdef FROM pg_indexes WHERE indexname = 'pk_harvest_post_revisions'")).Should().Contain("(post_id, revision)");
+    }
+
+    [Fact]
+    public async Task Lint_ShouldFindNothing_InFilesAfterTheLintCutoff()
+    {
+        // 001-010 were applied everywhere before the rule; every later file expands and keeps existing tables lock-safe.
+        await MigrationLint.AssertCleanAsync(services, lint => lint
+            .ExpandOnlyAfter(HarvestModuleConstants.MigrationSetName, LintCutoff)
+            .LintAfter(HarvestModuleConstants.MigrationSetName, LintCutoff));
+    }
+
+    [Fact]
+    public async Task ApplyPending_ShouldSeedTheIabDomainsAndKeepTagsPerPostAndContent_WhenPostTagsArrive()
+    {
+        Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None));
+
+        (await ScalarAsync<long>("SELECT count(*) FROM harvest_taxonomy_nodes WHERE tier = 1 AND active")).Should().Be(34);
+        (await ScalarAsync<long>("SELECT count(*) FROM harvest_taxonomy_nodes")).Should().Be(657);
+        (await ScalarAsync<long>("SELECT count(*) FROM harvest_taxonomy_nodes WHERE key IN ('events', 'genres', 'sensitive-topics')")).Should().Be(0);
+        (await ScalarAsync<string>("SELECT label FROM harvest_taxonomy_nodes WHERE key = 'style-fashion/womens-fashion'")).Should().Be("Women's Fashion");
+        await FailsAsync("INSERT INTO harvest_taxonomy_nodes(key, parent_key, tier, label, extension) VALUES('textiles', 'style-fashion', 2, 'Textiles', true)",
+            "ck_harvest_taxonomy_nodes_parent");
+        await ExecuteAsync("INSERT INTO harvest_taxonomy_nodes(key, parent_key, tier, label, extension) VALUES('style-fashion/textiles', 'style-fashion', 2, 'Textiles', true)");
+        (await ScalarAsync<string>("SELECT indexdef FROM pg_indexes WHERE indexname = 'pk_harvest_post_tags'")).Should().Contain("(post_id, content_hash)");
+        (await ConstraintAsync("ck_harvest_post_tags_entity_type")).Should().Contain("unsure");
+        (await ConstraintAsync("ck_harvest_post_work_kind")).Should().Contain("post-tags");
     }
 
     private async Task ExecuteAsync(string sql)

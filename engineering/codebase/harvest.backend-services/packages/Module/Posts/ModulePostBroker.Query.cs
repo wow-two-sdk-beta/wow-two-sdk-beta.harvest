@@ -7,6 +7,7 @@ using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Extraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Persistence;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
 using WoW.Two.Sdk.Beta.Be.Harvest.Posts;
 using Capture = WoW.Two.Sdk.Beta.Be.Harvest.Readers.Capture;
 
@@ -127,7 +128,11 @@ internal sealed partial class ModulePostBroker
 
     /// <summary>Resolves a post from its links' readings and records its revision: <paramref name="increment"/> raises
     /// it, and false means the write just created the post, which records <c>created</c>.</summary>
-    private static async Task ResolveAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid containerId, Guid postId, DateTimeOffset now, bool increment, CancellationToken ct)
+    /// <remarks>The stored post-tags answer for the post overlays the resolved envelope on every resolve, and a title or
+    /// text without a done answer queues tagging (<see cref="QueueTagsAsync"/>). With <paramref name="onlyIfChanged"/>
+    /// an unchanged <c>base</c> writes nothing and returns false.</remarks>
+    private async Task<bool> ResolveAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid containerId, Guid postId, DateTimeOffset now, bool increment, CancellationToken ct,
+        bool onlyIfChanged = false)
     {
         var readings = new List<(Guid LinkId, PostEnvelope Envelope)>();
         await using (var command = PostSql.Command(connection, transaction, """
@@ -138,10 +143,16 @@ internal sealed partial class ModulePostBroker
                          """, ("container", containerId), ("post", postId)))
         await using (var reader = await command.ExecuteReaderAsync(ct))
             while (await reader.ReadAsync(ct)) readings.Add((reader.GetGuid(0), StoreJson.Read(reader.GetString(1), EmptyEnvelope())));
-        if (readings.Count == 0) return;
+        if (readings.Count == 0) return false;
 
         var previous = increment ? await PostRevisionLog.ReadAsync(connection, transaction, containerId, postId, ct) : null;
         var (resolved, provenance) = ResolveFields(readings);
+        var contentHash = PostTagsContent.Hash(resolved);
+        resolved = PostTagsOverlay.Apply(resolved, await ReadStoredTagsAsync(connection, transaction, postId, contentHash, ct));
+        if (onlyIfChanged && await PostSql.ScalarAsync(connection, transaction,
+                "SELECT base=CAST(@base AS jsonb) FROM harvest_posts WHERE container_id=@container AND id=@post", ct,
+                ("base", StoreJson.Write(resolved)), ("container", containerId), ("post", postId)) is true)
+            return false;
         await PostSql.ExecuteAsync(connection, transaction, """
             WITH rollup AS (SELECT CASE
                 WHEN NOT EXISTS(SELECT 1 FROM harvest_post_links WHERE post_id=@post AND retired_at IS NULL AND check_capability<>'none') THEN 'live'
@@ -165,6 +176,8 @@ internal sealed partial class ModulePostBroker
             ("match", NormalizeText(resolved)[..Math.Min(1000, NormalizeText(resolved).Length)]),
             ("hash", MD5.HashData(Encoding.UTF8.GetBytes(NormalizeText(resolved)))), ("signature", NumberSignature(resolved)), ("link", readings[0].LinkId));
         await PostRevisionLog.RecordAsync(connection, transaction, containerId, postId, previous, now, ct);
+        await QueueTagsAsync(connection, transaction, containerId, postId, resolved, contentHash, now, ct);
+        return true;
     }
 
     /// <summary>Holds field sources that qualify an envelope field rather than name one, by the field they qualify: a

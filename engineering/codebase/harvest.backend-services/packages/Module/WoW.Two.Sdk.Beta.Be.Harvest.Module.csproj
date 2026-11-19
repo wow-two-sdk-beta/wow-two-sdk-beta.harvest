@@ -13,6 +13,8 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="WoW2.Sdk.Beta.Be" />
     <PackageReference Include="WoW2.Sdk.Beta.Be.Identity.Auth" />
+    <!-- Another domain's contract only: the post-tags pass calls IAiRunner when a host composes the AI module. -->
+    <PackageReference Include="WoW2.Sdk.Beta.Be.Ai.Abstractions" />
     <PackageReference Include="AngleSharp" />
     <PackageReference Include="Cronos" />
   </ItemGroup>

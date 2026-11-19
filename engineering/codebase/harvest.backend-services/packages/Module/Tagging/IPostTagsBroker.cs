@@ -1,0 +1,133 @@
+using System.Text.Json;
+using WoW.Two.Sdk.Beta.Be.Foundation.Results;
+
+namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
+
+/// <summary>Runs the Layer 1 <c>post-tags</c> pass: tags a post through the shared AI runner, stores the answer per
+/// title-and-text hash and writes done tags back to the post as a new revision.</summary>
+public interface IPostTagsBroker
+{
+    /// <summary>Tags one post now, whatever the queue holds; a dry run calls the model and writes nothing.</summary>
+    /// <param name="postId">The post.</param>
+    /// <param name="dryRun">Whether to skip storing the answer and the write-back.</param>
+    /// <param name="cancellationToken">The token that cancels the call.</param>
+    /// <returns>The run; a failure when the post does not exist, its sources do not allow AI, or no AI runner is composed.</returns>
+    Task<Result<PostTagsRunModel>> RunAsync(Guid postId, bool dryRun = false, CancellationToken cancellationToken = default);
+
+    /// <summary>Queues stored posts whose current title and text have no done answer.</summary>
+    /// <param name="request">Which posts.</param>
+    /// <param name="cancellationToken">The token that cancels the call.</param>
+    /// <returns>The number of posts queued or re-armed.</returns>
+    Task<Result<int>> BackfillAsync(PostTagsBackfillRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>Counts answers by status, entity type and domain, flags by proposed value, and the use case's cost and
+    /// latency from the inference log; never post text.</summary>
+    /// <param name="sinceUtc">The earliest answer to count; seven days back when omitted.</param>
+    /// <param name="cancellationToken">The token that cancels the call.</param>
+    Task<Result<PostTagsReportModel>> ReportAsync(DateTimeOffset? sinceUtc = null, CancellationToken cancellationToken = default);
+
+    /// <summary>Claims due queued posts and tags each; the worker calls it on every tick.</summary>
+    /// <param name="cancellationToken">The token that cancels the pass.</param>
+    /// <returns>The number of posts claimed.</returns>
+    Task<int> ProcessDueAsync(CancellationToken cancellationToken = default);
+}
+
+/// <summary>Represents which stored posts a backfill queues.</summary>
+public sealed record PostTagsBackfillRequest
+{
+    /// <summary>Gets the earliest last change to include; every post when omitted.</summary>
+    public DateTimeOffset? SinceUtc { get; init; }
+
+    /// <summary>Gets the most posts to queue, newest change first: 1 to 100,000.</summary>
+    public int Limit { get; init; } = 1000;
+
+    /// <summary>Gets a source the posts must have a link from.</summary>
+    public Guid? SourceId { get; init; }
+}
+
+/// <summary>Represents one tagging run of a post.</summary>
+public sealed record PostTagsRunModel
+{
+    /// <summary>Gets the post.</summary>
+    public required Guid PostId { get; init; }
+
+    /// <summary>Gets the post revision the answer was computed from.</summary>
+    public required int Revision { get; init; }
+
+    /// <summary>Gets how the run ended: <c>done</c>, <c>failed</c> or <c>unavailable</c>.</summary>
+    public required string Status { get; init; }
+
+    /// <summary>Gets why a run failed or was unavailable, as a short code such as <c>schema-invalid</c>.</summary>
+    public string? Reason { get; init; }
+
+    /// <summary>Gets whether the answer was stored.</summary>
+    public bool Stored { get; init; }
+
+    /// <summary>Gets the revision the write-back created, when the tags changed the post.</summary>
+    public int? NewRevision { get; init; }
+
+    /// <summary>Gets the deciding inference's id.</summary>
+    public Guid? InferenceId { get; init; }
+
+    /// <summary>Gets the model that answered, <c>{provider}/{model}</c>.</summary>
+    public string? Model { get; init; }
+
+    /// <summary>Gets the prompt version used.</summary>
+    public int? PromptVersion { get; init; }
+
+    /// <summary>Gets whether the answer came from the AI module's stored inferences.</summary>
+    public bool FromCache { get; init; }
+
+    /// <summary>Gets the run's cost in micro-USD over every attempt.</summary>
+    public long CostMicroUsd { get; init; }
+
+    /// <summary>Gets the validated answer: the stored fields and flags.</summary>
+    public JsonElement? Answer { get; init; }
+}
+
+/// <summary>Represents the pass's counts since a time, with the use case's cost and latency.</summary>
+public sealed record PostTagsReportModel
+{
+    /// <summary>Gets the earliest answer counted.</summary>
+    public required DateTimeOffset SinceUtc { get; init; }
+
+    /// <summary>Gets the answers by status.</summary>
+    public required IReadOnlyDictionary<string, long> Statuses { get; init; }
+
+    /// <summary>Gets the done answers by entity type.</summary>
+    public required IReadOnlyDictionary<string, long> EntityTypes { get; init; }
+
+    /// <summary>Gets the done answers by their primary node's domain.</summary>
+    public required IReadOnlyDictionary<string, long> Domains { get; init; }
+
+    /// <summary>Gets the flags of done answers by field and proposed value, most frequent first, at most 50.</summary>
+    public required IReadOnlyList<PostTagsFlagCount> Flags { get; init; }
+
+    /// <summary>Gets the posts waiting in the queue.</summary>
+    public long Queued { get; init; }
+
+    /// <summary>Gets the model attempts the inference log holds for the use case since <see cref="SinceUtc"/>.</summary>
+    public long? Attempts { get; init; }
+
+    /// <summary>Gets their cost in micro-USD.</summary>
+    public long? CostMicroUsd { get; init; }
+
+    /// <summary>Gets the 95th percentile attempt latency in milliseconds, over the newest attempts sampled.</summary>
+    public long? P95LatencyMs { get; init; }
+
+    /// <summary>Gets how many attempts the latency percentile sampled, at most 1000.</summary>
+    public int LatencySample { get; init; }
+}
+
+/// <summary>Represents how often a field was flagged with one proposed value.</summary>
+public sealed record PostTagsFlagCount
+{
+    /// <summary>Gets the flagged field, such as <c>domains</c> or <c>entityType</c>.</summary>
+    public required string Field { get; init; }
+
+    /// <summary>Gets the value the model proposed; none when it proposed nothing.</summary>
+    public string? Proposed { get; init; }
+
+    /// <summary>Gets the number of flags.</summary>
+    public required long Count { get; init; }
+}

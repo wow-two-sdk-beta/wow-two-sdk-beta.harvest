@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
 using WoW.Two.Sdk.Beta.Be.Harvest.Posts;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Posts;
@@ -11,6 +12,8 @@ public static class HarvestPostsServiceCollectionExtensions
     public static IServiceCollection AddHarvestPosts(this IServiceCollection services)
     {
         services.TryAddScoped<IPostBroker, ModulePostBroker>();
+        services.TryAddScoped<ModulePostBroker>();
+        services.TryAddSingleton<PostTagsGate>();
         services.TryAddScoped<IPostProcessingBroker, ModulePostProcessingBroker>();
         return services;
     }

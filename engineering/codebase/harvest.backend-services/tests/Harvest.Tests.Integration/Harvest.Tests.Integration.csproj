@@ -16,6 +16,9 @@
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
     <PackageReference Include="AwesomeAssertions" />
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+    <!-- The post-tags pass runs the real AI runner over the same database, answered by the scripted caller. -->
+    <PackageReference Include="WoW2.Sdk.Beta.Be.Ai.Module" />
+    <PackageReference Include="WoW2.Sdk.Beta.Be.Ai.Testing" />
   </ItemGroup>
 
   <ItemGroup>

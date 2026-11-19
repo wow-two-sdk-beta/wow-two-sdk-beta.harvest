@@ -10,7 +10,7 @@
     <!-- The core pin; it is also each package's nuspec floor on WoW2.Sdk.Beta.Be and the kernel. -->
     <BackendSdkVersion>10.0.113-beta</BackendSdkVersion>
     <IdentitySdkVersion>10.0.30-beta</IdentitySdkVersion>
-    <AiSdkVersion Condition="'$(AiSdkVersion)' == ''">10.0.0-beta</AiSdkVersion>
+    <AiSdkVersion Condition="'$(AiSdkVersion)' == ''">10.0.3-beta</AiSdkVersion>
   </PropertyGroup>
 
   <!--
@@ -40,6 +40,7 @@
     <PackageVersion Include="WoW2.Sdk.Beta.Be.Ai.Abstractions" Version="$(AiSdkVersion)" />
     <PackageVersion Include="WoW2.Sdk.Beta.Be.Ai.Module" Version="$(AiSdkVersion)" />
     <PackageVersion Include="WoW2.Sdk.Beta.Be.Ai.Providers" Version="$(AiSdkVersion)" />
+    <PackageVersion Include="WoW2.Sdk.Beta.Be.Ai.Testing" Version="$(AiSdkVersion)" />
   </ItemGroup>
 
   <!-- Tests. -->

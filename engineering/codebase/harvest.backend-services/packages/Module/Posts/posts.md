@@ -11,9 +11,11 @@ container-scoped reads, merge and unmerge; `AddHarvestPosts()` registers the Pos
   `harvest_link_schedule`, `harvest_link_readings`, `harvest_link_events`, `harvest_link_check_log`, `harvest_captures`
   writes (monthly partitions; `harvest_ensure_capture_partitions` creates months ahead), `harvest_post_revisions`
   writes.
-- Rules: a capture row only on a content-hash change; the post is derived from readings, never patched; only a
+- Rules: a capture row only on a content-hash change; the post is derived from readings and the stored `post-tags`
+  answer (`Tagging/`), never patched; only a
   completed run over a complete enumeration infers `suspect`; unverifiable links abstain.
-- Emits, in the same transaction: `post.new`, `post.changed`, `link.state` rows through the Delivery lane's log.
+- Emits, in the same transaction: `post.new`, `post.changed`, `link.state` rows through the Delivery lane's log; a
+  resolve queues `post-tags` for a title and text with no done answer (`harvest_post_work`).
 - capture writes and subscription backfills share a container advisory transaction lock; a content projection's
   SHA-256 controls capture creation, so replaying a completed write appends neither a capture nor an event
 - local capture bodies use `harvest_captures.body_inline` while Files is unbound; the retention policy determines

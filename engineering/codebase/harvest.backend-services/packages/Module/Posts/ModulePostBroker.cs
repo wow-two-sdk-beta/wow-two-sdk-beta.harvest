@@ -8,6 +8,7 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Delivery;
 using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Delivery;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Persistence;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
 using WoW.Two.Sdk.Beta.Be.Harvest.Posts;
 using WoW.Two.Sdk.Beta.Be.Harvest.Readers;
 
@@ -17,7 +18,8 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Posts;
 internal sealed partial class ModulePostBroker(
     [FromKeyedServices(HarvestModuleConstants.ServiceKey)] NpgsqlDataSource dataSource,
     TimeProvider time,
-    IEnumerable<IDeliveryPostFilter> filters) : IPostBroker
+    IEnumerable<IDeliveryPostFilter> filters,
+    PostTagsGate tagging) : IPostBroker
 {
     private readonly DeliveryPostFilters postFilters = new(filters);
 

@@ -1,6 +1,6 @@
 # wow-two-sdk-beta.harvest — Contract
 
-*Last updated: 2026-11-12*
+*Last updated: 2026-11-19*
 
 > Everything in `packages/Abstractions`: the registry broker every form implements, and the seams the engine lanes and
 > source readers build against. Interfaces and models only — no DI, options or I/O. Rules:
@@ -116,11 +116,17 @@ the step contract. Every type references the BCL and the kernel only.
 - The renderer serves pages that show their content only through JavaScript, never a challenge.
 - The schema in the SQL migrations is the shared seam between lanes: `001-baseline`, `002-drop-escalation` (no
   ladder), `003-fetching`, `004-posts-delivery`, `005-subscription-filter`, `006-source-groups` (source groups, display
-  names, the post revision log). Each lane maps the tables its folder's lead doc names.
+  names, the post revision log), through `011-taxonomy` (the IAB 3.1 category tree) and `012-post-tags` (tagging answers
+  and the post work queue). Each lane maps the tables its folder's lead doc names.
 - `Capture.ContentProjection` drives the content hash; a capture row exists only when it changes.
 - Source readers can retain their versioned native field envelope in page metadata's `sourceFields`; extraction
   preserves it under `PostEnvelope.Extras["source"]`. Original publisher labels use `SourceTags`, independently
   of the shared-vocabulary `Tags`. Source snapshots and mapped values are inspectable without executing native HTML.
+- `Tags` also carries the Layer 1 `post-tags` answer, tier `SmallModel`, beside any mapped tags: `type:{entityType}`
+  (`event` · `listing` · `none`), `domain:{node}` for each IAB 3.1 node and its ancestors (`domain:style-fashion`,
+  `domain:style-fashion/womens-fashion`), `topic:{slug}` (open English topics), version `post-tags@{promptVersion}`,
+  score = the answer's confidence; `Extras["postTags"].titleEn` holds the English title. The taxonomy is IAB Tech Lab
+  Content Taxonomy 3.1 (CC BY 3.0) minus `Events`, `Genres` and `Sensitive Topics`; `development/post-tags.md`.
   `PostLinkModel.SourceFields` exposes each link's latest native snapshot independently of merged mapped fields.
 - `IFetchDestinationPolicy` optionally restricts a named source's initial and redirected page URLs before transport.
   Robots, host/network restrictions and refusal backoff still apply independently.
@@ -166,6 +172,9 @@ the step contract. Every type references the BCL and the kernel only.
 - next-check eligibility does not promise execution; the console separately reports enabled check schedules
 - re-extracting a historical capture does not advance its last-seen time to the ingestion time
 - merges retain an undo record; undo restores moved links and prevents the separated posts from being auto-merged again
+- a post whose title or text has no done `post-tags` answer is queued in the write's transaction when tagging is on and
+  its title and text come from sources that allow AI; a done answer that changes `base` raises the revision and appends
+  `post.changed`, and that tag-only revision keeps its content hash, so it queues nothing
 - delivery stores immutable revision snapshots; `wow2.event.v1` selects the event projection while retaining post identity and provenance
 - a post the subscription holds whose newest revision fails its filter or section arrives once as `post.unmatched`
   (that revision's identity, number and payload); later failing revisions, a restore from gone included, are withheld,
