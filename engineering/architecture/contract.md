@@ -479,9 +479,10 @@ stores. Groups and display names are `IRegistrationBroker`'s; the reading pace i
 | `QuerySourceProcessedAsync(sourceId, query)` | `SourceProcessedPage` newest first seen first: every surviving post with a `post-tags` answer — the post's card fields (`kind`, `state`, `postedAt`, `language`, `pipelineId`, `imageUrl`, read as the Posts list reads them), its `ProcessedTagsModel` (entity type, domains with labels, topics, about, timeframe, English title, flags), its `classification`, the extraction of its tagged type about the same content with an event or listing summary — each answer's `ProcessedAnswerModel` (provider, model, prompt version; cost, latency and input and output tokens from the inference log); `nextCursor`, `total` | `NotFound` source · `Validation` entity type, limit outside 1–90, a cursor of another source or filters (`SourceProcessedQueryRules`) |
 | `ListPostRevisionsAsync(containerId, postId)` | `PostRevisionModel` newest first: `revision`, `at`, `changed`; empty for a post from before `006` | `NotFound` post in the container |
 
-- For an active source with open/granted permission, operational `state` is `harvesting` while a run is queued or
-  running; else `needsAttention` when the host is paused, has failed 3 or more times in a row, or the last collection
-  or processing run failed; else `healthy` when a section has automatic work; else `idle`. A master-paused source is
+- For an active source with open/granted permission, operational `state` is `needsAttention` while the host is paused,
+  even with a run queued behind the pause; else `harvesting` while a run is queued or running; else `needsAttention`
+  when the host has failed 3 or more times in a row or the last collection or processing run failed; else `healthy`
+  when a section has automatic work; else `idle`. A master-paused source is
   `idle`; another unreadable source needs attention. `sourceState` and `permission` distinguish these causes without
   inferring enablement from operational health.
 - A section's `harvesting` requires a readable source, an active pipeline and an enabled, non-manual Capture,

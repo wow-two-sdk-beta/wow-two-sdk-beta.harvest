@@ -17,10 +17,20 @@ public sealed class SourceOverviewRulesTests
     private static readonly SourceHealthModel Calm = new() { HostKey = "www.afisha.uz", MinDelayMs = 5000, ConsecutiveFailures = 0 };
 
     [Fact]
-    public void State_ShouldBeHarvesting_WhenARunIsActiveWhateverElseHolds()
+    public void State_ShouldNeedAttention_WhenTheHostIsPausedEvenWithARunQueuedBehindThePause()
     {
         var state = SourceOverviewRules.State(true, Calm with { PausedUntil = Now.AddHours(1), ConsecutiveFailures = 9 },
-            Harvest(RunStatus.Failed), []);
+            Harvest(RunStatus.Failed), [Section(harvesting: true)]);
+
+        state.Should().Be(SourceHarvestState.NeedsAttention);
+    }
+
+    [Theory]
+    [InlineData(0, RunStatus.Completed)]
+    [InlineData(9, RunStatus.Failed)]
+    public void State_ShouldBeHarvesting_WhenARunIsActiveAndTheHostIsNotPaused(int failures, RunStatus last)
+    {
+        var state = SourceOverviewRules.State(true, Calm with { ConsecutiveFailures = failures }, Harvest(last), []);
 
         state.Should().Be(SourceHarvestState.Harvesting);
     }

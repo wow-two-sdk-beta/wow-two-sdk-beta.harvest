@@ -35,5 +35,13 @@ calls the adapter's brokers.
 - request/byte budgets are evaluated at step boundaries; one fetch includes robots and redirect transport attempts
 - cancellation fences running claims; a late result cannot overwrite cancellation or a replacement owner's result
 - a refusal terminates the run as partial and pauses its lane; the same run never changes route or automatically retries it
+- a lane's pause doubles with each refusal in a row (`RefusalBackoff` × 2^n, n capped at 6); a successful network step on
+  the lane resets the count, so the next refusal backs off from the first step
+- a page result's follow-up targets are admitted in groups: details the container has no link for, listings and other
+  targets, known details not read within the run's schedule interval (6 h with none), known details read since; each
+  group keeps page order except the stale one, which goes least recently read first -- a page-limited run reaches new
+  items before it re-reads known ones, and its stale items take turns
+- a schedule's `last_queued_at` moves only when its slot inserted a run; a slot that finds the pipeline's run still
+  active passes without a stamp
 - known-link checks use their next-check time and preserve each link's external identity, including JSON-LD fragment IDs
 - full-sweep absence inference, adaptive cadence tuning and retention maintenance are outside this slice

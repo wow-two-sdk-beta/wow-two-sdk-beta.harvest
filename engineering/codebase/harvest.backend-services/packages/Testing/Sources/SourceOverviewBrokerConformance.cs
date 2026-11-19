@@ -38,6 +38,12 @@ public abstract class SourceOverviewBrokerConformance
     /// <param name="seed">The answers.</param>
     protected abstract Task SeedAnswersAsync(ProcessedAnswerSeed seed);
 
+    /// <summary>Pauses a source's host until a moment, as a refused request would leave it, in the implementation's store.</summary>
+    /// <param name="source">The source whose host pauses.</param>
+    /// <param name="until">When the pause ends.</param>
+    /// <returns>Whether the form can pause a host; the default cannot, and a case that needs a pause then reads nothing.</returns>
+    protected virtual Task<bool> PauseHostAsync(SourceModel source, DateTimeOffset until) => Task.FromResult(false);
+
     /// <summary>Lets a form whose post store checks run references learn a run the case started.</summary>
     /// <param name="run">The started run.</param>
     /// <param name="sourceId">The run's source.</param>
@@ -104,6 +110,25 @@ public abstract class SourceOverviewBrokerConformance
         var paused = Single(await Overview.ListOverviewAsync(context.Container));
         paused.State.Should().Be(SourceHarvestState.Idle);
         paused.Sections[0].Should().Match<SourceSectionModel>(value => value.Paused && !value.Harvesting && value.NextDueAt == null);
+    }
+
+    /// <summary>A host paused by a refusal makes its source need attention even with a run queued behind the pause, since
+    /// that run waits for the pause to end.</summary>
+    [Fact]
+    public async Task ListOverview_ShouldNeedAttention_WhenAPausedHostHasARunQueuedBehindThePause()
+    {
+        var context = await ContextAsync();
+        var pipeline = await PipelineAsync(context);
+        var run = Value(await Runs.StartAsync(pipeline.Id));
+        var until = Clock.GetUtcNow().AddHours(1);
+        if (!await PauseHostAsync(context.Source, until))
+            return;
+
+        var overview = Single(await Overview.ListOverviewAsync(context.Container));
+
+        overview.Health.PausedUntil.Should().Be(until);
+        overview.LastHarvest.Should().Match<SourceHarvestModel>(last => last.RunId == run.Id && last.Status == RunStatus.Queued);
+        overview.State.Should().Be(SourceHarvestState.NeedsAttention);
     }
 
     /// <summary>Today's new links, the posts a section first captured and its active subscribers are counted.</summary>

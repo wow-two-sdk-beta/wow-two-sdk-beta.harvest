@@ -320,6 +320,118 @@ public sealed class HarvestEngineTests
     }
 
     [Fact]
+    public async Task PageLimit_ShouldAdmitDetailsTheContainerHasNoLinkForBeforeKnownOnes_AndStaleBeforeRecent()
+    {
+        await using var host = await EngineHost.StartAsync();
+        var registration = await host.RegisterAsync(limits: new() { MaxPages = 3 });
+        host.Fetcher.Set("https://mstar.uz/sitemap.xml",
+            "<sitemapindex><sitemap><loc>https://mstar.uz/first.xml</loc></sitemap></sitemapindex>", "application/xml");
+        host.Fetcher.Set("https://mstar.uz/first.xml",
+            "<urlset><url><loc>https://mstar.uz/events/1</loc></url><url><loc>https://mstar.uz/events/2</loc></url>"
+            + "<url><loc>https://mstar.uz/events/3</loc></url></urlset>", "application/xml");
+        foreach (int index in new[] { 1, 2, 3 })
+            host.Fetcher.Set($"https://mstar.uz/events/{index}", Event("mstar.uz", index));
+        using var scope = host.Services.CreateScope();
+        var runs = scope.ServiceProvider.GetRequiredService<IRunBroker>();
+
+        async Task<string[]> RunAsync()
+        {
+            int before = host.Fetcher.Calls.Count;
+            EngineHost.Data(await runs.StartAsync(registration.PipelineId));
+            (await host.DrainAsync()).Should().Be(3);
+            host.Clock.Advance(TimeSpan.FromMinutes(1));
+            return [.. host.Fetcher.Calls.Skip(before)];
+        }
+
+        string[] listings = ["https://mstar.uz/sitemap.xml", "https://mstar.uz/first.xml"];
+        (await RunAsync()).Should().Equal([.. listings, "https://mstar.uz/events/1"]);
+        (await RunAsync()).Should().Equal([.. listings, "https://mstar.uz/events/2"], "event 1 is known, event 2 is not");
+        (await RunAsync()).Should().Equal([.. listings, "https://mstar.uz/events/3"]);
+        // Every event is known and was read within the last 6 hours, so the page's order decides.
+        (await RunAsync()).Should().Equal([.. listings, "https://mstar.uz/events/1"]);
+
+        await host.ExecuteAsync("""
+            UPDATE harvest_link_schedule SET last_seen_at=@old WHERE link_id IN (SELECT id FROM harvest_post_links WHERE url LIKE '%/events/2%')
+            """, ("old", host.Clock.GetUtcNow().AddHours(-7)));
+        (await RunAsync()).Should().Equal([.. listings, "https://mstar.uz/events/2"], "event 2 alone is stale, so it leads the known ones");
+    }
+
+    [Fact]
+    public async Task Backoff_ShouldRestartFromTheFirstStep_AfterASuccessfulNetworkStepOnTheLane()
+    {
+        await using var host = await EngineHost.StartAsync();
+        var registration = await host.RegisterAsync();
+        Fixtures(host, "mstar.uz", count: 2);
+        using var scope = host.Services.CreateScope();
+        var runs = scope.ServiceProvider.GetRequiredService<IRunBroker>();
+
+        async Task RefuseAsync()
+        {
+            var run = EngineHost.Data(await runs.StartAsync(registration.PipelineId));
+            await host.ProcessAsync();
+            host.Fetcher.Set("https://mstar.uz/events/1", (_, _) => Task.FromResult(new FetchResponse
+            {
+                Outcome = FetchOutcome.Challenge, Challenge = ChallengeKind.CaptchaTurnstile, Usage = new() { Requests = 1 },
+            }));
+            await host.ExecuteAsync("UPDATE harvest_work_item SET priority=4 WHERE run_id=@run AND target='https://mstar.uz/events/1'", ("run", run.Id));
+            (await host.ProcessAsync()).Should().BeTrue();
+            EngineHost.Data(await runs.GetAsync(run.Id)).FetchOutcome.Should().Be(FetchOutcome.Challenge);
+        }
+
+        Task<DateTimeOffset> PausedUntil() =>
+            host.ScalarAsync<DateTimeOffset>("SELECT max(paused_until) FROM harvest_host_lane WHERE host_key='mstar.uz'");
+        Task<int> Failures() =>
+            host.ScalarAsync<int>("SELECT max(consecutive_failures) FROM harvest_host_lane WHERE host_key='mstar.uz'");
+
+        await RefuseAsync();
+        (await PausedUntil()).Should().Be(host.Clock.GetUtcNow().AddMinutes(15));
+        (await Failures()).Should().Be(1);
+
+        host.Clock.Advance(TimeSpan.FromMinutes(16));
+        Fixtures(host, "mstar.uz", count: 2);
+        EngineHost.Data(await runs.StartAsync(registration.PipelineId));
+        (await host.DrainAsync()).Should().Be(3);
+        (await Failures()).Should().Be(0, "a successful step ended the streak");
+        (await host.ScalarAsync<long>("SELECT count(*) FROM harvest_host_lane WHERE host_key='mstar.uz' AND last_challenge_kind IS NOT NULL"))
+            .Should().Be(0);
+
+        host.Clock.Advance(TimeSpan.FromMinutes(16));
+        await RefuseAsync();
+        (await PausedUntil()).Should().Be(host.Clock.GetUtcNow().AddMinutes(15), "the second refusal is a first step again, not a second");
+        (await Failures()).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Scheduler_ShouldStampLastQueuedOnlyWhenASlotInsertedARun()
+    {
+        await using var host = await EngineHost.StartAsync();
+        var registration = await host.RegisterAsync(schedules:
+        [new() { Kind = WorkKind.Capture, Mode = ScheduleMode.Interval, Every = TimeSpan.FromMinutes(5), TimeZone = "Asia/Tashkent" }]);
+        Fixtures(host, "mstar.uz", count: 1);
+        using var scope = host.Services.CreateScope();
+        var engine = scope.ServiceProvider.GetRequiredService<HarvestEngine>();
+        Task<DateTimeOffset?> Stamp() => host.ScalarAsync<DateTimeOffset?>(
+            "SELECT last_queued_at FROM harvest_schedules WHERE pipeline_id=@pipeline", ("pipeline", registration.PipelineId));
+        DateTimeOffset first = host.Clock.GetUtcNow();
+
+        (await engine.QueueDueAsync()).Should().Be(1);
+        (await Stamp()).Should().Be(first);
+
+        host.Clock.Advance(TimeSpan.FromMinutes(10));
+        await engine.QueueDueAsync();
+        (await host.ScalarAsync<long>("SELECT count(*) FROM harvest_runs WHERE pipeline_id=@pipeline", ("pipeline", registration.PipelineId)))
+            .Should().Be(1, "the first run is still active, so the missed slot queued nothing");
+        (await Stamp()).Should().Be(first, "no run was queued, so the schedule does not look freshly queued");
+        (await host.ScalarAsync<DateTimeOffset>("SELECT next_due_at FROM harvest_schedules WHERE pipeline_id=@pipeline", ("pipeline", registration.PipelineId)))
+            .Should().Be(host.Clock.GetUtcNow().AddMinutes(5), "the slot still passes");
+
+        await host.DrainAsync();
+        host.Clock.Advance(TimeSpan.FromMinutes(10));
+        (await engine.QueueDueAsync()).Should().Be(1);
+        (await Stamp()).Should().Be(host.Clock.GetUtcNow());
+    }
+
+    [Fact]
     public async Task EditingAFilter_ShouldPreserveQueuedScopeAndUseNewScopeForTheNextRun()
     {
         await using var host = await EngineHost.StartAsync();

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using WoW.Two.Sdk.Beta.Be.Harvest.Delivery;
 using WoW.Two.Sdk.Beta.Be.Harvest.Posts;
 using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
@@ -31,6 +32,8 @@ public sealed class ModuleSourceOverviewConformanceTests : SourceOverviewBrokerC
     protected override ISourceOverviewBroker Overview => scope.ServiceProvider.GetRequiredService<ISourceOverviewBroker>();
     protected override TimeProvider Clock => fixture.Clock;
     protected override Task SeedAnswersAsync(ProcessedAnswerSeed seed) => ProcessedAnswerSeedWriter.WriteAsync(fixture.ConnectionString, seed);
+    protected override Task<bool> PauseHostAsync(SourceModel source, DateTimeOffset until) =>
+        HostPause.WriteAsync(fixture.ConnectionString, source.Handle, until);
     public void Dispose() => scope.Dispose();
 }
 
@@ -44,6 +47,8 @@ public sealed class ClientSourceOverviewConformanceTests(SourceClientFixture fix
     protected override ISourceOverviewBroker Overview => fixture.Services.GetRequiredService<ISourceOverviewBroker>();
     protected override TimeProvider Clock => fixture.Clock;
     protected override Task SeedAnswersAsync(ProcessedAnswerSeed seed) => ProcessedAnswerSeedWriter.WriteAsync(fixture.ConnectionString, seed);
+    protected override Task<bool> PauseHostAsync(SourceModel source, DateTimeOffset until) =>
+        HostPause.WriteAsync(fixture.ConnectionString, source.Handle, until);
 }
 
 /// <summary>Runs the same reads over the test kit's fakes.</summary>
@@ -76,5 +81,31 @@ public sealed class FakeSourceOverviewConformanceTests : SourceOverviewBrokerCon
     {
         overview.SeedAnswers(seed);
         return Task.CompletedTask;
+    }
+
+    protected override Task<bool> PauseHostAsync(SourceModel source, DateTimeOffset until)
+    {
+        overview.SeedHostPause(source.Handle, until);
+        return Task.FromResult(true);
+    }
+}
+
+/// <summary>Pauses a host in a PostgreSQL store as a refusal leaves it: one failed lane, paused until a moment.</summary>
+internal static class HostPause
+{
+    internal static async Task<bool> WriteAsync(string connectionString, string hostKey, DateTimeOffset until)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("""
+            INSERT INTO harvest_host_state(host_key) VALUES(@host) ON CONFLICT DO NOTHING;
+            INSERT INTO harvest_host_lane(host_key,lane,consecutive_failures,last_challenge_kind,paused_until)
+            VALUES(@host,'default',1,'CaptchaTurnstile',@until)
+            ON CONFLICT (host_key,lane) DO UPDATE SET paused_until=EXCLUDED.paused_until
+            """, connection);
+        command.Parameters.AddWithValue("host", hostKey);
+        command.Parameters.AddWithValue("until", until);
+        await command.ExecuteNonQueryAsync();
+        return true;
     }
 }

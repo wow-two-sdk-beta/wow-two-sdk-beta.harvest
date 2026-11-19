@@ -10,9 +10,9 @@ implementation. Source groups and display names are the registry's (`Registratio
 | `Sources.ISourceOverviewBroker` → `SourceOverviewModel` (sections, last harvest, 14-day series, health), `SourcePostModel`, `SourceProcessedPostModel`, `Posts.PostRevisionModel` | sources and pipelines through `IRegistrationBroker`; reads `harvest_runs`, `harvest_post_links`, `harvest_captures`, `harvest_posts`, `harvest_post_revisions`, `harvest_subscriptions`, `harvest_host_state`, `harvest_host_lane`, `harvest_post_tags`, `harvest_post_extractions`, `harvest_taxonomy_nodes`; the AI module's `IInferencesBroker` when the host composes it |
 
 - Owns: no table; it reads the lanes' tables, one query per table for the whole container.
-- `state`: `harvesting` while a run of the source is queued or running; else `needsAttention` when the host is paused,
-  has failed 3 or more times in a row (host or lane), or the last capture run failed; else `healthy` when a section
-  harvests; else `idle` (`SourceOverviewRules`).
+- `state`: `needsAttention` while the host is paused, even with a run queued behind the pause; else `harvesting` while a
+  run of the source is queued or running; else `needsAttention` when the host has failed 3 or more times in a row (host
+  or lane) or the last capture run failed; else `healthy` when a section harvests; else `idle` (`SourceOverviewRules`).
 - A section harvests when its pipeline is `active` and has an enabled capture schedule; `captureEvery` and `checkEvery`
   are the enabled rows' intervals, and `nextDueAt` the capture row's due time while the section harvests.
 - `lastHarvest` is the newest capture run across the source's pipelines; a section's `lastRun` is its newest run of any

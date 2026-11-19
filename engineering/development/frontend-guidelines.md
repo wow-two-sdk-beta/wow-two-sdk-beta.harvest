@@ -17,6 +17,9 @@ Defer to `wow-two-ws/conventions/development/frontend/`.
   lane, tenant, container or scope names. It takes
   `fe-harvest` by `workspace:*`, through its `exports` only — the way a product would; the package never imports
   `apps/`.
+- The console counts a run as needing attention -- Home's failed count, Activity's "Needs attention" chip -- when it
+  failed, was interrupted, or ended `partial` for a reason other than `page_limit` or `item_limit`; a run that stops
+  at its own limit is a normal stop (`ConsoleFormat.isFailedRun`).
 - App source uses `bootstrap`, `presentation`, `application`, `domain`, and `integration` layers.
 - Routes live in `src/bootstrap/router/Routes.ts` on the fe sdk router (`createAppRouter`, `lazyPage`); a new hosted
   page is one route there, its path a constant in `fe-harvest/contracts`, its props decoded from the route.

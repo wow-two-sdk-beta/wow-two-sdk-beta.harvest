@@ -43,7 +43,11 @@ const latestRuns = computed(() => runs.value.slice(0, 6));
           :value="activeRuns"
           :helper="`Across ${plural(pipelines.length, 'section')}`"
         />
-        <StatCard label="Failed harvests" :value="failedRuns" helper="Failed, partial or interrupted, recently" />
+        <StatCard
+          label="Failed harvests"
+          :value="failedRuns"
+          helper="Failed, interrupted or stopped early, recently; not page or item limits"
+        />
         <StatCard
           label="Sources needing attention"
           :value="attention.length"

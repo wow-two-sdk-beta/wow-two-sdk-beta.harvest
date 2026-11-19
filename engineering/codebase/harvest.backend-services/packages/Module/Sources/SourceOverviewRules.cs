@@ -18,9 +18,10 @@ internal static class SourceOverviewRules
         FetchOutcome.RobotsDisallowed, FetchOutcome.Restricted, FetchOutcome.LoginRequired,
     };
 
-    /// <summary>Decides a source's state: harvesting while a run is queued or running; else needing attention when its
-    /// host is paused, has failed <see cref="AttentionFailures"/> or more times in a row, or its last harvest failed;
-    /// else healthy when a section is harvesting; else idle.</summary>
+    /// <summary>Decides a source's state: needing attention while its host is paused, even with a run queued, since that
+    /// run waits for the pause to end; else harvesting while a run is queued or running; else needing attention when its
+    /// host has failed <see cref="AttentionFailures"/> or more times in a row or its last harvest failed; else healthy when
+    /// a section is harvesting; else idle.</summary>
     /// <param name="runActive">Whether any of the source's runs is queued or running.</param>
     /// <param name="health">The source's host health; a pause in it is current.</param>
     /// <param name="lastHarvest">The source's newest collection or processing run.</param>
@@ -28,9 +29,11 @@ internal static class SourceOverviewRules
     internal static SourceHarvestState State(bool runActive, SourceHealthModel health, SourceHarvestModel? lastHarvest,
         IEnumerable<SourceSectionModel> sections)
     {
+        if (health.PausedUntil is not null)
+            return SourceHarvestState.NeedsAttention;
         if (runActive)
             return SourceHarvestState.Harvesting;
-        if (health.PausedUntil is not null || health.ConsecutiveFailures >= AttentionFailures || lastHarvest?.Status == RunStatus.Failed)
+        if (health.ConsecutiveFailures >= AttentionFailures || lastHarvest?.Status == RunStatus.Failed)
             return SourceHarvestState.NeedsAttention;
         return sections.Any(section => section.Harvesting) ? SourceHarvestState.Healthy : SourceHarvestState.Idle;
     }

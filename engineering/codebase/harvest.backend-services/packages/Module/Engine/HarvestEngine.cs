@@ -92,16 +92,18 @@ public sealed class HarvestEngine(
                     "UPDATE harvest_schedules SET enabled=false WHERE id=@id", cancellationToken, ("id", id));
                 continue;
             }
+            var outcome = new RunPlanner.QueueOutcome();
             if (due <= now)
             {
+                // A slot that finds its pipeline's run still active queues nothing: the slot passes, the stamp stays.
                 Result<Guid> result = await RunPlanner.QueueAsync(connection, transaction, pipeline, source, [.. adapters], services,
-                    schedule.Kind, now, id, due, cancellationToken);
+                    schedule.Kind, now, id, due, cancellationToken, outcome);
                 if (result is Result<Guid>.Success)
                     queued++;
             }
             await EngineSql.ExecuteAsync(connection, transaction,
                 "UPDATE harvest_schedules SET next_due_at=@next,last_queued_at=CASE WHEN @ran THEN @now ELSE last_queued_at END WHERE id=@id",
-                cancellationToken, ("id", id), ("next", next), ("ran", due <= now), ("now", now));
+                cancellationToken, ("id", id), ("next", next), ("ran", outcome.Created), ("now", now));
         }
         await transaction.CommitAsync(cancellationToken);
         return queued;
@@ -406,7 +408,9 @@ public sealed class HarvestEngine(
                 "SELECT count(*)::int FROM harvest_work_item WHERE run_id=@run", ("run", claim.Item.RunId));
             int existing = (int)(await count.ExecuteScalarAsync(ct))!;
             bool pageLimit = false;
-            foreach (StepTarget target in result.Next)
+            // The budget goes to targets the container has no post for first, then to the rest, never to the same few known items.
+            foreach (StepTarget target in await RunPlanner.OrderForAdmissionAsync(connection, transaction, claim.Frozen, result.Next,
+                now, ct))
             {
                 if (existing >= max)
                 {
@@ -435,6 +439,8 @@ public sealed class HarvestEngine(
         bool stopForHost = refused || result.Outcome == FetchOutcome.NetworkError;
         if (refused)
             await BackoffAsync(connection, transaction, claim, result, now, ct);
+        else if (ok && claim.Frozen.Kind != WorkKind.Process)
+            await ClearBackoffAsync(connection, transaction, claim, now, ct);
         if (storeOperation is int index)
         {
             var measurement = claim.Frozen.Kind switch
@@ -556,6 +562,21 @@ public sealed class HarvestEngine(
             """, ct, ("host", claim.Item.HostKey), ("lane", claim.Item.Lane), ("now", now),
             ("retry", result.RetryAfter ?? TimeSpan.Zero), ("backoff", options.Value.RefusalBackoff),
             ("challenge", result.Challenge?.ToString()));
+    }
+
+    /// <summary>Ends a lane's refusal streak once a network step on it succeeds, so the next refusal backs off from the first step.</summary>
+    private static Task<int> ClearBackoffAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        WorkClaim claim,
+        DateTimeOffset now,
+        CancellationToken ct)
+    {
+        return EngineSql.ExecuteAsync(connection, transaction,
+            """
+            UPDATE harvest_host_lane SET consecutive_failures=0,last_challenge_kind=NULL,updated_at=@now
+            WHERE host_key=@host AND lane=@lane AND (consecutive_failures<>0 OR last_challenge_kind IS NOT NULL)
+            """, ct, ("host", claim.Item.HostKey), ("lane", claim.Item.Lane), ("now", now));
     }
 
     private static bool IsRefusal(FetchOutcome outcome)

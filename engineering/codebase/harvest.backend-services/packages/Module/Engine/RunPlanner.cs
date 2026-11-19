@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Npgsql;
 using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
@@ -26,7 +28,8 @@ internal static class RunPlanner
         DateTimeOffset now,
         Guid? scheduleId,
         DateTimeOffset? scheduledFor,
-        CancellationToken ct)
+        CancellationToken ct,
+        QueueOutcome? outcome = null)
     {
         await using (NpgsqlCommand gate = EngineSql.Command(connection, transaction,
             "SELECT state FROM harvest_pipelines WHERE id = @id FOR UPDATE", ("id", pipeline.Id)))
@@ -98,7 +101,7 @@ internal static class RunPlanner
             CatalogEntry = kind == WorkKind.Discover && initialTarget is not null ? DiscoveryStore.Address(initialTarget) : null,
         };
         Guid runId = Guid.CreateVersion7(now);
-        await EngineSql.ExecuteAsync(connection, transaction,
+        int inserted = await EngineSql.ExecuteAsync(connection, transaction,
             """
             INSERT INTO harvest_runs(id,container_id,pipeline_id,schedule_id,kind,trigger,scheduled_for,frozen,status,steps,
                 queued_at,finished_at,fetch_outcome,completion_reason,message,new_posts)
@@ -113,6 +116,8 @@ internal static class RunPlanner
             ("outcome", available ? null : "capability_unavailable"), ("reason", available ? null : "source_outcome"),
             ("message", available ? null : kind == WorkKind.Discover && catalog is null
                 ? "This pipeline has no published discovery catalog." : "No registered adapter offers this work kind."));
+        if (outcome is not null)
+            outcome.Created = inserted == 1;
 
         await using (NpgsqlCommand actual = EngineSql.Command(connection, transaction,
             "SELECT id FROM harvest_runs WHERE pipeline_id=@pipeline AND kind=@kind AND scheduled_for=@slot",
@@ -285,5 +290,129 @@ internal static class RunPlanner
             .Select(step => step.Key)];
     }
 
+    /// <summary>Holds how long a known detail's last read counts as recent when no schedule of the run states a cadence.</summary>
+    internal static readonly TimeSpan DefaultRecentRead = TimeSpan.FromHours(6);
+
+    /// <summary>Orders a page result's follow-up targets for admission, so a run's page budget reaches new items first.</summary>
+    /// <remarks>Groups: detail targets the container holds no link for yet; listing and every other non-detail target;
+    /// known details not read within <see cref="RecentReadWindow"/>; known details read since. The first, second and
+    /// fourth group keep the page's order; the third reads the least recently read first, never read first, and the
+    /// page's order breaks a tie, so a long listing's stale items take turns across runs. Admission still stops at the
+    /// page and item limits, so only what fits the budget is read. One set-based query reads the links of all detail
+    /// targets of the result.</remarks>
+    /// <param name="connection">The open connection.</param>
+    /// <param name="transaction">The completion transaction.</param>
+    /// <param name="frozen">The run's frozen plan.</param>
+    /// <param name="targets">The result's follow-up targets, in page order.</param>
+    /// <param name="now">The clock's time.</param>
+    /// <param name="ct">The token that cancels the call.</param>
+    internal static async Task<IReadOnlyList<StepTarget>> OrderForAdmissionAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        FrozenRun frozen,
+        IReadOnlyList<StepTarget> targets,
+        DateTimeOffset now,
+        CancellationToken ct)
+    {
+        if (targets.Count < 2)
+            return targets;
+        var detailSteps = frozen.Adapter.Steps.Where(step => step.Role == StepRole.Detail).Select(step => step.Key)
+            .ToHashSet(StringComparer.Ordinal);
+        string?[] addresses = [.. targets.Select(target => detailSteps.Contains(target.StepKey) ? TryAddress(target.Target) : null)];
+        if (!addresses.Any(address => address is not null))
+            return targets;
+
+        Dictionary<string, DateTimeOffset?> known = await ReadKnownDetailsAsync(connection, transaction, frozen,
+            [.. addresses.OfType<string>().Distinct(StringComparer.Ordinal)], ct);
+        DateTimeOffset staleBefore = now - RecentReadWindow(frozen, now);
+        int Group(int index) => !detailSteps.Contains(targets[index].StepKey) ? 1
+            : addresses[index] is not { } address || !known.TryGetValue(address, out DateTimeOffset? lastRead) ? 0
+            : lastRead is { } read && read >= staleBefore ? 3 : 2;
+        DateTimeOffset LastRead(int index) => Group(index) == 2 && addresses[index] is { } address
+            ? known[address] ?? DateTimeOffset.MinValue : DateTimeOffset.MinValue;
+        return [.. Enumerable.Range(0, targets.Count).OrderBy(Group).ThenBy(LastRead).Select(index => targets[index])];
+    }
+
+    /// <summary>Gets how long ago a known detail may have been read for the run to count it as recent: the cadence of the
+    /// run's own schedule row (the capture row when the run has none), else <see cref="DefaultRecentRead"/>.</summary>
+    /// <param name="frozen">The run's frozen plan.</param>
+    /// <param name="now">The clock's time.</param>
+    internal static TimeSpan RecentReadWindow(FrozenRun frozen, DateTimeOffset now)
+    {
+        ScheduleModel? schedule = frozen.Pipeline.Schedules.FirstOrDefault(row => row.Kind == frozen.Kind)
+            ?? frozen.Pipeline.Schedules.FirstOrDefault(row => row.Kind == WorkKind.Capture);
+        if (schedule is null)
+            return DefaultRecentRead;
+        if (schedule.Mode == ScheduleMode.Cron)
+        {
+            try
+            {
+                var live = schedule with { Enabled = true, Window = null };
+                if (ScheduleCalculator.Next(live, now) is { } first && ScheduleCalculator.Next(live, first) is { } second && second > first)
+                    return second - first;
+            }
+            catch (Exception error) when (error is ArgumentException or Cronos.CronFormatException or TimeZoneNotFoundException)
+            {
+                return DefaultRecentRead;
+            }
+            return DefaultRecentRead;
+        }
+        return schedule.Every is { } every && every > TimeSpan.Zero ? every : DefaultRecentRead;
+    }
+
+    private static string? TryAddress(string target) =>
+        Uri.TryCreate(target, UriKind.Absolute, out _) ? DiscoveryStore.Address(target) : null;
+
+    /// <summary>Reads, by address, the detail targets the source already holds a link for, with the newest moment such a link
+    /// was seen alive; a suspect or gone link counts as known but never recently read.</summary>
+    private static async Task<Dictionary<string, DateTimeOffset?>> ReadKnownDetailsAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        FrozenRun frozen,
+        string[] addresses,
+        CancellationToken ct)
+    {
+        // The link's own url_key hashes its normalized URL as ModulePostBroker does; the key finds a link whose stored
+        // external key differs from the address in form only.
+        var byKey = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (string address in addresses)
+            byKey.TryAdd(Convert.ToHexString(MD5.HashData(Encoding.UTF8.GetBytes(
+                new UriBuilder(address) { Fragment = string.Empty }.Uri.AbsoluteUri))), address);
+        var wanted = addresses.ToHashSet(StringComparer.Ordinal);
+        var known = new Dictionary<string, DateTimeOffset?>(StringComparer.Ordinal);
+        await using NpgsqlCommand command = EngineSql.Command(connection, transaction,
+            """
+            SELECT l.external_key,l.url,l.url_key,l.state,s.last_seen_at
+            FROM harvest_post_links l LEFT JOIN harvest_link_schedule s ON s.link_id=l.id
+            WHERE l.container_id=@container AND l.source_id=@source
+              AND (l.external_key=ANY(@addresses) OR l.url_key=ANY(@keys))
+            """, ("container", frozen.Pipeline.ContainerId), ("source", frozen.Source.Id), ("addresses", addresses),
+            ("keys", byKey.Keys.Select(Convert.FromHexString).ToArray()));
+        await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            DateTimeOffset? seen = reader.GetString(3) is "suspect" or "gone" || reader.IsDBNull(4)
+                ? null : reader.GetFieldValue<DateTimeOffset>(4);
+            var matched = new HashSet<string>(StringComparer.Ordinal);
+            if (wanted.Contains(reader.GetString(0)))
+                matched.Add(reader.GetString(0));
+            if (wanted.Contains(reader.GetString(1)))
+                matched.Add(reader.GetString(1));
+            if (byKey.TryGetValue(Convert.ToHexString(reader.GetFieldValue<byte[]>(2)), out string? viaKey))
+                matched.Add(viaKey);
+            foreach (string address in matched)
+                known[address] = known.TryGetValue(address, out DateTimeOffset? earlier) && (seen is null || earlier > seen)
+                    ? earlier : seen;
+        }
+        return known;
+    }
+
     internal enum EnqueueResult { Skipped, Enqueued, PageLimit }
+
+    /// <summary>Reports to a <see cref="QueueAsync"/> caller whether the call inserted a run or reused one.</summary>
+    internal sealed class QueueOutcome
+    {
+        /// <summary>Gets or sets whether the call inserted a new run row; false when it returned a run already active or failed.</summary>
+        internal bool Created { get; set; }
+    }
 }

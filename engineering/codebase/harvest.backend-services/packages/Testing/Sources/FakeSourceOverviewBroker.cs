@@ -29,6 +29,7 @@ public sealed class FakeSourceOverviewBroker(
     TimeProvider? time = null) : ISourceOverviewBroker
 {
     private readonly Dictionary<Guid, ProcessedAnswerSeed> answers = [];
+    private readonly Dictionary<string, DateTimeOffset> pauses = new(StringComparer.Ordinal);
 
     private TimeProvider Clock => time ?? TimeProvider.System;
 
@@ -65,6 +66,12 @@ public sealed class FakeSourceOverviewBroker(
             var readable = SourceHarvestSelection.CanRead(source);
             var sections = own.Select(pipeline => Section(pipeline, source, sourceRuns, firstPipelines, subscriptions)).ToList();
             var health = await runs.HealthAsync(source, cancellationToken);
+            DateTimeOffset pausedUntil;
+            bool hostPaused;
+            lock (posts.Gate)
+                hostPaused = pauses.TryGetValue(health.HostKey, out pausedUntil);
+            if (hostPaused && pausedUntil > now)
+                health = health with { PausedUntil = pausedUntil, PauseReason = "Challenge" };
             var capture = sourceRuns.FirstOrDefault(run => SourceHarvestSelection.IsCollection(run.Kind));
             var lastHarvest = capture is null ? null : new SourceHarvestModel
             {
@@ -72,8 +79,9 @@ public sealed class FakeSourceOverviewBroker(
                 Reason = Reason(capture.CompletionReason), NewPosts = capture.Captured, Found = capture.Discovered,
             };
             var state = !readable ? source.State == SourceState.Paused ? SourceHarvestState.Idle : SourceHarvestState.NeedsAttention
+                : health.PausedUntil is not null ? SourceHarvestState.NeedsAttention
                 : sourceRuns.Any(run => run.Status is RunStatus.Queued or RunStatus.Running) ? SourceHarvestState.Harvesting
-                : health.PausedUntil is not null || health.ConsecutiveFailures >= 3 || lastHarvest?.Status == RunStatus.Failed ? SourceHarvestState.NeedsAttention
+                : health.ConsecutiveFailures >= 3 || lastHarvest?.Status == RunStatus.Failed ? SourceHarvestState.NeedsAttention
                 : sections.Any(section => section.Harvesting) ? SourceHarvestState.Healthy : SourceHarvestState.Idle;
             overviews.Add(new SourceOverviewModel
             {
@@ -160,6 +168,17 @@ public sealed class FakeSourceOverviewBroker(
         var items = page.Take(query.Limit).ToList();
         return Result<SourceProcessedPage>.Ok(new SourceProcessedPage(items,
             page.Count > query.Limit ? SourceProcessedQueryRules.Cursor(sourceId, query, items[^1]) : null, matches.Count));
+    }
+
+    /// <summary>Pauses a host until a moment, as a refusal would leave it, so the overview of every source on it reports the
+    /// pause; the pause shows only while it lasts.</summary>
+    /// <param name="hostKey">The host key, a source's handle in the fake.</param>
+    /// <param name="until">When the pause ends.</param>
+    public void SeedHostPause(string hostKey, DateTimeOffset until)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(hostKey);
+        lock (posts.Gate)
+            pauses[hostKey] = until;
     }
 
     /// <summary>Stores a post's AI answers, as the passes would have left them; a later seed for the post replaces it.</summary>

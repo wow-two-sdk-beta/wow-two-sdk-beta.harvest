@@ -27,6 +27,7 @@ import type { PipelineStageModel } from '../src/contracts/PipelineStagesModel';
 import { createHarvestClient } from '../src/kit';
 import { continuationSize } from '../src/admin/harvestConsole/UseAdaptiveList';
 import { PipelinePollMs } from '../src/admin/harvestConsole/UsePipelineStages';
+import { isFailedRun } from '../src/admin/harvestConsole/ConsoleFormat';
 
 const wrappers: ReturnType<typeof mount>[] = [];
 /** The fixture's harvests are dated 2026-11-10, so the clock is pinned there: "today" labels stay the same any day. */
@@ -1492,5 +1493,108 @@ describe('access and home', () => {
     await flushPromises();
     const root = wrapper.get('[aria-label="Workspace"]').element.closest('.w-56');
     expect(root?.classList.contains('min-w-0'), 'the account menu beside it stays on screen at phone width').toBe(true);
+  });
+});
+
+/** One run of the fixture's Fashion pipeline, as the service lists it. */
+function runOf(id: string, status: RunModel['status'], completionReason?: string): RunModel {
+  return {
+    id,
+    pipelineId: 'pipeline-1',
+    kind: 'capture',
+    status,
+    ...(completionReason ? { completionReason } : {}),
+    captured: 0,
+    unchanged: 0,
+    discovered: 0,
+    failed: status === 'failed' ? 1 : 0,
+    pages: 5,
+    queuedAtUtc: '2026-11-10T08:00:00Z',
+  } as RunModel;
+}
+
+/** The fixture service with `runs` as the Fashion pipeline's recent runs. */
+function fetchWithRuns(runs: RunModel[]) {
+  const base = fixtureFetch();
+  const fetch: typeof globalThis.fetch = (input, init) =>
+    new URL(String(input), 'https://harvest.example.test').pathname === '/api/runs'
+      ? Promise.resolve(Response.json({ data: runs }))
+      : base(input, init);
+  return fetch;
+}
+
+/** The number a Home health card shows under its label. */
+function healthValue(wrapper: ReturnType<typeof mount>, label: string) {
+  const card = wrapper.findAll('[aria-label="Health"] > div').find((item) => item.get('p').text() === label);
+  return card?.get('h3').text();
+}
+
+/** Afisha's five-page harvests end `partial` at their limit every time; only the other endings need attention. */
+const mixedRuns = [
+  runOf('run-failed', 'failed', 'source_outcome'),
+  runOf('run-challenge', 'partial', 'source_outcome'),
+  runOf('run-time-limit', 'partial', 'time_limit'),
+  runOf('run-interrupted', 'interrupted'),
+  runOf('run-page-limit', 'partial', 'page_limit'),
+  runOf('run-item-limit', 'partial', 'item_limit'),
+  runOf('run-done', 'completed', 'exhausted'),
+];
+
+describe('runs that need attention', () => {
+  it('counts a failed, interrupted or otherwise partial run, and not a normal stop at a page or item limit', () => {
+    expect(mixedRuns.filter(isFailedRun).map((run) => run.id)).toEqual([
+      'run-failed',
+      'run-challenge',
+      'run-time-limit',
+      'run-interrupted',
+    ]);
+    expect(isFailedRun(runOf('run-bare', 'partial'))).toBe(true);
+    expect(isFailedRun(runOf('run-queued', 'queued'))).toBe(false);
+  });
+
+  it('shows the failed count on Home without the runs that stopped at a limit', async () => {
+    const wrapper = mountConsole({
+      options: { client: createHarvestClient({ fetch: fetchWithRuns(mixedRuns) }) },
+      panels: () => h(HomePanel),
+    });
+    await flushPromises();
+    expect(healthValue(wrapper, 'Failed harvests')).toBe('4');
+    expect(wrapper.get('[aria-label="Health"]').text()).toContain('not page or item limits');
+  });
+
+  it('shows no failure on Home when every run only stopped at a limit', async () => {
+    const wrapper = mountConsole({
+      options: {
+        client: createHarvestClient({
+          fetch: fetchWithRuns([runOf('run-page-limit', 'partial', 'page_limit'), runOf('run-done', 'completed')]),
+        }),
+      },
+      panels: () => h(HomePanel),
+    });
+    await flushPromises();
+    expect(healthValue(wrapper, 'Failed harvests')).toBe('0');
+  });
+
+  it('keeps a page-limit run out of the Activity "Needs attention" chip and lists a failed run in it', async () => {
+    const wrapper = mountConsole({
+      options: { client: createHarvestClient({ fetch: fetchWithRuns(mixedRuns) }) },
+      panels: () => h(SourcePanel, { sourceId: 'source-1', tab: 'activity' }),
+    });
+    await flushPromises();
+    const chips = wrapper
+      .get('[aria-label="Filter runs"]')
+      .findAll('button')
+      .map((chip) => chip.attributes('aria-label'));
+    expect(chips).toContain('All 7');
+    expect(chips).toContain('Needs attention 4');
+    const rows = () => wrapper.get('table[aria-label="Runs"]').findAll('tbody tr[role="row"]');
+    expect(rows()).toHaveLength(7);
+    await wrapper.get('[aria-label="Filter runs"] button[aria-label="Needs attention 4"]').trigger('click');
+    expect(rows()).toHaveLength(4);
+    const shown = rows()
+      .map((row) => row.text())
+      .join(' ');
+    expect(shown).toContain('failed');
+    expect(shown).not.toContain('page limit');
   });
 });
