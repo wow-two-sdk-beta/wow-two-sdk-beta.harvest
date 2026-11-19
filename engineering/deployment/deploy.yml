@@ -68,6 +68,17 @@ services:
         HarvestInstagram:ProfessionalAccountId: {}
         HarvestInstagram:ApiVersion: {}
         HarvestInstagram:BaseAddress: { type: url, default: "https://graph.facebook.com/" }
+        # AI processing, all off by default (development/post-tags.md, extraction.md, entities.md); the provider key is
+        # entered privately, and a route without a key leaves the list.
+        Harvest:Processing:Ai:Enabled: { type: boolean, default: false }
+        Ai:Providers:anthropic:Kind: { default: anthropic }
+        Ai:Providers:anthropic:ApiKey: { secret: true }
+        Harvest:Processing:Tags:Enabled: { type: boolean, default: false }
+        Harvest:Processing:Tags:Models:0: {}
+        Harvest:Processing:Extraction:Wanted:0:EntityType: {}
+        Harvest:Processing:Extraction:Wanted:0:Domain: {}
+        Harvest:Processing:Extraction:Models:0: {}
+        Harvest:Entities:Enabled: { type: boolean, default: false }
     needs: [postgres]
     # The bundle services harvest starts after: none, since PostgreSQL is a platform service under needs.
     dependsOn: []
