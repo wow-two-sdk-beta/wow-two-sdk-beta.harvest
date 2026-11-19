@@ -15,7 +15,8 @@ container-scoped reads, merge and unmerge; `AddHarvestPosts()` registers the Pos
   answer (`Tagging/`), never patched; only a
   completed run over a complete enumeration infers `suspect`; unverifiable links abstain.
 - Emits, in the same transaction: `post.new`, `post.changed`, `link.state` rows through the Delivery lane's log; a
-  resolve queues `post-tags` for a title and text with no done answer (`harvest_post_work`).
+  resolve queues `post-tags` for a title and text with no done answer (`harvest_post_work`), and a done tags answer
+  queues the `extract-event` or `extract-listing` its demand wants (`PostExtraction/`).
 - capture writes and subscription backfills share a container advisory transaction lock; a content projection's
   SHA-256 controls capture creation, so replaying a completed write appends neither a capture nor an event
 - local capture bodies use `harvest_captures.body_inline` while Files is unbound; the retention policy determines

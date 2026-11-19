@@ -2,8 +2,11 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
-namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Marketplace;
+namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
 
+/// <summary>Checks AI answers against the text the model read: every quote must appear there verbatim, on whole tokens,
+/// and state the value it backs. <c>rental-terms@2</c> rejects a whole answer on one bad claim; Layer 2 extraction keeps
+/// the rest of its answer and turns only the rejected field into unknown with a flag.</summary>
 internal static partial class RentalTermEvidence
 {
     private const RegexOptions PatternOptions = RegexOptions.CultureInvariant;
@@ -20,7 +23,7 @@ internal static partial class RentalTermEvidence
         RentalTermsAnswer? answer;
         try
         {
-            answer = JsonSerializer.Deserialize<RentalTermsAnswer>(output, RentalTermsDefinition.Wire);
+            answer = JsonSerializer.Deserialize<RentalTermsAnswer>(output, EvidenceWire.Options);
         }
         catch (JsonException)
         {
@@ -29,17 +32,84 @@ internal static partial class RentalTermEvidence
 
         if (answer is null)
             return (null, "The model returned an invalid rental-terms document.");
-        if (!Verify(answer.Deposit, description, visibleLength, DepositCue(), Deposit))
+        if (!VerifyDeposit(answer.Deposit, description, visibleLength))
             return (null, "Deposit claims did not match the description.");
-        if (!Verify(answer.MinimumStay, description, visibleLength, MinimumCue(), Duration))
+        if (!VerifyMinimumStay(answer.MinimumStay, description, visibleLength))
             return (null, "Minimum-stay claims did not match the description.");
-        if (!Verify(answer.AdvanceRent, description, visibleLength, AdvanceCue(), Advance))
+        if (!VerifyAdvanceRent(answer.AdvanceRent, description, visibleLength))
             return (null, "Advance-rent claims did not match the description.");
-        if (!Verify(answer.Utilities, description, visibleLength, UtilitiesCue(), Utilities, ambiguousExclusion: true))
+        if (!VerifyUtilities(answer.Utilities, description, visibleLength))
             return (null, "Utilities claims did not match the description.");
 
         return (answer, null);
     }
+
+    /// <summary>Checks each term of <paramref name="answer"/> on its own: a term whose claims fail becomes unknown, and
+    /// its field name (<c>deposit</c>, <c>minimumStay</c>, <c>advanceRent</c>, <c>utilities</c>) is listed as rejected.</summary>
+    /// <param name="answer">The model's terms.</param>
+    /// <param name="description">The text the quotes must come from.</param>
+    /// <param name="visibleLength">How much of <paramref name="description"/> the model read.</param>
+    internal static (RentalTermsAnswer Answer, IReadOnlyList<string> Rejected) CheckTerms(RentalTermsAnswer answer, string description, int visibleLength)
+    {
+        var rejected = new List<string>();
+        var deposit = Keep(answer.Deposit, VerifyDeposit(answer.Deposit, description, visibleLength), "deposit", rejected);
+        var minimum = Keep(answer.MinimumStay, VerifyMinimumStay(answer.MinimumStay, description, visibleLength), "minimumStay", rejected);
+        var advance = Keep(answer.AdvanceRent, VerifyAdvanceRent(answer.AdvanceRent, description, visibleLength), "advanceRent", rejected);
+        var utilities = Keep(answer.Utilities, VerifyUtilities(answer.Utilities, description, visibleLength), "utilities", rejected);
+        return (new RentalTermsAnswer(deposit, minimum, advance, utilities), rejected);
+    }
+
+    /// <summary>Whether <paramref name="evidence"/> appears verbatim in the first <paramref name="visibleLength"/>
+    /// characters of <paramref name="text"/>, starting and ending on token boundaries: the check every quote passes.</summary>
+    internal static bool Quoted(string? evidence, string text, int visibleLength)
+    {
+        if (string.IsNullOrWhiteSpace(evidence) || evidence.Length > text.Length)
+            return false;
+        int offset = text.IndexOf(evidence, 0, Math.Min(visibleLength, text.Length), StringComparison.Ordinal);
+        return offset >= 0 && HasWholeTokens(text, offset, evidence.Length);
+    }
+
+    /// <summary>Whether <paramref name="quote"/> states <paramref name="amount"/>: one of its numbers, scaled by a following
+    /// thousand or million word (<c>тыс</c>, <c>ming</c>, <c>млн</c>, <c>k</c>), equals it.</summary>
+    internal static bool StatesAmount(string quote, decimal amount)
+    {
+        string normalized = Normalize(quote);
+        foreach (Match number in Quantity().Matches(normalized))
+        {
+            if (CountOf(number.Value) is not { } count)
+                continue;
+            var scale = MoneyScale().Match(normalized[(number.Index + number.Length)..]);
+            decimal multiplier = scale.Groups["scale"].Value switch
+            {
+                "million" or "mln" or "миллион" or "миллиона" or "миллионов" or "млн" => 1_000_000m,
+                "" => 1m,
+                _ => 1_000m,
+            };
+            if (count == amount || (multiplier != 1m && Math.Abs(count) <= decimal.MaxValue / multiplier && count * multiplier == amount))
+                return true;
+        }
+        return false;
+    }
+
+    private static RentalTerm<T> Keep<T>(RentalTerm<T>? term, bool verified, string field, List<string> rejected) where T : class
+    {
+        if (verified && term is not null)
+            return term;
+        rejected.Add(field);
+        return RentalTerm<T>.Unknown;
+    }
+
+    private static bool VerifyDeposit(RentalTerm<RentalDeposit>? term, string description, int visibleLength) =>
+        Verify(term, description, visibleLength, DepositCue(), Deposit);
+
+    private static bool VerifyMinimumStay(RentalTerm<RentalDuration>? term, string description, int visibleLength) =>
+        Verify(term, description, visibleLength, MinimumCue(), Duration);
+
+    private static bool VerifyAdvanceRent(RentalTerm<RentalAdvance>? term, string description, int visibleLength) =>
+        Verify(term, description, visibleLength, AdvanceCue(), Advance);
+
+    private static bool VerifyUtilities(RentalTerm<RentalUtilities>? term, string description, int visibleLength) =>
+        Verify(term, description, visibleLength, UtilitiesCue(), Utilities, ambiguousExclusion: true);
 
     private static bool Verify<T>(RentalTerm<T>? term, string description, int visibleLength, Regex cue, Func<T, string, Regex, bool> agrees,
         bool ambiguousExclusion = false)
@@ -55,12 +125,10 @@ internal static partial class RentalTermEvidence
         var distinctValues = new HashSet<T?>();
         foreach (var claim in term.Claims)
         {
-            if (string.IsNullOrWhiteSpace(claim?.Evidence))
+            if (string.IsNullOrWhiteSpace(claim?.Evidence) || !Quoted(claim.Evidence, description, visibleLength))
                 return false;
-            // The quote must fit in the model's input. Token and clause checks use the saved description.
-            int offset = description.IndexOf(claim.Evidence, 0, visibleLength, StringComparison.Ordinal);
-            if (offset < 0 || !HasWholeTokens(description, offset, claim.Evidence.Length))
-                return false;
+            // The quote fits in the model's input. Token and clause checks use the saved description.
+            int offset = description.IndexOf(claim.Evidence, 0, Math.Min(visibleLength, description.Length), StringComparison.Ordinal);
             string quote = Normalize(claim.Evidence);
             if (!cue.IsMatch(quote))
                 return false;

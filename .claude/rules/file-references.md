@@ -25,6 +25,9 @@
 | Backlog — every unbuilt item | `engineering/planning/backlog.md` |
 | Active version | newest `engineering/planning/version-track/v{X.Y}/v{X.Y}.md` |
 | Working rules for agents | `engineering/development/rules.md` |
+| AI post tagging (Layer 1): prompt, verbs, rollout | `engineering/development/post-tags.md` |
+| AI extraction (Layer 2): use cases, demand, evidence, verbs | `engineering/development/extraction.md` |
+| OLX rental-terms processing | `engineering/development/olx-ai.md` |
 | Repository — how it was created, GitHub settings, rollout state | `engineering/development/development.md` § Repository |
 | Deploy / ops — local Compose, service access, Ocharo provisioning, integrations | `engineering/deployment/deployment.md` |
 | Local Compose variables | `engineering/deployment/.env.example` |

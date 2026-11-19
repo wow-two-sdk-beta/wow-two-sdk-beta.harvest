@@ -8,7 +8,7 @@
 | Package | Layer | References | Heavy deps | Forms | Consumers |
 |---|---|---|---|---|---|
 | `WoW2.Sdk.Beta.Be.Harvest.Abstractions` | contract | the kernel `WoW2.Sdk.Beta.Be.Abstractions` only; no framework reference | none | all | product Domain/Application projects; `sources/*` |
-| `WoW2.Sdk.Beta.Be.Harvest.Module` | forms | Abstractions, core (Npgsql, EF Core, SQL migrator), Identity.Auth, the AI contract `WoW2.Sdk.Beta.Be.Ai.Abstractions` (post-tags), AngleSharp, Cronos | HTML parser; no browser engine | 1 | products (Form 1), `sources/Module`, both hosts |
+| `WoW2.Sdk.Beta.Be.Harvest.Module` | forms | Abstractions, core (Npgsql, EF Core, SQL migrator), Identity.Auth, the AI contract `WoW2.Sdk.Beta.Be.Ai.Abstractions` (post-tags, extraction), AngleSharp, Cronos | HTML parser; no browser engine | 1 | products (Form 1), `sources/Module`, both hosts |
 | `WoW2.Sdk.Beta.Be.Harvest.Client` | forms | Abstractions, core, Identity.Auth | none | 2, 3 | Events, Haven, the ListingShelf view |
 | `WoW2.Sdk.Beta.Be.Harvest.Hosting` | hosting | Module, core, Identity.Client, ASP.NET shared framework | optional durable BFF session cache; no source or provider dependency | 2, 3 | `service/HarvestSources.Api` |
 | `WoW2.Sdk.Beta.Be.Harvest.Testing` | test kit | Abstractions, `WoW2.Sdk.Beta.Be.Testing` | xunit (via be Testing) | all | test projects |

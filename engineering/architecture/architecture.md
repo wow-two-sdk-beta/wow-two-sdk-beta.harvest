@@ -24,7 +24,7 @@ Client ──HTTP + token or X-Api-Key──► service/HarvestSources.Api
 | Project | Responsibility |
 |---|---|
 | `packages/Abstractions` | the contract — `IRegistrationBroker`, the step-broker and capability seams, captures, `wow2.post.v1`, delivery types; no DI, options or I/O |
-| `packages/Module` | Form 1: the store (own keyed Npgsql data source), the migration set and boot self-test, the registry broker, the API key store; lane folders `Capabilities/` · `Engine/` · `Readers/` · `Extraction/` · `Posts/` · `Delivery/` · `Sources/` · `Tagging/` |
+| `packages/Module` | Form 1: the store (own keyed Npgsql data source), the migration set and boot self-test, the registry broker, the API key store; lane folders `Capabilities/` · `Engine/` · `Readers/` · `Extraction/` · `Posts/` · `Delivery/` · `Sources/` · `Tagging/` · `PostExtraction/` |
 | `packages/Client` | Forms 2/3 over the service's HTTP API, authenticated by a service token or an API key |
 | `packages/Hosting` | shared ASP.NET startup, access policies and HTTP controllers both hosts compose |
 | `packages/Testing` | registry, run, post and delivery fakes and their shared conformance suites |
@@ -43,7 +43,9 @@ Client ──HTTP + token or X-Api-Key──► service/HarvestSources.Api
   response caching. Challenges, blocks and rate limits remain outcomes that back off the host.
 - Generic readers use AngleSharp and bounded XML/JSON parsers; extraction runs without model services. The Layer 1
   `post-tags` pass (`Tagging/`) calls the shared AI runner through the AI contract only, when the host composes the AI
-  module, and writes its tags back through the post's resolve. Captures and
+  module, and writes its tags back through the post's resolve. Layer 2 extraction (`PostExtraction/`) calls it the
+  same way for the (entity type, domain) pairs its demand gate wants and stores evidence-checked answers beside the
+  post, never in it. Captures and
   conditional-response replay bodies stay in PostgreSQL while Files integration is unbound.
 - Hosting explicitly composes all engine lanes and opts into the worker. A library consumer can register the
   brokers without starting background work. `Harvest:Worker:Enabled=false` disables the service's worker.

@@ -1,4 +1,5 @@
 using HarvestSources.Api.Configurations;
+using HarvestSources.Api.Extraction;
 using HarvestSources.Api.Marketplace;
 using HarvestSources.Api.Ocharo;
 using HarvestSources.Api.Tagging;
@@ -13,6 +14,8 @@ return await ServiceHost.RunAsync(args, builder => builder.Configure(), app => a
         .AddHostVerb(RentalTermsPromptVerb.Name, (services, verb, ct) =>
             RentalTermsPromptVerb.RunAsync(services, verb.Arguments, Console.OpenStandardInput(), verb.Output, verb.Error, ct))
         .AddHostVerb(PostTagsVerb.Name, (services, verb, ct) =>
-            PostTagsVerb.RunAsync(services, verb.Arguments, Console.OpenStandardInput(), verb.Output, verb.Error, ct)));
+            PostTagsVerb.RunAsync(services, verb.Arguments, Console.OpenStandardInput(), verb.Output, verb.Error, ct))
+        .AddHostVerb(PostExtractionVerb.Name, (services, verb, ct) =>
+            PostExtractionVerb.RunAsync(services, verb.Arguments, Console.OpenStandardInput(), verb.Output, verb.Error, ct)));
 
 public partial class Program;

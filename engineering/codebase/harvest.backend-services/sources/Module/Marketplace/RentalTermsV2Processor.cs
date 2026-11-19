@@ -7,6 +7,7 @@ using WoW.Two.Sdk.Beta.Be.Ai.Runs;
 using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 using WoW.Two.Sdk.Beta.Be.Harvest.Steps;

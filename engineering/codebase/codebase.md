@@ -13,22 +13,25 @@ The code lives in `harvest.backend-services/` (.NET) and `harvest.frontend-servi
 - `Module`: `Persistence/` (the context and the registry rows), `Store/` (the boot self-test), `Registration/` (the
   broker and its rules), `ApiKeys/` (the key store core's scheme reads), and the lane folders `Capabilities/`,
   `Engine/`, `Readers/`, `Extraction/`, `Posts/`, `Delivery/`, `Sources/` (the console's read side), `Tagging/` (the
-  Layer 1 `post-tags` pass over the shared AI contract and the IAB 3.1 taxonomy), each with its lead doc.
+  Layer 1 `post-tags` pass over the shared AI contract and the IAB 3.1 taxonomy), `PostExtraction/` (Layer 2
+  `extract-event` and `extract-listing`, the demand gate and the evidence check `rental-terms@2` shares), each with its
+  lead doc.
 - `sources/` holds the named source readers `Afisha`, `Anons`, `Caex`, `Craftfair`, `Olx`, `Uzexpocentre`, the opt-in
   `Instagram` and `Integrations` clients, and `Module` (the Ocharo registry `Ocharo/ocharo-event-sources.json`,
   provisioner and filter; `Marketplace/` for OLX). Not packable: `Directory.Build.props` gives them XML docs and
   warnings as errors, and they ship only inside the image. Each folder's lead doc holds the source's reading rules.
 - `service/HarvestSources.Api` is the deployed host: Hosting's startup and controllers, the sources, the Ocharo
-  controller and the `ocharo` host verb; it serves no console. It is the only host, and the E2E and Conformance tiers
+  controller and the host verbs (`ocharo`, `marketplace`, `rental-terms`, `post-tags`, `extract`; their shared option
+  reading in `Configurations/VerbArguments.cs`); it serves no console. It is the only host, and the E2E and Conformance tiers
   boot it; Hosting owns the store boot, API controllers, scoped machine access and local development
   keys under `Registration/Access/`.
 - Tests: `Harvest.Tests.Unit` (package logic, no I/O), `Integration` (the module over PostgreSQL: rows, self-test, key
-  store, partitions, the post-tags pass on the real AI runner with `ScriptedAiModelCaller`), `E2E` (the generic host in
+  store, partitions, the post-tags and extraction passes on the real AI runner with `ScriptedAiModelCaller`), `E2E` (the generic host in
   process: boot and refusal, access, the wire, `/health`, the descriptor's dev check), `Conformance` (one suite against
   module, client and fake), `Migrations` (the module's SQL set and the be sdk migration lint from `011` on).
   `HarvestAdapters.Tests.Unit` (readers against source fixtures, fake providers, the registry),
   `HarvestAdapters.Tests.Integration` (Ocharo and OLX pipelines over PostgreSQL) and `HarvestSources.Tests.E2E` (the
-  source host: setup authority, capability metadata, the `ocharo`, `rental-terms` and `post-tags` verbs, no console). The database tiers run
+  source host: setup authority, capability metadata, the `ocharo`, `rental-terms`, `post-tags` and `extract` verbs, no console). The database tiers run
   `postgres:18-alpine` in Testcontainers through `tests/Shared/PostgresServer.cs` and `tests/Shared/SourcePostgres.cs`
   — one server per test assembly, a fresh database per fixture — so they need Docker. Run them with
   `dotnet test SCFD.BackendServices.slnx`; fixtures and fake providers make no live request.

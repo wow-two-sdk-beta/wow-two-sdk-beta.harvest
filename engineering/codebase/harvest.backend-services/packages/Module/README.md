@@ -33,7 +33,11 @@ await app.Services.MigrateHarvestOnStartupAsync(); // create, check, migrate, ch
 - `IPostTagsBroker` — the Layer 1 `post-tags` pass over the shared AI contract: `AddHarvestPostTags()` and
   `AddHarvestPostTagsWorker()`; post writes queue it only when `PostTagsOptions.Enabled` is set and the host composes
   the AI module. Its taxonomy is IAB Tech Lab Content Taxonomy 3.1 (CC BY 3.0).
+- `IPostExtractionBroker` — Layer 2 extraction (`extract-event`, `extract-listing`) over the same AI contract:
+  `AddHarvestPostExtraction()` and `AddHarvestPostExtractionWorker()`; done tags queue it only for the pairs
+  `IPostExtractionDemand` wants (by default `PostExtractionOptions.Wanted`). It stores evidence-checked answers and
+  never writes the post.
 - Fetching, readers, extraction, posts, delivery and the engine register explicitly through their `Module.*` namespaces.
-- Direct HTTP obeys host policy and reports refusals. No external transport, challenge solver or model provider is bound; the post-tags pass references the AI contract only.
+- Direct HTTP obeys host policy and reports refusals. No external transport, challenge solver or model provider is bound; the post-tags and extraction passes reference the AI contract only.
 - `AddHarvestApiKeys()` — answers core's `ApiKey` scheme from the key table and the operator key, for a host that serves
   Harvest's HTTP API.

@@ -52,7 +52,9 @@ internal sealed class TagsHost(ServiceProvider services, AsyncServiceScope scope
     /// <param name="enabled">Whether <c>Harvest:Processing:Tags:Enabled</c> is set.</param>
     /// <param name="ai">Whether the host composes the AI module.</param>
     /// <param name="register">Whether to register the use case and one prompt version.</param>
-    internal static async Task<TagsHost> StartAsync(bool enabled = true, bool ai = true, bool register = true)
+    /// <param name="configure">Further registrations, such as the extraction pass, before the provider is built.</param>
+    internal static async Task<TagsHost> StartAsync(bool enabled = true, bool ai = true, bool register = true,
+        Action<IServiceCollection>? configure = null)
     {
         var connectionString = (await PostgresServer.SharedAsync()).NewDatabase("tags");
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 11, 19, 9, 0, 0, TimeSpan.Zero));
@@ -71,6 +73,7 @@ internal sealed class TagsHost(ServiceProvider services, AsyncServiceScope scope
             collection.AddSingleton<IAiModelCaller>(caller);
         }
         collection.AddHarvestPostTags().Configure(options => options.Enabled = enabled);
+        configure?.Invoke(collection);
         var provider = collection.BuildServiceProvider(validateScopes: true);
         await provider.MigrateHarvestOnStartupAsync("test");
         if (ai)

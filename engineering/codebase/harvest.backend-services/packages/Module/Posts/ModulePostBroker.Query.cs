@@ -128,8 +128,9 @@ internal sealed partial class ModulePostBroker
 
     /// <summary>Resolves a post from its links' readings and records its revision: <paramref name="increment"/> raises
     /// it, and false means the write just created the post, which records <c>created</c>.</summary>
-    /// <remarks>The stored post-tags answer for the post overlays the resolved envelope on every resolve, and a title or
-    /// text without a done answer queues tagging (<see cref="QueueTagsAsync"/>). With <paramref name="onlyIfChanged"/>
+    /// <remarks>The stored post-tags answer for the post overlays the resolved envelope on every resolve, a title or
+    /// text without a done answer queues tagging (<see cref="QueueTagsAsync"/>), and one with done tags a subscriber wants
+    /// queues extraction (<see cref="QueueExtractionAsync"/>). With <paramref name="onlyIfChanged"/>
     /// an unchanged <c>base</c> writes nothing and returns false.</remarks>
     private async Task<bool> ResolveAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid containerId, Guid postId, DateTimeOffset now, bool increment, CancellationToken ct,
         bool onlyIfChanged = false)
@@ -177,6 +178,7 @@ internal sealed partial class ModulePostBroker
             ("hash", MD5.HashData(Encoding.UTF8.GetBytes(NormalizeText(resolved)))), ("signature", NumberSignature(resolved)), ("link", readings[0].LinkId));
         await PostRevisionLog.RecordAsync(connection, transaction, containerId, postId, previous, now, ct);
         await QueueTagsAsync(connection, transaction, containerId, postId, resolved, contentHash, now, ct);
+        await QueueExtractionAsync(connection, transaction, containerId, postId, contentHash, now, ct);
         return true;
     }
 

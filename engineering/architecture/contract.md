@@ -116,8 +116,9 @@ the step contract. Every type references the BCL and the kernel only.
 - The renderer serves pages that show their content only through JavaScript, never a challenge.
 - The schema in the SQL migrations is the shared seam between lanes: `001-baseline`, `002-drop-escalation` (no
   ladder), `003-fetching`, `004-posts-delivery`, `005-subscription-filter`, `006-source-groups` (source groups, display
-  names, the post revision log), through `011-taxonomy` (the IAB 3.1 category tree) and `012-post-tags` (tagging answers
-  and the post work queue). Each lane maps the tables its folder's lead doc names.
+  names, the post revision log), through `011-taxonomy` (the IAB 3.1 category tree), `012-post-tags` (tagging answers
+  and the post work queue) and `013-post-extractions` (Layer 2 answers and their queue kinds). Each lane maps the tables
+  its folder's lead doc names.
 - `Capture.ContentProjection` drives the content hash; a capture row exists only when it changes.
 - Source readers can retain their versioned native field envelope in page metadata's `sourceFields`; extraction
   preserves it under `PostEnvelope.Extras["source"]`. Original publisher labels use `SourceTags`, independently
@@ -175,6 +176,10 @@ the step contract. Every type references the BCL and the kernel only.
 - a post whose title or text has no done `post-tags` answer is queued in the write's transaction when tagging is on and
   its title and text come from sources that allow AI; a done answer that changes `base` raises the revision and appends
   `post.changed`, and that tag-only revision keeps its content hash, so it queues nothing
+- a done `post-tags` answer about the post's current title and text queues Layer 2 extraction in the same transaction
+  when `IPostExtractionDemand` wants its (entity type, domain) pair; the answer is stored per post, content and use case
+  in `harvest_post_extractions` with verbatim evidence for every date, price and rental term, and is not part of the
+  post or its delivery events until the entity layer reads it; `development/extraction.md`
 - delivery stores immutable revision snapshots; `wow2.event.v1` selects the event projection while retaining post identity and provenance
 - a post the subscription holds whose newest revision fails its filter or section arrives once as `post.unmatched`
   (that revision's identity, number and payload); later failing revisions, a restore from gone included, are withheld,

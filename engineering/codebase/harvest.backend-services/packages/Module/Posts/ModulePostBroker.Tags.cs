@@ -31,6 +31,7 @@ internal sealed partial class ModulePostBroker
     ///   - the write-back keeps the title and text, so its content hash already has a done answer and queues nothing
     ///   - identical tags leave <c>base</c> unchanged: no revision and no event
     ///   - a done answer clears the queue row for its hash; any other outcome sets the row's retry time and error
+    ///   - a done answer about the current content queues the extraction its demand wants (<see cref="QueueExtractionAsync"/>)
     /// </remarks>
     internal async Task<PostTagsWriteResult> WriteTagsAsync(PostTagsRecord record, CancellationToken ct)
     {
@@ -72,6 +73,8 @@ internal sealed partial class ModulePostBroker
             await DeliveryEventWriter.AppendAsync(connection, transaction, updated, "post.changed", null, null, now, postFilters, ct);
             revised = updated.Revision;
         }
+        if (done && current)
+            await QueueExtractionAsync(connection, transaction, record.ContainerId, record.PostId, record.ContentHash, now, ct);
         await PostSql.ExecuteAsync(connection, transaction, """
             UPDATE harvest_post_work SET lease_owner=NULL,lease_until=NULL WHERE post_id=@post AND kind=@kind;
             DELETE FROM harvest_post_work WHERE post_id=@post AND kind=@kind AND content_hash=@hash AND @done;

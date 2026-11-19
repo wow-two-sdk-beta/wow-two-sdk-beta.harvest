@@ -10,13 +10,14 @@ using WoW.Two.Sdk.Beta.Be.Testing.Data.Migrations.Lint;
 namespace Harvest.Tests.Migrations;
 
 /// <summary>The module's migration set over a fresh PostgreSQL database: apply, idempotency, the Apply → Rollback → Apply
-/// round trip, the be sdk lint from 011 on, and the shape SQL 001, 002, 006, 011 and 012 promise the lanes.</summary>
+/// round trip, the be sdk lint from 011 on, and the shape SQL 001, 002, 006, 011, 012 and 013 promise the lanes.</summary>
 public sealed class MigrationTests : IAsyncLifetime
 {
     /// <summary>Holds every migration of the set, in order.</summary>
     private static readonly string[] Migrations =
         ["001-baseline", "002-drop-escalation", "003-fetching", "004-posts-delivery", "005-subscription-filter", "006-source-groups",
-            "007-source-assets", "008-pipeline-stages", "009-step-operations", "010-post-unmatched", "011-taxonomy", "012-post-tags"];
+            "007-source-assets", "008-pipeline-stages", "009-step-operations", "010-post-unmatched", "011-taxonomy", "012-post-tags",
+            "013-post-extractions"];
 
     /// <summary>Holds the escalation columns 002 drops.</summary>
     private const string EscalationColumns =
@@ -33,6 +34,7 @@ public sealed class MigrationTests : IAsyncLifetime
         "harvest_sources", "harvest_subscription_event", "harvest_subscriptions", "harvest_tenants", "harvest_usage",
         "harvest_work_item", "harvest_discoveries", "harvest_discovery_scopes", "harvest_catalog_pages",
         "harvest_processing_results", "harvest_step_attempts", "harvest_taxonomy_nodes", "harvest_post_tags", "harvest_post_work",
+        "harvest_post_extractions",
     ];
 
     /// <summary>The last ordinal applied before the lint ran in this tier.</summary>
@@ -114,8 +116,8 @@ public sealed class MigrationTests : IAsyncLifetime
         Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None));
 
         Unwrap(await Runner.RollbackAsync(targetOrdinal: 5, CancellationToken.None)).Should()
-            .Equal("012-post-tags", "011-taxonomy", "010-post-unmatched", "009-step-operations", "008-pipeline-stages",
-                "007-source-assets", "006-source-groups");
+            .Equal("013-post-extractions", "012-post-tags", "011-taxonomy", "010-post-unmatched", "009-step-operations",
+                "008-pipeline-stages", "007-source-assets", "006-source-groups");
         (await ColumnCountAsync("table_name = 'harvest_sources' AND column_name IN ('group_id', 'display_name')")).Should().Be(0);
         (await ScalarAsync<bool>("SELECT to_regclass('harvest_source_groups') IS NULL AND to_regclass('harvest_post_revisions') IS NULL")).Should().BeTrue();
 
@@ -160,7 +162,8 @@ public sealed class MigrationTests : IAsyncLifetime
             """);
 
         Unwrap(await Runner.RollbackAsync(targetOrdinal: 7, CancellationToken.None)).Should()
-            .Equal("012-post-tags", "011-taxonomy", "010-post-unmatched", "009-step-operations", "008-pipeline-stages");
+            .Equal("013-post-extractions", "012-post-tags", "011-taxonomy", "010-post-unmatched", "009-step-operations",
+                "008-pipeline-stages");
 
         (await ScalarAsync<string>("SELECT string_agg(pipeline_id::text, ',') FROM harvest_schedules WHERE kind = 'discover'"))
             .Should().Be(legacy.ToString());
@@ -217,6 +220,23 @@ public sealed class MigrationTests : IAsyncLifetime
         (await ScalarAsync<string>("SELECT indexdef FROM pg_indexes WHERE indexname = 'pk_harvest_post_tags'")).Should().Contain("(post_id, content_hash)");
         (await ConstraintAsync("ck_harvest_post_tags_entity_type")).Should().Contain("unsure");
         (await ConstraintAsync("ck_harvest_post_work_kind")).Should().Contain("post-tags");
+    }
+
+    [Fact]
+    public async Task ApplyPending_ShouldKeepOneExtractionPerPostContentAndUseCase_AndQueueItBesideTags()
+    {
+        Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None));
+
+        (await ScalarAsync<string>("SELECT indexdef FROM pg_indexes WHERE indexname = 'pk_harvest_post_extractions'"))
+            .Should().Contain("(post_id, content_hash, use_case)");
+        (await ConstraintAsync("ck_harvest_post_extractions_use_case")).Should().Contain("extract-event").And.Contain("extract-listing");
+        (await ConstraintAsync("ck_harvest_post_extractions_role")).Should().Contain("announcement").And.Contain("unsure");
+        (await ConstraintAsync("ck_harvest_post_work_kind")).Should().Contain("post-tags").And.Contain("extract-event").And.Contain("extract-listing");
+        (await ScalarAsync<bool>("SELECT convalidated FROM pg_constraint WHERE conname = 'ck_harvest_post_work_kind'")).Should().BeTrue();
+
+        Unwrap(await Runner.RollbackAsync(targetOrdinal: 12, CancellationToken.None)).Should().Equal("013-post-extractions");
+        (await ScalarAsync<bool>("SELECT to_regclass('harvest_post_extractions') IS NULL")).Should().BeTrue();
+        (await ConstraintAsync("ck_harvest_post_work_kind")).Should().NotContain("extract-event");
     }
 
     private async Task ExecuteAsync(string sql)
