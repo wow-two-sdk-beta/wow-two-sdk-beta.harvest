@@ -53,12 +53,20 @@ internal static partial class PostExtractionDemand
     /// <param name="wanted">The normalized wanted pairs.</param>
     /// <param name="entityType">The post's entity type.</param>
     /// <param name="domains">The post's taxonomy nodes.</param>
-    internal static string? Match(IReadOnlyList<PostExtractionWant> wanted, string? entityType, IEnumerable<PostTagsDomain> domains)
+    internal static string? Match(IReadOnlyList<PostExtractionWant> wanted, string? entityType, IEnumerable<PostTagsDomain> domains) =>
+        MatchPair(wanted, entityType, domains) is not null ? PostExtractionConstants.UseCaseFor(entityType) : null;
+
+    /// <summary>Returns the first wanted pair a post's tags match, or null: its entity type, and a domain one of its
+    /// nodes equals or sits under.</summary>
+    /// <param name="wanted">The normalized wanted pairs.</param>
+    /// <param name="entityType">The post's entity type.</param>
+    /// <param name="domains">The post's taxonomy nodes.</param>
+    internal static PostExtractionWant? MatchPair(IReadOnlyList<PostExtractionWant> wanted, string? entityType, IEnumerable<PostTagsDomain> domains)
     {
-        if (PostExtractionConstants.UseCaseFor(entityType) is not { } useCase)
+        if (PostExtractionConstants.UseCaseFor(entityType) is null)
             return null;
         var nodes = domains.Select(domain => domain.Node).ToArray();
-        return wanted.Any(want => want.EntityType == entityType && nodes.Any(node => AtOrUnder(node, want.Domain))) ? useCase : null;
+        return wanted.FirstOrDefault(want => want.EntityType == entityType && nodes.Any(node => AtOrUnder(node, want.Domain)));
     }
 
     [GeneratedRegex("^[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)*$", RegexOptions.CultureInvariant)]

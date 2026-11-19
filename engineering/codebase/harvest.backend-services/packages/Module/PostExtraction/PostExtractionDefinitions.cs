@@ -88,9 +88,6 @@ internal sealed record EventName(string En, string? Original);
 /// quote they come from.</summary>
 internal sealed record EventOccurrence(string Starts, string? Ends, DatePrecision Precision, DateCertainty Certainty, string Evidence);
 
-/// <summary>Refers to whether a date is stated or estimated from the post (a weekday, "next month").</summary>
-internal enum DateCertainty { Stated, Estimated }
-
 /// <summary>Represents where the event takes place.</summary>
 internal sealed record EventPlace(string? Venue, string? City, string? Country);
 

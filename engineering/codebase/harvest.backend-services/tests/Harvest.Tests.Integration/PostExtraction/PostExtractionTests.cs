@@ -14,7 +14,8 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
 namespace Harvest.Tests.Integration.PostExtraction;
 
 /// <summary>Layer 2 extraction over PostgreSQL with the real AI runner and a scripted caller: queued after tagging only for
-/// wanted pairs, stored per content and use case with checked evidence, and never written to the post.</summary>
+/// wanted pairs, stored per content and use case with checked evidence; the post takes only the event answer's kind and
+/// estimated dates.</summary>
 public sealed class PostExtractionTests
 {
     private const string Title = "Tashkent Fashion Week";
@@ -57,7 +58,10 @@ public sealed class PostExtractionTests
         (await Extraction(host).ProcessDueAsync()).Should().Be(0);
 
         var post = PostHost.Value(await host.Posts.GetPostAsync(host.ContainerId, saved.Post.Id));
-        post.Revision.Should().Be(2, "the tags raised one revision; the extraction writes no post");
+        post.Revision.Should().Be(3, "the tags raised one revision; the answer's kind and estimated dates the next");
+        post.Base.Classification!.Kind.Should().Be("runway");
+        post.Base.Dates.Select(date => $"{date.Role}:{date.Value}:{date.Certainty}")
+            .Should().Equal("Start:2026-12-12:Estimated", "End:2026-12-14:Estimated");
         post.Base.Extras.Keys.Should().NotContain(key => key.StartsWith("extract", StringComparison.OrdinalIgnoreCase));
         var call = host.Caller.Requests.Should().HaveCount(2).And.Subject.Last();
         call.User.Should().Be($"{Title}\n{Text}\nnone\nnone\nevent\nstyle-fashion/womens-fashion\nupcoming\nTashkent Fashion Week");
@@ -254,9 +258,11 @@ public sealed class PostExtractionTests
             ("post", saved.Post.Id))).Should().Be("done|2");
     }
 
-    private static async Task<TagsHost> StartAsync(params PostExtractionWant[] wanted)
+    internal static Task<TagsHost> StartAsync(params PostExtractionWant[] wanted) => StartAsync(enabled: true, wanted);
+
+    internal static async Task<TagsHost> StartAsync(bool enabled, params PostExtractionWant[] wanted)
     {
-        var host = await TagsHost.StartAsync(configure: services => services.AddHarvestPostExtraction()
+        var host = await TagsHost.StartAsync(enabled, configure: services => services.AddHarvestPostExtraction()
             .Configure(options => options.Wanted = [.. wanted]));
         var prompts = host.Scoped.GetRequiredService<IPromptsBroker>();
         foreach (var useCase in PostExtractionConstants.UseCases)
@@ -271,9 +277,9 @@ public sealed class PostExtractionTests
         return host;
     }
 
-    private static PostExtractionWant Want(string entityType, string domain) => new() { EntityType = entityType, Domain = domain };
+    internal static PostExtractionWant Want(string entityType, string domain) => new() { EntityType = entityType, Domain = domain };
 
-    private static IPostExtractionBroker Extraction(TagsHost host) => host.Scoped.GetRequiredService<IPostExtractionBroker>();
+    internal static IPostExtractionBroker Extraction(TagsHost host) => host.Scoped.GetRequiredService<IPostExtractionBroker>();
 
     private static Task<long> WorkAsync(TagsHost host, Guid postId, string kind) => host.ScalarAsync<long>(Work, ("post", postId), ("kind", kind));
 

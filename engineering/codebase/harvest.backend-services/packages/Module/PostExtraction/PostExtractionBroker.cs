@@ -10,6 +10,7 @@ using WoW.Two.Sdk.Beta.Be.Ai.Runs;
 using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Entities;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Posts;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
@@ -18,6 +19,7 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
 internal sealed class PostExtractionBroker(
     [FromKeyedServices(HarvestModuleConstants.ServiceKey)] NpgsqlDataSource dataSource,
     PostExtractionGate gate,
+    ModulePostBroker posts,
     IOptions<PostExtractionOptions> options,
     IServiceProvider services,
     TimeProvider time,
@@ -149,10 +151,10 @@ internal sealed class PostExtractionBroker(
 
         var retry = call.Status == "done" ? (DateTimeOffset?)null
             : time.GetUtcNow() + TimeSpan.FromTicks(Math.Min(MaxRetryDelay.Ticks, options.Value.RetryDelay.Ticks * Math.Max(1, attempts)));
-        await PostExtractionStore.WriteAsync(dataSource, new PostExtractionRecord(post.ContainerId, post.Id, hash, useCase, post.Revision,
+        var revised = await posts.WriteExtractionAsync(new PostExtractionRecord(post.ContainerId, post.Id, hash, useCase, post.Revision,
             call.Status, call.Reason, model.PromptVersion, final?.PromptHash, model.InferenceId, model.Model, call.Answer, attempts, retry),
-            time.GetUtcNow(), ct, queueEntities: services.GetService<EntityGate>()?.Enabled == true);
-        return model with { Stored = true };
+            queueEntities: services.GetService<EntityGate>()?.Enabled == true, ct);
+        return model with { Stored = true, NewRevision = revised };
     }
 
     private async Task<CallResult> CallAsync(PostTagsSubject subject, ExtractionTags tags, string useCase, CancellationToken ct)

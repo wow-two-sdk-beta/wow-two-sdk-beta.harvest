@@ -1,5 +1,6 @@
 using Npgsql;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Delivery;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Posts;
@@ -29,6 +30,7 @@ internal sealed partial class ModulePostBroker
     /// <remarks>
     ///   - the answer is keyed by <c>(post_id, content_hash)</c>; a failed or unavailable answer never replaces a done one
     ///   - the write-back keeps the title and text, so its content hash already has a done answer and queues nothing
+    ///   - the same resolve writes the classification the tags give (<see cref="PostTagsClassification"/>): one revision
     ///   - identical tags leave <c>base</c> unchanged: no revision and no event
     ///   - a done answer clears the queue row for its hash; any other outcome sets the row's retry time and error
     ///   - a done answer about the current content queues the extraction its demand wants (<see cref="QueueExtractionAsync"/>)
@@ -86,20 +88,29 @@ internal sealed partial class ModulePostBroker
         return new(true, revised);
     }
 
-    /// <summary>Reads the done answer a resolve writes back: the one for the post's current title and text, else the
-    /// newest, so tags stay on the post until a new answer replaces them.</summary>
-    private static async Task<StoredPostTags?> ReadStoredTagsAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid postId, byte[] contentHash, CancellationToken ct)
+    /// <summary>Reads the done answers a resolve writes back: the tags for the post's current title and text, else the
+    /// newest, so tags stay on the post until a new answer replaces them; and the done <c>extract-event</c> answer about
+    /// the same content as those tags, so the verdict's kind and an estimated date always come from one reading.</summary>
+    private static async Task<(StoredPostTags? Tags, StoredEventExtraction? Event)> ReadStoredAnswersAsync(NpgsqlConnection connection,
+        NpgsqlTransaction transaction, Guid postId, byte[] contentHash, CancellationToken ct)
     {
         await using var command = PostSql.Command(connection, transaction, """
-            SELECT entity_type,domains::text,topics,title_en,confidence,prompt_version FROM harvest_post_tags
-            WHERE post_id=@post AND status='done' ORDER BY content_hash=@hash DESC,created_at DESC LIMIT 1
-            """, ("post", postId), ("hash", contentHash));
+            SELECT t.entity_type,t.domains::text,t.topics,t.title_en,t.confidence,t.prompt_version,t.model,
+                e.post_id IS NOT NULL,e.answer->>'format',(e.answer->'occurrences'->0)::text
+            FROM harvest_post_tags t
+            LEFT JOIN harvest_post_extractions e ON e.post_id=t.post_id AND e.content_hash=t.content_hash
+                AND e.use_case=@useCase AND e.status='done'
+            WHERE t.post_id=@post AND t.status='done' ORDER BY t.content_hash=@hash DESC,t.created_at DESC LIMIT 1
+            """, ("post", postId), ("hash", contentHash), ("useCase", PostExtractionConstants.EventUseCase));
         await using var reader = await command.ExecuteReaderAsync(ct);
         if (!await reader.ReadAsync(ct))
-            return null;
-        return new StoredPostTags(reader.GetString(0), PostTagsStore.Read(reader.GetString(1), new List<PostTagsDomain>()),
+            return (null, null);
+        var tags = new StoredPostTags(reader.GetString(0), PostTagsStore.Read(reader.GetString(1), new List<PostTagsDomain>()),
             reader.GetFieldValue<string[]>(2), reader.IsDBNull(3) ? null : reader.GetString(3),
-            reader.IsDBNull(4) ? null : reader.GetDecimal(4), reader.IsDBNull(5) ? null : reader.GetInt32(5));
+            reader.IsDBNull(4) ? null : reader.GetDecimal(4), reader.IsDBNull(5) ? null : reader.GetInt32(5),
+            reader.IsDBNull(6) ? null : reader.GetString(6));
+        return (tags, StoredEventExtraction.Read(reader.GetBoolean(7), reader.IsDBNull(8) ? null : reader.GetString(8),
+            reader.IsDBNull(9) ? null : reader.GetString(9)));
     }
 
     /// <summary>Queues post-tags for a post whose title and text have no done answer, when tagging is on and every source

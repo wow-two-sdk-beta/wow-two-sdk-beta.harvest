@@ -1,5 +1,6 @@
 using System.Text.Json;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
 
@@ -25,6 +26,14 @@ public interface IPostTagsBroker
     /// <param name="sinceUtc">The earliest answer to count; seven days back when omitted.</param>
     /// <param name="cancellationToken">The token that cancels the call.</param>
     Task<Result<PostTagsReportModel>> ReportAsync(DateTimeOffset? sinceUtc = null, CancellationToken cancellationToken = default);
+
+    /// <summary>Compares a rules filter's verdict with the tags' verdict for the wanted pairs over stored posts, as counts
+    /// only: the shadow report a switch from rules to tags is judged by (events-integration S15).</summary>
+    /// <param name="request">The rules filter, the pairs and the window.</param>
+    /// <param name="cancellationToken">The token that cancels the call.</param>
+    /// <returns>The counts, invalid answers, and the use case's cost per tagged post and p95 latency from the inference
+    /// log; a failure when the filter is not registered or no pair is given.</returns>
+    Task<Result<PostTagsRelevanceModel>> RelevanceAsync(PostTagsRelevanceRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>Claims due queued posts and tags each; the worker calls it on every tick.</summary>
     /// <param name="cancellationToken">The token that cancels the pass.</param>
@@ -130,4 +139,83 @@ public sealed record PostTagsFlagCount
 
     /// <summary>Gets the number of flags.</summary>
     public required long Count { get; init; }
+}
+
+/// <summary>Represents which rules, pairs and window a relevance report compares.</summary>
+public sealed record PostTagsRelevanceRequest
+{
+    /// <summary>Gets the key of the registered delivery filter whose verdict is the rules side, such as
+    /// <c>ocharo-fashion-v1</c>.</summary>
+    public required string RulesFilterKey { get; init; }
+
+    /// <summary>Gets the (entity type, domain) pairs a tag verdict matches, such as <c>event</c> + <c>style-fashion</c>.</summary>
+    public required IReadOnlyList<PostExtractionWant> Wanted { get; init; }
+
+    /// <summary>Gets the earliest last change of a post to count; seven days back when omitted.</summary>
+    public DateTimeOffset? SinceUtc { get; init; }
+}
+
+/// <summary>Represents the shadow comparison of a rules filter with the tags' verdict: counts only, never post text.</summary>
+/// <remarks>The posts are current, their sources allow the model to read them, and they changed since
+/// <see cref="SinceUtc"/>.</remarks>
+public sealed record PostTagsRelevanceModel
+{
+    /// <summary>Gets the earliest last change counted.</summary>
+    public required DateTimeOffset SinceUtc { get; init; }
+
+    /// <summary>Gets the rules filter's key.</summary>
+    public required string Rules { get; init; }
+
+    /// <summary>Gets the pairs, each <c>{entityType}:{domain}</c>.</summary>
+    public required IReadOnlyList<string> Wanted { get; init; }
+
+    /// <summary>Gets the posts counted.</summary>
+    public required long Posts { get; init; }
+
+    /// <summary>Gets the posts the rules pass, by tag verdict.</summary>
+    public required PostTagsRelevanceCounts RulesYes { get; init; }
+
+    /// <summary>Gets the posts the rules reject, by tag verdict.</summary>
+    public required PostTagsRelevanceCounts RulesNo { get; init; }
+
+    /// <summary>Gets the posts the rules filter could not judge because it threw; they are in neither row.</summary>
+    public long RulesUndecided { get; init; }
+
+    /// <summary>Gets the answers stored since <see cref="SinceUtc"/> in a shape the pass refused (<c>schema-invalid</c>,
+    /// <c>answer-invalid</c>) that no done answer has replaced.</summary>
+    public long InvalidAnswers { get; init; }
+
+    /// <summary>Gets the counted posts whose current title and text have a done answer.</summary>
+    public long TaggedPosts { get; init; }
+
+    /// <summary>Gets the model attempts the inference log holds for <c>post-tags</c> since <see cref="SinceUtc"/>.</summary>
+    public long? Attempts { get; init; }
+
+    /// <summary>Gets their cost in micro-USD.</summary>
+    public long? CostMicroUsd { get; init; }
+
+    /// <summary>Gets <see cref="CostMicroUsd"/> per tagged post, rounded; none without a tagged post.</summary>
+    public long? CostPerPostMicroUsd { get; init; }
+
+    /// <summary>Gets the 95th percentile attempt latency in milliseconds, over the newest attempts sampled.</summary>
+    public long? P95LatencyMs { get; init; }
+
+    /// <summary>Gets how many attempts the latency percentile sampled, at most 1000.</summary>
+    public int LatencySample { get; init; }
+}
+
+/// <summary>Represents one rules side of the comparison, split by the tags' verdict.</summary>
+public sealed record PostTagsRelevanceCounts
+{
+    /// <summary>Gets the posts whose tags match a pair: a relevant verdict.</summary>
+    public long Match { get; init; }
+
+    /// <summary>Gets the posts whose tags match no pair: an irrelevant verdict.</summary>
+    public long NoMatch { get; init; }
+
+    /// <summary>Gets the posts whose entity type or primary domain is unsure: an uncertain verdict.</summary>
+    public long Unsure { get; init; }
+
+    /// <summary>Gets the posts whose current title and text have no done answer yet.</summary>
+    public long NotTagged { get; init; }
 }

@@ -99,15 +99,15 @@ internal static class PostExtractionStore
             """, ct, ("post", claim.PostId), ("kind", claim.UseCase), ("hash", claim.ContentHash));
     }
 
-    /// <summary>Stores an answer and settles its queue row in one transaction: a done answer clears the row for its
-    /// content and, with <paramref name="queueEntities"/>, queues the post's entity resolution; any other outcome sets the
-    /// retry time and error. A failed or unavailable answer never replaces a done one.</summary>
-    internal static async Task WriteAsync(NpgsqlDataSource dataSource, PostExtractionRecord record, DateTimeOffset now, CancellationToken ct,
-        bool queueEntities = false)
+    /// <summary>Stores an answer and settles its queue row inside the caller's transaction: a done answer clears the row
+    /// for its content and, with <paramref name="queueEntities"/>, queues the post's entity resolution; any other outcome
+    /// sets the retry time and error. A failed or unavailable answer never replaces a done one.</summary>
+    /// <remarks>The post store calls it (<c>ModulePostBroker.WriteExtractionAsync</c>), which then resolves the post again
+    /// in the same transaction.</remarks>
+    internal static async Task WriteAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, PostExtractionRecord record,
+        DateTimeOffset now, bool queueEntities, CancellationToken ct)
     {
         bool done = record.Status == "done" && record.Answer is not null;
-        await using var connection = await dataSource.OpenConnectionAsync(ct);
-        await using var transaction = await connection.BeginTransactionAsync(ct);
         await PostSql.ExecuteAsync(connection, transaction, """
             INSERT INTO harvest_post_extractions(post_id,content_hash,use_case,container_id,revision,prompt_version,prompt_hash,
                 inference_id,model,role,answer,flags,status,error,attempts,created_at,updated_at)
@@ -134,7 +134,6 @@ internal static class PostExtractionStore
             ("retry", record.RetryAtUtc), ("error", record.Error));
         if (done && queueEntities)
             await EntityStore.QueueAsync(connection, transaction, record.ContainerId, record.PostId, record.ContentHash, now, ct);
-        await transaction.CommitAsync(ct);
     }
 
     /// <summary>Queues stored posts whose current title and text have done tags matching a wanted pair and no done answer

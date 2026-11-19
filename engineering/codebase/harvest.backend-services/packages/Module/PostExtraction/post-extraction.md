@@ -2,8 +2,8 @@
 
 Layer 2 extraction (wow-two-ws `ideas/scfd-entity-model.md` build plan step B): a post whose done `post-tags` answer
 matches a wanted (entity type, domain) pair gets its fields parsed into one canonical shape per entity type, with a
-verbatim quote behind every date, price and rental term. The entity layer (step C) reads the stored answers; this lane
-never writes the post.
+verbatim quote behind every date, price and rental term. The entity layer (step C) reads the stored answers; the post
+takes only an `extract-event` answer's format, as its classification's kind, and an estimated date.
 
 | Implements | Over |
 |---|---|
@@ -37,3 +37,7 @@ never writes the post.
   status, no answer, and retry after `RetryDelay` × attempts, capped at a day. A failure never replaces a done answer.
 - Entities: a done answer queues the post's `entity-resolve` row in the same transaction while `Harvest:Entities:Enabled`
   is set; the Entities lane (`../Entities/entities.md`) reads the answer, never this lane.
+- Write-back: the answer is stored through the Posts lane (`ModulePostBroker.WriteExtractionAsync`), which resolves the
+  post again in the same transaction for a done `extract-event` answer about the current content. The resolve overlays
+  `PostExtractionOverlay`: the first occurrence as an `estimated` start (and end) when the readers state none — a stated
+  date always wins — and the format as the classification's kind. A changed post is a new revision with `post.changed`.

@@ -16,9 +16,9 @@ public static class EventSchemaMapper
 
     /// <summary>Maps an event envelope into <c>wow2.event.v1</c>, or returns null for another post kind.</summary>
     /// <param name="envelope">The deterministic base-envelope reading.</param>
-    /// <returns>The event schema, title, description, dates, the stated application deadlines, organizer, place, offers,
-    /// source structure, the classification with its kind when a classification step ran, and the mapping stamp that
-    /// names the versions which produced it.</returns>
+    /// <returns>The event schema, title, description, dates with their certainty, the stated application deadlines,
+    /// organizer, place, offers, source structure, the classification with its kind when a classification step ran, and
+    /// the mapping stamp that names the versions which produced it.</returns>
     public static JsonElement? Map(PostEnvelope envelope)
     {
         if (envelope.Kind != PostKind.Event) return null;
@@ -52,10 +52,15 @@ public static class EventSchemaMapper
         }, Options);
     }
 
+    /// <summary>Renders the first date of a role as <c>{ value, precision, certainty }</c>; <c>certainty</c> is
+    /// <c>stated</c> for a date the post states and <c>estimated</c> for one the extraction pass estimated.</summary>
     private static object? Date(PostEnvelope envelope, DateRole role)
     {
         var date = envelope.Dates.FirstOrDefault(value => value.Role == role);
-        return date is null ? null : new { value = date.Value, precision = date.Precision.ToString().ToLowerInvariant() };
+        return date is null ? null : new
+        {
+            value = date.Value, precision = date.Precision.ToString().ToLowerInvariant(), certainty = date.Certainty ?? DateCertainty.Stated,
+        };
     }
 
     /// <summary>Lists the stated application deadlines, empty when none is stated. An envelope extracted before deadlines

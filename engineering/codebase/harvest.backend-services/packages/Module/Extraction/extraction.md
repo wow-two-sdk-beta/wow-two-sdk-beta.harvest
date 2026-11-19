@@ -22,7 +22,9 @@ prices and contacts. Every filled field records its parser or rule in `FieldSour
 - the mapping fills `organizer` only from a declared organizer (`FieldSources.organizer`), never from a byline or
   publisher; it carries `postedAt` and a `mapping` stamp `{ schema, norm, rules, parser }`
 - `classification` `{ classifier, verdict: relevant | irrelevant | uncertain, confidence, reason, kind }` and the
-  top-level `kind` come from `PostEnvelope.Classification`; both stay null until a model tier writes them (#55)
+  top-level `kind` come from `PostEnvelope.Classification`, which the `post-tags` pass writes (S16); both stay null
+  while it does not
+- `starts` and `ends` carry `certainty`: `stated`, or `estimated` for a date the extraction pass estimated (S17)
 - dates retain stated year/month/day/time precision and offset. Invalid or relative dates remain unresolved
 - an application deadline a named reader states in its namespace (`schemaOrg.craftfair.applicationDeadline`,
   `schemaOrg.uzexpocentre.applicationDeadline`, `schemaOrg.afisha.applicationDeadlineEvidence.date`) becomes a

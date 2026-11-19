@@ -12,6 +12,8 @@
   -->
   <ItemGroup>
     <PackageReference Include="WoW2.Sdk.Beta.Be.Testing" />
+    <!-- The contract's estimated-date case runs the post-tags and extraction passes, answered by the scripted caller. -->
+    <PackageReference Include="WoW2.Sdk.Beta.Be.Ai.Testing" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
   </ItemGroup>

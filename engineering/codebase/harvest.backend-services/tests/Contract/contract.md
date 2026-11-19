@@ -12,7 +12,8 @@ Golden pages of SCFD's pull wire. `wow2.event.v1/` holds `GET api/subscriptions/
 - The subscription is Ocharo's: `wow2.event.v1`, filter `ocharo-fashion-v1`, context `catalog=ocharo-fashion`, as
   `ocharo setup` provisions it; `subscription.json` carries the `filterKey` Events requires. Every post on a page
   passes the filter, and a concert saved before `01` shows a rejected post never appears.
-- Pages chain: each pull sends the previous page's `next`; `04-empty` returns the cursor it was sent. No `02` exists.
+- Pages chain: each pull sends the previous page's `next`; `04-empty` returns the cursor it was sent. No `02` exists;
+  S17's `10-estimated` is `11-estimated`, since `10-unmatched` took the number first.
 - Stable values: a fixed clock (`2026-11-10T09:00Z`, one minute per write); every Guid becomes
   `00000000-0000-7000-8000-0000000000NN` by first appearance, one numbering across the folder in file order;
   `itemId` is recomputed by the writer's rule `sha256("{postId:N}:{revision}:{type}")`; a cursor keeps
@@ -21,5 +22,10 @@ Golden pages of SCFD's pull wire. `wow2.event.v1/` holds `GET api/subscriptions/
   `pipeline.health` have no producer yet. `08-purged` is a reserved type inserted with the writer's columns, no
   payload, revision + 1. `09-deadline` is a Craftfair-shaped call whose `deadlines` lists its closed application
   deadline. `10-unmatched` is a delivered post whose next revision the filter rejects: `post.new`, then
-  `post.unmatched` at revision 2 carrying that revision.
+  `post.unmatched` at revision 2 carrying that revision. `11-estimated` is an undated show through the AI passes,
+  answered by the scripted caller: `post.new` without `starts`, the tags' revision with a `relevant` classification
+  (kind `event`), the `extract-event` revision with `starts.certainty=estimated` at month precision (kind `runway`), and
+  a later capture stating the day as `starts.certainty=stated`. Every `starts` and `ends` carries `certainty` since S17.
+- The host runs with the shared AI module on and Ocharo's wanted pair, tagging off; only case 11 runs the passes, for
+  its one post, so no other case carries an answer.
 - Events copies `wow2.event.v1/` unchanged and records the tag and commit it copied from.

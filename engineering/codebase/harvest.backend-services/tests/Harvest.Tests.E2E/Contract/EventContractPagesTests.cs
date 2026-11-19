@@ -9,10 +9,15 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Npgsql;
+using WoW.Two.Sdk.Beta.Be.Ai.Prompts;
+using WoW.Two.Sdk.Beta.Be.Ai.Providers;
+using WoW.Two.Sdk.Beta.Be.Ai.Testing.Providers;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Delivery;
 using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Extraction;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
 using WoW.Two.Sdk.Beta.Be.Harvest.Posts;
 using WoW.Two.Sdk.Beta.Be.Harvest.Readers;
 using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
@@ -38,7 +43,16 @@ public sealed class EventContractPagesTests
     public async Task Pages_ShouldEqualTheCheckedInContract()
     {
         string database = (await PostgresServer.SharedAsync()).NewDatabase("contract");
-        await using var host = HarvestApiFixture.CreateHost(database);
+        // The shared AI module on, with Ocharo's wanted pair and the scripted caller, for case 11 alone: tagging stays off,
+        // so no other case queues or carries an answer.
+        var caller = new ScriptedAiModelCaller();
+        await using var host = HarvestApiFixture.CreateHost(database, new Dictionary<string, string?>
+        {
+            ["Harvest:Processing:Ai:Enabled"] = "true",
+            ["Ai:Module:RetriesPerModel"] = "0",
+            [$"{PostExtractionConstants.SectionName}:Wanted:0:EntityType"] = "event",
+            [$"{PostExtractionConstants.SectionName}:Wanted:0:Domain"] = "style-fashion",
+        }, services => services.AddSingleton<IAiModelCaller>(caller));
         using var client = host.CreateClient();
         client.DefaultRequestHeaders.Add(ApiKeyAuthenticationDefaults.HeaderName, HarvestApiFixture.OperatorKey);
         client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -174,7 +188,7 @@ public sealed class EventContractPagesTests
             ["post.new", "link.state:gone", "link.state:relisted", "post.merged", "post.changed:survivor", "post.unmerged:survivor", "post.unmerged:loser"],
             normalizer.Normalize(lifecycleBytes)));
 
-        // 06: classification, set from the test because no production step writes it yet.
+        // 06: classification, set from the test so each verdict shape appears; case 11 has the post-tags pass write one.
         // Each title passes the filter; the verdict is the classifier's, which can still call one irrelevant.
         var verdicts = new (string Slug, string Title, PostClassification Classification)[]
         {
@@ -237,6 +251,39 @@ public sealed class EventContractPagesTests
         Events(unmatchedPage)[1].GetProperty("data").GetProperty("title").GetString().Should().Be("Концерт в арт-пространстве");
         files.Add(new("10-unmatched.json", ["post.new", "post.unmatched"], normalizer.Normalize(unmatchedBytes)));
 
+        // 11: an undated show. Its tags call it relevant, written with the tags as one revision; the extract-event answer
+        // estimates its month, so `starts.certainty` is `estimated` and the kind is the answer's format; a later capture
+        // that states the day replaces the estimate with a stated start.
+        await RegisterPromptsAsync(scope.ServiceProvider);
+        var undated = await SaveAsync(Undated(Tick(), null));
+        caller.Enqueue(
+            ScriptedAiModelCaller.Answer(TagsAnswer()),
+            ScriptedAiModelCaller.Answer(EventAnswer()));
+        Tick();
+        (await scope.ServiceProvider.GetRequiredService<IPostTagsBroker>().RunAsync(undated.Id)).ValueOrThrow().NewRevision.Should().Be(2);
+        Tick();
+        (await scope.ServiceProvider.GetRequiredService<IPostExtractionBroker>().RunAsync(undated.Id)).ValueOrThrow().NewRevision.Should().Be(3);
+        (await SaveAsync(Undated(Tick(), "2026-12-12"))).Revision.Should().Be(4);
+        var (estimatedBytes, estimatedPage) = await PullAsync(Next(unmatchedPage), 4);
+        var estimated = Events(estimatedPage);
+        estimated.Should().OnlyContain(item => item.GetProperty("postId").GetGuid() == undated.Id);
+        estimated.Select(item => item.GetProperty("type").GetString() + ":" + item.GetProperty("revision").GetInt32())
+            .Should().Equal("post.new:1", "post.changed:2", "post.changed:3", "post.changed:4");
+        var steps = estimated.Select(item => item.GetProperty("data")).ToArray();
+        steps[0].GetProperty("starts").ValueKind.Should().Be(JsonValueKind.Null);
+        steps[0].GetProperty("classification").ValueKind.Should().Be(JsonValueKind.Null);
+        steps[1].GetProperty("classification").GetProperty("verdict").GetString().Should().Be("relevant");
+        steps[1].GetProperty("kind").GetString().Should().Be("event");
+        steps[1].GetProperty("starts").ValueKind.Should().Be(JsonValueKind.Null);
+        steps[2].GetProperty("kind").GetString().Should().Be("runway");
+        steps[2].GetProperty("starts").GetProperty("value").GetString().Should().Be("2026-12");
+        steps[2].GetProperty("starts").GetProperty("precision").GetString().Should().Be("month");
+        steps[2].GetProperty("starts").GetProperty("certainty").GetString().Should().Be("estimated");
+        steps[3].GetProperty("starts").GetProperty("value").GetString().Should().Be("2026-12-12");
+        steps[3].GetProperty("starts").GetProperty("certainty").GetString().Should().Be("stated");
+        files.Add(new("11-estimated.json", ["post.new:undated", "post.changed:classified", "post.changed:estimated", "post.changed:stated"],
+            normalizer.Normalize(estimatedBytes)));
+
         delivered.Should().NotContain(rejected.Id, "a post the subscription's filter rejects is never delivered");
         files.Add(new("manifest.json", [], Manifest(files)));
         ContractFolder.WriteOrVerify(files, Environment.GetEnvironmentVariable(WriteSwitch) == "1");
@@ -261,6 +308,55 @@ public sealed class EventContractPagesTests
     private static Capture CraftFair(DateTimeOffset at) => EventCapture(at, "craft-fair-2026", """
         {"@context":"https://schema.org","@type":"Event","name":"Craft Fair 2026","description":"Garments and artisan crafts.","startDate":"2026-11-25","endDate":"2026-11-27","inLanguage":"en","location":{"name":"Example expo centre"},"craftfair":{"reader":"craftfair","recordKind":"event","eventDatesRaw":"25 - 27 November, 2026","applicationDeadline":"2026-10-26T23:59:59+05:00","applicationDeadlineRaw":"26 October, 2026","applicationStatusRaw":"Applications are closed","participation":{"artisan":"closed","visitor":"unknown","vendor":"unknown","exhibitor":"unknown","runway":"unknown"},"eligibility":"unknown","fees":"unknown"}}
         """);
+
+    /// <summary>A show whose page states only "in December"; with <paramref name="start"/>, a later capture of the same
+    /// page that states the day.</summary>
+    private static Capture Undated(DateTimeOffset at, string? start) => EventCapture(at, "fashion-week-winter", """
+        {"@context":"https://schema.org","@type":"Event","name":"Tashkent Fashion Week","description":"Показ коллекций пройдёт в декабре.",STARTDATE"location":{"@type":"Place","name":"Ташкент"}}
+        """.Replace("STARTDATE", start is null ? "" : $"\"startDate\":\"{start}\","));
+
+    private static async Task RegisterPromptsAsync(IServiceProvider services)
+    {
+        var prompts = services.GetRequiredService<IPromptsBroker>();
+        foreach (var (useCase, schema, system) in new[]
+                 {
+                     (PostTagsConstants.UseCase, PostTagsDefinition.OutputSchema, "Tag the post.\n{{taxonomy}}"),
+                     (PostExtractionConstants.EventUseCase, PostExtractionDefinitions.EventSchema, "Extract the event."),
+                 })
+        {
+            (await prompts.PutUseCaseAsync(new UseCaseModel { Key = useCase, PromptMode = PromptMode.Versioned, OutputSchema = schema, KeepOutputs = true }))
+                .ValueOrThrow();
+            (await prompts.SavePromptAsync(new PromptDraft
+            {
+                UseCase = useCase, SystemTemplate = system, UserTemplate = "{{title}}\n{{text}}", By = "contract",
+            })).ValueOrThrow();
+        }
+    }
+
+    private static string TagsAnswer() => JsonSerializer.Serialize(new
+    {
+        entityType = "event", domains = new[] { new { node = "style-fashion", primary = true } }, topics = new[] { "fashion-week" },
+        about = "a fashion week", timeframe = "upcoming", items = 1, language = "ru", confidence = 0.9, titleEn = "Tashkent Fashion Week",
+        flags = Array.Empty<object>(),
+    });
+
+    private static string EventAnswer() => JsonSerializer.Serialize(new
+    {
+        name = new { en = "Tashkent Fashion Week", original = "Tashkent Fashion Week" },
+        editionLabel = (string?)null,
+        occurrences = new[] { new { starts = "2026-12", ends = (string?)null, precision = "month", certainty = "estimated", evidence = "в декабре" } },
+        place = new { venue = (string?)null, city = "Tashkent", country = "Uzbekistan" },
+        organizer = (string?)null,
+        format = "runway",
+        access = "unknown",
+        prices = Array.Empty<object>(),
+        registration = new { opens = (object?)null, deadline = (object?)null, link = (string?)null },
+        participation = new[] { "visitor" },
+        status = "scheduled",
+        relation = new { role = "announcement", changes = Array.Empty<string>(), status = (string?)null },
+        fashion = new { segments = new[] { "apparel" }, garmentCategories = Array.Empty<string>(), exhibitorProfile = new[] { "designers" }, audience = "mixed" },
+        flags = Array.Empty<object>(),
+    });
 
     private static Capture Afisha(DateTimeOffset at, string slug, string title, string location) => EventCapture(at, slug, """
         {"@context":"https://schema.org","@type":"Event","name":"TITLE","startDate":"2026-12-19T18:30:00+05:00","location":LOCATION}

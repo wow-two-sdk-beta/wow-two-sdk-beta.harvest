@@ -5,7 +5,7 @@ tags subscriptions and later steps rely on — entity type, IAB domains, open En
 
 | Implements | Over |
 |---|---|
-| `IPostTagsBroker` (this lane's own seam: run, backfill, report, the worker's tick) · `IEvalSubjectSource` for `harvest:post:{id}@{revision}` | the shared AI contract `WoW2.Sdk.Beta.Be.Ai.Abstractions` (`IAiRunner`, `IPromptsBroker`, `IInferencesBroker`); the Posts lane's resolve and the Delivery lane's `post.changed` append |
+| `IPostTagsBroker` (this lane's own seam: run, backfill, report, the relevance shadow report, the worker's tick) · `IEvalSubjectSource` for `harvest:post:{id}@{revision}` | the shared AI contract `WoW2.Sdk.Beta.Be.Ai.Abstractions` (`IAiRunner`, `IPromptsBroker`, `IInferencesBroker`); the Posts lane's resolve and the Delivery lane's `post.changed` append |
 
 - Owns: `harvest_taxonomy_nodes` (011), `harvest_post_tags` and `harvest_post_work` (012).
 - Taxonomy: IAB Tech Lab Content Taxonomy 3.1 (CC BY 3.0) — its 34 subject domains and their 623 descendants, keyed by
@@ -30,3 +30,10 @@ tags subscriptions and later steps rely on — entity type, IAB domains, open En
   `type:{entityType}` (none for `unsure`), `domain:{node}` plus each ancestor, `topic:{slug}`, version
   `post-tags@{promptVersion}`, score = confidence — and `extras.postTags.titleEn`. Mapped tags keep their own tiers.
   A changed `base` raises the revision and appends `post.changed`; identical tags write nothing.
+- Classification: the same overlay writes `PostTagsClassification`'s verdict for the wanted pairs (the PostExtraction
+  lane's demand): `relevant` on a matching pair, `irrelevant` for `none` or nodes off every pair, `uncertain` for an
+  unsure entity type or no known node; classifier `model:{model}@post-tags:{version}`, the answer's confidence, `kind`
+  the `extract-event` format about the same content, else the entity type. No pair or no answer: no classification.
+- Relevance report: `RelevanceAsync` counts the current AI-allowed posts changed since a time by a registered filter's
+  verdict and the tags' verdict for given pairs, with invalid answers, cost per tagged post and p95 latency; no post
+  text and no write (`engineering/development/post-tags.md` § Shadow report).

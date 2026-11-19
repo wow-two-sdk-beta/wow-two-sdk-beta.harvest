@@ -13,7 +13,8 @@ namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Ocharo;
 /// <summary>Composes private source parsers over the public Harvest engine.</summary>
 public static class OcharoServiceCollectionExtensions
 {
-    /// <summary>Registers source brokers and the Ocharo delivery predicate; registration performs no I/O.</summary>
+    /// <summary>Registers source brokers and the Ocharo delivery filters, <c>ocharo-fashion-v1</c> (rules) and
+    /// <c>ocharo-relevance-v1</c> (rules plus a relevant tag verdict); registration performs no I/O.</summary>
     public static IServiceCollection AddOcharoEventSources(this IServiceCollection services)
     {
         services.AddHarvestWebBroker<AfishaSourceAdapter, AfishaCaptureReader>();
@@ -22,6 +23,7 @@ public static class OcharoServiceCollectionExtensions
         services.AddHarvestWebBroker<CaexSourceAdapter, CaexCaptureReader>();
         services.AddHarvestWebBroker<UzexpocentreSourceAdapter, UzexpocentreCaptureReader>();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IDeliveryPostFilter, OcharoFashionFilter>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IDeliveryPostFilter, OcharoRelevanceFilter>());
         services.TryAddScoped<OcharoSourceProvisioner>();
         return services;
     }

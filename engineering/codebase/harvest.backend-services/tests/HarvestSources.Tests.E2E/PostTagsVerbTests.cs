@@ -15,13 +15,18 @@ using WoW.Two.Sdk.Beta.Be.Ai.Providers;
 using WoW.Two.Sdk.Beta.Be.Ai.Testing.Providers;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Containers;
+using WoW.Two.Sdk.Beta.Be.Harvest.Delivery;
 using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
+using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Posts;
 using WoW.Two.Sdk.Beta.Be.Harvest.Readers;
 using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
 using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
+using WoW.Two.Sdk.Beta.Be.Harvest.Tenants;
+using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Ocharo;
 
 namespace HarvestSources.Tests.E2E;
 
@@ -163,6 +168,132 @@ public sealed class PostTagsVerbTests
         (await RunAsync(host.Services, ["run", "--post", Guid.NewGuid().ToString()])).Exit.Should().Be(1);
         (await RunAsync(host.Services, ["run", "--post", "not-a-guid"])).Exit.Should().Be(2);
         (await RunAsync(host.Services, ["backfill", "--limit", "0"])).Exit.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Relevance_compares_the_rules_with_the_tags_and_the_relevance_filter_adds_what_the_rules_miss()
+    {
+        var caller = new ScriptedAiModelCaller();
+        string database = await SourcePostgres.NewDatabaseAsync();
+        await using var host = Build(new Dictionary<string, string?>
+        {
+            [AiEnabledSetting] = "true",
+            ["DB_CONNECTION"] = database,
+            ["Ai:Module:RetriesPerModel"] = "0",
+            [$"{PostTagsConstants.SectionName}:Enabled"] = "true",
+            [$"{PostExtractionConstants.SectionName}:Wanted:0:EntityType"] = "event",
+            [$"{PostExtractionConstants.SectionName}:Wanted:0:Domain"] = "style-fashion",
+            [$"{PostExtractionConstants.SectionName}:Wanted:1:EntityType"] = "listing",
+            [$"{PostExtractionConstants.SectionName}:Wanted:1:Domain"] = "real-estate",
+        }, services => services.AddSingleton<IAiModelCaller>(caller));
+        await host.ConfigureAsync();
+        Version(await RunAsync(host.Services, ["prompt", "--file", "-", "--by", "operator"], Draft())).Should().Be(1);
+
+        await using var scope = host.Services.CreateAsyncScope();
+        var registry = scope.ServiceProvider.GetRequiredService<IRegistrationBroker>();
+        var delivery = scope.ServiceProvider.GetRequiredService<IDeliveryBroker>();
+        var tenant = (await registry.RegisterTenantAsync(new TenantRegistration { Slug = "ocharo", Name = "Ocharo" })).ValueOrThrow();
+        var container = (await registry.RegisterContainerAsync(new ContainerRegistration { Kind = ContainerKind.Pool })).ValueOrThrow();
+        var source = (await registry.RegisterSourceAsync(new SourceRegistration
+        {
+            ContainerId = container.Id, Family = SourceFamily.Site, Handle = "afisha.example", Coverage = SourceCoverage.Whole,
+            Completeness = SourceCompleteness.Complete, Posture = SourcePosture.OwnFetch,
+        })).ValueOrThrow();
+        var pipeline = (await registry.DeclarePipelineAsync(new PipelineDeclaration { ContainerId = container.Id, SourceId = source.Id }))
+            .ValueOrThrow();
+        async Task<Guid> SubscribeAsync(string filter) => (await delivery.SubscribeAsync(new SubscriptionDeclaration
+        {
+            TenantId = tenant.Id, ContainerId = container.Id, PipelineId = pipeline.Id, FilterKey = filter, Schema = PostEnvelopeConstants.EventSchema,
+        })).ValueOrThrow().Id;
+        var rulesFeed = await SubscribeAsync(OcharoFashionFilter.FilterKey);
+        var relevanceFeed = await SubscribeAsync(OcharoRelevanceFilter.FilterKey);
+
+        var posts = scope.ServiceProvider.GetRequiredService<IPostBroker>();
+        async Task<Guid> SaveAsync(string key, string title, string text) => (await posts.SaveCaptureAsync(container.Id, source.Id, null,
+            Capture(key, title, text), new PostEnvelope
+            {
+                Kind = PostKind.Event, Title = title, Text = text, Language = new PostLanguage { Code = "en" },
+                Extraction = new ExtractionStamp { NormVersion = "test@1", RulesVersion = "test@1" },
+            })).ValueOrThrow().Post.Id;
+        var named = await SaveAsync("fashline", "Fashline 2026", "Fashion show in Tashkent.");
+        var missed = await SaveAsync("evening", "Evening at the gallery", "Young designers present a new collection.");
+        var jazz = await SaveAsync("jazz", "Jazz night", "A jazz trio plays at the club.");
+        caller.Enqueue(
+            ScriptedAiModelCaller.Answer(TagsAnswer("event", "style-fashion/womens-fashion")),
+            ScriptedAiModelCaller.Answer(TagsAnswer("event", "style-fashion")),
+            ScriptedAiModelCaller.Answer(TagsAnswer("event", "business-and-finance")));
+        (await scope.ServiceProvider.GetRequiredService<IPostTagsBroker>().ProcessDueAsync()).Should().Be(3);
+        var waiting = await SaveAsync("later", "Book club", "Readers meet on Friday.");
+
+        const string Feeds = "SELECT count(*) FROM harvest_subscription_event";
+        long before = await ScalarAsync<long>(database, Feeds);
+        var report = await RunAsync(host.Services, ["relevance", "--since", "2020-01-01"]);
+
+        report.Exit.Should().Be(0, report.Error);
+        report.Output.Trim().Should().NotContain("\n").And.NotContain("Fashline").And.NotContain("gallery").And.NotContain("jazz");
+        report.Output.TrimEnd().Split('\n').Should().ContainSingle("the verb prints one JSON line");
+        (await ScalarAsync<long>(database, Feeds)).Should().Be(before, "the report writes nothing");
+        using (var counts = JsonDocument.Parse(report.Output))
+        {
+            var root = counts.RootElement;
+            root.GetProperty("rules").GetString().Should().Be(OcharoFashionFilter.FilterKey);
+            root.GetProperty("wanted").EnumerateArray().Select(pair => pair.GetString()).Should().Equal("event:style-fashion");
+            root.GetProperty("posts").GetInt64().Should().Be(4);
+            Row(root.GetProperty("rulesYes")).Should().Equal(1, 0, 0, 0);
+            Row(root.GetProperty("rulesNo")).Should().Equal(1, 1, 0, 1);
+            root.GetProperty("taggedPosts").GetInt64().Should().Be(3);
+            root.GetProperty("invalidAnswers").GetInt64().Should().Be(0);
+            root.GetProperty("attempts").GetInt64().Should().Be(3);
+            root.GetProperty("latencySample").GetInt32().Should().Be(3);
+            root.TryGetProperty("costPerPostMicroUsd", out _).Should().BeTrue();
+        }
+
+        var rules = await PullAsync(delivery, rulesFeed, 2);
+        rules.Should().OnlyContain(item => item.PostId == named, "the rules never pass the missed collection evening");
+        var relevance = await PullAsync(delivery, relevanceFeed, 3);
+        relevance.Select(item => $"{(item.PostId == named ? "named" : item.PostId == missed ? "missed" : "other")}:{item.Type}:{item.Revision}")
+            .Should().Equal("named:post.new:1", "named:post.changed:2", "missed:post.changed:2");
+        var added = relevance.Last().Data!.Value;
+        added.GetProperty("classification").GetProperty("verdict").GetString().Should().Be("relevant");
+        added.GetProperty("classification").GetProperty("classifier").GetString().Should().Be("model:anthropic/claude-haiku-5-5@post-tags:1");
+        added.GetProperty("kind").GetString().Should().Be("event");
+        relevance.Should().NotContain(item => item.PostId == jazz || item.PostId == waiting);
+
+        (await RunAsync(host.Services, ["relevance", "--since", "not-a-date"])).Exit.Should().Be(2);
+        (await RunAsync(host.Services, ["relevance", "--rules", "x"])).Exit.Should().Be(2);
+    }
+
+    private static long[] Row(JsonElement row) =>
+        [row.GetProperty("match").GetInt64(), row.GetProperty("noMatch").GetInt64(), row.GetProperty("unsure").GetInt64(),
+            row.GetProperty("notTagged").GetInt64()];
+
+    private static string TagsAnswer(string entityType, string node) => JsonSerializer.Serialize(new
+    {
+        entityType, domains = new[] { new { node, primary = true } }, topics = new[] { "show" }, about = "an event", timeframe = "upcoming",
+        items = 1, language = "en", confidence = 0.8, titleEn = "An event", flags = Array.Empty<object>(),
+    });
+
+    private static Capture Capture(string key, string title, string text) => new()
+    {
+        ExternalKey = key, Url = $"https://afisha.example/{key}", RequestUrl = $"https://afisha.example/{key}",
+        FinalUrl = $"https://afisha.example/{key}", CapturedAtUtc = DateTimeOffset.UtcNow, Body = Encoding.UTF8.GetBytes(text),
+        ContentProjection = $"{title}\n{text}", HttpStatus = 200, ContentType = "text/html",
+    };
+
+    /// <summary>Pulls a subscription until it holds <paramref name="expected"/> events: a row is readable once no older
+    /// transaction on the shared server is still running.</summary>
+    private static async Task<IReadOnlyList<DeliveryEvent>> PullAsync(IDeliveryBroker delivery, Guid subscription, int expected)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            var page = (await delivery.PullAsync(subscription)).ValueOrThrow();
+            if (page.Data.Count >= expected || attempt == 100)
+            {
+                page.Data.Should().HaveCount(expected);
+                return page.Data;
+            }
+            await Task.Delay(100);
+        }
     }
 
     private static async Task<Guid> SeedPostAsync(IServiceProvider services)

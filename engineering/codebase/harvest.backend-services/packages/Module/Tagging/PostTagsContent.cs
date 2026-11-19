@@ -52,10 +52,15 @@ internal static class PostTagsContent
         ["taxonomy"] = taxonomy,
     };
 
-    /// <summary>Renders the post's stated dates, one <c>role: value[ – end]</c> per date.</summary>
-    internal static string Dates(IReadOnlyList<PostDate> dates) => dates.Count == 0 ? "none"
-        : string.Join("; ", dates.Take(MaxDates).Select(date =>
-            $"{date.Role.ToString().ToLowerInvariant()}: {date.Value}{(date.End is { Length: > 0 } end ? " – " + end : "")}"));
+    /// <summary>Renders the post's stated dates, one <c>role: value[ – end]</c> per date; a date the extraction pass
+    /// estimated stays out, so no prompt reads a model's own estimate as the post's.</summary>
+    internal static string Dates(IReadOnlyList<PostDate> dates)
+    {
+        var stated = dates.Where(date => date.Certainty != DateCertainty.Estimated).Take(MaxDates).ToArray();
+        return stated.Length == 0 ? "none"
+            : string.Join("; ", stated.Select(date =>
+                $"{date.Role.ToString().ToLowerInvariant()}: {date.Value}{(date.End is { Length: > 0 } end ? " – " + end : "")}"));
+    }
 
     /// <summary>Renders where the post is about from its location mentions.</summary>
     internal static string Place(PostLocation? location)

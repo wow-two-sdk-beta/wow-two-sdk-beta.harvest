@@ -7,6 +7,7 @@ using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Foundation.Serialization;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
+using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Ocharo;
 
 namespace HarvestSources.Api.Tagging;
 
@@ -17,6 +18,9 @@ namespace HarvestSources.Api.Tagging;
 ///   - <c>run --post &lt;id&gt; [--dry-run]</c> tags one post and prints the answer; a dry run writes nothing
 ///   - <c>backfill [--since &lt;date&gt;] [--limit N] [--source &lt;id&gt;]</c> queues stored posts without a done answer
 ///   - <c>report [--since &lt;date&gt;]</c> prints counts, flags, cost and p95 latency as one JSON line, no post text
+///   - <c>relevance [--since &lt;date&gt;]</c> compares <c>ocharo-fashion-v1</c>'s verdict with the tags' verdict for
+///     Ocharo's pair (<c>event</c> under <c>style-fashion</c>) over stored posts, as one JSON line of counts with invalid
+///     answers, cost per tagged post and p95 latency; no post text
 /// </remarks>
 public static class PostTagsVerb
 {
@@ -28,6 +32,7 @@ public static class PostTagsVerb
                post-tags run --post <id> [--dry-run]
                post-tags backfill [--since <date>] [--limit <n>] [--source <id>]
                post-tags report [--since <date>]
+               post-tags relevance [--since <date>]
         """;
 
     /// <summary>Runs one sub-command against the built internal host's services.</summary>
@@ -59,6 +64,7 @@ public static class PostTagsVerb
                 "run" => await RunPostAsync(tags, options, output, error, ct),
                 "backfill" => await BackfillAsync(tags, options, output, error, ct),
                 "report" => await ReportAsync(tags, options, output, error, ct),
+                "relevance" => await RelevanceAsync(tags, options, output, error, ct),
                 _ => await UsageAsync(error),
             };
         }
@@ -157,6 +163,21 @@ public static class PostTagsVerb
             return await UsageAsync(error);
         var result = await tags.ReportAsync(since, ct);
         if (result is not Result<PostTagsReportModel>.Success { Value: var report })
+            return await VerbArguments.RefusedAsync(error, result);
+        await output.WriteLineAsync(JsonSerializer.Serialize(report, JsonOptionsConstants.Default));
+        return 0;
+    }
+
+    private static async Task<int> RelevanceAsync(IPostTagsBroker tags, IReadOnlyDictionary<string, string?> options, TextWriter output,
+        TextWriter error, CancellationToken ct)
+    {
+        if (!VerbArguments.Only(options, "since") || !VerbArguments.TrySince(options, out var since))
+            return await UsageAsync(error);
+        var result = await tags.RelevanceAsync(new PostTagsRelevanceRequest
+        {
+            RulesFilterKey = OcharoFashionFilter.FilterKey, Wanted = [OcharoRelevanceFilter.Wanted], SinceUtc = since,
+        }, ct);
+        if (result is not Result<PostTagsRelevanceModel>.Success { Value: var report })
             return await VerbArguments.RefusedAsync(error, result);
         await output.WriteLineAsync(JsonSerializer.Serialize(report, JsonOptionsConstants.Default));
         return 0;

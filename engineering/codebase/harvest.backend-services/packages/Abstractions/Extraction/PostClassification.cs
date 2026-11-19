@@ -5,7 +5,7 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
 ///   - <c>wow2.event.v1</c> carries it as <c>classification</c>, and its <see cref="Kind"/> as the top-level <c>kind</c>
 ///   - Events reads it under its <c>payload</c> classifier: a relevant verdict below the source's minimum confidence,
 ///     or an uncertain one, decides nothing
-///   - no SCFD step writes it yet; the model tier (events-integration #55) is its first writer
+///   - the <c>post-tags</c> pass writes it from a post's tags and the wanted pairs (events-integration S16)
 /// </remarks>
 public sealed record PostClassification
 {

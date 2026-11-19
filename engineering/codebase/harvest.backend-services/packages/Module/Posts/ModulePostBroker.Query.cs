@@ -7,6 +7,7 @@ using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Extraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Persistence;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
 using WoW.Two.Sdk.Beta.Be.Harvest.Posts;
 using Capture = WoW.Two.Sdk.Beta.Be.Harvest.Readers.Capture;
@@ -128,10 +129,12 @@ internal sealed partial class ModulePostBroker
 
     /// <summary>Resolves a post from its links' readings and records its revision: <paramref name="increment"/> raises
     /// it, and false means the write just created the post, which records <c>created</c>.</summary>
-    /// <remarks>The stored post-tags answer for the post overlays the resolved envelope on every resolve, a title or
-    /// text without a done answer queues tagging (<see cref="QueueTagsAsync"/>), and one with done tags a subscriber wants
-    /// queues extraction (<see cref="QueueExtractionAsync"/>). With <paramref name="onlyIfChanged"/>
-    /// an unchanged <c>base</c> writes nothing and returns false.</remarks>
+    /// <remarks>The stored post-tags answer for the post overlays the resolved envelope on every resolve, with the
+    /// classification it gives for the wanted pairs and, from a done <c>extract-event</c> answer about the same content,
+    /// the verdict's kind and an estimated start when the readers state none. A title or text without a done answer
+    /// queues tagging (<see cref="QueueTagsAsync"/>), and one with done tags a subscriber wants queues extraction
+    /// (<see cref="QueueExtractionAsync"/>). The dedup number signature stays the readers' own. With
+    /// <paramref name="onlyIfChanged"/> an unchanged <c>base</c> writes nothing and returns false.</remarks>
     private async Task<bool> ResolveAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid containerId, Guid postId, DateTimeOffset now, bool increment, CancellationToken ct,
         bool onlyIfChanged = false)
     {
@@ -149,7 +152,12 @@ internal sealed partial class ModulePostBroker
         var previous = increment ? await PostRevisionLog.ReadAsync(connection, transaction, containerId, postId, ct) : null;
         var (resolved, provenance) = ResolveFields(readings);
         var contentHash = PostTagsContent.Hash(resolved);
-        resolved = PostTagsOverlay.Apply(resolved, await ReadStoredTagsAsync(connection, transaction, postId, contentHash, ct));
+        var signature = NumberSignature(resolved);
+        var stored = await ReadStoredAnswersAsync(connection, transaction, postId, contentHash, ct);
+        resolved = PostTagsOverlay.Apply(resolved, stored.Tags);
+        if (stored.Tags is not null)
+            resolved = PostTagsClassification.Apply(resolved, stored.Tags, await extraction.WantedAsync(ct), stored.Event?.Format);
+        resolved = PostExtractionOverlay.Apply(resolved, stored.Event);
         if (onlyIfChanged && await PostSql.ScalarAsync(connection, transaction,
                 "SELECT base=CAST(@base AS jsonb) FROM harvest_posts WHERE container_id=@container AND id=@post", ct,
                 ("base", StoreJson.Write(resolved)), ("container", containerId), ("post", postId)) is true)
@@ -175,7 +183,7 @@ internal sealed partial class ModulePostBroker
             ("now", now), ("container", containerId), ("post", postId), ("locale", resolved.Language?.Code),
             ("textLocale", resolved.Language?.Code ?? "und"), ("title", resolved.Title), ("text", resolved.Text),
             ("match", NormalizeText(resolved)[..Math.Min(1000, NormalizeText(resolved).Length)]),
-            ("hash", MD5.HashData(Encoding.UTF8.GetBytes(NormalizeText(resolved)))), ("signature", NumberSignature(resolved)), ("link", readings[0].LinkId));
+            ("hash", MD5.HashData(Encoding.UTF8.GetBytes(NormalizeText(resolved)))), ("signature", signature), ("link", readings[0].LinkId));
         await PostRevisionLog.RecordAsync(connection, transaction, containerId, postId, previous, now, ct);
         await QueueTagsAsync(connection, transaction, containerId, postId, resolved, contentHash, now, ct);
         await QueueExtractionAsync(connection, transaction, containerId, postId, contentHash, now, ct);

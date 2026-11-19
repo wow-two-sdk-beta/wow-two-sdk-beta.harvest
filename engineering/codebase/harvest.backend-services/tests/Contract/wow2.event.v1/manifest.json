@@ -10,14 +10,14 @@
     },
     {
       "name": "01-new.json",
-      "sha256": "88bd98903fa9af59093ee1d18ce52d39acae6a7ea4f41fb53fc86804eab27b56",
+      "sha256": "126857a8dd5c41e28061dcd2bd859dfc8defabaad7c9c71370e09761fe00fb64",
       "cases": [
         "post.new"
       ]
     },
     {
       "name": "03-changed.json",
-      "sha256": "4ee7b22ca205ee73e0e083326fa36bce3bff25055553a9eb596db5fd13a42a86",
+      "sha256": "07d7e00133e373d782bfc0be09e78fc8b81c1110962a7ac18c619d4120f7fe92",
       "cases": [
         "post.changed"
       ]
@@ -31,7 +31,7 @@
     },
     {
       "name": "05-lifecycle.json",
-      "sha256": "cb685c41dd5e0cfcb075114f6f9c89feb7932a16f9aac4db970d9b80bf6e96e2",
+      "sha256": "89fb796c6b4e7449a280c8ae3c5adda8831b29482db47dd7b09b6f5e8d3e6df5",
       "cases": [
         "post.new",
         "link.state:gone",
@@ -44,7 +44,7 @@
     },
     {
       "name": "06-classification.json",
-      "sha256": "6ebfb5a00c786286b1138e20b82fc3539f299aa7553703ae4815612247451eef",
+      "sha256": "27e393cb3ef195fe77f0557b0843b0f3ecc8a7f183612edaa7a45b5aca0d67e1",
       "cases": [
         "relevant:runway:0.9",
         "irrelevant",
@@ -54,7 +54,7 @@
     },
     {
       "name": "07-afisha-place.json",
-      "sha256": "6b23dc01835d633e3f435c9ac815e6ae89ccaa88df28147664db9f1aa55b8044",
+      "sha256": "e0d6e1452855d33a24c11c8393d9b15473d49b0736aa75bae3ff17b50bfa1706",
       "cases": [
         "place:before-city-fix",
         "place:after-city-fix"
@@ -69,17 +69,27 @@
     },
     {
       "name": "09-deadline.json",
-      "sha256": "86176bfd66e83a2bcf7bec096dd4524332efdc7b79b770e4b5a3f342314c5ede",
+      "sha256": "545d6c2b62640db723d040eb726c11c7ec5e62cb067cebee3446defdf145255a",
       "cases": [
         "deadline:application:closed"
       ]
     },
     {
       "name": "10-unmatched.json",
-      "sha256": "300d66e4f8a15e96c7c7d951174604b4ebeefba52a25ea2b73d9465d98af793d",
+      "sha256": "9546c625020f00145a1ab9e530f810b8b4434066c6b99005600a2f0c2a8a5e50",
       "cases": [
         "post.new",
         "post.unmatched"
+      ]
+    },
+    {
+      "name": "11-estimated.json",
+      "sha256": "dfbaa740b1a25774e2a6a5ad800286b0f09f13cab171dfeb42fa2e1af70b27ce",
+      "cases": [
+        "post.new:undated",
+        "post.changed:classified",
+        "post.changed:estimated",
+        "post.changed:stated"
       ]
     }
   ]

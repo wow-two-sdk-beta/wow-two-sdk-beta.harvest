@@ -30,7 +30,7 @@ Client ──HTTP + token or X-Api-Key──► service/HarvestSources.Api
 | `packages/Testing` | registry, run, post, delivery and entity-read fakes and their shared conformance suites |
 | `sources/{Afisha,Anons,Caex,Craftfair,Olx,Uzexpocentre}` | one adapter and capture reader per named source over `Abstractions` and AngleSharp; no network I/O |
 | `sources/Instagram` · `sources/Integrations` | opt-in Business Discovery client; proxy/IP lease, supplied-session and 2Captcha clients; disabled by default |
-| `sources/Module` | composition over `packages/Module`: the Ocharo registry, provisioner and `ocharo-fashion-v1` filter; the marketplace (OLX) |
+| `sources/Module` | composition over `packages/Module`: the Ocharo registry, provisioner and `ocharo-fashion-v1` and `ocharo-relevance-v1` filters; the marketplace (OLX) |
 | `service/HarvestSources.Api` | the one host, deployed and booted by the E2E and Conformance tiers: Hosting, the source composition, the Ocharo routes and the `ocharo` host verb |
 | `fe-harvest` | the TypeScript contract mirror, registry and console clients (`./kit`), reusable management screens (`./admin`) |
 | `apps/web` | standalone demo using the `fe-harvest/admin` export |

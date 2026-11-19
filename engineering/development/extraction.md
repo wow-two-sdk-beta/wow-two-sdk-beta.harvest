@@ -2,8 +2,9 @@
 
 Layer 2 extraction parses a tagged post's fields into one canonical shape per entity type: `extract-event` for events,
 `extract-listing` for listings. It runs only for the (entity type, domain) pairs a subscriber wants, keeps a verbatim
-quote behind every date, price and rental term, and stores each answer beside the post — never in it. The entity layer
-(build plan step C) turns these answers into event and listing entities.
+quote behind every date, price and rental term, and stores each answer beside the post. The post takes two things from
+an `extract-event` answer: its format as the classification's `kind`, and an estimated date when the post states none.
+The entity layer (build plan step C) turns the answers into event and listing entities.
 Design: wow-two-ws `ideas/scfd-entity-model.md` #3.1, #4, #9 and build plan step B; tags: `post-tags.md`.
 Code: `packages/Module/PostExtraction/` (lead doc `post-extraction.md`).
 
@@ -115,5 +116,21 @@ values are `null` or `unknown`, and every list pick allows `unsure`, which flags
 - `harvest_post_extractions`, keyed by `(post_id, content_hash, use_case)`: revision, prompt version and hash, inference
   id, model, `role`, `answer` (the validated shape above), `flags`, `status` `done` · `failed` · `unavailable`, `error`,
   `attempts`, `created_at`, `updated_at`. A failed or unavailable answer keeps no answer and never replaces a done one.
-- The post's `base` and its delivery events do not change; step C reads the done rows for the current content hash.
+- A done `extract-event` answer about the post's current title and text resolves the post again in its own
+  transaction: when the kind or an estimated date changes the post, that is a new revision with `post.changed`. A
+  listing answer, or one that changes nothing, writes no revision. Step C reads the done rows for the current content
+  hash.
+
+## Estimated dates (S17)
+
+- A post whose readers state no start gets the answer's first occurrence as a `PostDate` with `Certainty`
+  `estimated`: a `start` at the occurrence's precision, an `end` when the occurrence has one and the post states none,
+  each quoting the occurrence's evidence as `raw`.
+- A stated date always wins: the readers' dates resolve first, so a later capture that states the start replaces the
+  estimate on its next resolve. A stated date carries no `certainty` value; it reads as `stated`.
+- The answer used is the one about the same title and text as the post's applied tags, so the kind and the estimate
+  always come from one reading; a new text keeps the old estimate until its own answers are done.
+- `wow2.event.v1` emits `starts.certainty` and `ends.certainty`, `stated` or `estimated` (`../architecture/contract.md`).
+- Prompts never read an estimate as the post's own: the `dates` variable of both passes leaves estimated dates out.
+- The dedup number signature stays the readers' own dates and prices.
 - Eval subjects for the two use cases come with build plan step E.

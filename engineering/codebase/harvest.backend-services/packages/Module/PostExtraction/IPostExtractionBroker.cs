@@ -68,6 +68,10 @@ public sealed record PostExtractionRunModel
     /// <summary>Gets whether the answer was stored.</summary>
     public bool Stored { get; init; }
 
+    /// <summary>Gets the revision a done <c>extract-event</c> answer raised on the post — a new kind or an estimated
+    /// date — when it changed the post.</summary>
+    public int? NewRevision { get; init; }
+
     /// <summary>Gets the deciding inference's id.</summary>
     public Guid? InferenceId { get; init; }
 

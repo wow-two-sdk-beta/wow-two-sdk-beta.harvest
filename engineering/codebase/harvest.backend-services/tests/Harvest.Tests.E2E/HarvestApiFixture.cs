@@ -2,6 +2,8 @@ using System.Net.Http.Headers;
 using Harvest.Api.Configurations;
 using Harvest.Tests.Shared;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Npgsql;
 using WoW.Two.Sdk.Beta.Be.Identity.ApiKeys;
 using WoW.Two.Sdk.Beta.Be.Testing;
@@ -34,7 +36,11 @@ public sealed class HarvestApiFixture : IAsyncLifetime
     /// <summary>Creates a host over <paramref name="connectionString"/> with the test target's settings; it boots on the
     /// first client.</summary>
     /// <param name="connectionString">The database.</param>
-    public static WebApiTestHost<Program> CreateHost(string connectionString) => new()
+    /// <param name="settings">Further settings over the test target's, such as the shared AI switch; they go in as host
+    /// configuration, so the host's composition reads them while it builds.</param>
+    /// <param name="services">Further registrations after the host's, such as a scripted model caller.</param>
+    public static WebApiTestHost<Program> CreateHost(string connectionString, IReadOnlyDictionary<string, string?>? settings = null,
+        Action<IServiceCollection>? services = null) => new()
     {
         ConfigureConfigurationHook = configuration => configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
@@ -44,6 +50,9 @@ public sealed class HarvestApiFixture : IAsyncLifetime
             ["Logging:LogLevel:Default"] = "Warning",
             ["Harvest:Worker:Enabled"] = "false",
         }),
+        ConfigureHostHook = settings is null ? null
+            : builder => builder.ConfigureHostConfiguration(configuration => configuration.AddInMemoryCollection(settings)),
+        ConfigureServicesHook = services,
     };
 
     async Task IAsyncLifetime.InitializeAsync()

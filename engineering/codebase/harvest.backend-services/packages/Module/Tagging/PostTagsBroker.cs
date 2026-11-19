@@ -9,6 +9,10 @@ using WoW.Two.Sdk.Beta.Be.Ai.Prompts;
 using WoW.Two.Sdk.Beta.Be.Ai.Runs;
 using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
+using WoW.Two.Sdk.Beta.Be.Harvest.Delivery;
+using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Delivery;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Posts;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
@@ -17,6 +21,7 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
 internal sealed class PostTagsBroker(
     [FromKeyedServices(HarvestModuleConstants.ServiceKey)] NpgsqlDataSource dataSource,
     ModulePostBroker posts,
+    IEnumerable<IDeliveryPostFilter> filters,
     IOptions<PostTagsOptions> options,
     IServiceProvider services,
     TimeProvider time,
@@ -61,11 +66,69 @@ internal sealed class PostTagsBroker(
         if (since >= now)
             return Result<PostTagsReportModel>.Fail(AppErrorFactory.Validation("The report must start before now."));
         var report = await PostTagsStore.CountAsync(dataSource, since, cancellationToken);
-        if (services.GetService<IInferencesBroker>() is not { } inferences)
-            return Result<PostTagsReportModel>.Ok(report);
+        var (attempts, cost, p95, sampled) = await InferenceStatsAsync(since, now, cancellationToken);
+        return Result<PostTagsReportModel>.Ok(report with { Attempts = attempts, CostMicroUsd = cost, P95LatencyMs = p95, LatencySample = sampled });
+    }
 
+    /// <inheritdoc />
+    public async Task<Result<PostTagsRelevanceModel>> RelevanceAsync(PostTagsRelevanceRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var now = time.GetUtcNow();
+        var since = (request.SinceUtc ?? now.AddDays(-7)).ToUniversalTime();
+        if (since >= now)
+            return Result<PostTagsRelevanceModel>.Fail(AppErrorFactory.Validation("The report must start before now."));
+        var wanted = PostExtractionDemand.Normalize(request.Wanted ?? []);
+        if (wanted.Count == 0)
+            return Result<PostTagsRelevanceModel>.Fail(AppErrorFactory.Validation("Name at least one (entity type, domain) pair."));
+        var rules = new DeliveryPostFilters(filters);
+        if (string.IsNullOrWhiteSpace(request.RulesFilterKey) || !rules.Contains(request.RulesFilterKey))
+            return Result<PostTagsRelevanceModel>.Fail(AppErrorFactory.Validation("The rules filter is not registered in this host."));
+
+        long posts = 0, undecided = 0, tagged = 0;
+        long[] yes = new long[4], no = new long[4];
+        await PostTagsStore.ReadRelevanceAsync(dataSource, since, (envelope, entityType, domains) =>
+        {
+            posts++;
+            if (entityType is not null)
+                tagged++;
+            if (rules.Evaluate(request.RulesFilterKey, envelope) is not { } passed)
+            {
+                undecided++;
+                return;
+            }
+            int column = entityType is null ? 3
+                : PostTagsClassification.Verdict(entityType, domains, wanted)!.Value.Verdict switch
+                {
+                    ClassificationVerdict.Relevant => 0,
+                    ClassificationVerdict.Irrelevant => 1,
+                    _ => 2,
+                };
+            (passed ? yes : no)[column]++;
+        }, cancellationToken);
+        var invalid = await PostTagsStore.CountInvalidAsync(dataSource, since, cancellationToken);
+        var (attempts, cost, p95, sampled) = await InferenceStatsAsync(since, now, cancellationToken);
+        return Result<PostTagsRelevanceModel>.Ok(new PostTagsRelevanceModel
+        {
+            SinceUtc = since, Rules = request.RulesFilterKey, Wanted = [.. wanted.Select(want => $"{want.EntityType}:{want.Domain}")],
+            Posts = posts, RulesYes = Counts(yes), RulesNo = Counts(no), RulesUndecided = undecided, InvalidAnswers = invalid,
+            TaggedPosts = tagged, Attempts = attempts, CostMicroUsd = cost,
+            CostPerPostMicroUsd = cost is { } spent && tagged > 0 ? (long)Math.Round((double)spent / tagged) : null,
+            P95LatencyMs = p95, LatencySample = sampled,
+        });
+
+        static PostTagsRelevanceCounts Counts(long[] row) => new() { Match = row[0], NoMatch = row[1], Unsure = row[2], NotTagged = row[3] };
+    }
+
+    /// <summary>Reads the use case's attempts and cost since a time, and the p95 latency over the newest attempts; all
+    /// null when the host composes no inference log.</summary>
+    private async Task<(long? Attempts, long? Cost, long? P95, int Sampled)> InferenceStatsAsync(DateTimeOffset since, DateTimeOffset now,
+        CancellationToken ct)
+    {
+        if (services.GetService<IInferencesBroker>() is not { } inferences)
+            return (null, null, null, 0);
         long? attempts = null, cost = null;
-        if (await inferences.TotalsAsync(since, now.AddSeconds(1), cancellationToken) is Result<IReadOnlyList<InferenceTotals>>.Success { Value: var totals })
+        if (await inferences.TotalsAsync(since, now.AddSeconds(1), ct) is Result<IReadOnlyList<InferenceTotals>>.Success { Value: var totals })
         {
             var mine = totals.Where(total => total.UseCase == PostTagsConstants.UseCase).ToArray();
             attempts = mine.Sum(total => total.Attempts);
@@ -74,13 +137,13 @@ internal sealed class PostTagsBroker(
         long? p95 = null;
         int sampled = 0;
         if (await inferences.ListAsync(new InferenceQuery { UseCase = PostTagsConstants.UseCase, FromUtc = since, Limit = LatencySample },
-                cancellationToken) is Result<IReadOnlyList<InferenceModel>>.Success { Value: var rows } && rows.Count > 0)
+                ct) is Result<IReadOnlyList<InferenceModel>>.Success { Value: var rows } && rows.Count > 0)
         {
             var latencies = rows.Select(row => row.LatencyMs).Order().ToArray();
             sampled = latencies.Length;
             p95 = latencies[Math.Max(0, (int)Math.Ceiling(latencies.Length * 0.95) - 1)];
         }
-        return Result<PostTagsReportModel>.Ok(report with { Attempts = attempts, CostMicroUsd = cost, P95LatencyMs = p95, LatencySample = sampled });
+        return (attempts, cost, p95, sampled);
     }
 
     /// <inheritdoc />

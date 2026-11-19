@@ -171,6 +171,42 @@ internal static class PostTagsStore
         };
     }
 
+    /// <summary>Reads every current post whose words the model may read and that changed since a time, with the done tags
+    /// for its current title and text when it has them, and hands each to <paramref name="visit"/>; one pass, no post
+    /// text leaves the method.</summary>
+    internal static async Task ReadRelevanceAsync(NpgsqlDataSource dataSource, DateTimeOffset since,
+        Action<PostEnvelope, string?, IReadOnlyList<PostTagsDomain>> visit, CancellationToken ct)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(ct);
+        string hash = PostTagsContent.SqlHash("p.base");
+        await using var command = PostSql.Command(connection, null, $"""
+            SELECT p.base::text,t.entity_type,t.domains::text FROM harvest_posts p
+            LEFT JOIN harvest_post_tags t ON t.post_id=p.id AND t.content_hash={hash} AND t.status='done'
+            WHERE p.merged_into IS NULL AND p.purged_at IS NULL AND p.last_changed_at>=@since
+              AND (btrim(COALESCE(p.base->>'title',''))<>'' OR btrim(COALESCE(p.base->>'text',''))<>'')
+              AND {AiAllowedSql}
+            """, ("since", since));
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        var none = Array.Empty<PostTagsDomain>();
+        while (await reader.ReadAsync(ct))
+        {
+            var post = StoreJson.Read(reader.GetString(0),
+                new PostEnvelope { Extraction = new ExtractionStamp { NormVersion = "unknown", RulesVersion = "unknown" } });
+            visit(post, reader.IsDBNull(1) ? null : reader.GetString(1),
+                reader.IsDBNull(2) ? none : Read(reader.GetString(2), new List<PostTagsDomain>()));
+        }
+    }
+
+    /// <summary>Counts the answers stored since a time that the model gave in a shape the pass refused —
+    /// <c>schema-invalid</c> or <c>answer-invalid</c> — and that no done answer has replaced yet.</summary>
+    internal static async Task<long> CountInvalidAsync(NpgsqlDataSource dataSource, DateTimeOffset since, CancellationToken ct)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(ct);
+        return (long)(await PostSql.ScalarAsync(connection, null, """
+            SELECT count(*) FROM harvest_post_tags WHERE status='failed' AND error IN ('schema-invalid','answer-invalid') AND created_at>=@since
+            """, ct, ("since", since)))!;
+    }
+
     /// <summary>Serializes a validated answer's domains or flags for a jsonb column.</summary>
     internal static string Json<T>(T value) => StoreJson.Write(value);
 

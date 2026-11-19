@@ -3,14 +3,16 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
 
-/// <summary>Represents the stored answer a post's resolution writes back: a <c>done</c> row of <c>harvest_post_tags</c>.</summary>
+/// <summary>Represents the stored answer a post's resolution writes back: a <c>done</c> row of <c>harvest_post_tags</c>,
+/// with the model that gave it, <c>{provider}/{model}</c>.</summary>
 internal sealed record StoredPostTags(
     string EntityType,
     IReadOnlyList<PostTagsDomain> Domains,
     IReadOnlyList<string> Topics,
     string? TitleEn,
     decimal? Confidence,
-    int? PromptVersion);
+    int? PromptVersion,
+    string? Model = null);
 
 /// <summary>Writes a stored answer onto a resolved envelope, beside the tags the readers mapped.</summary>
 /// <remarks>A post's <c>base</c> is derived from its readings on every resolve, so the answer is applied there rather

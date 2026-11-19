@@ -325,13 +325,21 @@ operator setup (`HarvestSources:Audience` `internal` only):
   `sourceGroup`, `sourceChannel` and optional `eventFamily`. Existing subscriptions keep their IDs and context; the
   setup response maps them to groups. Each observed event keeps its own source link; groups never auto-merge editions.
 - The event payload keeps canonical source provenance in `links` and registration/ticket/other URLs in
-  `contentLinks`. Dates keep their precision and evidence. An application deadline a reader states travels in the
+  `contentLinks`. Dates keep their precision and evidence. `starts` and `ends` are `{ value, precision, certainty }`;
+  `certainty` is `stated` for a date the post states and `estimated` for one the extraction pass estimated from an
+  undated post (S17, `../development/extraction.md` § Estimated dates; additive). A stated date always replaces an
+  estimate. An application deadline a reader states travels in the
   top-level `deadlines` list (additive to `wow2.event.v1`; `[]` when none is stated):
   `{ kind: "application", value, precision, raw, status: open | closed | unknown }`, copied from
   `schemaOrg.craftfair.applicationDeadline` (status from its badge), `schemaOrg.uzexpocentre.applicationDeadline` and
   `schemaOrg.afisha.applicationDeadlineEvidence.date`. The namespaces stay as recorded, with participation evidence;
   missing eligibility, fees or routes are unknown. Afisha/ANONS articles without an event announcement stay raw posts
   outside this stream.
+- `classification` `{ classifier, verdict, confidence, reason, kind }` and the top-level `kind` come from the
+  `post-tags` pass when tagging is on and a wanted pair is set: the verdict for the pairs, `kind` the `extract-event`
+  format or the entity type (S16, `../development/post-tags.md` § Classification); both stay null otherwise. Filter
+  `ocharo-relevance-v1` passes what `ocharo-fashion-v1` passes plus a `relevant` verdict at 0.5 or above on an event
+  tagged under `style-fashion`; no subscription uses it until the selector (S09).
 - The host writes nothing to Events or Desk and promotes no candidate; Events pulls and classifies (events-integration #53).
 - `ICaptchaSolver` and the IP broker JSON protocol: [integration-providers.md](../research/integration-providers.md).
   No provider credential reaches registry rows, captures or delivery.
