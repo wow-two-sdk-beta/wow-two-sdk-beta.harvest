@@ -29,6 +29,7 @@
 | AI extraction (Layer 2): use cases, demand, evidence, verbs | `engineering/development/extraction.md` |
 | Entities: events, listings, roles, cadence, unsure flags, reads, the change feed, verbs | `engineering/development/entities.md` |
 | AI operations: model-processing mode per source, re-runs, status, evals from stored posts, the `api/ai` mount | `engineering/development/ai-operations.md` |
+| Selector subscriptions: the `subscriptions` host verb (list, change, preview, diff, explain, adopt), the shadow procedure, a consumer's switch | `engineering/development/subscription-selectors.md` |
 | OLX rental-terms processing | `engineering/development/olx-ai.md` |
 | Repository — how it was created, GitHub settings, rollout state | `engineering/development/development.md` § Repository |
 | Deploy / ops — local Compose, service access, Ocharo provisioning, integrations | `engineering/deployment/deployment.md` |

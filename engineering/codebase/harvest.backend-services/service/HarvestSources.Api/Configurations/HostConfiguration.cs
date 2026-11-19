@@ -17,6 +17,7 @@ public static partial class HostConfiguration
         builder.AddRentalTermsAi();
         builder.AddPostTagsAi();
         builder.AddPostExtractionAi();
+        builder.AddSubscriptionSelectors();
         builder.AddEntities();
         builder.AddAiApiForOperators();
         builder.Services.AddHarvestPostReprocessing();
