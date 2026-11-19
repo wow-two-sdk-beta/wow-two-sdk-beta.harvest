@@ -209,11 +209,13 @@ internal static class ReprocessingStore
         string join, expected;
         if (tagging)
         {
+            // confidence is numeric(4,3): as a double it reads 0.93, as the model writes it, not 0.930, so the scorer's
+            // text comparison matches.
             join = $"LEFT JOIN harvest_post_tags c ON c.post_id=p.id AND c.content_hash={hash} AND c.status='done'";
             expected = """
                 CASE WHEN c.post_id IS NULL THEN NULL ELSE jsonb_build_object('entityType',c.entity_type,'domains',c.domains,
                     'topics',to_jsonb(c.topics),'about',c.about,'timeframe',c.timeframe,'items',c.items,'language',c.language,
-                    'confidence',c.confidence,'titleEn',c.title_en,'flags',c.flags)::text END
+                    'confidence',c.confidence::double precision,'titleEn',c.title_en,'flags',c.flags)::text END
                 """;
         }
         else

@@ -308,7 +308,10 @@ public sealed class ReprocessingTests
         items.Should().HaveCount(2).And.OnlyContain(item => item.Tags.Contains("unreviewed") && item.LabelledBy == "harvest:current-answer"
             && item.Subject!.StartsWith("harvest:post:", StringComparison.Ordinal) && item.Input.ContainsKey("taxonomy"));
         using (var expected = JsonDocument.Parse(items[0].Expected))
+        {
             expected.RootElement.GetProperty("entityType").GetString().Should().Be("event");
+            expected.RootElement.GetProperty("confidence").GetRawText().Should().Be("0.9", "the model writes 0.9, never 0.900");
+        }
 
         var again = (await Reruns(host).BuildEvalSetAsync(request)).ValueOrThrow();
         again.Added.Should().Be(0, "the same seed draws the same posts, already in the set");
