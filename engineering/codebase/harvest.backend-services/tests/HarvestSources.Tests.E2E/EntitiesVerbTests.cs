@@ -22,7 +22,7 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 namespace HarvestSources.Tests.E2E;
 
 /// <summary>The <c>entities</c> host verb on the source host over scripted extraction rows: resolve, backfill, show,
-/// search, merge, split and report, each printing JSON and never post text.</summary>
+/// search, merge, split, posts, calendar and report, each printing JSON and never post text.</summary>
 public sealed class EntitiesVerbTests
 {
     private const string UnreachableDatabase = "Host=127.0.0.1;Port=1;Database=synthetic;Username=synthetic;Timeout=1";
@@ -148,6 +148,68 @@ public sealed class EntitiesVerbTests
         (await RunAsync(host.Services, ["report", "--since", "2020-01-01"])).Exit.Should().Be(2);
         (await RunAsync(host.Services, ["unknown"])).Exit.Should().Be(2);
         (await RunAsync(host.Services, [])).Exit.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Verbs_list_an_entitys_posts_and_the_calendar_without_post_text()
+    {
+        string database = await SourcePostgres.NewDatabaseAsync();
+        await using var host = Build(new Dictionary<string, string?>
+        {
+            ["DB_CONNECTION"] = database,
+            [$"{EntityConstants.SectionName}:Enabled"] = "true",
+        });
+        await host.ConfigureAsync();
+        var noPool = await RunAsync(host.Services, ["calendar", "--from", "2027-01-01", "--to", "2027-12-31"]);
+        noPool.Exit.Should().Be(1);
+        noPool.Error.Should().Contain("--container");
+
+        var (container, first, second) = await SourcesAsync(host.Services);
+        var p1 = await PostAsync(host.Services, container, first, "fashion.example", "tfw-2025", PrivateText);
+        var p2 = await PostAsync(host.Services, container, second, "moda.example", "nedelya", "Неделя моды в Ташкенте пройдёт с 19 по 24 октября");
+        await ExtractAsync(database, p1, Event("Tashkent Fashion Week", "Toshkent moda haftaligi", "2025-10-20", "Tashkent"));
+        await ExtractAsync(database, p2, Event("Tashkent Fashion Week", "Неделя моды в Ташкенте", "2026-10-19", "Ташкент"));
+        var entity = Outcome(await RunAsync(host.Services, ["resolve", "--post", p1.ToString()])).GetProperty("entityId").GetGuid();
+        Outcome(await RunAsync(host.Services, ["resolve", "--post", p2.ToString()])).GetProperty("entityId").GetGuid().Should().Be(entity);
+
+        var all = await RunAsync(host.Services, ["posts", "--id", entity.ToString()]);
+        all.Exit.Should().Be(0, all.Error);
+        using (var page = JsonDocument.Parse(all.Output))
+        {
+            page.RootElement.GetProperty("hasMore").GetBoolean().Should().BeFalse();
+            page.RootElement.GetProperty("data").EnumerateArray()
+                .Select(post => (post.GetProperty("postId").GetGuid(), post.GetProperty("source").GetString(), post.GetProperty("year").GetInt32()))
+                .Should().BeEquivalentTo([(p1, "fashion.example", 2025), (p2, "moda.example", 2026)]);
+        }
+        var year = await RunAsync(host.Services, ["posts", "--id", entity.ToString(), "--year", "2025", "--limit", "1"]);
+        year.Exit.Should().Be(0, year.Error);
+        using (var page = JsonDocument.Parse(year.Output))
+            page.RootElement.GetProperty("data").EnumerateArray().Select(post => post.GetProperty("title").GetString()).Should().Equal("tfw-2025");
+
+        var predicted = await RunAsync(host.Services, ["calendar", "--from", "2027-01-01", "--to", "2027-12-31"]);
+        predicted.Exit.Should().Be(0, predicted.Error);
+        using (var entries = JsonDocument.Parse(predicted.Output))
+        {
+            var entry = entries.RootElement.EnumerateArray().Should().ContainSingle().Which;
+            entry.GetProperty("entityId").GetGuid().Should().Be(entity);
+            entry.GetProperty("occurrence").GetProperty("predicted").GetBoolean().Should().BeTrue();
+        }
+        var held = await RunAsync(host.Services, ["calendar", "--from", "2025-01-01", "--to", "2025-12-31", "--container", container.ToString(),
+            "--domain", "style-fashion", "--type", "event"]);
+        held.Exit.Should().Be(0, held.Error);
+        using (var entries = JsonDocument.Parse(held.Output))
+            entries.RootElement.EnumerateArray().Single().GetProperty("occurrence").GetProperty("starts").GetString().Should().Be("2025-10-20");
+
+        foreach (var output in new[] { all.Output, year.Output, predicted.Output, held.Output })
+            output.Should().NotContain("Uzexpocentre").And.NotContain("пройдёт").And.NotContain("19-24 oktabr");
+
+        (await RunAsync(host.Services, ["posts"])).Exit.Should().Be(2);
+        (await RunAsync(host.Services, ["posts", "--id", entity.ToString(), "--year", "last"])).Exit.Should().Be(2);
+        (await RunAsync(host.Services, ["posts", "--id", Guid.NewGuid().ToString()])).Exit.Should().Be(1);
+        (await RunAsync(host.Services, ["posts", "--id", entity.ToString(), "--role", "rumour"])).Exit.Should().Be(1);
+        (await RunAsync(host.Services, ["calendar", "--from", "2025-01-01"])).Exit.Should().Be(2);
+        (await RunAsync(host.Services, ["calendar", "--from", "2026-01-01", "--to", "2025-01-01"])).Exit.Should().Be(1);
+        (await RunAsync(host.Services, ["calendar", "--from", "2025-01-01", "--to", "2025-02-01", "--container", "pool"])).Exit.Should().Be(2);
     }
 
     [Fact]

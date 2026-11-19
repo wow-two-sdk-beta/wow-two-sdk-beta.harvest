@@ -70,6 +70,7 @@
 | `POST api/sources/groups` · `PUT api/sources/{id}` · `PUT api/sources/{id}/reading` | `harvest:manage-sources`: `sources:manage` held by the operator | nothing (403), a browser session's `sources:manage` included |
 | `GET api/sources/overview` · `GET api/sources/groups` | `pipelines:read` (no `sources:read` exists) | the pool and its own tenant's; another tenant's is 404 |
 | `GET api/sources/{id}/posts` · `GET api/posts/{id}/revisions` | `posts:read` | sources and posts of the pool and its own tenant's; another tenant's is 404 |
+| `GET api/entities` · `api/entities/{id}` · `api/entities/{id}/posts` · `api/entities/calendar` · `api/entities/events` | `posts:read` (no `entities:read` exists) | entities of the pool and its own tenant's containers; another tenant's container, or an entity of another container, is 404 |
 
 - Keys: Identity.Auth `Identity/ApiKeys` (`ApiKey` scheme, no local pass); `/api/system/status` stays open.
 - The operator key (`Harvest:Operator:ApiKey`, `HarvestModuleOptions.OperatorApiKey`) holds every scope and no tenant;
@@ -117,9 +118,9 @@ the step contract. Every type references the BCL and the kernel only.
 - The schema in the SQL migrations is the shared seam between lanes: `001-baseline`, `002-drop-escalation` (no
   ladder), `003-fetching`, `004-posts-delivery`, `005-subscription-filter`, `006-source-groups` (source groups, display
   names, the post revision log), through `011-taxonomy` (the IAB 3.1 category tree), `012-post-tags` (tagging answers
-  and the post work queue), `013-post-extractions` (Layer 2 answers and their queue kinds) and `014-entities` (entities,
-  occurrences, relations, keep-apart pairs, unsure flags and the `entity-resolve` queue kind). Each lane maps the tables
-  its folder's lead doc names.
+  and the post work queue), `013-post-extractions` (Layer 2 answers and their queue kinds), `014-entities` (entities,
+  occurrences, relations, keep-apart pairs, unsure flags and the `entity-resolve` queue kind) and `015-entity-events`
+  (the entity change feed). Each lane maps the tables its folder's lead doc names.
 - `Capture.ContentProjection` drives the content hash; a capture row exists only when it changes.
 - Source readers can retain their versioned native field envelope in page metadata's `sourceFields`; extraction
   preserves it under `PostEnvelope.Extras["source"]`. Original publisher labels use `SourceTags`, independently
@@ -184,7 +185,7 @@ the step contract. Every type references the BCL and the kernel only.
 - a done extraction answer queues the post's entity resolution in the same transaction when `Harvest:Entities:Enabled`
   is set; resolution binds the post with a role (`announcement`, `update`, `report`, `mention`) to one event or listing
   in `harvest_entity_relations`, keeps edition history in `harvest_entity_occurrences`, flags a weak or ambiguous match
-  instead of binding it, and never writes the post or a delivery event (entity reads and feeds are step D);
+  instead of binding it, and never writes the post or a delivery event; § Entities reads them;
   `development/entities.md`
 - delivery stores immutable revision snapshots; `wow2.event.v1` selects the event projection while retaining post identity and provenance
 - a post the subscription holds whose newest revision fails its filter or section arrives once as `post.unmatched`
@@ -198,6 +199,42 @@ the step contract. Every type references the BCL and the kernel only.
 `AddHarvestClient` registers the registry. `Client.Runs.AddHarvestRunClient`, `Client.Delivery.AddHarvestDataClient`
 and `Client.Sources.AddHarvestSourceClient` explicitly add the other HTTP brokers under its configured endpoint and key.
 The module's `Module.*` registration extensions likewise opt each capability in separately.
+
+---
+
+## Entities
+
+`IEntitiesBroker` (`Entities`) — the entities posts are about and their change feed, read-only, inside one container
+(build plan step D, scfd-entity-model #2 and #8). Resolution, merge and split are the module's `IEntityBroker` and the
+`entities` host verb.
+
+| Member | Returns | Failures |
+|---|---|---|
+| `SearchAsync(containerId, query?, entityType?, domain?, limit = 20)` | `EntitySummaryModel` best first (newest first without a query): type, name, aliases, primary domain, status, cadence, `score`, `years` (each `EntityYearSummaryModel`: real occurrences, posts, `predicted`), the predicted next start, counts of occurrences, posts and sources | `NotFound` container · `Validation` query over 300, type, domain key, limit outside 1–100 |
+| `GetAsync(containerId, entityId)` | `EntityTimelineModel`: the entity, `requestedId` when merged, posts and sources, `years` each with its `OccurrenceModel`s (label, starts, ends, precision, certainty, `predicted`, status, `place`) and posts | `NotFound` container or an entity the container does not hold |
+| `ListPostsAsync(containerId, entityId, year?, role?, limit = 50, cursor?)` | `CursorPage<EntityPostModel>` newest posted first: post id, role, changes, occurrence, `year`, title, link, source id and name, posted at, first seen, bound at | as `GetAsync` · `Validation` year outside 1900–2200, role, limit outside 1–200, a cursor of another entity |
+| `CalendarAsync(containerId, from, to, domain?, entityType?)` | `EntityCalendarEntryModel` earliest first: the event (id, type, name, domain, cadence), its `OccurrenceModel` and posts | `NotFound` container · `Validation` `to` before `from`, a window over 366 days, type, domain |
+| `PullEventsAsync(containerId, cursor?, limit = 100, entityType?, domain?)` | `CursorPage<EntityEvent>`: event id, `EntityEventTypes` type, when, the entity's id, type, name, domain, status and cadence, the occurrence after and `previous` before, `changes`, `relatedEntityId`, `replacesOccurrenceId`, the post that caused it | `NotFound` container · `Validation` limit outside 1–500, a malformed cursor or one of another container |
+
+- A post's `year` is its occurrence's start year, else its posted year, else its first-seen year; only surviving posts
+  count. `EntityQueryRules` holds the request rules every form applies; `EntityErrors` the entity errors.
+- The change feed is `harvest_entity_events`, appended in the changing transaction: `entity.created`, `entity.changed`,
+  `entity.merged`, `entity.split`, `occurrence.added`, `occurrence.changed`, `occurrence.confirmed`,
+  `occurrence.predicted`, `occurrence.removed`. Its cursor follows the pull rules: `(transaction, row id)` below the
+  snapshot horizon, opaque and bound to its container; an older cursor replays, an empty page returns the cursor given.
+- Subscription delivery does not read the feed; per-subscription routing of entity events is the selector's (S09).
+- Routes: `GET api/entities?containerId&q&type&domain&limit`, `GET api/entities/{id}?containerId`,
+  `GET api/entities/{id}/posts?containerId&year&role&limit&cursor`, `GET api/entities/calendar?containerId&from&to&domain&type`,
+  `GET api/entities/events?containerId&cursor&limit&type&domain` (`EntityRouteConstants`); `{ data }` envelope.
+
+| Form | Implementation | Registration |
+|---|---|---|
+| 1 | `ModuleEntitiesBroker` (Module, `Entities/`) | `AddHarvestEntityReads()`, which `AddHarvestEntities()` and Hosting call |
+| 2/3 | `ApiEntitiesBroker` (Client) | `AddHarvestEntityClient()` after `AddHarvestClient`; the caller needs `posts:read` |
+| fake | `FakeEntitiesBroker` (Testing) over the registry and post fakes; `Seed` stands in for resolution, `Append` adds a change | constructed |
+
+- Conformance: `EntitiesBrokerConformance` runs against all three; it seeds through `SeedAsync` (the module's writers
+  for the module and client, `Seed` for the fake), so the client form always targets the in-process host.
 
 ---
 

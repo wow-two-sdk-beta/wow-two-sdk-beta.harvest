@@ -7,7 +7,7 @@ The code lives in `harvest.backend-services/` (.NET) and `harvest.frontend-servi
 - `SCFD.BackendServices.slnx` groups `Packages/`, `Sources/`, `Services/` and `Tests/`.
 - `packages/` holds the NuGet family `WoW2.Sdk.Beta.Be.Harvest.*`: `Abstractions` (the contract, by concept:
   `Registration`, `Tenants`, `Containers`, `Sources`, `Pipelines`, `Steps`, `Capabilities.*`, `Readers`, `Extraction`,
-  `Posts`, `Runs`, `Delivery`), `Module` (Form 1, with `Migrations/NNN-name/{Apply,Rollback}.sql`), `Client` (Forms
+  `Posts`, `Runs`, `Delivery`, `Entities`), `Module` (Form 1, with `Migrations/NNN-name/{Apply,Rollback}.sql`), `Client` (Forms
   2/3), `Hosting` (shared startup and controllers) and `Testing` (fake + conformance suite). `Directory.Build.props`
   makes them packable by path; the core pin in `Directory.Packages.props` is their floor.
 - `Module`: `Persistence/` (the context and the registry rows), `Store/` (the boot self-test), `Registration/` (the
@@ -16,7 +16,8 @@ The code lives in `harvest.backend-services/` (.NET) and `harvest.frontend-servi
   Layer 1 `post-tags` pass over the shared AI contract and the IAB 3.1 taxonomy), `PostExtraction/` (Layer 2
   `extract-event` and `extract-listing`, the demand gate and the evidence check `rental-terms@2` shares), `Entities/`
   (the entity layer: events with occurrences, cadence and prediction, listings with offers, relations, unsure flags,
-  merge and split), each with its lead doc.
+  merge and split; the reads `IEntitiesBroker` and the entity change feed), each with its lead doc. `Client/Entities/`,
+  `Hosting/Entities/` and `Testing/Entities/` hold the entity reads' HTTP form, routes, fake and conformance suite.
 - `sources/` holds the named source readers `Afisha`, `Anons`, `Caex`, `Craftfair`, `Olx`, `Uzexpocentre`, the opt-in
   `Instagram` and `Integrations` clients, and `Module` (the Ocharo registry `Ocharo/ocharo-event-sources.json`,
   provisioner and filter; `Marketplace/` for OLX). Not packable: `Directory.Build.props` gives them XML docs and
@@ -28,9 +29,9 @@ The code lives in `harvest.backend-services/` (.NET) and `harvest.frontend-servi
   keys under `Registration/Access/`.
 - Tests: `Harvest.Tests.Unit` (package logic, no I/O), `Integration` (the module over PostgreSQL: rows, self-test, key
   store, partitions, the post-tags and extraction passes on the real AI runner with `ScriptedAiModelCaller`, entity
-  resolution over scripted extraction rows), `E2E` (the generic host in
-  process: boot and refusal, access, the wire, `/health`, the descriptor's dev check), `Conformance` (one suite against
-  module, client and fake), `Migrations` (the module's SQL set and the be sdk migration lint from `011` on).
+  resolution, reads and the change feed over scripted extraction rows), `E2E` (the generic host in
+  process: boot and refusal, access, the wire, the entity routes, `/health`, the descriptor's dev check), `Conformance`
+  (one suite per broker against module, client and fake), `Migrations` (the module's SQL set and the be sdk migration lint from `011` on).
   `HarvestAdapters.Tests.Unit` (readers against source fixtures, fake providers, the registry),
   `HarvestAdapters.Tests.Integration` (Ocharo and OLX pipelines over PostgreSQL) and `HarvestSources.Tests.E2E` (the
   source host: setup authority, capability metadata, the `ocharo`, `rental-terms`, `post-tags`, `extract` and `entities` verbs, no console). The database tiers run

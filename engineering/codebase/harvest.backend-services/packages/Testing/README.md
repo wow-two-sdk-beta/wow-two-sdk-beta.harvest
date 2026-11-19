@@ -12,8 +12,10 @@ The Harvest test kit:
   shared run contract.
 - `FakeSourceOverviewBroker` and `SourceOverviewBrokerConformance` — the console's Sources reads over the other fakes,
   by the module's rules; `FakeRegistrationBroker.SetNextDue` stands in for the scheduler's due times.
+- `FakeEntitiesBroker` and `EntitiesBrokerConformance` — the entity reads and change feed over the registry and post
+  fakes; `Seed(EntitySeed)` stands in for resolution and `Append` adds a change event of the test's own.
 
-The fakes live in the `Testing.Posts`, `Testing.Delivery`, `Testing.Runs` and `Testing.Sources` namespaces. A fake post broker's
+The fakes live in the `Testing.Posts`, `Testing.Delivery`, `Testing.Runs`, `Testing.Sources` and `Testing.Entities` namespaces. A fake post broker's
 `RegisterRun` method supplies a run reference when a consumer tests run-attributed ingest.
 
 ```bash

@@ -4,8 +4,9 @@ The entity layer binds every extracted post, with a role, to the one real-world 
 record per recurring event, holding its occurrences, a cadence and a predicted next occurrence) or a **listing** (one
 record per offered thing, across authors and sites, each ad an offer). It is the "one entity / one source of truth" a
 subscriber searches: Visa Fashion Week Tashkent with every year it ran and each source's posts for that year.
-Design: wow-two-ws `ideas/scfd-entity-model.md` #2, #3, #3.1, #4, #7, #9 and build plan step C; answers: `extraction.md`.
-Code: `packages/Module/Entities/` (lead doc `entities.md`).
+Design: wow-two-ws `ideas/scfd-entity-model.md` #2, #3, #3.1, #4, #7, #8, #9 and build plan steps C (resolution) and D
+(reads and the change feed); answers: `extraction.md`. Code: `packages/Module/Entities/` (lead doc `entities.md`); the
+read contract `IEntitiesBroker` in `packages/Abstractions/Entities/`, its routes in `packages/Hosting/Entities/`.
 
 ## Host settings
 
@@ -58,9 +59,37 @@ The layer reads stored extraction answers and needs no AI. `service/HarvestSourc
 - **Keep-apart**: a split pair is never merged, and resolution never binds a post to an entity kept apart from the one
   it is already bound to.
 
+## Reads and the change feed
+
+A product reads entities over `api/entities` under `posts:read`, inside the containers it may see (the pool and its own
+tenant's), or in process through `IEntitiesBroker` (`AddHarvestEntityReads()`, which `AddHarvestEntities()` and Hosting
+add; `AddHarvestEntityClient()` over HTTP). Every route takes `containerId`; an entity of another container is 404.
+
+| Route | Returns |
+|---|---|
+| `GET api/entities?q=&type=&domain=&limit=` | entities by name or alias, best first (newest first without `q`): id, type, name, aliases, primary domain, status, cadence, score, the years with an occurrence or a post (each with its real occurrences, posts and a predicted mark), the predicted next start, counts of occurrences, posts and sources |
+| `GET api/entities/{id}` | the entity with its occurrences by year — dates, precision, certainty, status, place, predicted — and posts per year; a merged id reads as the entity it went into |
+| `GET api/entities/{id}/posts?year=&role=&limit=&cursor=` | one page of the bound posts from every source, newest posted first: post id, role, changes, occurrence, year, title, link, source, posted date, first seen, bound at |
+| `GET api/entities/calendar?from=&to=&domain=&type=` | the occurrences overlapping a window of up to 366 days, earliest first, predicted ones marked, each with its event |
+| `GET api/entities/events?cursor=&limit=&type=&domain=` | one `{ data, next, hasMore }` page of the container's change feed |
+
+- A post's year is its occurrence's start year, else the year it says it was posted, else the year SCFD first saw it;
+  a year with posts but no occurrence still lists. Only surviving posts count: not merged into another, not purged.
+- The change feed (`harvest_entity_events`, `015`) gets one row per change in the changing transaction:
+  `entity.created`, `entity.changed` (`status`, `cadence`, `price`), `entity.merged` and `entity.split` (naming the
+  other entity), `occurrence.added`, `occurrence.changed` (`dates`, `status`, `place`, with the state before),
+  `occurrence.confirmed` (a predicted run turned real), `occurrence.predicted` (naming the prediction it replaces) and
+  `occurrence.removed` (a prediction withdrawn). Events carry the entity's name, status, cadence and the occurrence's
+  state; never post text.
+- The feed cursor is opaque and bound to its container: `(transaction, row id)` read below PostgreSQL's snapshot horizon,
+  as the subscription pull reads its log; an older cursor replays the same events, an empty page returns the cursor it
+  was given, a cursor of another container is 400. The feed keeps every row (no retention yet).
+- Subscription delivery does not read the feed; the selector (S09) routes entity events per subscription later.
+
 ## Verbs
 
-Each prints one JSON line, except `show` and `search`, which print one JSON document; none prints post text.
+Each prints one JSON line, except `show`, `search`, `posts` and `calendar`, which print one JSON document; none prints
+post text beyond titles.
 
 ```bash
 dotnet HarvestSources.Api.dll entities resolve --post <post-id> --dry-run
@@ -70,6 +99,8 @@ dotnet HarvestSources.Api.dll entities show --id <entity-id>
 dotnet HarvestSources.Api.dll entities search --q "Visa Fashion Week Tashkent" --type event --domain style-fashion
 dotnet HarvestSources.Api.dll entities merge --from <duplicate-id> --into <entity-id>
 dotnet HarvestSources.Api.dll entities split --a <entity-id> --b <other-id>
+dotnet HarvestSources.Api.dll entities posts --id <entity-id> --year 2025 --limit 50
+dotnet HarvestSources.Api.dll entities calendar --from 2026-01-01 --to 2026-12-31 --domain style-fashion
 dotnet HarvestSources.Api.dll entities report
 ```
 
@@ -79,18 +110,23 @@ dotnet HarvestSources.Api.dll entities report
   for a listing, its offer; a merged id reads as the entity it was merged into.
 - `search` matches name and alias similarity and returns each entity with the years it ran and its predicted next start.
 - `merge` refuses a merged entity, another container or type, and a kept-apart pair; `split` refuses a merged entity.
+- `posts` prints one page of the entity's posts as its route does, in the entity's own container; pass `--cursor` with
+  the printed `next` for the following page. `calendar` reads the pool unless `--container` names another.
 - Exit codes: 0 done, 1 refused, 2 invalid arguments.
 
 ## Rollout
 
-1. Deploy with `Harvest__Entities__Enabled=false`; migration `014-entities` adds the tables.
+1. Deploy with `Harvest__Entities__Enabled=false`; migrations `014-entities` and `015-entity-events` add the tables.
 2. Run `entities resolve --post <id> --dry-run` on a few extracted posts and read the outcomes.
 3. Set `Harvest__Entities__Enabled=true`, run `entities backfill`, then `entities report` for counts and open flags.
 4. Review flags with `entities show` on each candidate; correct with `merge` or `split`, then `resolve` the post again.
 
 ## Not yet
 
-- Reads for subscribers and the entity change feed are step D; nothing here is delivered.
+- Per-subscription routing of entity events, and a subscription choosing posts, entities or both, wait for the selector
+  (S09); the change feed is read per container.
+- The `fe-harvest` contract mirror of the entity reads (`./contracts`, `./kit`) is not built.
+- The change feed keeps every row; it has no retention policy yet.
 - One relation per extraction answer: a digest post binds the one entity its answer names until extraction returns a
   list.
 - A post merged by post dedup keeps its relations under its own id.

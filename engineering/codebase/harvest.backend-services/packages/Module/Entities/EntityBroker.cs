@@ -113,6 +113,7 @@ internal sealed class EntityBroker(
         var resolver = new EntityResolver(connection, transaction, settings, now);
         var fromRows = await EntityStore.ReadOccurrencesAsync(connection, transaction, from.Id, cancellationToken);
         var intoRows = await EntityStore.ReadOccurrencesAsync(connection, transaction, into.Id, cancellationToken);
+        var intoBefore = EntityEventLog.Take(into, intoRows);
         var repoint = new List<(Guid From, Guid To)>();
         int moved = 0;
         foreach (var row in fromRows)
@@ -175,6 +176,8 @@ internal sealed class EntityBroker(
         await EntityStore.SaveOccurrencesAsync(connection, transaction, intoRows.Concat(fromRows).Distinct(), now, cancellationToken);
         await EntityStore.SaveEntityAsync(connection, transaction, into, now, cancellationToken);
         await EntityStore.SaveEntityAsync(connection, transaction, from, now, cancellationToken);
+        await EntityEventLog.AppendAsync(connection, transaction,
+            [EntityEventLog.Merged(from, into.Id, now), .. EntityEventLog.Diff(intoBefore, into, intoRows, null, now)], cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return Result<EntityMergeModel>.Ok(new EntityMergeModel { FromId = from.Id, IntoId = into.Id, Relations = relations, Occurrences = moved });
     }
@@ -187,7 +190,7 @@ internal sealed class EntityBroker(
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         var pair = await PairAsync(connection, transaction, leftId, rightId, cancellationToken);
-        if (pair is not Result<(EntityRow, EntityRow)>.Success { Value: var (left, _) })
+        if (pair is not Result<(EntityRow, EntityRow)>.Success { Value: var (left, right) })
             return Result<EntityKeepApartModel>.Fail(((Result<(EntityRow, EntityRow)>.Failure)pair).Error);
         var now = time.GetUtcNow();
         int created = await PostSql.ExecuteAsync(connection, transaction, """
@@ -196,6 +199,9 @@ internal sealed class EntityBroker(
             """, cancellationToken, ("container", left.ContainerId), ("left", leftId), ("right", rightId), ("now", now));
         var low = (Guid)(await PostSql.ScalarAsync(connection, transaction, "SELECT LEAST(CAST(@left AS uuid),CAST(@right AS uuid))",
             cancellationToken, ("left", leftId), ("right", rightId)))!;
+        if (created > 0)
+            await EntityEventLog.AppendAsync(connection, transaction,
+                [EntityEventLog.Split(left, right.Id, now), EntityEventLog.Split(right, left.Id, now)], cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return Result<EntityKeepApartModel>.Ok(new EntityKeepApartModel
         {

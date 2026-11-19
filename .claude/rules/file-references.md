@@ -27,7 +27,7 @@
 | Working rules for agents | `engineering/development/rules.md` |
 | AI post tagging (Layer 1): prompt, verbs, rollout | `engineering/development/post-tags.md` |
 | AI extraction (Layer 2): use cases, demand, evidence, verbs | `engineering/development/extraction.md` |
-| Entities: events, listings, roles, cadence, unsure flags, verbs | `engineering/development/entities.md` |
+| Entities: events, listings, roles, cadence, unsure flags, reads, the change feed, verbs | `engineering/development/entities.md` |
 | OLX rental-terms processing | `engineering/development/olx-ai.md` |
 | Repository — how it was created, GitHub settings, rollout state | `engineering/development/development.md` § Repository |
 | Deploy / ops — local Compose, service access, Ocharo provisioning, integrations | `engineering/deployment/deployment.md` |
@@ -44,10 +44,10 @@
 ### `codebase/harvest.backend-services/`
 | Project | What it is |
 |---|---|
-| `packages/Abstractions` | the contract: `IRegistrationBroker`, the step-broker and capability seams, `Capture`, `wow2.post.v1`, delivery types |
+| `packages/Abstractions` | the contract: `IRegistrationBroker`, the step-broker and capability seams, `Capture`, `wow2.post.v1`, delivery types, the entity reads `IEntitiesBroker` |
 | `packages/Module` | Form 1: the store on PostgreSQL, `AddHarvest()`, the SQL migration set and boot self-test, the lane folders |
 | `packages/Client` | Forms 2/3: the broker over the service's HTTP API, `AddHarvestClient()` |
-| `packages/Testing` | `FakeRegistrationBroker` and the conformance suite |
+| `packages/Testing` | the fakes (`FakeRegistrationBroker`, `FakeEntitiesBroker`, …) and the conformance suites |
 | `packages/Hosting` | shared startup, access policies and HTTP controllers both hosts compose |
 | `sources/{Afisha,Anons,Caex,Craftfair,Domtut,Olx,Uzexpocentre}` | named source readers: adapter, capture reader, no network I/O |
 | `sources/Instagram` | opt-in Business Discovery client and source broker, disabled by default |

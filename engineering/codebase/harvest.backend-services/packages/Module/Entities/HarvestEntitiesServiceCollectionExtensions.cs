@@ -1,14 +1,28 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
+using WoW.Two.Sdk.Beta.Be.Harvest.Entities;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Entities;
 
 /// <summary>Registers the entity layer over an existing Harvest module.</summary>
 public static class HarvestEntitiesServiceCollectionExtensions
 {
-    /// <summary>Adds <see cref="IEntityBroker"/>; starts no work. A done extraction queues resolution only while
-    /// <see cref="EntityOptions.Enabled"/> is set.</summary>
+    /// <summary>Adds the read contract <see cref="IEntitiesBroker"/> — search, an entity's years and posts, the calendar
+    /// and the change feed — over the entity layer's tables; it needs no options and reads nothing while the layer is
+    /// off.</summary>
+    /// <param name="services">The service collection to configure.</param>
+    /// <returns>The same <paramref name="services"/> for chaining.</returns>
+    public static IServiceCollection AddHarvestEntityReads(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.TryAddScoped<IEntitiesBroker, ModuleEntitiesBroker>();
+        return services;
+    }
+
+    /// <summary>Adds <see cref="IEntityBroker"/> and the reads of <see cref="AddHarvestEntityReads"/>; starts no work. A
+    /// done extraction queues resolution only while <see cref="EntityOptions.Enabled"/> is set.</summary>
     /// <param name="services">The service collection to configure.</param>
     /// <returns>The options builder, through which the host binds <see cref="EntityConstants.SectionName"/>.</returns>
     public static OptionsBuilder<EntityOptions> AddHarvestEntities(this IServiceCollection services)
@@ -17,6 +31,7 @@ public static class HarvestEntitiesServiceCollectionExtensions
 
         services.TryAddSingleton<EntityGate>();
         services.TryAddScoped<IEntityBroker, EntityBroker>();
+        services.AddHarvestEntityReads();
         return services.AddOptions<EntityOptions>()
             .Validate(options => options.CandidateFloor is > 0 and <= 1 && options.MinMatchConfidence is > 0 and <= 1
                 && options.CandidateFloor <= options.MinMatchConfidence,

@@ -7,6 +7,7 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Module;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Capabilities;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Delivery;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Engine;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Entities;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Extraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Posts;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Readers;
@@ -43,6 +44,7 @@ public static partial class HostConfiguration
         builder.Services.AddHarvestExtraction();
         builder.Services.AddHarvestPosts();
         builder.Services.AddHarvestDelivery();
+        builder.Services.AddHarvestEntityReads();
         builder.Services.AddHarvestSources();
         builder.Services.AddHarvestEngine();
         builder.Services.AddValidatedSettings<HarvestEngineOptions>(builder.Configuration, "Harvest:Worker", options => options

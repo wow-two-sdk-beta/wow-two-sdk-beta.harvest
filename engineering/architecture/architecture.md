@@ -23,11 +23,11 @@ Client ──HTTP + token or X-Api-Key──► service/HarvestSources.Api
 
 | Project | Responsibility |
 |---|---|
-| `packages/Abstractions` | the contract — `IRegistrationBroker`, the step-broker and capability seams, captures, `wow2.post.v1`, delivery types; no DI, options or I/O |
+| `packages/Abstractions` | the contract — `IRegistrationBroker`, the step-broker and capability seams, captures, `wow2.post.v1`, delivery types, the entity reads `IEntitiesBroker`; no DI, options or I/O |
 | `packages/Module` | Form 1: the store (own keyed Npgsql data source), the migration set and boot self-test, the registry broker, the API key store; lane folders `Capabilities/` · `Engine/` · `Readers/` · `Extraction/` · `Posts/` · `Delivery/` · `Sources/` · `Tagging/` · `PostExtraction/` · `Entities/` |
 | `packages/Client` | Forms 2/3 over the service's HTTP API, authenticated by a service token or an API key |
 | `packages/Hosting` | shared ASP.NET startup, access policies and HTTP controllers both hosts compose |
-| `packages/Testing` | registry, run, post and delivery fakes and their shared conformance suites |
+| `packages/Testing` | registry, run, post, delivery and entity-read fakes and their shared conformance suites |
 | `sources/{Afisha,Anons,Caex,Craftfair,Olx,Uzexpocentre}` | one adapter and capture reader per named source over `Abstractions` and AngleSharp; no network I/O |
 | `sources/Instagram` · `sources/Integrations` | opt-in Business Discovery client; proxy/IP lease, supplied-session and 2Captcha clients; disabled by default |
 | `sources/Module` | composition over `packages/Module`: the Ocharo registry, provisioner and `ocharo-fashion-v1` filter; the marketplace (OLX) |
@@ -47,7 +47,9 @@ Client ──HTTP + token or X-Api-Key──► service/HarvestSources.Api
   same way for the (entity type, domain) pairs its demand gate wants and stores evidence-checked answers beside the
   post, never in it. The entity layer (`Entities/`) reads those answers with no model call and binds each post, with a
   role, to one event (editions, cadence, a predicted next run) or one listing (offers across authors and sites).
-  Captures and
+  Every entity change appends to the container's entity change feed (`harvest_entity_events`) in the same transaction;
+  `IEntitiesBroker` reads entities, their years, posts and calendar and pages that feed on the pull cursor's rules,
+  beside the post feed and apart from subscription delivery. Captures and
   conditional-response replay bodies stay in PostgreSQL while Files integration is unbound.
 - Hosting explicitly composes all engine lanes and opts into the worker. A library consumer can register the
   brokers without starting background work. `Harvest:Worker:Enabled=false` disables the service's worker.

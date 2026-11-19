@@ -16,6 +16,7 @@ picks an implementation:
 | `Extraction` | `IPostExtractor` and the base envelope `wow2.post.v1` (`PostEnvelope`) |
 | `Sources` | `ISourceOverviewBroker` — the console's per-source overview, a source's posts and a post's revisions — and source groups |
 | `Posts` · `Runs` · `Delivery` | link and post states, post revisions, run vocabulary, subscriptions, events and the cursor page |
+| `Entities` | `IEntitiesBroker` — entities searched with their years, an entity's occurrences by year, its posts per year, the calendar and the entity change feed — its routes, rules and errors |
 
 ```bash
 dotnet add package WoW2.Sdk.Beta.Be.Harvest.Abstractions --prerelease

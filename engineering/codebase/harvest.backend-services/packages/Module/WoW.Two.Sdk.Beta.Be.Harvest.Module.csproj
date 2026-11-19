@@ -34,6 +34,8 @@
     <InternalsVisibleTo Include="Harvest.Tests.Unit" />
     <InternalsVisibleTo Include="Harvest.Tests.Integration" />
     <InternalsVisibleTo Include="Harvest.Tests.Migrations" />
+    <!-- The entity reads' conformance seeds entities through the layer's own writers, change events included. -->
+    <InternalsVisibleTo Include="Harvest.Tests.Conformance" />
     <!-- The OLX rental-terms@2 processor shares the evidence check and answer types of PostExtraction/. -->
     <InternalsVisibleTo Include="WoW.Two.Sdk.Beta.Be.HarvestAdapters.Module" />
   </ItemGroup>

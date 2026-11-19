@@ -8,9 +8,15 @@ never writes the post and never calls a model.
 | Implements | Over |
 |---|---|
 | `IEntityBroker` (resolve, backfill, show, search, merge, split, report, the worker's tick) | the PostExtraction lane's done answers (`harvest_post_extractions`) and answer types; the Tagging lane's done tags and content hash; the Posts lane's links and sources |
+| `IEntitiesBroker` (`ModuleEntitiesBroker`, step D: search with years, an entity's timeline, its posts per year, the calendar, the change feed) | the tables below, the Posts lane's posts, links and sources; read only |
 
 - Owns: `harvest_entities`, `harvest_entity_occurrences`, `harvest_entity_relations`, `harvest_entity_keep_apart`,
-  `harvest_entity_flags` and the `entity-resolve` kind of `harvest_post_work` (014).
+  `harvest_entity_flags` and the `entity-resolve` kind of `harvest_post_work` (014); `harvest_entity_events` (015).
+- Change feed (`EntityEventLog`): resolution, `merge` and `split` append one row per change in their transaction — a
+  snapshot taken before the change is compared with the rows after it (`entity.created`, `occurrence.added`,
+  `.confirmed`, `.changed`, `.predicted`, `.removed`, `entity.changed`; `entity.merged`, `entity.split`). Reads
+  (`EntityReadStore`) page it on `(tx, id)` below the snapshot horizon; cursors (`EntityCursors`) bind to their container
+  or entity. Subscription delivery never reads it.
 - Queue: `PostExtractionStore.WriteAsync` queues `entity-resolve` for the answer's content in its own transaction when
   `Harvest:Entities:Enabled` is set (`EntityGate`); `entities backfill` queues answered posts with neither a relation
   nor a flag. The worker re-checks the post and its hash, resolves under the container's advisory lock

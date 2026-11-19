@@ -16,6 +16,7 @@ services.AddHarvestClient(options =>
 services.AddHarvestDataClient(); // Client.Delivery: IPostBroker, IDeliveryBroker
 services.AddHarvestRunClient();  // Client.Runs: IRunBroker
 services.AddHarvestSourceClient(); // Client.Sources: ISourceOverviewBroker
+services.AddHarvestEntityClient(); // Client.Entities: IEntitiesBroker, under posts:read
 ```
 
 A service that trusts the same Identity issuer as SCFD sends a client-credentials token instead of an API key:
@@ -44,3 +45,5 @@ The resource defaults to `BaseAddress` with its trailing slash. Set `ApiKey` or 
 - `ISourceOverviewBroker` — the console's per-source overview, a source's posts and a post's revisions.
 - `IPostBroker` — post queries and operator-only ingestion and merge controls.
 - `IDeliveryBroker` — tenant-owned subscriptions and pull cursors; replaying a cursor replays its stable event IDs.
+- `IEntitiesBroker` — entities of a visible container: search with years, an entity's timeline, its posts per year,
+  the calendar and the entity change feed, whose cursor replays like a pull cursor.

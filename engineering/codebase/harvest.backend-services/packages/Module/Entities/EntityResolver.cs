@@ -81,6 +81,7 @@ internal sealed class EntityResolver(NpgsqlConnection connection, NpgsqlTransact
         bool created = decision.Kind == DecisionKind.Create;
         var entity = created ? NewEntity(post, EntityConstants.EventType, english ?? original!, domains) : decision.Candidate!.Entity;
         List<OccurrenceRow> rows = created ? [] : decision.Candidate!.Occurrences;
+        var before = created ? null : EntityEventLog.Take(entity, rows);
         entity.AddAlias(english);
         entity.AddAlias(original);
         entity.PrimaryDomain ??= Primary(domains);
@@ -96,6 +97,7 @@ internal sealed class EntityResolver(NpgsqlConnection connection, NpgsqlTransact
         await EntityStore.SaveOccurrencesAsync(connection, transaction, rows, now, ct);
         decimal confidence = created ? 1m : Confidence(decision.Candidate!.Score);
         await EntityStore.BindAsync(connection, transaction, post, EventUseCase, entity.Id, target?.Id, role, changes, null, confidence, now, ct);
+        await EntityEventLog.AppendAsync(connection, transaction, EntityEventLog.Diff(before, entity, rows, post.PostId, now), ct);
         return new EntityResolveOutcome
         {
             UseCase = EventUseCase, Outcome = created ? "created" : "bound", EntityId = entity.Id, OccurrenceId = target?.Id, Role = role,
@@ -222,6 +224,7 @@ internal sealed class EntityResolver(NpgsqlConnection connection, NpgsqlTransact
                 confidence = Confidence(decision.Candidate.Score);
             }
         }
+        var before = created ? null : EntityEventLog.Take(entity, []);
         entity.PrimaryDomain ??= Primary(domains);
 
         string effective = role is "mention" or "unsure" ? role : !created && sameAuthor ? "update" : "announcement";
@@ -260,6 +263,7 @@ internal sealed class EntityResolver(NpgsqlConnection connection, NpgsqlTransact
 
         await EntityStore.SaveEntityAsync(connection, transaction, entity, now, ct);
         await EntityStore.BindAsync(connection, transaction, post, ListingUseCase, entity.Id, null, effective, changes, offer, confidence, now, ct);
+        await EntityEventLog.AppendAsync(connection, transaction, EntityEventLog.Diff(before, entity, [], post.PostId, now), ct);
         return new EntityResolveOutcome
         {
             UseCase = ListingUseCase, Outcome = created ? "created" : "bound", EntityId = entity.Id, Role = effective, Changes = changes,

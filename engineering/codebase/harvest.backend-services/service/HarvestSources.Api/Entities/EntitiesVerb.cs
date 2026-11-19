@@ -1,15 +1,19 @@
 using System.Data.Common;
+using System.Globalization;
 using System.Text.Json;
 using HarvestSources.Api.Configurations;
 using Microsoft.EntityFrameworkCore;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Foundation.Serialization;
+using WoW.Two.Sdk.Beta.Be.Harvest.Containers;
+using WoW.Two.Sdk.Beta.Be.Harvest.Entities;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Entities;
+using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
 
 namespace HarvestSources.Api.Entities;
 
-/// <summary>Operates the entity layer: resolves a post, queues stored answers, reads, searches, merges and splits entities
-/// and reports.</summary>
+/// <summary>Operates the entity layer: resolves a post, queues stored answers, reads, searches, merges and splits entities,
+/// lists an entity's posts and a calendar, and reports.</summary>
 /// <remarks>
 ///   - <c>resolve --post &lt;id&gt; [--dry-run]</c> binds a post's done extraction answers now; a dry run writes nothing
 ///   - <c>backfill [--since &lt;date&gt;] [--limit N]</c> queues posts whose answers have no relation or flag yet
@@ -17,9 +21,15 @@ namespace HarvestSources.Api.Entities;
 ///   - <c>search --q &lt;text&gt; [--type event|listing] [--domain &lt;key&gt;] [--limit N]</c> prints entities whose name
 ///     or alias is similar, with their years
 ///   - <c>merge --from &lt;id&gt; --into &lt;id&gt;</c> and <c>split --a &lt;id&gt; --b &lt;id&gt;</c> correct entities
+///   - <c>posts --id &lt;id&gt; [--year N] [--role R] [--limit N] [--cursor C]</c> prints one page of the entity's posts
+///     from every source, newest posted first, as <c>GET api/entities/{id}/posts</c> does: role, source, link, posted date
+///     and title
+///   - <c>calendar --from &lt;date&gt; --to &lt;date&gt; [--container &lt;id&gt;] [--domain &lt;key&gt;] [--type event|listing]</c>
+///     prints the occurrences overlapping the window, predicted ones marked, as <c>GET api/entities/calendar</c> does; the
+///     pool container unless one is named
 ///   - <c>report</c> prints counts by type, cadence and status and the open unsure flags
-///   - every sub-command prints one JSON line, except <c>show</c> and <c>search</c>, which print one JSON document; none
-///     prints post text
+///   - every sub-command prints one JSON line, except <c>show</c>, <c>search</c>, <c>posts</c> and <c>calendar</c>, which
+///     print one JSON document; none prints post text beyond titles
 /// </remarks>
 public static class EntitiesVerb
 {
@@ -33,6 +43,8 @@ public static class EntitiesVerb
                entities search --q <text> [--type <event|listing>] [--domain <key>] [--limit <n>]
                entities merge --from <id> --into <id>
                entities split --a <id> --b <id>
+               entities posts --id <id> [--year <n>] [--role <role>] [--limit <n>] [--cursor <cursor>]
+               entities calendar --from <yyyy-MM-dd> --to <yyyy-MM-dd> [--container <id>] [--domain <key>] [--type <event|listing>]
                entities report
         """;
 
@@ -68,6 +80,8 @@ public static class EntitiesVerb
                 "search" => await SearchAsync(entities, options, output, error, ct),
                 "merge" => await MergeAsync(entities, options, output, error, ct),
                 "split" => await SplitAsync(entities, options, output, error, ct),
+                "posts" => await PostsAsync(entities, scope.ServiceProvider, options, output, error, ct),
+                "calendar" => await CalendarAsync(scope.ServiceProvider, options, output, error, ct),
                 "report" => await ReportAsync(entities, options, output, error, ct),
                 _ => await UsageAsync(error),
             };
@@ -136,6 +150,42 @@ public static class EntitiesVerb
         return await WriteAsync(await entities.SplitAsync(left, right, ct), output, error);
     }
 
+    private static async Task<int> PostsAsync(IEntityBroker entities, IServiceProvider services, IReadOnlyDictionary<string, string?> options,
+        TextWriter output, TextWriter error, CancellationToken ct)
+    {
+        if (!VerbArguments.Only(options, "id", "year", "role", "limit", "cursor") || !TryId(options, "id", out var id)
+            || !VerbArguments.TryInt(options, "limit", EntityRouteConstants.DefaultPostsLimit, out var limit) || !TryYear(options, out var year))
+            return await UsageAsync(error);
+        var found = await entities.GetAsync(id, ct);
+        if (found is not Result<EntityDetailModel>.Success { Value: var detail })
+            return await VerbArguments.RefusedAsync(error, found);
+        var reads = services.GetRequiredService<IEntitiesBroker>();
+        return await WriteAsync(await reads.ListPostsAsync(detail.Entity.ContainerId, id, year, options.GetValueOrDefault("role"), limit,
+            options.GetValueOrDefault("cursor"), ct), output, error, Document);
+    }
+
+    private static async Task<int> CalendarAsync(IServiceProvider services, IReadOnlyDictionary<string, string?> options, TextWriter output,
+        TextWriter error, CancellationToken ct)
+    {
+        if (!VerbArguments.Only(options, "from", "to", "container", "domain", "type") || !TryDay(options, "from", out var from)
+            || !TryDay(options, "to", out var to) || options.ContainsKey("container") && !TryId(options, "container", out _))
+            return await UsageAsync(error);
+        Guid container;
+        if (options.ContainsKey("container"))
+            TryId(options, "container", out container);
+        else if (await services.GetRequiredService<IRegistrationBroker>().ListContainersAsync(null, ct)
+                     is Result<IReadOnlyList<ContainerModel>>.Success { Value: var containers }
+                 && containers.FirstOrDefault(candidate => candidate.Kind == ContainerKind.Pool) is { } pool)
+            container = pool.Id;
+        else
+        {
+            await error.WriteLineAsync("No pool container exists; name one with --container.");
+            return 1;
+        }
+        return await WriteAsync(await services.GetRequiredService<IEntitiesBroker>().CalendarAsync(container, from, to,
+            options.GetValueOrDefault("domain"), options.GetValueOrDefault("type"), ct), output, error, Document);
+    }
+
     private static async Task<int> ReportAsync(IEntityBroker entities, IReadOnlyDictionary<string, string?> options, TextWriter output,
         TextWriter error, CancellationToken ct)
     {
@@ -155,6 +205,20 @@ public static class EntitiesVerb
 
     private static bool TryId(IReadOnlyDictionary<string, string?> options, string name, out Guid id) =>
         Guid.TryParseExact(options.GetValueOrDefault(name), "D", out id);
+
+    private static bool TryDay(IReadOnlyDictionary<string, string?> options, string name, out DateOnly day) =>
+        DateOnly.TryParseExact(options.GetValueOrDefault(name), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out day);
+
+    private static bool TryYear(IReadOnlyDictionary<string, string?> options, out int? year)
+    {
+        year = null;
+        if (!options.TryGetValue("year", out var raw))
+            return true;
+        if (!int.TryParse(raw, NumberStyles.None, CultureInfo.InvariantCulture, out var value))
+            return false;
+        year = value;
+        return true;
+    }
 
     private static async Task<int> UsageAsync(TextWriter error)
     {

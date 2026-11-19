@@ -4,6 +4,7 @@ using Harvest.Tests.Integration.Posts;
 using Harvest.Tests.Integration.Tagging;
 using Microsoft.Extensions.DependencyInjection;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
+using WoW.Two.Sdk.Beta.Be.Harvest.Entities;
 using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Entities;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
@@ -21,6 +22,9 @@ internal static class EntitiesHost
             .Configure(options => configure?.Invoke(options)));
 
     internal static IEntityBroker Entities(this TagsHost host) => host.Scoped.GetRequiredService<IEntityBroker>();
+
+    /// <summary>Gets the read contract (step D) over the same store.</summary>
+    internal static IEntitiesBroker Reads(this TagsHost host) => host.Scoped.GetRequiredService<IEntitiesBroker>();
 
     /// <summary>Saves a capture of <paramref name="key"/> on a source, with an optional author profile, and returns the post.</summary>
     internal static async Task<Guid> PostAsync(this TagsHost host, string key, string text, Guid? sourceId = null, string domain = "mstar.uz",
