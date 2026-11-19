@@ -10,14 +10,14 @@ using WoW.Two.Sdk.Beta.Be.Testing.Data.Migrations.Lint;
 namespace Harvest.Tests.Migrations;
 
 /// <summary>The module's migration set over a fresh PostgreSQL database: apply, idempotency, the Apply → Rollback → Apply
-/// round trip, the be sdk lint from 011 on, and the shape SQL 001, 002, 006, 011, 012, 013, 014, 015, 016 and 017 promise the lanes.</summary>
+/// round trip, the be sdk lint from 011 on, and the shape SQL 001, 002, 006, 011, 012, 013, 014, 015, 016, 017 and 018 promise the lanes.</summary>
 public sealed class MigrationTests : IAsyncLifetime
 {
     /// <summary>Holds every migration of the set, in order.</summary>
     private static readonly string[] Migrations =
         ["001-baseline", "002-drop-escalation", "003-fetching", "004-posts-delivery", "005-subscription-filter", "006-source-groups",
             "007-source-assets", "008-pipeline-stages", "009-step-operations", "010-post-unmatched", "011-taxonomy", "012-post-tags",
-            "013-post-extractions", "014-entities", "015-entity-events", "016-model-processing", "017-processing-reruns"];
+            "013-post-extractions", "014-entities", "015-entity-events", "016-model-processing", "017-processing-reruns", "018-subscription-selectors"];
 
     /// <summary>Holds the escalation columns 002 drops.</summary>
     private const string EscalationColumns =
@@ -35,7 +35,7 @@ public sealed class MigrationTests : IAsyncLifetime
         "harvest_work_item", "harvest_discoveries", "harvest_discovery_scopes", "harvest_catalog_pages",
         "harvest_processing_results", "harvest_step_attempts", "harvest_taxonomy_nodes", "harvest_post_tags", "harvest_post_work",
         "harvest_post_extractions", "harvest_entities", "harvest_entity_occurrences", "harvest_entity_relations",
-        "harvest_entity_keep_apart", "harvest_entity_flags", "harvest_entity_events", "harvest_processing_runs",
+        "harvest_entity_keep_apart", "harvest_entity_flags", "harvest_entity_events", "harvest_processing_runs", "harvest_subscription_selectors",
     ];
 
     /// <summary>The last ordinal applied before the lint ran in this tier.</summary>
@@ -117,7 +117,7 @@ public sealed class MigrationTests : IAsyncLifetime
         Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None));
 
         Unwrap(await Runner.RollbackAsync(targetOrdinal: 5, CancellationToken.None)).Should()
-            .Equal("017-processing-reruns", "016-model-processing", "015-entity-events", "014-entities", "013-post-extractions", "012-post-tags", "011-taxonomy", "010-post-unmatched", "009-step-operations",
+            .Equal("018-subscription-selectors", "017-processing-reruns", "016-model-processing", "015-entity-events", "014-entities", "013-post-extractions", "012-post-tags", "011-taxonomy", "010-post-unmatched", "009-step-operations",
                 "008-pipeline-stages", "007-source-assets", "006-source-groups");
         (await ColumnCountAsync("table_name = 'harvest_sources' AND column_name IN ('group_id', 'display_name')")).Should().Be(0);
         (await ScalarAsync<bool>("SELECT to_regclass('harvest_source_groups') IS NULL AND to_regclass('harvest_post_revisions') IS NULL")).Should().BeTrue();
@@ -163,7 +163,7 @@ public sealed class MigrationTests : IAsyncLifetime
             """);
 
         Unwrap(await Runner.RollbackAsync(targetOrdinal: 7, CancellationToken.None)).Should()
-            .Equal("017-processing-reruns", "016-model-processing", "015-entity-events", "014-entities", "013-post-extractions", "012-post-tags", "011-taxonomy", "010-post-unmatched", "009-step-operations",
+            .Equal("018-subscription-selectors", "017-processing-reruns", "016-model-processing", "015-entity-events", "014-entities", "013-post-extractions", "012-post-tags", "011-taxonomy", "010-post-unmatched", "009-step-operations",
                 "008-pipeline-stages");
 
         (await ScalarAsync<string>("SELECT string_agg(pipeline_id::text, ',') FROM harvest_schedules WHERE kind = 'discover'"))
@@ -235,7 +235,7 @@ public sealed class MigrationTests : IAsyncLifetime
         (await ConstraintAsync("ck_harvest_post_work_kind")).Should().Contain("post-tags").And.Contain("extract-event").And.Contain("extract-listing");
         (await ScalarAsync<bool>("SELECT convalidated FROM pg_constraint WHERE conname = 'ck_harvest_post_work_kind'")).Should().BeTrue();
 
-        Unwrap(await Runner.RollbackAsync(targetOrdinal: 12, CancellationToken.None)).Should().Equal("017-processing-reruns", "016-model-processing",
+        Unwrap(await Runner.RollbackAsync(targetOrdinal: 12, CancellationToken.None)).Should().Equal("018-subscription-selectors", "017-processing-reruns", "016-model-processing",
             "015-entity-events", "014-entities", "013-post-extractions");
         (await ScalarAsync<bool>("SELECT to_regclass('harvest_post_extractions') IS NULL")).Should().BeTrue();
         (await ConstraintAsync("ck_harvest_post_work_kind")).Should().NotContain("extract-event");
@@ -269,7 +269,7 @@ public sealed class MigrationTests : IAsyncLifetime
             INSERT INTO harvest_entity_keep_apart(container_id,left_entity_id,right_entity_id,created_at) VALUES('{pool}','{entity}','{entity}',now())
             """, "ck_harvest_entity_keep_apart_order");
 
-        Unwrap(await Runner.RollbackAsync(targetOrdinal: 13, CancellationToken.None)).Should().Equal("017-processing-reruns", "016-model-processing",
+        Unwrap(await Runner.RollbackAsync(targetOrdinal: 13, CancellationToken.None)).Should().Equal("018-subscription-selectors", "017-processing-reruns", "016-model-processing",
             "015-entity-events", "014-entities");
         (await ScalarAsync<bool>("SELECT to_regclass('harvest_entities') IS NULL AND to_regclass('harvest_entity_flags') IS NULL")).Should().BeTrue();
         (await ConstraintAsync("ck_harvest_post_work_kind")).Should().Contain("extract-event").And.NotContain("entity-resolve");
@@ -303,7 +303,7 @@ public sealed class MigrationTests : IAsyncLifetime
             VALUES(gen_random_uuid(),'{pool}',gen_random_uuid(),'event','entity.created',now())
             """, "fk_harvest_entity_events_entity");
 
-        Unwrap(await Runner.RollbackAsync(targetOrdinal: 14, CancellationToken.None)).Should().Equal("017-processing-reruns", "016-model-processing",
+        Unwrap(await Runner.RollbackAsync(targetOrdinal: 14, CancellationToken.None)).Should().Equal("018-subscription-selectors", "017-processing-reruns", "016-model-processing",
             "015-entity-events");
         (await ScalarAsync<bool>("SELECT to_regclass('harvest_entity_events') IS NULL AND to_regclass('harvest_entities') IS NOT NULL")).Should().BeTrue();
     }
@@ -312,7 +312,7 @@ public sealed class MigrationTests : IAsyncLifetime
     public async Task ApplyPending_ShouldMapTheAiSwitchToAModeAndBackOnRollback()
     {
         Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None));
-        Unwrap(await Runner.RollbackAsync(targetOrdinal: 15, CancellationToken.None)).Should().Equal("017-processing-reruns", "016-model-processing");
+        Unwrap(await Runner.RollbackAsync(targetOrdinal: 15, CancellationToken.None)).Should().Equal("018-subscription-selectors", "017-processing-reruns", "016-model-processing");
         (await ColumnCountAsync("table_name = 'harvest_sources' AND column_name = 'model_processing'")).Should().Be(0);
         Guid pool = Guid.NewGuid(), open = Guid.NewGuid(), closed = Guid.NewGuid();
         await ExecuteAsync($"""
@@ -322,7 +322,7 @@ public sealed class MigrationTests : IAsyncLifetime
                   ('{closed}','{pool}','site','closed.example','whole','complete','own_fetch',now(),now(),false);
             """);
 
-        Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None)).Should().Equal("016-model-processing", "017-processing-reruns");
+        Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None)).Should().Equal("016-model-processing", "017-processing-reruns", "018-subscription-selectors");
         (await ScalarAsync<string>($"SELECT model_processing FROM harvest_sources WHERE id='{open}'")).Should().Be("auto");
         (await ScalarAsync<string>($"SELECT model_processing FROM harvest_sources WHERE id='{closed}'")).Should().Be("off");
         await FailsAsync($"UPDATE harvest_sources SET model_processing='sometimes' WHERE id='{open}'", "ck_harvest_sources_model_processing");
@@ -340,10 +340,79 @@ public sealed class MigrationTests : IAsyncLifetime
         await FailsAsync("INSERT INTO harvest_processing_runs(id,use_cases,scope,created_at) VALUES(gen_random_uuid(),'{rental-terms}','all',now())",
             "ck_harvest_processing_runs_use_cases");
 
-        Unwrap(await Runner.RollbackAsync(targetOrdinal: 15, CancellationToken.None)).Should().Equal("017-processing-reruns", "016-model-processing");
+        Unwrap(await Runner.RollbackAsync(targetOrdinal: 15, CancellationToken.None)).Should().Equal("018-subscription-selectors", "017-processing-reruns", "016-model-processing");
         (await ScalarAsync<bool>($"SELECT ai_allowed FROM harvest_sources WHERE id='{open}'")).Should().BeFalse("a manual source reads as not allowed");
         (await ScalarAsync<bool>("SELECT to_regclass('harvest_processing_runs') IS NULL")).Should().BeTrue();
         (await ColumnCountAsync("table_name = 'harvest_post_work' AND column_name IN ('run_id', 'explicit')")).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ApplyPending_ShouldAddSelectorsAndDropThemOnRollback()
+    {
+        Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None));
+        Guid tenant = Guid.NewGuid(), pool = Guid.NewGuid(), selector = Guid.NewGuid(), tag = Guid.NewGuid(), other = Guid.NewGuid();
+        await ExecuteAsync($$"""
+            INSERT INTO harvest_tenants(id,slug,name,created_at) VALUES('{{tenant}}','events','Events',now());
+            INSERT INTO harvest_containers(id,kind,created_at) VALUES('{{pool}}','pool',now());
+            INSERT INTO harvest_subscriptions(id,tenant_id,container_id,kind,mode,name,selector,selector_version,created_at)
+            VALUES('{{selector}}','{{tenant}}','{{pool}}','selector','pull','ocharo-events','{"entityTypes":["event"]}',1,now());
+            INSERT INTO harvest_subscriptions(id,tenant_id,container_id,kind,mode,created_at) VALUES('{{tag}}','{{tenant}}','{{pool}}','tag','pull',now());
+            INSERT INTO harvest_subscription_selectors(subscription_id,version,selector,created_at)
+            VALUES('{{selector}}',1,'{"entityTypes":["event"]}',now());
+            INSERT INTO harvest_subscription_event(subscription_id,event_id,item_id,type,occurred_at,matched)
+            VALUES('{{selector}}',gen_random_uuid(),'item-1','post.new',now(),'{"selectorVersion":1,"verdict":"match","clauses":[],"context":{} }');
+            """);
+
+        (await ConstraintAsync("ck_harvest_subscriptions_kind")).Should().Contain("selector");
+        await FailsAsync($$"""
+            INSERT INTO harvest_subscriptions(id,tenant_id,container_id,kind,mode,selector,selector_version,created_at)
+            VALUES(gen_random_uuid(),'{{tenant}}','{{pool}}','selector','pull','{}',1,now())
+            """, "ck_harvest_subscriptions_selector");
+        await FailsAsync($$"""
+            INSERT INTO harvest_subscriptions(id,tenant_id,container_id,kind,mode,name,created_at)
+            VALUES(gen_random_uuid(),'{{tenant}}','{{pool}}','selector','pull','without-selector',now())
+            """, "ck_harvest_subscriptions_selector");
+        await FailsAsync($$"""
+            INSERT INTO harvest_subscriptions(id,tenant_id,container_id,kind,mode,name,selector,selector_version,filter_key,created_at)
+            VALUES(gen_random_uuid(),'{{tenant}}','{{pool}}','selector','pull','with-filter','{}',1,'a-filter',now())
+            """, "ck_harvest_subscriptions_selector");
+        await FailsAsync($$"""
+            INSERT INTO harvest_subscriptions(id,tenant_id,container_id,kind,mode,name,created_at)
+            VALUES(gen_random_uuid(),'{{tenant}}','{{pool}}','tag','pull','Not A Slug',now())
+            """, "ck_harvest_subscriptions_name");
+        await FailsAsync($$"""
+            INSERT INTO harvest_subscriptions(id,tenant_id,container_id,kind,mode,name,selector,selector_version,created_at)
+            VALUES(gen_random_uuid(),'{{tenant}}','{{pool}}','selector','pull','ocharo-events','{}',1,now())
+            """, "ux_harvest_subscriptions_tenant_name");
+        await FailsAsync($$"""
+            INSERT INTO harvest_subscriptions(id,tenant_id,container_id,kind,mode,name,selector,selector_version,created_at)
+            VALUES(gen_random_uuid(),'{{tenant}}','{{pool}}','selector','pull','bad-version','{}',0,now())
+            """, "ck_harvest_subscriptions_selector");
+        await FailsAsync($"INSERT INTO harvest_subscription_selectors(subscription_id,version,selector,created_at) VALUES('{selector}',1,'{{}}',now())",
+            "pk_harvest_subscription_selectors");
+        await FailsAsync($$"""
+            INSERT INTO harvest_subscription_event(subscription_id,event_id,item_id,type,occurred_at,matched)
+            VALUES('{{selector}}',gen_random_uuid(),'item-2','post.new',now(),'[]')
+            """, "ck_harvest_subscription_event_matched");
+        await ExecuteAsync($"UPDATE harvest_subscriptions SET state='archived' WHERE id='{selector}'");
+        await ExecuteAsync($$"""
+            INSERT INTO harvest_subscriptions(id,tenant_id,container_id,kind,mode,name,selector,selector_version,created_at)
+            VALUES('{{other}}','{{tenant}}','{{pool}}','selector','pull','ocharo-events','{}',1,now())
+            """);
+
+        Unwrap(await Runner.RollbackAsync(targetOrdinal: 17, CancellationToken.None)).Should().Equal("018-subscription-selectors");
+
+        (await ScalarAsync<bool>("SELECT to_regclass('harvest_subscription_selectors') IS NULL")).Should().BeTrue();
+        (await ScalarAsync<long>("SELECT count(*) FROM harvest_subscriptions WHERE kind = 'selector'")).Should().Be(0);
+        (await ScalarAsync<string>("SELECT string_agg(id::text, ',') FROM harvest_subscriptions")).Should().Be(tag.ToString(), "a non-selector subscription stays");
+        (await ScalarAsync<long>("SELECT count(*) FROM harvest_subscription_event")).Should().Be(0, "the selector subscription's events cascade");
+        (await ColumnCountAsync("table_name = 'harvest_subscriptions' AND column_name IN ('name', 'selector', 'selector_version')")).Should().Be(0);
+        (await ConstraintAsync("ck_harvest_subscriptions_kind")).Should().NotContain("selector");
+        (await ScalarAsync<bool>("SELECT to_regclass('ux_harvest_subscriptions_tenant_name') IS NULL AND to_regclass('ix_harvest_subscriptions_selectors') IS NULL"))
+            .Should().BeTrue();
+
+        Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None)).Should().Equal("018-subscription-selectors");
+        (await ScalarAsync<bool>("SELECT to_regclass('harvest_subscription_selectors') IS NOT NULL")).Should().BeTrue();
     }
 
     private async Task ExecuteAsync(string sql)

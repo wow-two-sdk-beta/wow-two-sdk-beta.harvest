@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
@@ -11,14 +12,18 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Module.Extraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Persistence;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Posts;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
+using WoW.Two.Sdk.Beta.Be.Harvest.Posts;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Delivery;
 
-/// <summary>Integrates pull subscriptions with a durable transaction-horizon cursor.</summary>
+/// <summary>Integrates pull subscriptions with a durable transaction-horizon cursor, for channels over one pipeline and
+/// for selectors over Layer 1 tags and sources.</summary>
 internal sealed class ModuleDeliveryBroker(
     [FromKeyedServices(HarvestModuleConstants.ServiceKey)] NpgsqlDataSource dataSource,
     TimeProvider time,
-    IEnumerable<IDeliveryPostFilter> filters) : IDeliveryBroker
+    IEnumerable<IDeliveryPostFilter> filters,
+    IEnumerable<ISelectorChangeHook> hooks,
+    ILogger<ModuleDeliveryBroker> logger) : IDeliveryBroker
 {
     private readonly DeliveryPostFilters postFilters = new(filters);
 
@@ -26,15 +31,10 @@ internal sealed class ModuleDeliveryBroker(
     public async Task<Result<SubscriptionModel>> SubscribeAsync(SubscriptionDeclaration declaration, CancellationToken cancellationToken = default)
     {
         if (declaration?.Context is null) return Invalid<SubscriptionModel>("A subscription and its routing context are required.");
-        if (declaration.Selector is not null) return Invalid<SubscriptionModel>("Selector subscriptions are not built yet.");
+        if (declaration.Selector is not null) return await SubscribeSelectorAsync(declaration, cancellationToken);
         if (declaration.PipelineId is null) return Invalid<SubscriptionModel>("A channel subscription needs its pipeline.");
-        if (!Enum.IsDefined(declaration.Backfill) || (declaration.Backfill == BackfillMode.Since) != declaration.BackfillSinceUtc.HasValue)
-            return Invalid<SubscriptionModel>("A since-backfill requires its lower bound; other modes do not accept one.");
-        if (declaration.BackfillSinceUtc > time.GetUtcNow())
-            return Invalid<SubscriptionModel>("The backfill lower bound cannot be in the future.");
-        if (declaration.Context.Count > 64 || declaration.Context.Any(pair => string.IsNullOrWhiteSpace(pair.Key) || pair.Key.Length > 256 || pair.Value is null || pair.Value.Length > 4096))
-            return Invalid<SubscriptionModel>("Subscription context exceeds its size limits.");
-        if (declaration.Schema is { Length: > 200 }) return Invalid<SubscriptionModel>("The schema identifier is too long.");
+        if (declaration.Name is not null) return Invalid<SubscriptionModel>("Only a selector subscription has a name.");
+        if (CommonProblem(declaration) is { } problem) return Invalid<SubscriptionModel>(problem);
         if (declaration.FilterKey is { } filterKey && (string.IsNullOrWhiteSpace(filterKey) || filterKey.Length > 200 || !postFilters.Contains(filterKey)))
             return Invalid<SubscriptionModel>("The requested post filter is not registered or its key is invalid.");
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
@@ -118,7 +118,7 @@ internal sealed class ModuleDeliveryBroker(
         if (subscription is null) return Missing<CursorPage<DeliveryEvent>>("Subscription not found.");
         var rows = new List<(ulong TransactionId, long Id, DeliveryEvent Event)>();
         await using (var command = PostSql.Command(connection, null, """
-                         SELECT e.tx::text,e.id,e.event_id,e.item_id,e.type,e.occurred_at,e.post_id,e.revision,e.link_id,e.run_id,e.reason,e.payload::text
+                         SELECT e.tx::text,e.id,e.event_id,e.item_id,e.type,e.occurred_at,e.post_id,e.revision,e.link_id,e.run_id,e.reason,e.payload::text,e.matched::text
                          FROM harvest_subscription_event e WHERE e.subscription_id=@subscription
                            AND e.tx < pg_snapshot_xmin(pg_current_snapshot())
                            AND (e.tx,e.id) > (CAST(@tx AS xid8),@row)
@@ -126,14 +126,21 @@ internal sealed class ModuleDeliveryBroker(
                          """, ("subscription", subscriptionId), ("tx", transactionId.ToString(System.Globalization.CultureInfo.InvariantCulture)), ("row", rowId), ("limit", limit + 1)))
         await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
             while (await reader.ReadAsync(cancellationToken))
+            {
+                var matched = reader.IsDBNull(12) ? null : JsonSerializer.Deserialize<StoredMatch>(reader.GetString(12), JsonOptionsConstants.Default);
+                var data = reader.IsDBNull(11) ? (JsonElement?)null : RenderPayload(JsonSerializer.Deserialize<JsonElement>(reader.GetString(11)), subscription.Schema);
+                if (data is { } payload && matched?.Context is { } matchedContext)
+                    data = WithContext(payload, matchedContext);
                 rows.Add((ulong.Parse(reader.GetString(0), System.Globalization.CultureInfo.InvariantCulture), reader.GetInt64(1), new DeliveryEvent
                 {
                     EventId = reader.GetGuid(2), ItemId = reader.GetString(3), SubscriptionId = subscriptionId, PipelineId = subscription.PipelineId, Type = reader.GetString(4),
                     OccurredAtUtc = reader.GetFieldValue<DateTimeOffset>(5), PostId = reader.IsDBNull(6) ? null : reader.GetGuid(6),
                     Revision = reader.IsDBNull(7) ? null : reader.GetInt32(7), LinkId = reader.IsDBNull(8) ? null : reader.GetGuid(8),
                     RunId = reader.IsDBNull(9) ? null : reader.GetGuid(9), Reason = reader.IsDBNull(10) ? null : reader.GetString(10),
-                    Data = reader.IsDBNull(11) ? null : RenderPayload(JsonSerializer.Deserialize<JsonElement>(reader.GetString(11)), subscription.Schema), Context = subscription.Context,
+                    Data = data, Context = subscription.Context,
+                    Match = matched is null ? null : new SubscriptionMatch { SelectorVersion = matched.SelectorVersion, Verdict = matched.Verdict, Clauses = matched.Clauses },
                 }));
+            }
         var hasMore = rows.Count > limit;
         if (hasMore) rows.RemoveAt(rows.Count - 1);
         var next = rows.Count == 0 ? cursor ?? EncodeCursor(subscriptionId, transactionId, rowId)
@@ -142,27 +149,239 @@ internal sealed class ModuleDeliveryBroker(
     }
 
     /// <inheritdoc />
-    public Task<Result<SelectorChangeModel>> SetSelectorAsync(Guid subscriptionId, SelectorChange change, CancellationToken cancellationToken = default) =>
-        Task.FromResult(Invalid<SelectorChangeModel>("Selector subscriptions are not built yet."));
+    public async Task<Result<SelectorChangeModel>> SetSelectorAsync(Guid subscriptionId, SelectorChange change, CancellationToken cancellationToken = default)
+    {
+        if (change?.Selector is null) return Invalid<SelectorChangeModel>("A selector change needs its selector.");
+        if (change.ChangedBy is { Length: > 200 }) return Invalid<SelectorChangeModel>("The changer's name is too long.");
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        if (await PostSql.ScalarAsync(connection, transaction, "SELECT container_id FROM harvest_subscriptions WHERE id=@id", cancellationToken, ("id", subscriptionId)) is not Guid containerId)
+            return Missing<SelectorChangeModel>("Subscription not found.");
+        await PostSql.LockAsync(connection, transaction, containerId, cancellationToken);
+        string kind, state;
+        string? schema;
+        IReadOnlyDictionary<string, string> context;
+        int? storedVersion;
+        await using (var command = PostSql.Command(connection, transaction,
+                         "SELECT kind,state,schema,context::text,selector_version FROM harvest_subscriptions WHERE id=@id", ("id", subscriptionId)))
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+        {
+            if (!await reader.ReadAsync(cancellationToken)) return Missing<SelectorChangeModel>("Subscription not found.");
+            kind = reader.GetString(0); state = reader.GetString(1); schema = reader.IsDBNull(2) ? null : reader.GetString(2);
+            context = StoreJson.Read(reader.GetString(3), new Dictionary<string, string>());
+            storedVersion = reader.IsDBNull(4) ? null : reader.GetInt32(4);
+        }
+        if (kind != "selector" || storedVersion is not { } version) return Invalid<SelectorChangeModel>("Only a selector subscription has a selector.");
+        if (state == "archived") return Conflict<SelectorChangeModel>("An archived subscription cannot change its selector.");
+        var selector = SelectorRules.Normalize(change.Selector);
+        if (await SelectorStore.ValidateAsync(connection, transaction, containerId, selector, cancellationToken) is { } problem)
+            return Invalid<SelectorChangeModel>(problem);
+        var now = Now();
+        var window = change.WindowSinceUtc?.ToUniversalTime() ?? now.AddDays(-SelectorRules.DefaultWindowDays);
+        if (window > now) return Invalid<SelectorChangeModel>("The window's lower bound cannot be in the future.");
+        if (window < now.AddDays(-SelectorRules.MaxWindowDays))
+            return Invalid<SelectorChangeModel>($"The window cannot reach back more than {SelectorRules.MaxWindowDays} days.");
+        var json = StoreJson.Write(selector);
+        if (await PostSql.ScalarAsync(connection, transaction, "SELECT selector = CAST(@selector AS jsonb) FROM harvest_subscriptions WHERE id=@id",
+                cancellationToken, ("id", subscriptionId), ("selector", json)) is true)
+            return Result<SelectorChangeModel>.Ok(new SelectorChangeModel { Subscription = (await ReadSubscriptionAsync(connection, transaction, subscriptionId, cancellationToken))!, Changed = false });
+
+        var candidates = await SelectorStore.ReadWindowAsync(connection, transaction, containerId, subscriptionId, window, SelectorRules.MaxWindowPosts + 1, cancellationToken);
+        if (candidates.Count > SelectorRules.MaxWindowPosts)
+            return Invalid<SelectorChangeModel>($"The window holds more than {SelectorRules.MaxWindowPosts} posts; narrow it.");
+        var next = version + 1;
+        await PostSql.ExecuteAsync(connection, transaction, "UPDATE harvest_subscriptions SET selector=CAST(@selector AS jsonb),selector_version=@version WHERE id=@id",
+            cancellationToken, ("id", subscriptionId), ("selector", json), ("version", next));
+        var scope = await SelectorStore.ReadScopeAsync(connection, transaction, containerId, [selector], cancellationToken);
+        string suffix = $":s{next}";
+        int considered = 0, newMatches = 0, unmatched = 0, rematched = 0, pending = 0;
+        foreach (var candidate in candidates)
+        {
+            if (await ModulePostBroker.ReadPostAsync(connection, transaction, containerId, candidate.PostId, cancellationToken) is not { } post) continue;
+            considered++;
+            var evaluation = SubscriptionSelectorMatcher.Evaluate(selector, SelectorStore.Facts(post, scope.Groups), scope.Sections, schema, context);
+            if (evaluation.Verdict == SelectorVerdict.Pending) { pending++; continue; }
+            var (type, reason) = !candidate.Seen ? (evaluation.Verdict == SelectorVerdict.Match ? DeliveryEventTypes.PostNew : null, "backfill")
+                : !candidate.Unmatched ? (evaluation.Verdict == SelectorVerdict.NoMatch ? DeliveryEventTypes.PostUnmatched : null, "resync")
+                : (evaluation.Verdict == SelectorVerdict.Match ? DeliveryEventTypes.PostChanged : null, "resync");
+            if (type is null) continue;
+            if (await DeliveryEventWriter.AppendOneAsync(connection, transaction, subscriptionId, post, type, null, null, reason, now, cancellationToken,
+                    SelectorStore.Matched(next, evaluation), suffix) == 0) continue;
+            if (type == DeliveryEventTypes.PostNew) newMatches++;
+            else if (type == DeliveryEventTypes.PostUnmatched) unmatched++;
+            else rematched++;
+        }
+        await InsertSelectorVersionAsync(connection, transaction, subscriptionId, next, json, window, (considered, newMatches, unmatched, rematched, pending), change.ChangedBy, now, cancellationToken);
+        var model = (await ReadSubscriptionAsync(connection, transaction, subscriptionId, cancellationToken))!;
+        await transaction.CommitAsync(cancellationToken);
+        await RunHooksAsync(subscriptionId, window, cancellationToken);
+        return Result<SelectorChangeModel>.Ok(new SelectorChangeModel
+        {
+            Subscription = model, Changed = true, WindowSinceUtc = window, Considered = considered, NewMatches = newMatches,
+            Unmatched = unmatched, Rematched = rematched, Pending = pending,
+        });
+    }
 
     /// <inheritdoc />
-    public Task<Result<SubscriptionModel>> SetStateAsync(Guid subscriptionId, SubscriptionState state, CancellationToken cancellationToken = default) =>
-        Task.FromResult(Invalid<SubscriptionModel>("Selector subscriptions are not built yet."));
+    public async Task<Result<SubscriptionModel>> SetStateAsync(Guid subscriptionId, SubscriptionState state, CancellationToken cancellationToken = default)
+    {
+        if (!Enum.IsDefined(state)) return Invalid<SubscriptionModel>("The subscription state is not one of active, suspended or archived.");
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        if (await PostSql.ScalarAsync(connection, transaction, "SELECT container_id FROM harvest_subscriptions WHERE id=@id", cancellationToken, ("id", subscriptionId)) is not Guid containerId)
+            return Missing<SubscriptionModel>("Subscription not found.");
+        await PostSql.LockAsync(connection, transaction, containerId, cancellationToken);
+        if (await PostSql.ScalarAsync(connection, transaction, "SELECT state FROM harvest_subscriptions WHERE id=@id", cancellationToken, ("id", subscriptionId)) is not string current)
+            return Missing<SubscriptionModel>("Subscription not found.");
+        var wanted = state.ToString().ToLowerInvariant();
+        if (current != wanted)
+        {
+            if (current == "archived") return Conflict<SubscriptionModel>("An archived subscription stays archived.");
+            await PostSql.ExecuteAsync(connection, transaction, "UPDATE harvest_subscriptions SET state=@state WHERE id=@id", cancellationToken,
+                ("id", subscriptionId), ("state", wanted));
+        }
+        var model = (await ReadSubscriptionAsync(connection, transaction, subscriptionId, cancellationToken))!;
+        await transaction.CommitAsync(cancellationToken);
+        return Result<SubscriptionModel>.Ok(model);
+    }
+
+    /// <summary>Subscribes a tenant to a selector over one container and backfills the live posts it matches.</summary>
+    private async Task<Result<SubscriptionModel>> SubscribeSelectorAsync(SubscriptionDeclaration declaration, CancellationToken cancellationToken)
+    {
+        if (declaration.PipelineId is not null) return Invalid<SubscriptionModel>("A selector subscription follows no pipeline; its sources are in the selector.");
+        if (declaration.FilterKey is not null) return Invalid<SubscriptionModel>("A selector subscription takes no filter key; its selector is the filter.");
+        if (!SelectorRules.IsName(declaration.Name))
+            return Invalid<SubscriptionModel>("A selector subscription needs a name: a lowercase letter or digit, then up to 63 letters, digits or hyphens.");
+        if (CommonProblem(declaration) is { } common) return Invalid<SubscriptionModel>(common);
+        var selector = SelectorRules.Normalize(declaration.Selector!);
+        if (SelectorRules.Validate(selector) is { } shape) return Invalid<SubscriptionModel>(shape);
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await PostSql.LockAsync(connection, transaction, declaration.ContainerId, cancellationToken);
+        if (await PostSql.ScalarAsync(connection, transaction,
+                "SELECT 1 FROM harvest_tenants WHERE id=@id AND state='active'", cancellationToken, ("id", declaration.TenantId)) is null)
+            return Missing<SubscriptionModel>("Active tenant not found.");
+        if (await PostSql.ScalarAsync(connection, transaction, "SELECT 1 FROM harvest_containers WHERE id=@container AND (kind='pool' OR tenant_id=@tenant)",
+                cancellationToken, ("container", declaration.ContainerId), ("tenant", declaration.TenantId)) is null)
+            return Missing<SubscriptionModel>("Container not found or not accessible to the tenant.");
+        if (await PostSql.ScalarAsync(connection, transaction, "SELECT 1 FROM harvest_subscriptions WHERE tenant_id=@tenant AND name=@name AND state<>'archived'",
+                cancellationToken, ("tenant", declaration.TenantId), ("name", declaration.Name)) is not null)
+            return Conflict<SubscriptionModel>($"The tenant already has a subscription named '{declaration.Name}'.");
+        if (await SelectorStore.ValidateAsync(connection, transaction, declaration.ContainerId, selector, cancellationToken) is { } problem)
+            return Invalid<SubscriptionModel>(problem);
+
+        var now = Now();
+        var id = Guid.CreateVersion7(now);
+        var since = declaration.Backfill == BackfillMode.Since ? declaration.BackfillSinceUtc?.ToUniversalTime() : null;
+        var json = StoreJson.Write(selector);
+        try
+        {
+            await PostSql.ExecuteAsync(connection, transaction, """
+                INSERT INTO harvest_subscriptions(id,tenant_id,container_id,pipeline_id,kind,mode,context,schema,backfill,backfill_since,name,selector,selector_version,created_at)
+                VALUES(@id,@tenant,@container,NULL,'selector','pull',CAST(@context AS jsonb),@schema,@backfill,@since,@name,CAST(@selector AS jsonb),1,@now)
+                """, cancellationToken, ("id", id), ("tenant", declaration.TenantId), ("container", declaration.ContainerId),
+                ("context", StoreJson.Write(declaration.Context)), ("schema", declaration.Schema),
+                ("backfill", declaration.Backfill.ToString().ToLowerInvariant()), ("since", since), ("name", declaration.Name), ("selector", json), ("now", now));
+        }
+        catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.UniqueViolation)
+        {
+            return Conflict<SubscriptionModel>($"The tenant already has a subscription named '{declaration.Name}'.");
+        }
+
+        int considered = 0, newMatches = 0, pending = 0;
+        if (declaration.Backfill != BackfillMode.None)
+        {
+            var scope = await SelectorStore.ReadScopeAsync(connection, transaction, declaration.ContainerId, [selector], cancellationToken);
+            var posts = new List<Guid>();
+            await using (var command = PostSql.Command(connection, transaction, """
+                             SELECT p.id FROM harvest_posts p
+                             WHERE p.container_id=@container AND p.merged_into IS NULL AND p.purged_at IS NULL AND p.state='live'
+                               AND (CAST(@since AS timestamptz) IS NULL OR p.first_seen_at>=@since)
+                             ORDER BY p.first_seen_at,p.id
+                             """, ("container", declaration.ContainerId), ("since", since)))
+            await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+                while (await reader.ReadAsync(cancellationToken)) posts.Add(reader.GetGuid(0));
+            foreach (var postId in posts)
+            {
+                if (await ModulePostBroker.ReadPostAsync(connection, transaction, declaration.ContainerId, postId, cancellationToken) is not { } post) continue;
+                considered++;
+                var evaluation = SubscriptionSelectorMatcher.Evaluate(selector, SelectorStore.Facts(post, scope.Groups), scope.Sections, declaration.Schema, declaration.Context);
+                if (evaluation.Verdict == SelectorVerdict.Pending) pending++;
+                else if (evaluation.Verdict == SelectorVerdict.Match
+                         && await DeliveryEventWriter.AppendOneAsync(connection, transaction, id, post, DeliveryEventTypes.PostNew, null, null, "backfill", now,
+                             cancellationToken, SelectorStore.Matched(1, evaluation)) > 0)
+                    newMatches++;
+            }
+        }
+        await InsertSelectorVersionAsync(connection, transaction, id, 1, json, since, (considered, newMatches, 0, 0, pending), null, now, cancellationToken);
+        var model = (await ReadSubscriptionAsync(connection, transaction, id, cancellationToken))!;
+        await transaction.CommitAsync(cancellationToken);
+        await RunHooksAsync(id, since, cancellationToken);
+        return Result<SubscriptionModel>.Ok(model);
+    }
+
+    /// <summary>Records one selector version in the subscription's history, with the window it re-judged and what that wrote.</summary>
+    private static Task<int> InsertSelectorVersionAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid subscriptionId, int version, string selector,
+        DateTimeOffset? window, (int Considered, int NewMatches, int Unmatched, int Rematched, int Pending) counts, string? changedBy, DateTimeOffset now, CancellationToken ct) =>
+        PostSql.ExecuteAsync(connection, transaction, """
+            INSERT INTO harvest_subscription_selectors(subscription_id,version,selector,window_since,counts,changed_by,created_at)
+            VALUES(@subscription,@version,CAST(@selector AS jsonb),@window,CAST(@counts AS jsonb),@by,@now)
+            """, ct, ("subscription", subscriptionId), ("version", version), ("selector", selector), ("window", window), ("by", changedBy), ("now", now),
+            ("counts", StoreJson.Write(new { considered = counts.Considered, newMatches = counts.NewMatches, unmatched = counts.Unmatched, rematched = counts.Rematched, pending = counts.Pending })));
+
+    /// <summary>Calls each selector-change hook after the change committed; a hook that fails is logged and never fails the write.</summary>
+    private async Task RunHooksAsync(Guid subscriptionId, DateTimeOffset? windowSinceUtc, CancellationToken cancellationToken)
+    {
+        foreach (var hook in hooks)
+        {
+            try
+            {
+                await hook.OnChangedAsync(subscriptionId, windowSinceUtc, cancellationToken);
+            }
+            catch (Exception exception)
+            {
+                logger.LogWarning(exception, "Selector change hook {Hook} failed for subscription {SubscriptionId}", hook.GetType().Name, subscriptionId);
+            }
+        }
+    }
+
+    /// <summary>Returns the first problem in what every declaration shares: its backfill, routing context and schema.</summary>
+    private string? CommonProblem(SubscriptionDeclaration declaration)
+    {
+        if (!Enum.IsDefined(declaration.Backfill) || (declaration.Backfill == BackfillMode.Since) != declaration.BackfillSinceUtc.HasValue)
+            return "A since-backfill requires its lower bound; other modes do not accept one.";
+        if (declaration.BackfillSinceUtc > time.GetUtcNow())
+            return "The backfill lower bound cannot be in the future.";
+        if (declaration.Context.Count > 64 || declaration.Context.Any(pair => string.IsNullOrWhiteSpace(pair.Key) || pair.Key.Length > 256 || pair.Value is null || pair.Value.Length > 4096))
+            return "Subscription context exceeds its size limits.";
+        return declaration.Schema is { Length: > 200 } ? "The schema identifier is too long." : null;
+    }
+
+    /// <summary>Returns the clock's now, cut to the microsecond PostgreSQL keeps.</summary>
+    private DateTimeOffset Now()
+    {
+        var now = time.GetUtcNow();
+        return now.AddTicks(-(now.Ticks % 10));
+    }
 
     private static async Task<SubscriptionModel?> ReadSubscriptionAsync(NpgsqlConnection connection, NpgsqlTransaction? transaction, Guid id, CancellationToken ct)
     {
         await using var command = PostSql.Command(connection, transaction, """
-            SELECT id,tenant_id,pipeline_id,context::text,schema,backfill,state,created_at,filter_key
+            SELECT id,tenant_id,pipeline_id,context::text,schema,backfill,state,created_at,filter_key,kind,name,selector::text,selector_version
             FROM harvest_subscriptions WHERE id=@id
             """, ("id", id));
         await using var reader = await command.ExecuteReaderAsync(ct);
         return !await reader.ReadAsync(ct) ? null : new SubscriptionModel
         {
-            Id = reader.GetGuid(0), TenantId = reader.GetGuid(1), PipelineId = reader.GetGuid(2), Kind = SubscriptionKind.Channel,
+            Id = reader.GetGuid(0), TenantId = reader.GetGuid(1), PipelineId = reader.IsDBNull(2) ? null : reader.GetGuid(2),
+            Kind = Enum.Parse<SubscriptionKind>(reader.GetString(9), true),
             Mode = DeliveryMode.Pull, Context = StoreJson.Read(reader.GetString(3), new Dictionary<string, string>()),
             Schema = reader.IsDBNull(4) ? null : reader.GetString(4), Backfill = Enum.Parse<BackfillMode>(reader.GetString(5), true),
             State = Enum.Parse<SubscriptionState>(reader.GetString(6), true), CreatedAtUtc = reader.GetFieldValue<DateTimeOffset>(7),
             FilterKey = reader.IsDBNull(8) ? null : reader.GetString(8),
+            Name = reader.IsDBNull(10) ? null : reader.GetString(10),
+            Selector = reader.IsDBNull(11) ? null : SelectorStore.ReadSelector(reader.GetString(11)),
+            SelectorVersion = reader.IsDBNull(12) ? null : reader.GetInt32(12),
         };
     }
 
@@ -228,6 +447,24 @@ internal sealed class ModuleDeliveryBroker(
         });
     }
 
+    /// <summary>Returns the payload with its top-level <c>context</c> set to the event's stored context.</summary>
+    private static JsonElement WithContext(JsonElement payload, IReadOnlyDictionary<string, string> context)
+    {
+        if (payload.ValueKind != JsonValueKind.Object) return payload;
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+        {
+            writer.WriteStartObject();
+            foreach (var property in payload.EnumerateObject())
+                if (property.Name != "context") property.WriteTo(writer);
+            writer.WritePropertyName("context");
+            JsonSerializer.SerializeToElement(context, JsonOptionsConstants.Default).WriteTo(writer);
+            writer.WriteEndObject();
+        }
+        return JsonSerializer.Deserialize<JsonElement>(stream.ToArray());
+    }
+
     private static Result<T> Invalid<T>(string message) where T : notnull => Result<T>.Fail(AppErrorFactory.Validation(message));
+    private static Result<T> Conflict<T>(string message) where T : notnull => Result<T>.Fail(AppErrorFactory.Conflict(message));
     private static Result<T> Missing<T>(string message) where T : notnull => Result<T>.Fail(AppErrorFactory.NotFound(message));
 }

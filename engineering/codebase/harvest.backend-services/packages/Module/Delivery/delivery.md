@@ -1,13 +1,13 @@
 # Delivery/
 
-`IDeliveryBroker` registers a tenant's channel subscription and reads its durable event log.
+`IDeliveryBroker` registers a tenant's channel or selector subscription and reads its durable event log.
 `AddHarvestDelivery()` registers the PostgreSQL implementation. Webhook delivery remains outside v0.1.
 
 | Implements (Abstractions) | How |
 |---|---|
 | `Delivery.SubscriptionModel` · `DeliveryEvent` · `DeliveryEventTypes` · `CursorPage<T>`, and the subscription broker this lane declares | one durable log per subscription in `harvest_subscription_event`; the pull cursor reads `(tx, id)` below `pg_snapshot_xmin(pg_current_snapshot())` |
 
-- Owns: `harvest_subscriptions`, `harvest_subscription_event`.
+- Owns: `harvest_subscriptions`, `harvest_subscription_event`, `harvest_subscription_selectors`.
 - Rules: rows hold references and the immutable post revision snapshot, payloads render at read time; at least once;
   `event_id` stable across retries; `item_id` stable across subscriptions; webhook push waits on the core durable
   dispatcher, pull ships first.
@@ -28,8 +28,34 @@
 - `wow2.event.v1` subscriptions project the stored event mapping with post identity, revision, state, links, field
   provenance and `capture` (the newest captured link's id, time and URL); a subscription without that schema reads the
   complete post snapshot
-- every pulled event names its subscription's `pipelineId`; tag and keyword subscriptions leave it null
+- every pulled event names its subscription's `pipelineId`; tag, keyword and selector subscriptions leave it null
 - a stored event projection that carries the `mapping` stamp renders again through the current `EventSchemaMapper`, so
   every revision reads with camelCase string enums; a reader's own projection, without the stamp, is sent as stored
 - `ApiDeliveryBroker` and `ApiPostBroker` share `AddHarvestDataClient()`; `PostDeliveryBrokerConformance` runs the same
   contract cases against the module, HTTP client and in-memory consumer fakes
+
+### Selector subscriptions
+
+A selector subscription (`kind='selector'`, with `name`, `selector jsonb` and `selector_version`, migration
+`018-subscription-selectors`) follows Layer 1 tags and sources over one container instead of one pipeline.
+`SelectorStore` reads and writes what it needs; the rules live in `engineering/architecture/contract.md` § Subscription
+selectors.
+
+- Every write: `DeliveryEventWriter.AppendAsync` runs the channel loop, then judges the revision against each active
+  selector subscription of the container with `SubscriptionSelectorMatcher.Evaluate` and `Choose`, so a write reaches a
+  selector whatever run caused it. The verdict, the selector version, the clauses and the merged ref context are stored in
+  `harvest_subscription_event.matched`; a pending post (no tags yet) writes nothing until the tags' own `post.changed`.
+- Subscribe: a declaration with `selector` needs a free `name` (unique per tenant among non-archived subscriptions) and
+  refuses `pipelineId` and `filterKey`; the selector is normalized, then validated by `SelectorStore.ValidateAsync`
+  (`SelectorRules.Validate`, then every domain, `except` and `excludeDomains` key an active taxonomy node, and every ref
+  a group, source or pipeline of the container). Backfill `Live` or `Since` appends `post.new` (`backfill`) for each live
+  match under the container lock, and version 1 enters `harvest_subscription_selectors`.
+- Change: `SetSelectorAsync` takes the container lock, writes nothing for an equal selector, and otherwise raises the
+  version and re-judges one window on the same cursor: every post the log has an event of, plus live posts changed since
+  the window (30 days by default, at most 365 days and 10,000 posts, else refused whole). Its item ids carry `:s{version}`,
+  and the version row keeps the window, the counts and `changed_by`.
+- State: `SetStateAsync` swaps `active` and `suspended`, takes any state to `archived`, and refuses a way out of
+  `archived`; only an active subscription receives writes, and an archived one frees its name.
+- Read: `PullAsync` renders `DeliveryEvent.Match` from `matched` and sets the payload's top-level `context` to its stored
+  context, after the schema's render; a registered `ISelectorChangeHook` runs after each committed subscribe or change
+  with the subscription and the window, and a hook that throws is logged and ignored.

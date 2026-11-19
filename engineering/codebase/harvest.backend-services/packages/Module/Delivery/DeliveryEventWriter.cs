@@ -42,6 +42,30 @@ internal static class DeliveryEventWriter
                     subscription.Unmatched, subscription.State != post.State.ToString().ToLowerInvariant()) is { } delivered)
                 await AppendOneAsync(connection, transaction, subscription.Id, post, delivered, runId, linkId, "ingest", at, ct);
         }
+        await AppendSelectorsAsync(connection, transaction, post, type, runId, linkId, at, ct);
+    }
+
+    /// <summary>Appends a post write to the container's selector subscriptions: each judges the revision's own envelope
+    /// and <see cref="SubscriptionSelectorMatcher.Choose"/> names what its log receives, with the verdict beside it.</summary>
+    /// <remarks>A selector subscription follows tags and sources, not one pipeline, so every write of the container reaches
+    /// it whatever run caused it. A post the selector cannot judge yet is pending: no event, until the tags' own
+    /// <c>post.changed</c> arrives.</remarks>
+    private static async Task AppendSelectorsAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, PostModel post, string type, Guid? runId, Guid? linkId,
+        DateTimeOffset at, CancellationToken ct)
+    {
+        var selectors = await SelectorStore.ReadSelectorsAsync(connection, transaction, post.ContainerId, post.Id, ct);
+        if (selectors.Count == 0)
+            return;
+        var scope = await SelectorStore.ReadScopeAsync(connection, transaction, post.ContainerId, selectors.Select(selector => selector.Selector), ct);
+        var facts = SelectorStore.Facts(post, scope.Groups);
+        string state = post.State.ToString().ToLowerInvariant();
+        foreach (var selector in selectors)
+        {
+            var evaluation = SubscriptionSelectorMatcher.Evaluate(selector.Selector, facts, scope.Sections, selector.Schema, selector.Context);
+            if (SubscriptionSelectorMatcher.Choose(type, evaluation.Verdict, selector.Seen, selector.Unmatched, selector.State != state) is { } delivered)
+                await AppendOneAsync(connection, transaction, selector.Id, post, delivered, runId, linkId, "ingest", at, ct,
+                    SelectorStore.Matched(selector.Version, evaluation));
+        }
     }
 
     /// <summary>Chooses what one subscription receives for a post write, or null for nothing.</summary>
@@ -64,13 +88,18 @@ internal static class DeliveryEventWriter
         : stateChanged ? type
         : null;
 
-    internal static Task<int> AppendOneAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid subscriptionId, PostModel post, string type, Guid? runId, Guid? linkId, string reason, DateTimeOffset at, CancellationToken ct) =>
+    /// <summary>Appends one event of a post revision to a subscription's log; a repeat of the same item and type writes nothing.</summary>
+    /// <remarks>A selector subscription's event carries its verdict json (<see cref="SelectorStore.Matched"/>) in <c>matched</c>.
+    /// An item suffix such as <c>:s2</c>, a selector change's version, joins the item hash input so a second unmatch or
+    /// re-match at the same revision stays a distinct item.</remarks>
+    internal static Task<int> AppendOneAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid subscriptionId, PostModel post, string type, Guid? runId, Guid? linkId, string reason, DateTimeOffset at, CancellationToken ct,
+        string? matched = null, string? itemSuffix = null) =>
         PostSql.ExecuteAsync(connection, transaction, """
-            INSERT INTO harvest_subscription_event(subscription_id,event_id,item_id,type,post_id,post_key,revision,link_id,run_id,reason,occurred_at,payload)
-            VALUES(@subscription,@event,@item,@type,@post,@key,@revision,@link,@run,@reason,@at,CAST(@payload AS jsonb))
+            INSERT INTO harvest_subscription_event(subscription_id,event_id,item_id,type,post_id,post_key,revision,link_id,run_id,reason,occurred_at,payload,matched)
+            VALUES(@subscription,@event,@item,@type,@post,@key,@revision,@link,@run,@reason,@at,CAST(@payload AS jsonb),CAST(@matched AS jsonb))
             ON CONFLICT(subscription_id,item_id,type) DO NOTHING
             """, ct, ("subscription", subscriptionId), ("event", Guid.CreateVersion7(at)),
-            ("item", Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{post.Id:N}:{post.Revision}:{type}"))).ToLowerInvariant()),
+            ("item", Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{post.Id:N}:{post.Revision}:{type}{itemSuffix}"))).ToLowerInvariant()),
             ("type", type), ("post", post.Id), ("key", post.Id.ToString("N")), ("revision", post.Revision), ("link", linkId),
-            ("run", runId), ("reason", reason), ("at", at), ("payload", StoreJson.Write(post)));
+            ("run", runId), ("reason", reason), ("at", at), ("payload", StoreJson.Write(post)), ("matched", matched));
 }
