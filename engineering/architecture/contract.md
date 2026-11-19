@@ -355,6 +355,15 @@ operator setup (`HarvestSources:Audience` `internal` only):
   format or the entity type (S16, `../development/post-tags.md` § Classification); both stay null otherwise. Filter
   `ocharo-relevance-v1` passes what `ocharo-fashion-v1` passes plus a `relevant` verdict at 0.5 or above on an event
   tagged under `style-fashion`; no subscription uses it until the selector (S09).
+- `titles` `[{ text, language: "en", machine: true }]` follows `title` (additive to `wow2.event.v1`): SCFD's English title
+  for the post, from the `title_en` of the newest done `post-tags` answer (`extras.postTags.titleEn`, trimmed). It is
+  absent, never `null` or `[]`, for a post with no answer or an answer without one, so such a post keeps its earlier
+  bytes. `title` stays the source's verbatim text in the post's `language`; `machine: true` marks a model's translation,
+  which a consumer shows for an `en` reader or as a fallback and never as the source title. It can repeat `title` for a
+  post already in English. A revision carries the title of the answer in force when it was written: the revision that
+  writes the tags carries it with `classification`, later captures keep it until a new answer replaces it, and a
+  revision before any answer has none (golden `12-english-title.json`; `11-estimated.json` carries it from its tagged
+  revisions on).
 - The host writes nothing to Events or Desk and promotes no candidate; Events pulls and classifies (events-integration #53).
 - `ICaptchaSolver` and the IP broker JSON protocol: [integration-providers.md](../research/integration-providers.md).
   No provider credential reaches registry rows, captures or delivery.

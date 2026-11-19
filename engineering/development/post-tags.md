@@ -66,6 +66,8 @@ from stored posts: the `processing` verb and `api/processing` routes (`ai-operat
 - The post carries the newest done answer: tags tier `SmallModel` with keys `type:{entityType}`, `domain:{node}` and
   each ancestor node, `topic:{slug}`; `extras.postTags.titleEn`. A subscription filter `tag:domain:style-fashion`
   therefore matches a post tagged `style-fashion/womens-fashion`.
+- `wow2.event.v1` projects `extras.postTags.titleEn` as `titles` (`machine: true`, English), so a subscriber reads it
+  beside the source title: `../architecture/contract.md` § Source host.
 - Unsure values and unknown nodes gather as flags; `report` counts them by proposed value for the prompt or taxonomy fix
   (scfd-entity-model #9).
 - A re-run's done answer replaces the done one for the same content in place; the inference log keeps both.

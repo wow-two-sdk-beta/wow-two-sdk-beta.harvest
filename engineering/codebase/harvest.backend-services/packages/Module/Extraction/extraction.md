@@ -25,6 +25,8 @@ prices and contacts. Every filled field records its parser or rule in `FieldSour
   top-level `kind` come from `PostEnvelope.Classification`, which the `post-tags` pass writes (S16); both stay null
   while it does not
 - `starts` and `ends` carry `certainty`: `stated`, or `estimated` for a date the extraction pass estimated (S17)
+- `titles` lists the English title the post-tags pass wrote (`Extras.postTags.titleEn`) as
+  `{ text, language: "en", machine: true }` right after `title`; the property is absent when the post has none
 - dates retain stated year/month/day/time precision and offset. Invalid or relative dates remain unresolved
 - an application deadline a named reader states in its namespace (`schemaOrg.craftfair.applicationDeadline`,
   `schemaOrg.uzexpocentre.applicationDeadline`, `schemaOrg.afisha.applicationDeadlineEvidence.date`) becomes a
