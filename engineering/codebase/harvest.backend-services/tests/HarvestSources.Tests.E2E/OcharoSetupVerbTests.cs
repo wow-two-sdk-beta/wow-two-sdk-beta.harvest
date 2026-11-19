@@ -8,8 +8,11 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
+using WoW.Two.Sdk.Beta.Be.Harvest.Containers;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
+using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
+using WoW.Two.Sdk.Beta.Be.Harvest.Tenants;
 using WoW.Two.Sdk.Beta.Be.Meta;
 
 namespace HarvestSources.Tests.E2E;
@@ -170,10 +173,72 @@ public sealed class OcharoSetupVerbTests
         (await Run(host.Services, ["setup", "--tenant", "Not A Slug"])).Exit.Should().Be(1);
     }
 
+    [Fact]
+    public async Task Setup_with_model_processing_sets_new_and_existing_sources_and_without_it_keeps_their_mode()
+    {
+        await using var host = await StartAsync();
+
+        var created = await Run(host.Services, ["setup", "--group", "afisha", "--model-processing", "manual"]);
+        var modesAfterCreate = await ModesAsync(host);
+        var opened = await Run(host.Services, ["setup", "--group", "afisha", "--model-processing", "AUTO"]);
+        var modesAfterOpen = await ModesAsync(host);
+        var kept = await Run(host.Services, ["setup", "--group", "afisha", "--schedules"]);
+        var modesAfterKeep = await ModesAsync(host);
+        var closed = await Run(host.Services, ["setup", "--group", "afisha", "--model-processing", "off"]);
+        var modesAfterClose = await ModesAsync(host);
+
+        created.Exit.Should().Be(0, created.Error);
+        modesAfterCreate.Should().NotBeEmpty().And.OnlyContain(mode => mode == ModelProcessingMode.Manual);
+        opened.Exit.Should().Be(0, opened.Error);
+        modesAfterOpen.Should().OnlyContain(mode => mode == ModelProcessingMode.Auto);
+        kept.Exit.Should().Be(0, kept.Error);
+        modesAfterKeep.Should().OnlyContain(mode => mode == ModelProcessingMode.Auto, "no option leaves an opened source as it is");
+        closed.Exit.Should().Be(0, closed.Error);
+        modesAfterClose.Should().OnlyContain(mode => mode == ModelProcessingMode.Off);
+    }
+
+    [Fact]
+    public async Task Setup_without_the_option_registers_closed_and_accepts_a_source_an_operator_opened()
+    {
+        await using var host = await StartAsync();
+        (await Run(host.Services, ["setup", "--group", "afisha"])).Exit.Should().Be(0);
+        (await ModesAsync(host)).Should().NotBeEmpty().And.OnlyContain(mode => mode == ModelProcessingMode.Off);
+        using (var scope = host.Services.CreateScope())
+        {
+            var registry = scope.ServiceProvider.GetRequiredService<IRegistrationBroker>();
+            foreach (var source in await SourcesAsync(registry))
+                Assert.IsType<Result<SourceModel>.Success>(await registry.UpdateSourceAsync(source.Id, new() { ModelProcessing = ModelProcessingMode.Auto }));
+        }
+
+        var again = await Run(host.Services, ["setup", "--group", "afisha", "--schedules"]);
+
+        again.Exit.Should().Be(0, "a differing mode is no longer a conflict: " + again.Error);
+        (await ModesAsync(host)).Should().OnlyContain(mode => mode == ModelProcessingMode.Auto);
+    }
+
+    private static async Task<List<ModelProcessingMode>> ModesAsync(WebApplication host)
+    {
+        using var scope = host.Services.CreateScope();
+        return (await SourcesAsync(scope.ServiceProvider.GetRequiredService<IRegistrationBroker>())).Select(source => source.ModelProcessing).ToList();
+    }
+
+    private static async Task<List<SourceModel>> SourcesAsync(IRegistrationBroker registry)
+    {
+        var tenants = Assert.IsType<Result<IReadOnlyList<TenantModel>>.Success>(await registry.ListTenantsAsync()).Value;
+        var sources = new List<SourceModel>();
+        foreach (var container in Assert.IsType<Result<IReadOnlyList<ContainerModel>>.Success>(
+            await registry.ListContainersAsync(tenants.Single(item => item.Slug == "ocharo").Id)).Value)
+            sources.AddRange(Assert.IsType<Result<IReadOnlyList<SourceModel>>.Success>(await registry.ListSourcesAsync(container.Id)).Value);
+        return sources;
+    }
+
     [Theory]
     [InlineData("ocharo")]
     [InlineData("ocharo setup --group")]
     [InlineData("ocharo setup --force")]
+    [InlineData("ocharo setup --model-processing")]
+    [InlineData("ocharo setup --model-processing loud")]
+    [InlineData("ocharo setup --model-processing auto --model-processing off")]
     public async Task Setup_answers_its_usage_without_serving(string commandLine)
     {
         string[] args = commandLine.Split(' ');

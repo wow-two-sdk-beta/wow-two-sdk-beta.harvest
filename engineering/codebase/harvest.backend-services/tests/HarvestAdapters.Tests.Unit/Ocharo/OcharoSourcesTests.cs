@@ -134,6 +134,26 @@ public sealed class OcharoSourcesTests
         Value(await registry.ListSourceGroupsAsync(setup.ContainerId)).Should().ContainSingle();
     }
 
+    [Fact]
+    public async Task Setup_takes_the_requested_model_processing_for_new_and_existing_sources_and_otherwise_keeps_it()
+    {
+        var registry = new FakeRegistrationBroker();
+        var delivery = new FakeDeliveryBroker(new FakePostBroker(registry), registry, null, [new OcharoFashionFilter()]);
+        var provisioner = new OcharoSourceProvisioner(registry, delivery);
+
+        OcharoSetup manual = Value(await provisioner.EnsureAsync(groupIds: ["afisha"], modelProcessing: ModelProcessingMode.Manual));
+        Value(await registry.ListSourcesAsync(manual.ContainerId)).Should().ContainSingle().Which.ModelProcessing.Should().Be(ModelProcessingMode.Manual);
+
+        Value(await provisioner.EnsureAsync(groupIds: ["afisha"], modelProcessing: ModelProcessingMode.Auto)).Should().BeEquivalentTo(manual);
+        Value(await registry.ListSourcesAsync(manual.ContainerId)).Single().ModelProcessing.Should().Be(ModelProcessingMode.Auto);
+
+        Value(await provisioner.EnsureAsync(enableSchedules: true, groupIds: ["afisha"])).Should().BeEquivalentTo(manual);
+        Value(await registry.ListSourcesAsync(manual.ContainerId)).Single().ModelProcessing.Should().Be(ModelProcessingMode.Auto);
+
+        Value(await provisioner.EnsureAsync(groupIds: ["afisha"], modelProcessing: ModelProcessingMode.Off)).Should().BeEquivalentTo(manual);
+        Value(await registry.ListSourcesAsync(manual.ContainerId)).Single().ModelProcessing.Should().Be(ModelProcessingMode.Off);
+    }
+
     private static PostEnvelope Envelope(string title, string text) => new()
     {
         Kind = PostKind.Event, Title = title, Text = text,

@@ -110,8 +110,8 @@ database, API audience and operator credentials.
 
 ## Provisioning Ocharo on a target
 
-`dotnet HarvestSources.Api.dll ocharo setup --group afisha [--run]` runs on the target's own settings through
-Wheelhouse Run, with no listener and no operator token.
+`dotnet HarvestSources.Api.dll ocharo setup --group afisha [--model-processing <off|manual|auto>] [--run]` runs on the
+target's own settings through Wheelhouse Run, with no listener and no operator token.
 
 - It creates or reuses tenant `ocharo`, the private container `ocharo-events`, one pipeline per harvest channel of each
   selected publisher and one `wow2.event.v1` subscription per pipeline (filter `ocharo-fashion-v1`, context
@@ -122,6 +122,12 @@ Wheelhouse Run, with no listener and no operator token.
 - Schedules stay off unless `--schedules` is given; the flag also switches on the registry cadences of existing
   pipelines (capture every 6 h, plus a daily check where the source's check policy is `web-direct`), keeping an
   interval an operator tuned.
+- `--model-processing off|manual|auto` sets that model-processing mode (`engineering/development/ai-operations.md`) on
+  every selected source: a new source registers with it, an existing one is updated. Without the option a new source
+  registers `off` and an existing one keeps whatever mode it has, so setup never refuses a source an operator opened
+  (a different sharing or robots posture still refuses). harvest-dev switches Afisha with
+  `ocharo setup --group afisha --model-processing auto`; `sources processing --list` reads the result
+  (`ai-operations.md` § Setting the mode from the host).
 - `--run` queues one bounded capture run per pipeline for the running worker. `--refresh` queues one refresh run per
   pipeline: the worker re-reads every known post, so a changed reader emits `post.changed` for each post whose
   projection changed.

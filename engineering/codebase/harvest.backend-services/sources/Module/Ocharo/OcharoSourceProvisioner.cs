@@ -25,9 +25,13 @@ public sealed class OcharoSourceProvisioner(IRegistrationBroker registry, IDeliv
     /// a group or name an operator set is kept.</summary>
     /// <remarks>Repeat calls reuse identities. Call setup through one operator host at a time; the registry rejects conflicting creates.
     /// <paramref name="tenantSlug"/> names the owning tenant, <c>ocharo</c> by default; another slug gives that tenant its own
-    /// private container and subscriptions, such as an isolation probe.</remarks>
+    /// private container and subscriptions, such as an isolation probe.
+    /// <paramref name="modelProcessing"/> sets the mode of every selected source: a new source registers with it and an existing one
+    /// is updated. Without it a new source registers <see cref="ModelProcessingMode.Off"/> and an existing source keeps the mode it
+    /// has, so a source an operator switched to <c>manual</c> or <c>auto</c> never makes a later setup refuse.</remarks>
     public async Task<Result<OcharoSetup>> EnsureAsync(bool enableSchedules = false, CancellationToken cancellationToken = default,
-        bool includeInstagram = false, IReadOnlyList<string>? groupIds = null, string tenantSlug = DefaultTenantSlug)
+        bool includeInstagram = false, IReadOnlyList<string>? groupIds = null, string tenantSlug = DefaultTenantSlug,
+        ModelProcessingMode? modelProcessing = null)
     {
         OcharoSourceRegistry catalog = OcharoSourceRegistry.Current;
         var selection = groupIds?.ToHashSet(StringComparer.Ordinal);
@@ -86,15 +90,22 @@ public sealed class OcharoSourceProvisioner(IRegistrationBroker registry, IDeliv
                         ContainerId = container.Id, Family = profile.Family, Handle = handle, ExternalRef = instagram ? null : profile.Key,
                         Coverage = SourceCoverage.Filtered, Completeness = SourceCompleteness.Window,
                         Posture = instagram ? SourcePosture.Official : SourcePosture.OwnFetch,
-                        AiAllowed = false, PoolShareable = false, RobotsPolicy = RobotsPolicy.Obey, Authority = profile.Authority,
+                        ModelProcessing = modelProcessing ?? ModelProcessingMode.Off, PoolShareable = false,
+                        RobotsPolicy = RobotsPolicy.Obey, Authority = profile.Authority,
                         CheckPolicy = profile.CheckPolicy,
                     }, cancellationToken));
                     sources.Add(source);
                     // The registry may have declared the adapter's passive sections with the source.
                     pipelines = Value(await registry.ListPipelinesAsync(container.Id, cancellationToken)).ToList();
                 }
-                if (source.AiAllowed || source.PoolShareable || source.RobotsPolicy != RobotsPolicy.Obey)
-                    return Conflict("An existing source has a different AI, sharing or robots posture. Review it before applying this registry.");
+                if (source.PoolShareable || source.RobotsPolicy != RobotsPolicy.Obey)
+                    return Conflict("An existing source has a different sharing or robots posture. Review it before applying this registry.");
+                if (modelProcessing is { } mode && source.ModelProcessing != mode)
+                {
+                    int modeIndex = sources.IndexOf(source);
+                    source = Value(await registry.UpdateSourceAsync(source.Id, new() { ModelProcessing = mode }, cancellationToken));
+                    sources[modeIndex] = source;
+                }
                 if (source.GroupId is null || source.Name is null)
                 {
                     groups ??= Value(await registry.ListSourceGroupsAsync(container.Id, cancellationToken)).ToList();

@@ -3,7 +3,8 @@
 Operator controls over SCFD's AI passes — `post-tags` (`post-tags.md`), `extract-event` and `extract-listing`
 (`extraction.md`) — so a prompt can change and its answers be re-run and re-evaluated safely: a model-processing mode
 per source, re-runs over named posts, listed sources or every source, and eval sets built from stored posts.
-Code: `packages/Module/Reprocessing/` (lead doc `reprocessing.md`); routes and verb in `service/HarvestSources.Api/Processing/`.
+Code: `packages/Module/Reprocessing/` (lead doc `reprocessing.md`); routes and verb in `service/HarvestSources.Api/Processing/`;
+the `sources processing` verb in `service/HarvestSources.Api/Sources/`.
 
 ## Model processing per source
 
@@ -29,6 +30,31 @@ or with `PUT api/sources/{id}` `{ "modelProcessing": "manual" }`:
   `aiAllowed` (true unless `off`); a client that sends only `aiAllowed` sets `auto` or `off`, and `modelProcessing`
   wins when both are sent — an update whose two switches disagree is refused. The stored `ai_allowed` column stays true
   only for `auto`, so code before `016` never queues a manual source.
+
+### Setting the mode from the host
+
+`sources processing` reads and sets the mode on the deployed host through Wheelhouse Run, with no listener and no
+operator token; it is the verb form of the `PUT` above, for any source of any tenant.
+
+```sh
+dotnet HarvestSources.Api.dll sources processing --list [--tenant <slug>]
+dotnet HarvestSources.Api.dll sources processing --source <id|family/handle> [--source …] --mode auto
+dotnet HarvestSources.Api.dll sources processing --group "Afisha Uzbekistan" --mode manual --tenant ocharo
+```
+
+- A **source** is its id or `family/handle` (`site/www.afisha.uz`; case ignored); a **group** is a source group's name
+  (`Afisha Uzbekistan`, case ignored; quote a name with spaces). Both repeat and combine; a source named twice is set
+  once.
+- `--tenant <slug>` limits every selector and the listing to one tenant's containers. A `family/handle` that matches
+  sources of several tenants is refused with their ids; name one by id or add `--tenant`.
+- Setting prints one line per source on stdout, `<id> <family/handle> <old> -> <new>`; a source already in the mode
+  reads `auto -> auto` and is not written. `--list` prints `<id> <family/handle> <mode>` for the sources selected, or for
+  every source with no selector, and writes nothing.
+- Every selector resolves before any write: an unknown source, an unknown or empty group, an ambiguous
+  `family/handle` or an unknown tenant refuses the call (exit `1`) with nothing changed; bad usage exits `2`.
+- Ocharo's own sources switch through `ocharo setup --group <publisher> --model-processing <mode>` instead
+  (`engineering/deployment/deployment.md` § Provisioning Ocharo on a target); a later setup without the option keeps
+  the mode.
 
 ## Re-runs
 

@@ -2,18 +2,22 @@ using System.Text.Json;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Runs;
+using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Ocharo;
+using HarvestSources.Api.Sources;
 
 namespace HarvestSources.Api.Ocharo;
 
 /// <summary>Answers <c>ocharo setup</c>: the same idempotent setup as <c>POST api/ocharo/sources/setup</c>, run on the
 /// deployed host's services, so a platform job provisions Ocharo's tenant and subscriptions with no operator token.</summary>
 /// <remarks>
-///   - <c>ocharo setup [--group &lt;id&gt;]... [--tenant &lt;slug&gt;] [--instagram] [--schedules] [--run]</c>; each <c>--group</c>
+///   - <c>ocharo setup [--group &lt;id&gt;]... [--tenant &lt;slug&gt;] [--instagram] [--schedules] [--model-processing &lt;mode&gt;] [--run] [--refresh]</c>; each <c>--group</c>
 ///     selects a publisher from the registry, and none selects every publisher with a collector; <c>--tenant</c> names
 ///     the owning tenant, <c>ocharo</c> by default, such as a second tenant for an isolation check
 ///   - <c>--instagram</c> includes the registry's supported Instagram routes, keeping their schedules off; it cannot
 ///     be combined with <c>--refresh</c>, because Instagram captures recent media and does not refresh known posts
+///   - <c>--model-processing off|manual|auto</c> sets that mode on every selected source: new sources register with it and
+///     existing ones are updated; without it new sources register <c>off</c> and existing ones keep their mode
 ///   - <c>--schedules</c> enables the other registry cadences, on existing pipelines too, keeping a tuned interval; <c>--run</c> queues one bounded capture run per pipeline
 ///     for the running worker; <c>--refresh</c> queues one refresh run per pipeline, which re-reads every known post so
 ///     a changed reader emits new revisions
@@ -29,7 +33,7 @@ public static class OcharoSetupVerb
     /// <summary>Holds the verb's name, the first process argument.</summary>
     public const string Name = "ocharo";
 
-    private const string Usage = "Usage: ocharo setup [--group <id>]... [--tenant <slug>] [--instagram] [--schedules] [--run] [--refresh]\n"
+    private const string Usage = "Usage: ocharo setup [--group <id>]... [--tenant <slug>] [--instagram] [--schedules] [--model-processing <off|manual|auto>] [--run] [--refresh]\n"
         + "       ocharo status [--group <id>]... [--tenant <slug>]";
 
     /// <summary>Runs the verb over the host's services.</summary>
@@ -44,7 +48,7 @@ public static class OcharoSetupVerb
     {
         if (arguments is ["status", ..])
             return await StatusAsync(services, arguments, output, error, ct);
-        if (!TryParse(arguments, out var groups, out var tenant, out var schedules, out var includeInstagram, out var kinds))
+        if (!TryParse(arguments, out var groups, out var tenant, out var schedules, out var includeInstagram, out var kinds, out var modelProcessing))
         {
             await error.WriteLineAsync(Usage);
             return 2;
@@ -62,7 +66,7 @@ public static class OcharoSetupVerb
             return 1;
         }
 
-        var setup = await provisioner.EnsureAsync(schedules, ct, includeInstagram, groups.Count == 0 ? null : groups, tenant);
+        var setup = await provisioner.EnsureAsync(schedules, ct, includeInstagram, groups.Count == 0 ? null : groups, tenant, modelProcessing);
         if (setup is not Result<OcharoSetup>.Success { Value: var value })
         {
             await error.WriteLineAsync("ocharo setup refused: " + ((Result<OcharoSetup>.Failure)setup).Error.Message);
@@ -184,13 +188,14 @@ public static class OcharoSetupVerb
     private static string Snake<TEnum>(TEnum value) where TEnum : struct, Enum => JsonNamingPolicy.SnakeCaseLower.ConvertName(value.ToString());
 
     private static bool TryParse(IReadOnlyList<string> arguments, out List<string> groups, out string tenant, out bool schedules,
-        out bool includeInstagram, out List<WorkKind> kinds)
+        out bool includeInstagram, out List<WorkKind> kinds, out ModelProcessingMode? modelProcessing)
     {
         groups = [];
         tenant = OcharoSourceProvisioner.DefaultTenantSlug;
         schedules = false;
         includeInstagram = false;
         kinds = [];
+        modelProcessing = null;
         if (arguments is not ["setup", ..])
             return false;
         for (var index = 1; index < arguments.Count; index++)
@@ -205,6 +210,11 @@ public static class OcharoSetupVerb
                     break;
                 case "--schedules":
                     schedules = true;
+                    break;
+                case "--model-processing" when modelProcessing is null && index + 1 < arguments.Count
+                    && SourcesVerb.TryParseMode(arguments[index + 1], out var mode):
+                    modelProcessing = mode;
+                    index++;
                     break;
                 case "--instagram":
                     includeInstagram = true;
