@@ -12,7 +12,10 @@ internal sealed record ValidatedExtraction(JsonElement Answer, string Role, IRea
 /// <summary>Checks an extraction answer against the text the model read before anything is stored.</summary>
 /// <remarks>
 ///   - every date, price and rental term keeps its verbatim quote only when the quote appears in the post's title or text
-///     (the check of <c>rental-terms@2</c>); otherwise the value becomes unknown and the field gets a flag
+///     (the check of <c>rental-terms@2</c>); a date or price quote may also come from the rendered <c>dates</c>, <c>prices</c>
+///     or <c>place</c> the prompt received; otherwise the value becomes unknown and the field gets a flag
+///   - a price's quote must state its amount; a stated date's quote must state its day or month (or its year, for a year),
+///     unless the source's own dates hold that date; an estimated date's quote is only checked to exist
 ///   - every unsure pick carries a flag (scfd-entity-model #9); free text is clipped, and a phone, email or handle in it
 ///     is removed with a <c>contacts</c> flag, so a row holds no post text beyond its quotes
 ///   - <c>fashion</c> stays only for a primary domain under <c>style-fashion</c>; <c>rentalTerms</c> only for a rent
@@ -26,6 +29,7 @@ internal static partial class PostExtractionValidation
     internal const string QuoteNotFound = "the quote is not in the post";
     internal const string QuoteTooLong = "the quote is longer than 300 characters";
     internal const string AmountNotQuoted = "the quote does not state the amount";
+    internal const string DateNotQuoted = "the quote does not state the date";
     internal const string BadDate = "the date does not match its precision";
     internal const string ContactRemoved = "a contact was removed";
     internal const string ChoseUnsure = "the model chose unsure";
@@ -53,6 +57,11 @@ internal static partial class PostExtractionValidation
             {
                 flags.Add(new("occurrences", BadDate, Clip(ends, 40)));
                 ends = null;
+            }
+            if (occurrence.Certainty == DateCertainty.Stated && !DateQuoted(evidence, occurrence.Starts, ends, occurrence.Precision, corpus))
+            {
+                flags.Add(new("occurrences", DateNotQuoted, Clip(occurrence.Starts, 40)));
+                continue;
             }
             occurrences.Add(occurrence with { Ends = ends, Evidence = evidence });
         }
@@ -194,11 +203,20 @@ internal static partial class PostExtractionValidation
             flags.Add(new(field, QuoteTooLong, null));
             return null;
         }
-        if (RentalTermEvidence.Quoted(quote, corpus.Text, corpus.Visible))
+        if (RentalTermEvidence.Quoted(quote, corpus.Text, corpus.Visible)
+            || corpus.Structured.Any(render => RentalTermEvidence.Quoted(quote, render, render.Length)))
             return quote;
         flags.Add(new(field, QuoteNotFound, null));
         return null;
     }
+
+    /// <summary>Whether a stated date is backed: its quote states the date or its end, or the source's own <c>dates</c> hold
+    /// the value (the prompt may tell the model to quote the title for a date found only there).</summary>
+    private static bool DateQuoted(string quote, string value, string? end, DatePrecision precision, ExtractionCorpus corpus) =>
+        RentalTermEvidence.StatesDate(quote, value, precision)
+        || (end is not null && RentalTermEvidence.StatesDate(quote, end, precision))
+        || (corpus.Dates is { } dates && (RentalTermEvidence.Quoted(value, dates, dates.Length)
+            || (end is not null && RentalTermEvidence.Quoted(end, dates, dates.Length))));
 
     private static string? Price(decimal? amount, string? quote, ExtractionCorpus corpus, string field, List<PostTagsFlag> flags)
     {
@@ -216,10 +234,17 @@ internal static partial class PostExtractionValidation
     {
         if (date is null || Evidence(date.Evidence, corpus, field, flags) is not { } evidence)
             return null;
-        if (IsDate(date.Value, date.Precision))
-            return date with { Evidence = evidence };
-        flags.Add(new(field, BadDate, Clip(date.Value, 40)));
-        return null;
+        if (!IsDate(date.Value, date.Precision))
+        {
+            flags.Add(new(field, BadDate, Clip(date.Value, 40)));
+            return null;
+        }
+        if (!DateQuoted(evidence, date.Value, null, date.Precision, corpus))
+        {
+            flags.Add(new(field, DateNotQuoted, Clip(date.Value, 40)));
+            return null;
+        }
+        return date with { Evidence = evidence };
     }
 
     private static string? Link(string? link, List<PostTagsFlag> flags)

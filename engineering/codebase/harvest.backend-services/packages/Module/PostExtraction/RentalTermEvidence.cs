@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
 
@@ -14,6 +15,16 @@ internal static partial class RentalTermEvidence
     private const string WrittenNumber = @"(?:один|одна|одну|одного|одной|месячной|два|две|двух|три|тр[её]х|bir|birta|бир|ikki|икки|uch|уч|yarim|ярим|one|two|three|half)";
     private const string TimeUnit = @"(?:ноч(?:ь|и|ей)|сут(?:ки|ок)|день|дня|дней|недел[яиюь]|месяц(?:а|ев)?|год(?:а|ов)?|лет|(?:tun|kun|hafta|oy|yil)(?:ga)?|(?:тун|кун|ҳафта|ой|йил)(?:га)?|nights?|days?|weeks?|months?|years?)";
     private const string ExplicitCurrency = @"(?:usd|доллар(?:ов|а)?|uzs|сум(?:ов|а)?|сўм|so'm|eur|евро|rub|kzt|[$€₽₸])";
+    // Conventional units (у.е., у. е., y.e., уе) are how Tashkent ads write US dollars. Layer 2 reads them as USD
+    // (CheckTerms); rental-terms@2 (Parse) keeps its pinned rule that a claim of USD for "500 у.е." is invented.
+    private const string ConventionalUnit = @"(?:[уy]\.\s?[еe]\.?|уе)";
+    private const string CurrencyOrUnit = @"(?:" + ExplicitCurrency + "|" + ConventionalUnit + ")";
+    // A scale word may carry one Uzbek case suffix (800 mingdan, 3 mlrdga); the suffix is part of the scaled amount.
+    private const string UzbekCaseSuffix = @"(?:gacha|ning|dan|lik|ga|da|ni|гача|нинг|дан|лик|га|да|ни)";
+    // Month names: Uzbek case suffixes after a Latin or Cyrillic stem (dekabrda, декабрга) and Russian endings (декабря).
+    private const string MonthLatinSuffix = @"(?:igacha|gacha|idagi|dagi|idan|dan|ning|iga|ga|ida|da|ni|lik|si|gi|i)?";
+    private const string MonthCyrillicSuffix = @"(?:игача|гача|идаги|даги|идан|дан|нинг|ига|га|ида|да|ни|лик|си|ги|ь|я|е|ю|й|а|у|ем|ом|и)?";
+    private const string UtilityWord = @"(?:комм?унал[а-я]*|квартплат[а-я]*|komm?unal\w*|kamunal\w*)";
 
     internal static (RentalTermsAnswer? Answer, string? Reason) Parse(string? output, string description, int visibleLength)
     {
@@ -32,11 +43,11 @@ internal static partial class RentalTermEvidence
 
         if (answer is null)
             return (null, "The model returned an invalid rental-terms document.");
-        if (!VerifyDeposit(answer.Deposit, description, visibleLength))
+        if (!VerifyDeposit(answer.Deposit, description, visibleLength, conventionalUnits: false))
             return (null, "Deposit claims did not match the description.");
         if (!VerifyMinimumStay(answer.MinimumStay, description, visibleLength))
             return (null, "Minimum-stay claims did not match the description.");
-        if (!VerifyAdvanceRent(answer.AdvanceRent, description, visibleLength))
+        if (!VerifyAdvanceRent(answer.AdvanceRent, description, visibleLength, conventionalUnits: false))
             return (null, "Advance-rent claims did not match the description.");
         if (!VerifyUtilities(answer.Utilities, description, visibleLength))
             return (null, "Utilities claims did not match the description.");
@@ -52,9 +63,9 @@ internal static partial class RentalTermEvidence
     internal static (RentalTermsAnswer Answer, IReadOnlyList<string> Rejected) CheckTerms(RentalTermsAnswer answer, string description, int visibleLength)
     {
         var rejected = new List<string>();
-        var deposit = Keep(answer.Deposit, VerifyDeposit(answer.Deposit, description, visibleLength), "deposit", rejected);
+        var deposit = Keep(answer.Deposit, VerifyDeposit(answer.Deposit, description, visibleLength, conventionalUnits: true), "deposit", rejected);
         var minimum = Keep(answer.MinimumStay, VerifyMinimumStay(answer.MinimumStay, description, visibleLength), "minimumStay", rejected);
-        var advance = Keep(answer.AdvanceRent, VerifyAdvanceRent(answer.AdvanceRent, description, visibleLength), "advanceRent", rejected);
+        var advance = Keep(answer.AdvanceRent, VerifyAdvanceRent(answer.AdvanceRent, description, visibleLength, conventionalUnits: true), "advanceRent", rejected);
         var utilities = Keep(answer.Utilities, VerifyUtilities(answer.Utilities, description, visibleLength), "utilities", rejected);
         return (new RentalTermsAnswer(deposit, minimum, advance, utilities), rejected);
     }
@@ -79,15 +90,46 @@ internal static partial class RentalTermEvidence
             if (CountOf(number.Value) is not { } count)
                 continue;
             var scale = MoneyScale().Match(normalized[(number.Index + number.Length)..]);
-            decimal multiplier = scale.Groups["scale"].Value switch
-            {
-                "million" or "mln" or "миллион" or "миллиона" or "миллионов" or "млн" => 1_000_000m,
-                "" => 1m,
-                _ => 1_000m,
-            };
+            decimal multiplier = ScaleOf(scale.Groups["scale"].Value);
             if (count == amount || (multiplier != 1m && Math.Abs(count) <= decimal.MaxValue / multiplier && count * multiplier == amount))
                 return true;
         }
+        return false;
+    }
+
+    /// <summary>Whether <paramref name="quote"/> states the date <paramref name="value"/>, an ISO date at
+    /// <paramref name="precision"/>: a number equal to its year (a year), or to its month or a month name in Uzbek, Russian or
+    /// English (a month), or to its day, its month number or a month name (a day or finer). A light check: it reads no
+    /// weekday, relative phrase or spelled-out number, and it does not read the quote as a whole sentence.</summary>
+    internal static bool StatesDate(string quote, string value, DatePrecision precision)
+    {
+        if (value.Length < 4 || !int.TryParse(value.AsSpan(0, 4), NumberStyles.None, CultureInfo.InvariantCulture, out int year))
+            return false;
+        int? month = value.Length >= 7 && int.TryParse(value.AsSpan(5, 2), NumberStyles.None, CultureInfo.InvariantCulture, out int parsedMonth)
+            ? parsedMonth : null;
+        int? day = value.Length >= 10 && int.TryParse(value.AsSpan(8, 2), NumberStyles.None, CultureInfo.InvariantCulture, out int parsedDay)
+            ? parsedDay : null;
+
+        string normalized = Normalize(quote);
+        var numbers = new HashSet<int>();
+        foreach (Match number in QuoteNumber().Matches(normalized))
+            numbers.Add(int.Parse(number.Value, NumberStyles.None, CultureInfo.InvariantCulture));
+        bool Month(int expected) => numbers.Contains(expected) || NamesMonth(normalized, expected);
+
+        return precision switch
+        {
+            DatePrecision.Year => numbers.Contains(year),
+            DatePrecision.Month => month is { } expected && Month(expected),
+            _ => (day is { } stated && numbers.Contains(stated)) || (month is { } expected && Month(expected)),
+        };
+    }
+
+    private static bool NamesMonth(string normalized, int month)
+    {
+        string group = "m" + month.ToString(CultureInfo.InvariantCulture);
+        foreach (Match word in MonthName().Matches(normalized))
+            if (word.Groups[group].Success)
+                return true;
         return false;
     }
 
@@ -99,14 +141,14 @@ internal static partial class RentalTermEvidence
         return RentalTerm<T>.Unknown;
     }
 
-    private static bool VerifyDeposit(RentalTerm<RentalDeposit>? term, string description, int visibleLength) =>
-        Verify(term, description, visibleLength, DepositCue(), Deposit);
+    private static bool VerifyDeposit(RentalTerm<RentalDeposit>? term, string description, int visibleLength, bool conventionalUnits) =>
+        Verify(term, description, visibleLength, DepositCue(), (value, quote, cue) => Deposit(value, quote, cue, conventionalUnits));
 
     private static bool VerifyMinimumStay(RentalTerm<RentalDuration>? term, string description, int visibleLength) =>
         Verify(term, description, visibleLength, MinimumCue(), Duration);
 
-    private static bool VerifyAdvanceRent(RentalTerm<RentalAdvance>? term, string description, int visibleLength) =>
-        Verify(term, description, visibleLength, AdvanceCue(), Advance);
+    private static bool VerifyAdvanceRent(RentalTerm<RentalAdvance>? term, string description, int visibleLength, bool conventionalUnits) =>
+        Verify(term, description, visibleLength, AdvanceCue(), (value, quote, cue) => Advance(value, quote, cue, conventionalUnits));
 
     private static bool VerifyUtilities(RentalTerm<RentalUtilities>? term, string description, int visibleLength) =>
         Verify(term, description, visibleLength, UtilitiesCue(), Utilities, ambiguousExclusion: true);
@@ -151,17 +193,18 @@ internal static partial class RentalTermEvidence
         };
     }
 
-    private static bool Deposit(RentalDeposit value, string quote, Regex cue) =>
-        Payment(value.Amount, value.Currency, value.RentMultiple, quote, cue);
+    private static bool Deposit(RentalDeposit value, string quote, Regex cue, bool conventionalUnits) =>
+        Payment(value.Amount, value.Currency, value.RentMultiple, quote, cue, conventionalUnits);
 
-    private static bool Advance(RentalAdvance value, string quote, Regex cue) => value.Duration is { } duration
+    private static bool Advance(RentalAdvance value, string quote, Regex cue, bool conventionalUnits) => value.Duration is { } duration
         ? value.Amount is null && value.Currency is null && value.RentMultiple is null && Duration(duration, quote, cue)
-        : Payment(value.Amount, value.Currency, value.RentMultiple, quote, cue);
+        : Payment(value.Amount, value.Currency, value.RentMultiple, quote, cue, conventionalUnits);
 
-    private static bool Payment(decimal? amount, string? currency, decimal? rentMultiple, string quote, Regex cue)
+    private static bool Payment(decimal? amount, string? currency, decimal? rentMultiple, string quote, Regex cue, bool conventionalUnits)
     {
+        var currencyName = conventionalUnits ? CurrencyOrUnitName() : CurrencyName();
         if (amount is null && currency is null && rentMultiple is null)
-            return !Quantity().IsMatch(quote) && !CurrencyName().IsMatch(quote) && !DurationNumber().IsMatch(quote)
+            return !Quantity().IsMatch(quote) && !currencyName.IsMatch(quote) && !DurationNumber().IsMatch(quote)
                 && !RentMultiple().IsMatch(quote) && RequiredPayment().Matches(quote).Any(requirement => Connected(quote, cue, requirement));
         if (rentMultiple is > 0 && amount is null && currency is null)
         {
@@ -173,7 +216,7 @@ internal static partial class RentalTermEvidence
         if (amount is not > 0 || rentMultiple is not null || DurationNumber().IsMatch(quote))
             return false;
         var numbers = Quantity().Matches(quote);
-        var currencies = CurrencyName().Matches(quote);
+        var currencies = currencyName.Matches(quote);
         return numbers.Count == 1 && MatchesMoney(quote, cue, numbers[0], currencies, amount.Value, currency);
     }
 
@@ -182,12 +225,7 @@ internal static partial class RentalTermEvidence
         int end = number.Index + number.Length;
         var scale = MoneyScale().Match(quote[end..]);
         string token = scale.Groups["scale"].Value;
-        decimal multiplier = token switch
-        {
-            "million" or "mln" or "миллион" or "миллиона" or "миллионов" or "млн" => 1_000_000m,
-            "" => 1m,
-            _ => 1_000m,
-        };
+        decimal multiplier = ScaleOf(token);
         int scaledEnd = end + scale.Length;
         if (CountOf(number.Value) is not { } count || count <= 0m || count > decimal.MaxValue / multiplier || count * multiplier != expected
             || !Connected(quote, cue, number.Index, scaledEnd))
@@ -336,7 +374,16 @@ internal static partial class RentalTermEvidence
         "€" or "eur" or "евро" => "EUR",
         "₽" or "rub" => "RUB",
         "₸" or "kzt" => "KZT",
+        _ when ConventionalUnitOnly().IsMatch(token) => "USD",
         _ => "UZS",
+    };
+
+    private static decimal ScaleOf(string word) => word switch
+    {
+        "" => 1m,
+        "milliard" or "mlrd" or "миллиард" or "миллиарда" or "миллиардов" or "млрд" => 1_000_000_000m,
+        "million" or "mln" or "миллион" or "миллиона" or "миллионов" or "млн" => 1_000_000m,
+        _ => 1_000m,
     };
 
     [GeneratedRegex(@"\s+", PatternOptions)]
@@ -360,7 +407,32 @@ internal static partial class RentalTermEvidence
     [GeneratedRegex(@"(?<!\p{L})" + ExplicitCurrency + @"(?!\p{L})", PatternOptions)]
     private static partial Regex CurrencyName();
 
-    [GeneratedRegex(@"^\s*(?<scale>тыс(?:яч(?:а|и)?)?|млн|миллион(?:а|ов)?|ming|минг|million|mln|k)\b\.?", PatternOptions)]
+    [GeneratedRegex(@"(?<!\p{L})" + CurrencyOrUnit + @"(?!\p{L})", PatternOptions)]
+    private static partial Regex CurrencyOrUnitName();
+
+    [GeneratedRegex("^" + ConventionalUnit + "$", PatternOptions)]
+    private static partial Regex ConventionalUnitOnly();
+
+    [GeneratedRegex(@"(?<![0-9])[0-9]{1,4}(?![0-9])", PatternOptions)]
+    private static partial Regex QuoteNumber();
+
+    [GeneratedRegex(@"(?<!\p{L})(?:"
+        + @"(?<m1>yanvar" + MonthLatinSuffix + "|january|jan|январ" + MonthCyrillicSuffix + "|янв)"
+        + @"|(?<m2>fevral" + MonthLatinSuffix + "|february|feb|феврал" + MonthCyrillicSuffix + "|фев)"
+        + @"|(?<m3>mart" + MonthLatinSuffix + "|march|mar|март" + MonthCyrillicSuffix + "|мар)"
+        + @"|(?<m4>aprel" + MonthLatinSuffix + "|april|apr|апрел" + MonthCyrillicSuffix + "|апр)"
+        + @"|(?<m5>may" + MonthLatinSuffix + "|май" + MonthCyrillicSuffix + "|мая|мае|маю)"
+        + @"|(?<m6>iyun" + MonthLatinSuffix + "|june|jun|июн" + MonthCyrillicSuffix + ")"
+        + @"|(?<m7>iyul" + MonthLatinSuffix + "|july|jul|июл" + MonthCyrillicSuffix + ")"
+        + @"|(?<m8>avgust" + MonthLatinSuffix + "|august|aug|август" + MonthCyrillicSuffix + "|авг)"
+        + @"|(?<m9>sent(?:y)?abr" + MonthLatinSuffix + "|september|sept|sep|сент(?:я)?бр" + MonthCyrillicSuffix + "|сент|сен)"
+        + @"|(?<m10>okt(?:y)?abr" + MonthLatinSuffix + "|october|oct|окт(?:я)?бр" + MonthCyrillicSuffix + "|окт)"
+        + @"|(?<m11>noyabr" + MonthLatinSuffix + "|november|nov|ноябр" + MonthCyrillicSuffix + "|ноя)"
+        + @"|(?<m12>dekabr" + MonthLatinSuffix + "|december|dec|декабр" + MonthCyrillicSuffix + "|дек)"
+        + @")(?!\p{L})", PatternOptions)]
+    private static partial Regex MonthName();
+
+    [GeneratedRegex(@"^\s*(?:(?<scale>k)|(?<scale>тыс(?:яч(?:а|и)?)?|млрд|млн|миллиард(?:а|ов)?|миллион(?:а|ов)?|ming|минг|milliard|million|mlrd|mln)(?:[-']?" + UzbekCaseSuffix + @")?)\b\.?", PatternOptions)]
     private static partial Regex MoneyScale();
 
     [GeneratedRegex(@"(?<![\p{L}\d])(?<count>" + Number + "|" + WrittenNumber + @")\s*(?:-\s*)?(?<unit>" + TimeUnit + @")(?!\p{L})", PatternOptions)]
@@ -378,16 +450,16 @@ internal static partial class RentalTermEvidence
     [GeneratedRegex(@"\b(?:предоплат[а-я]*|аванс[а-я]*|оплат[а-я]*\s+вперед|oldindan\s+(?:to'lov|to'lanadi)|олдиндан\s+(?:тўлов|тўланади)|advance\s+(?:rent|payment)|prepaid\s+rent)\b", PatternOptions)]
     private static partial Regex AdvanceCue();
 
-    [GeneratedRegex(@"\b(?:коммунал[а-я]*|квартплат[а-я]*|kommunal\w*|utility|utilities)\b", PatternOptions)]
+    [GeneratedRegex(@"\b(?:" + UtilityWord + @"|utility|utilities)\b", PatternOptions)]
     private static partial Regex UtilitiesCue();
 
     [GeneratedRegex(@"\b(?<word>без|нет|no|without)\s+(?:отдельн[а-я]*\s+)?$", PatternOptions)]
     private static partial Regex AbsenceBefore();
 
-    [GeneratedRegex(@"^\s*[:=]?\s*(?:(?:" + Number + @")\s*(?:" + ExplicitCurrency + "|" + TimeUnit + @")?\s+)?(?:не\s+(?:нуж[а-я]*|требу[а-я]*|берется|взимается|предусмотр[а-я]*)|нет|отсутств[а-я]*|отмен[а-я]*|yo'q|йўқ|olinmaydi|олинмайди|talab\s+qilinmaydi|талаб\s+қилинмайди|shart\s+emas|шарт\s+эмас|none|not\s+required|waived|0(?:[.,]0+)?)(?![\p{L}\d]|[.,]\d)", PatternOptions)]
+    [GeneratedRegex(@"^\s*[:=]?\s*(?:(?:" + Number + @")\s*(?:" + CurrencyOrUnit + "|" + TimeUnit + @")?\s+)?(?:не\s+(?:нуж[а-я]*|требу[а-я]*|берется|взимается|предусмотр[а-я]*)|нет|отсутств[а-я]*|отмен[а-я]*|yo'q|йўқ|olinmaydi|олинмайди|talab\s+qilinmaydi|талаб\s+қилинмайди|shart\s+emas|шарт\s+эмас|none|not\s+required|waived|0(?:[.,]0+)?)(?![\p{L}\d]|[.,]\d)", PatternOptions)]
     private static partial Regex AbsenceAfter();
 
-    [GeneratedRegex(@"\b(?:не\s+включ[а-я]*|(?:совсем\s+)?отдельно|not\s+included|separately|alohida|алоҳида|kiritilmagan|киритилмаган)\b|\+\s*(?:коммунал[а-я]*|utilities|kommunal\w*)", PatternOptions)]
+    [GeneratedRegex(@"\b(?:не\s+включ[а-я]*|(?:совсем\s+)?отдельно|not\s+included|separately|alohida|алоҳида|kiritilmagan|киритилмаган)\b|\+\s*(?:" + UtilityWord + @"|utilities)", PatternOptions)]
     private static partial Regex UtilitySeparate();
 
     [GeneratedRegex(@"\b(?:включ[а-я]*|вход[а-я]*\s+в\s+(?:цену|стоимость|аренду)|included|kiritilgan|киритилган|ichida|ичида)\b", PatternOptions)]

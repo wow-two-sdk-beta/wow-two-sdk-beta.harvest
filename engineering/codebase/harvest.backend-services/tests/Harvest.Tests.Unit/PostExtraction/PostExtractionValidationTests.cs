@@ -196,11 +196,275 @@ public sealed class PostExtractionValidationTests
         RentalTermEvidence.StatesAmount(quote, amount).Should().Be(expected);
     }
 
+    [Theory]
+    [InlineData("Narxi 800 mingdan", 800_000, true)]
+    [InlineData("Narxi 800 mingga", 800_000, true)]
+    [InlineData("800 minglik kvartira", 800_000, true)]
+    [InlineData("800ming-dan", 800_000, true)]
+    [InlineData("2,5 mlndan boshlab", 2_500_000, true)]
+    [InlineData("3 millionga", 3_000_000, true)]
+    [InlineData("2 mlrdgacha", 2_000_000_000, true)]
+    [InlineData("1,5 milliardni", 1_500_000_000, true)]
+    [InlineData("800 мингдан", 800_000, true)]
+    [InlineData("5 млндан", 5_000_000, true)]
+    [InlineData("2 млрд", 2_000_000_000, true)]
+    [InlineData("800 mingle", 800_000, false)]
+    [InlineData("800 mingdani", 800_000, false)]
+    [InlineData("5 mlnx", 5_000_000, false)]
+    [InlineData("5 kdan", 5_000, false)]
+    [InlineData("800 mingdan", 800_000_000, false)]
+    public void StatesAmount_ShouldReadUzbekSuffixedAndBillionScaleWords_AndRefuseWordsThatOnlyStartLikeThem(string quote, decimal amount, bool expected)
+    {
+        RentalTermEvidence.StatesAmount(quote, amount).Should().Be(expected);
+    }
+
+    [Fact]
+    public void ValidateListing_ShouldKeepAPrice_WhoseQuoteTakesAnUzbekSuffixedScaleWord()
+    {
+        const string text = "Arenda kvartira. Narxi 800 mingdan.";
+        var corpus = new ExtractionCorpus($"Kvartira\n{text}", $"Kvartira\n{text}".Length);
+
+        var validated = PostExtractionValidation.ValidateListing(
+            Listing() with { Price = new ListingAsk(800_000m, "UZS", ListingAskPeriod.Month, "Narxi 800 mingdan") }, corpus, Rental);
+
+        validated.Answer.GetProperty("price").GetProperty("amount").GetDecimal().Should().Be(800_000m);
+        validated.Flags.Should().NotContain(flag => flag.Field == "price");
+    }
+
+    [Theory]
+    [InlineData("Депозит: 1 800y.e.")]
+    [InlineData("Депозит: 1 800 у.е.")]
+    [InlineData("Депозит 1800 у. е.")]
+    [InlineData("Depozit: 1 800 y.e.")]
+    [InlineData("Депозит 1800 уе")]
+    public void CheckTerms_ShouldReadConventionalUnitsAsUsd(string text)
+    {
+        var answer = RentalTermsAnswer.Empty with
+        {
+            Deposit = new(RentalTermStatus.Present, [new(text, new RentalDeposit(1800m, "USD", null))]),
+        };
+
+        var (kept, rejected) = RentalTermEvidence.CheckTerms(answer, text, text.Length);
+
+        rejected.Should().BeEmpty();
+        kept.Deposit.Status.Should().Be(RentalTermStatus.Present);
+    }
+
+    [Theory]
+    [InlineData("UZS")]
+    [InlineData(null)]
+    public void CheckTerms_ShouldRefuseAConventionalUnitClaimedAsAnotherCurrency(string? currency)
+    {
+        const string text = "Депозит: 1 800y.e.";
+        var answer = RentalTermsAnswer.Empty with
+        {
+            Deposit = new(RentalTermStatus.Present, [new(text, new RentalDeposit(1800m, currency, null))]),
+        };
+
+        RentalTermEvidence.CheckTerms(answer, text, text.Length).Rejected.Should().Equal("deposit");
+    }
+
+    [Fact]
+    public void CheckTerms_ShouldRefuseAPresentDeposit_WhoseConventionalUnitAmountIsWaived()
+    {
+        const string text = "Депозит 500 у.е. не нужен";
+        var answer = RentalTermsAnswer.Empty with
+        {
+            Deposit = new(RentalTermStatus.Present, [new("Депозит 500 у.е.", new RentalDeposit(500m, "USD", null))]),
+        };
+
+        RentalTermEvidence.CheckTerms(answer, text, text.Length).Rejected.Should().Equal("deposit");
+    }
+
+    [Theory]
+    [InlineData("Komunal to'lovlar ichida")]
+    [InlineData("Kamunal to'lovlar ichida")]
+    [InlineData("Kommunal to'lovlar ichida")]
+    [InlineData("Комуналка включена")]
+    [InlineData("Коммуналка включена")]
+    public void CheckTerms_ShouldReadEveryUtilitiesSpelling(string text)
+    {
+        var answer = RentalTermsAnswer.Empty with
+        {
+            Utilities = new(RentalTermStatus.Present, [new(text, new RentalUtilities(RentalUtilitiesBilling.Included))]),
+        };
+
+        RentalTermEvidence.CheckTerms(answer, text, text.Length).Rejected.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void CheckTerms_ShouldRefuseAUtilitiesQuote_WhoseWordOnlyStartsLikeTheCue()
+    {
+        const string text = "Komunikatsiya ichida";
+        var answer = RentalTermsAnswer.Empty with
+        {
+            Utilities = new(RentalTermStatus.Present, [new(text, new RentalUtilities(RentalUtilitiesBilling.Included))]),
+        };
+
+        RentalTermEvidence.CheckTerms(answer, text, text.Length).Rejected.Should().Equal("utilities");
+    }
+
+    [Fact]
+    public void ValidateListing_ShouldKeepAPriceQuotedOnlyFromThePricesLine_AndStillCheckItsAmount()
+    {
+        var corpus = Corpus(new PostEnvelope
+        {
+            Title = "Kvartira", Text = "Arenda, narx kelishiladi.", Extraction = Stamp(),
+            Prices = [new PostPrice { Amount = 800_000m, Currency = "UZS", Per = "month" }],
+        });
+        ListingAsk Ask(decimal amount, string quote) => new(amount, "UZS", ListingAskPeriod.Month, quote);
+
+        var kept = PostExtractionValidation.ValidateListing(Listing() with { Price = Ask(800_000m, "listed: 800000 UZS/month") }, corpus, Rental);
+        var wrongAmount = PostExtractionValidation.ValidateListing(Listing() with { Price = Ask(900_000m, "listed: 800000 UZS/month") }, corpus, Rental);
+        var elsewhere = PostExtractionValidation.ValidateListing(Listing() with { Price = Ask(800_000m, "narxi 800 ming") }, corpus, Rental);
+
+        kept.Answer.GetProperty("price").GetProperty("evidence").GetString().Should().Be("listed: 800000 UZS/month");
+        wrongAmount.Answer.GetProperty("price").ValueKind.Should().Be(JsonValueKind.Null);
+        wrongAmount.Flags.Should().Contain(new PostTagsFlag("price", PostExtractionValidation.AmountNotQuoted, "900000"));
+        elsewhere.Flags.Should().Contain(new PostTagsFlag("price", PostExtractionValidation.QuoteNotFound, null));
+    }
+
+    [Fact]
+    public void Corpus_ShouldHoldTheRendersThePromptReceives_AndLeaveOutEstimatesAndAbsentOnes()
+    {
+        var envelope = new PostEnvelope
+        {
+            Title = Title, Text = Text, Extraction = Stamp(),
+            Dates =
+            [
+                new PostDate { Role = DateRole.Start, Value = "2026-12-12", Precision = DatePrecision.Day },
+                new PostDate { Role = DateRole.End, Value = "2027-02-02", Precision = DatePrecision.Day, Certainty = DateCertainty.Estimated },
+            ],
+            Prices = [new PostPrice { Role = PriceRole.Ticket, Amount = 50_000m, Currency = "UZS" }],
+            Location = new PostLocation { Mentions = [new LocationMention { Text = "Tashkent", Kind = LocationKind.City }] },
+        };
+
+        var corpus = Corpus(envelope);
+        var bare = Corpus(new PostEnvelope { Title = Title, Text = Text, Extraction = Stamp() });
+
+        corpus.Dates.Should().Be("start: 2026-12-12");
+        corpus.Prices.Should().Be("ticket: 50000 UZS");
+        corpus.Place.Should().Be("Tashkent");
+        corpus.Dates.Should().Be(PostExtractionContent.Variables(envelope, null, Fashion, 6000)["dates"]);
+        bare.Structured.Should().BeEmpty("the renders read none and unknown");
+    }
+
+    [Fact]
+    public void ValidateEvent_ShouldKeepADateQuotedFromTheDatesLine_AndRefuseAnEstimateQuotedFromIt()
+    {
+        var corpus = Corpus(new PostEnvelope
+        {
+            Title = Title, Text = Text, Extraction = Stamp(),
+            Dates =
+            [
+                new PostDate { Role = DateRole.Start, Value = "2026-12-12", Precision = DatePrecision.Day },
+                new PostDate { Role = DateRole.End, Value = "2027-02-02", Precision = DatePrecision.Day, Certainty = DateCertainty.Estimated },
+            ],
+        });
+        var answer = Event() with
+        {
+            Occurrences =
+            [
+                new("2026-12-12", null, DatePrecision.Day, DateCertainty.Stated, "start: 2026-12-12"),
+                new("2027-02-02", null, DatePrecision.Day, DateCertainty.Stated, "end: 2027-02-02"),
+            ],
+        };
+
+        var validated = PostExtractionValidation.ValidateEvent(answer, corpus, Fashion);
+
+        validated.Answer.GetProperty("occurrences").EnumerateArray().Select(value => value.GetProperty("starts").GetString())
+            .Should().Equal("2026-12-12");
+        validated.Flags.Should().ContainSingle(flag => flag.Field == "occurrences").Which.Reason.Should().Be(PostExtractionValidation.QuoteNotFound);
+    }
+
+    [Theory]
+    [InlineData("12-14 dekabr", "2026-12-12", DatePrecision.Day, true)]
+    [InlineData("1 dekabrgacha", "2026-12-01", DatePrecision.Day, true)]
+    [InlineData("dekabrda", "2026-12", DatePrecision.Month, true)]
+    [InlineData("17−18 ноября", "2026-11-17", DatePrecision.Day, true)]
+    [InlineData("с декабря", "2026-12", DatePrecision.Month, true)]
+    [InlineData("December 12th", "2026-12-12", DatePrecision.Day, true)]
+    [InlineData("Dec 5", "2026-12-12", DatePrecision.Day, true)]
+    [InlineData("2026-12-12", "2026-12-12", DatePrecision.Day, true)]
+    [InlineData("12.12.2026 19:00", "2026-12-12T19:00", DatePrecision.Minute, true)]
+    [InlineData("Tashkent Fashion Week 2026", "2026", DatePrecision.Year, true)]
+    [InlineData("Tashkent Fashion Week 2026", "2026-12-12", DatePrecision.Day, false)]
+    [InlineData("Tashkent Fashion Week 2026", "2026-12", DatePrecision.Month, false)]
+    [InlineData("Moda haftaligi", "2026", DatePrecision.Year, false)]
+    [InlineData("this Saturday", "2026-12-12", DatePrecision.Day, false)]
+    [InlineData("yanvarda", "2026-12-12", DatePrecision.Day, false)]
+    [InlineData("12-14 dekabr", "2026-11-20", DatePrecision.Day, false)]
+    [InlineData("dekabrda", "2026-12-12", DatePrecision.Minute, true)]
+    [InlineData("kun maydonida", "2026-12", DatePrecision.Month, false)]
+    public void StatesDate_ShouldNeedADayOrMonthNumberOrNameThatMatches(string quote, string value, DatePrecision precision, bool expected)
+    {
+        RentalTermEvidence.StatesDate(quote, value, precision).Should().Be(expected);
+    }
+
+    [Fact]
+    public void ValidateEvent_ShouldDropAStatedDate_WhoseQuoteStatesNoDate()
+    {
+        var answer = Event() with
+        {
+            Occurrences = [new("2026-12-12", null, DatePrecision.Day, DateCertainty.Stated, "Tashkent Fashion Week 2026")],
+            Registration = new(null, new EvidencedDate("2026-12-01", DatePrecision.Day, "Moda haftaligi"), null),
+        };
+
+        var validated = PostExtractionValidation.ValidateEvent(answer, Corpus(), Fashion);
+
+        validated.Answer.GetProperty("occurrences").GetArrayLength().Should().Be(0);
+        validated.Answer.GetProperty("registration").GetProperty("deadline").ValueKind.Should().Be(JsonValueKind.Null);
+        validated.Flags.Should().Contain(new PostTagsFlag("occurrences", PostExtractionValidation.DateNotQuoted, "2026-12-12"))
+            .And.Contain(new PostTagsFlag("registration.deadline", PostExtractionValidation.DateNotQuoted, "2026-12-01"));
+    }
+
+    [Fact]
+    public void ValidateEvent_ShouldKeepAnEstimatedDate_WhoseQuoteIsOnlyCheckedToExist()
+    {
+        var answer = Event() with
+        {
+            Occurrences = [new("2026-12-12", null, DatePrecision.Day, DateCertainty.Estimated, "Moda haftaligi")],
+        };
+
+        var validated = PostExtractionValidation.ValidateEvent(answer, Corpus(), Fashion);
+
+        validated.Answer.GetProperty("occurrences").GetArrayLength().Should().Be(1);
+        validated.Flags.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ValidateEvent_ShouldKeepAStatedDateTheSourceDatesHold_WhateverItsQuote()
+    {
+        var corpus = Corpus(new PostEnvelope
+        {
+            Title = Title, Text = Text, Extraction = Stamp(),
+            Dates = [new PostDate { Role = DateRole.Start, Value = "2026-12-12", Precision = DatePrecision.Day, End = "2026-12-14" }],
+        });
+        var answer = Event() with
+        {
+            Occurrences =
+            [
+                new("2026-12-12", "2026-12-14", DatePrecision.Day, DateCertainty.Stated, Title),
+                new("2026-12-13", null, DatePrecision.Day, DateCertainty.Stated, Title),
+            ],
+        };
+
+        var validated = PostExtractionValidation.ValidateEvent(answer, corpus, Fashion);
+
+        validated.Answer.GetProperty("occurrences").EnumerateArray().Select(value => value.GetProperty("starts").GetString())
+            .Should().Equal("2026-12-12");
+        validated.Flags.Should().ContainSingle().Which.Should().Be(new PostTagsFlag("occurrences", PostExtractionValidation.DateNotQuoted, "2026-12-13"));
+    }
+
     private static ExtractionCorpus Corpus(int maxTextChars = 6000) =>
         PostExtractionContent.Corpus(new PostEnvelope
         {
             Title = Title, Text = Text, Extraction = new ExtractionStamp { NormVersion = "test@1", RulesVersion = "test@1" },
         }, maxTextChars);
+
+    private static ExtractionCorpus Corpus(PostEnvelope envelope) => PostExtractionContent.Corpus(envelope, 6000);
+
+    private static ExtractionStamp Stamp() => new() { NormVersion = "test@1", RulesVersion = "test@1" };
 
     private static ExtractEventAnswer Event() => new(new EventName("Tashkent Fashion Week", "Toshkent moda haftaligi"), "2026", [],
         new EventPlace(null, "Tashkent", "Uzbekistan"), null, EventFormat.Runway, EventAccess.Ticketed, [],

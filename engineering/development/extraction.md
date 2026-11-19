@@ -95,10 +95,27 @@ values are `null` or `unknown`, and every list pick allows `unsure`, which flags
 ## Evidence
 
 - A quote must appear verbatim, starting and ending on token boundaries, in the title or the part of the text the model
-  read — the check `rental-terms@2` uses (`RentalTermEvidence.Quoted`). A price's quote must also state its amount,
-  thousand and million words included (`50 000 so'm`, `500 тыс`, `1,5 mln`).
+  read — the check `rental-terms@2` uses (`RentalTermEvidence.Quoted`). A quote of an occurrence, price or registration
+  date may also come from the rendered `prices`, `dates` or `place` the prompt received (`ExtractionCorpus`), so a value
+  the source holds only in its structured fields can be stored. A render is one source: a quote never spans two, and
+  one that reads `none` or `unknown` is no source. The `dates` render leaves out an estimated date, so an estimate never
+  backs a quote; rental terms quote the title and text only.
+- A price's quote must also state its amount, thousand, million and billion words included (`50 000 so'm`, `500 тыс`,
+  `1,5 mln`, `2 mlrd`); an Uzbek case suffix may follow the scale word (`800 mingdan`, `3 millionga`), and a word that only
+  starts like one does not count (`800 mingle`). This holds for a price quoted from `prices` too.
+- A stated date's quote must state the date (`RentalTermEvidence.StatesDate`): a number equal to its year (precision
+  `year`), or to its month or a month name in Uzbek, Russian or English (`month`), or to its day, its month number or a
+  month name (`day` and finer). A range passes on its start or its end. It reads no weekday, relative phrase or spelled-out
+  number. Two cases pass without it: an `estimated` occurrence, whose quote is the model's working-out and is only checked
+  to exist, and a date equal to a value of the post's `dates` render, which the source states itself (a prompt may tell the
+  model to quote the title for such a date).
 - A failing occurrence, price or registration date is dropped; a failing rental term becomes `unknown` with no claims
   (`RentalTermEvidence.CheckTerms`, the same per-term rules as version 2). Each gets a flag; the rest of the answer stays.
+  The date check adds the flag reason `the quote does not state the date`, with the date as `proposed`.
+- Layer 2 reads a conventional unit (`у.е.`, `у. е.`, `y.e.`, `уе`) in a deposit or advance claim as USD, so a claim of USD
+  passes and a claim of no or another currency does not. `rental-terms@2` (`RentalTermEvidence.Parse`) keeps its pinned
+  rule that a USD claim for `500 у.е.` is rejected (`RentalTermsV2Tests`).
+- The utilities cue reads `kommunal`, `komunal`, `kamunal`, `коммунал…` and `комунал…`.
 - Free text is clipped, and a phone, email, handle or messenger link in it is removed with a `contacts` flag, so a stored
   row holds no post text beyond its quotes.
 

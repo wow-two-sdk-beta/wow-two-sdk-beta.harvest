@@ -11,23 +11,35 @@ internal sealed record ExtractionTags(string EntityType, IReadOnlyList<PostTagsD
     internal string? Primary => Domains.FirstOrDefault(domain => domain.Primary)?.Node ?? Domains.FirstOrDefault()?.Node;
 }
 
-/// <summary>Represents the text quotes are checked against: the title and the whole text, of which the model read the
-/// first <see cref="Visible"/> characters.</summary>
-internal sealed record ExtractionCorpus(string Text, int Visible);
+/// <summary>Represents what quotes are checked against: the title and the whole text, of which the model read the first
+/// <see cref="Visible"/> characters, and the rendered structured variables the prompt received (<see cref="Prices"/>,
+/// <see cref="Dates"/>, <see cref="Place"/>; <c>null</c> when the source gave none).</summary>
+internal sealed record ExtractionCorpus(string Text, int Visible, string? Prices, string? Dates, string? Place)
+{
+    /// <summary>Initializes a corpus with no structured variables.</summary>
+    internal ExtractionCorpus(string text, int visible) : this(text, visible, null, null, null)
+    {
+    }
+
+    /// <summary>Gets the structured renders that exist, each a separate text a quote may come from.</summary>
+    internal IEnumerable<string> Structured => new[] { Prices, Dates, Place }.OfType<string>();
+}
 
 /// <summary>Turns a post and its tags into what the extraction prompt receives and what its quotes must come from.</summary>
 internal static class PostExtractionContent
 {
     private const int MaxPrices = 10;
 
-    /// <summary>Builds the quote corpus: the title, a line break and the text; the model reads the title and the text cut
-    /// to <paramref name="maxTextChars"/>.</summary>
+    /// <summary>Builds the quote corpus: the title, a line break and the text, of which the model reads the title and the text cut
+    /// to <paramref name="maxTextChars"/>, plus the <c>prices</c>, <c>dates</c> and <c>place</c> renders the prompt received,
+    /// word for word: the dates leave out an estimated one, and a render that reads <c>none</c> or <c>unknown</c> is no source.</summary>
     internal static ExtractionCorpus Corpus(PostEnvelope envelope, int maxTextChars)
     {
         string title = envelope.Title?.Trim() ?? "";
         string text = envelope.Text ?? "";
         string cut = PostTagsContent.Cut(text, maxTextChars);
-        return new($"{title}\n{text}", title.Length + 1 + cut.Length);
+        return new($"{title}\n{text}", title.Length + 1 + cut.Length, Render(Prices(envelope.Prices), "none"),
+            Render(PostTagsContent.Dates(envelope.Dates), "none"), Render(PostTagsContent.Place(envelope.Location), "unknown"));
     }
 
     /// <summary>Builds the prompt variables: the post fields <c>title</c>, <c>text</c> (cut), <c>sourceCategory</c>,
@@ -63,6 +75,8 @@ internal static class PostExtractionContent
             string per = string.IsNullOrWhiteSpace(price.Per) ? "" : "/" + price.Per.Trim();
             return $"{price.Role.ToString().ToLowerInvariant()}: {amount}{currency}{per}";
         }));
+
+    private static string? Render(string render, string absent) => render == absent ? null : render;
 
     private static string Number(decimal value) => value.ToString("0.##", CultureInfo.InvariantCulture);
 }
