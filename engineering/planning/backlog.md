@@ -35,7 +35,6 @@ Picks for `system/sessions/events-integration` in wow-two-ws (P1 = this goal, P2
 | Console iteration 2 | feature | events-integration #32, #33, #37, #45: the client's sign-in with Sources and Following; Home's questions (a page-limit partial counts as failed today); the Subscribers page's design; a source's AI card and outgoing-server line once they exist |
 | Account name in the bar | engineering | fe sdk `AppFrame` 0.0.45: `AccountMenu`'s trigger shows initials only, with no prop for the name beside them; the fe sdk lane owns it |
 | Capture view and branch sources | feature | a post's "See the capture" needs a route that shows a stored capture; a store's branch needs a `branch` source family, which the console's icon map already names |
-| Classification writer | feature | events-integration #55, P2: the model tier fills `PostClassification` (`classifier`, `verdict`, `confidence`, `reason`, `kind`); the shape ships in v0.1 iteration 14, no step writes it yet |
 | First NuGet and npm publish | engineering | events-integration #15, P2: Events keeps its own wire reader (#43), so no consumer waits; needs `PUBLISH_PACKAGES` and the nuget.org trusted-publishing policy |
 | Afisha intake and terms | policy | events-integration #32, #50: public category and article pages inside `robots.txt`; captures stay internal review evidence; nothing is republished; facts plus an attributed link inside Ocharo |
 | Afisha participation readings | feature | events-integration #18, P2: participation routes instead of `schemaOrg.afisha` evidence |
@@ -50,7 +49,6 @@ Picks for `system/sessions/events-integration` in wow-two-ws (P1 = this goal, P2
 | Console | shipped v0.1 | — |
 | Webhook delivery | planned | — |
 | Link intake and manual entries | planned | — |
-| Tag and keyword subscriptions | planned | — |
 | AI extraction tiers | partial v0.2: Layer 1 `post-tags` (iteration 10) and Layer 2 `extract-event` · `extract-listing` (iteration 11) | `development/post-tags.md` · `development/extraction.md` |
 | Entity layer: entity types over the collector | partial v0.2: events and listings resolved from extraction answers (iteration 12); entity reads and the entity change feed (iteration 13); the `fe-harvest` mirror and the console's Entities page (2026-11-19); per-subscription routing of entity events (S09) remains | `development/entities.md` · wow-two-ws `ideas/scfd-entity-model.md` |
 
@@ -64,13 +62,9 @@ ChatGPT builds these in the pull order of wow-two-ws `system/sessions/events-int
 | S38 Decide what the marketplace collectors keep about people | decision | spec in `tasks-scfd.md` · needs the developer |
 | Craftfair challenge-detector posture | decision | `GenericChallengeDetector` reads Craftfair's complete 200 listing as `javascript_interstitial` because Cloudflare's passive JS-detection script is on the page; the detector changes only on the developer's posture call (#50), before S18 runs Craftfair · needs the developer |
 | S18 Run Craftfair for Ocharo after its challenge posture call | product | spec in `tasks-scfd.md`; ANONS, Uzexpocentre and CAEx run on dev on schedule (v0.2) |
-| S09 Let one subscription follow many sections | feature | spec in `tasks-scfd.md`; Instagram needs one subscription across independently declared publisher sources and pipelines. Subscriber interests do not determine collection identity. Apply the same declared subscription scope to stored-post replay and future delivery; reusing one Instagram provider does not combine publisher sources. |
-| E02 Tighten ocharo-fashion-v1 against off-topic event matches | fix | spec in `tasks-events-path.md` |
 | E19 Let a subscriber list its tenant's subscriptions | feature | spec in `tasks-events-path.md` |
-| S10 Ocharo filter regression set over every reader's fixtures | engineering | spec in `tasks-scfd.md` |
 | S19 Read trade-fair edition pages (TITF, Texworld, TFT Expo) | feature | spec in `tasks-scfd.md` |
 | S20 Keep one size of each Afisha picture | fix | spec in `tasks-scfd.md`; a generic de-dup by `PostMedia.Hash` and a posts list that counts distinct pictures go with it |
-| S11 Emit item-level publisher categories as source tags | feature | spec in `tasks-scfd.md` |
 | S12 Record each subscription's pull lag | feature | spec in `tasks-scfd.md` |
 | S21 Route registry channels to the generic readers | feature | spec in `tasks-scfd.md` |
 | S22 Read Hunarmand association calls | feature | spec in `tasks-scfd.md` |
@@ -83,12 +77,6 @@ ChatGPT builds these in the pull order of wow-two-ws `system/sessions/events-int
 | S30 Event timing and an event-date sort for every source | feature | spec in `tasks-scfd.md` |
 | S31 Give Ocharo a client view with Sources and Following | feature | spec in `tasks-scfd.md` |
 | S32 Let an operator grant a restricted source | feature | spec in `tasks-scfd.md` |
-| A05 SCFD relevance pass in shadow on one Afisha pipeline | feature | spec in `tasks-platform.md` · owner: ev-ai lane |
-| S14 Embed the shared AI layer in the source host | engineering | partial: v0.2's OLX processing composes published AI (now `10.0.4-beta`) behind an opt-in host flag and adds Process readiness/evidence contracts; iteration 10 adds the `post-tags` use case and the `harvest:post:` eval subject source; iteration 11 adds the `extract-event` and `extract-listing` use cases. Ocharo's relevance use case and deployed configuration remain; see `development/olx-ai.md`, `development/post-tags.md` and `development/extraction.md`. |
-| S15 Run Ocharo relevance in shadow on Afisha | feature | partial v0.2 iteration 15: rebuilt on `post-tags`, the `post-tags relevance` verb compares `ocharo-fashion-v1` with the tag verdict; the shadow week waits on Model processing and tagging turned on for Afisha on dev |
-| S16 Promote AI relevance into Ocharo's delivery | product | partial v0.2 iteration 15: the tag revision sets `PostClassification` and filter `ocharo-relevance-v1` is registered; the `--relevance-live` subscription waits on S09 and the developer's read of the shadow week; spec in `tasks-scfd.md`; connect completed AI results to consumer delivery before evaluating requested event filters. Capturing Instagram posts and storing separate processing results do not establish this path. Verify accepted, rejected and unresolved results end to end before promotion. |
-| S17 Estimate event dates from the AI pass | feature | partial v0.2 iteration 15: `extract-event` fills an undated post's start as `estimated`, a stated date wins, `wow2.event.v1` carries `certainty`; Events' reader still marks every date `Announced` and must read `starts.certainty` |
-| S33 Serve the console on harvest-dev | engineering | spec in `tasks-scfd.md` |
 | S35 Publish the Harvest NuGet and npm family | engineering | spec in `tasks-scfd.md` |
 | S34 Drop IP-lease pools and CAPTCHA solving from the image | engineering | spec in `tasks-scfd.md` |
 
