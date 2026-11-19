@@ -35,6 +35,19 @@ public interface IPostTagsBroker
     /// log; a failure when the filter is not registered or no pair is given.</returns>
     Task<Result<PostTagsRelevanceModel>> RelevanceAsync(PostTagsRelevanceRequest request, CancellationToken cancellationToken = default);
 
+    /// <summary>Lists the posts the rules filter and the tags disagree on, for an operator's review: the rules pass a post
+    /// whose tags match no pair or are unsure, or the rules reject one whose tags match or are unsure. The same posts,
+    /// rules evaluation and tag lookup as <see cref="RelevanceAsync"/>; a post with no done answer, or one the filter could
+    /// not judge, is never listed.</summary>
+    /// <param name="request">The rules filter, the pairs and the window.</param>
+    /// <param name="limit">The most posts to list: 1 to 1,000; posts the rules pass come first, then by post id.</param>
+    /// <param name="cancellationToken">The token that cancels the call.</param>
+    /// <returns>The posts; a failure when the filter is not registered, no pair is given, or the limit is out of range.</returns>
+    /// <remarks>Unlike every other report, each item carries the post's title, with phone numbers, emails and handles
+    /// scrubbed and clipped to 140 characters: an operator review, never a subscriber's feed.</remarks>
+    Task<Result<PostTagsDisagreementsModel>> DisagreementsAsync(PostTagsRelevanceRequest request, int limit = 50,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Claims due queued posts and tags each; the worker calls it on every tick.</summary>
     /// <param name="cancellationToken">The token that cancels the pass.</param>
     /// <returns>The number of posts claimed.</returns>
@@ -218,4 +231,60 @@ public sealed record PostTagsRelevanceCounts
 
     /// <summary>Gets the posts whose current title and text have no done answer yet.</summary>
     public long NotTagged { get; init; }
+}
+
+/// <summary>Represents the posts a rules filter and the tags disagree on: an operator review that carries titles.</summary>
+public sealed record PostTagsDisagreementsModel
+{
+    /// <summary>Gets the rules filter's key.</summary>
+    public required string Rules { get; init; }
+
+    /// <summary>Gets the pairs, each <c>{entityType}:{domain}</c>.</summary>
+    public required IReadOnlyList<string> Wanted { get; init; }
+
+    /// <summary>Gets the posts, rules <c>yes</c> first, then by post id, at most the requested limit.</summary>
+    public required IReadOnlyList<PostTagsDisagreement> Items { get; init; }
+}
+
+/// <summary>Represents one post whose rules verdict and tags verdict disagree.</summary>
+public sealed record PostTagsDisagreement
+{
+    /// <summary>Gets the post.</summary>
+    public required Guid PostId { get; init; }
+
+    /// <summary>Gets the label of the source supplying the post's title, else its text: <c>{family}/{handle}</c>.</summary>
+    public string? Source { get; init; }
+
+    /// <summary>Gets the post's title with phone numbers, emails and handles scrubbed, clipped to 140 characters.</summary>
+    public required string Title { get; init; }
+
+    /// <summary>Gets the tag answer's English title.</summary>
+    public string? TitleEn { get; init; }
+
+    /// <summary>Gets the rules verdict: <c>yes</c> or <c>no</c>.</summary>
+    public required string Rules { get; init; }
+
+    /// <summary>Gets the tags' verdict for the wanted pairs: <c>match</c>, <c>noMatch</c> or <c>unsure</c>.</summary>
+    public required string Tags { get; init; }
+
+    /// <summary>Gets the answer's entity type.</summary>
+    public required string EntityType { get; init; }
+
+    /// <summary>Gets the key of the answer's primary taxonomy node; none when the answer kept no known node.</summary>
+    public string? PrimaryDomain { get; init; }
+
+    /// <summary>Gets the keys of every taxonomy node the answer kept.</summary>
+    public required IReadOnlyList<string> Domains { get; init; }
+
+    /// <summary>Gets the answer's English topic slugs.</summary>
+    public required IReadOnlyList<string> Topics { get; init; }
+
+    /// <summary>Gets the answer's one-line description of what the post is about.</summary>
+    public string? About { get; init; }
+
+    /// <summary>Gets the answer's timeframe: <c>upcoming</c>, <c>ongoing</c>, <c>past</c>, <c>evergreen</c> or <c>unsure</c>.</summary>
+    public string? Timeframe { get; init; }
+
+    /// <summary>Gets the answer's confidence, 0 to 1.</summary>
+    public double? Confidence { get; init; }
 }

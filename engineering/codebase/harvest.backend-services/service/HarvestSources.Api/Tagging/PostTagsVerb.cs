@@ -21,18 +21,24 @@ namespace HarvestSources.Api.Tagging;
 ///   - <c>relevance [--since &lt;date&gt;]</c> compares <c>ocharo-fashion-v1</c>'s verdict with the tags' verdict for
 ///     Ocharo's pair (<c>event</c> under <c>style-fashion</c>) over stored posts, as one JSON line of counts with invalid
 ///     answers, cost per tagged post and p95 latency; no post text
+///   - <c>relevance --disagreements [--since &lt;date&gt;] [--limit N]</c> prints instead one JSON line listing the posts
+///     whose rules verdict and tags verdict disagree (default 50): an operator review that carries each post's scrubbed,
+///     clipped title; Wheelhouse's one-off command keeps a last line whole only up to 16 KiB, so a long list wants a lower
+///     <c>--limit</c>
 /// </remarks>
 public static class PostTagsVerb
 {
     /// <summary>Holds the verb's name, the first process argument.</summary>
     public const string Name = "post-tags";
 
+    private const int DefaultDisagreements = 50;
+
     private const string Usage = """
         Usage: post-tags prompt --file <draft.json | -> [--by <actor>]
                post-tags run --post <id> [--dry-run]
                post-tags backfill [--since <date>] [--limit <n>] [--source <id>]
                post-tags report [--since <date>]
-               post-tags relevance [--since <date>]
+               post-tags relevance [--since <date>] [--disagreements [--limit <n>]]
         """;
 
     /// <summary>Runs one sub-command against the built internal host's services.</summary>
@@ -171,12 +177,23 @@ public static class PostTagsVerb
     private static async Task<int> RelevanceAsync(IPostTagsBroker tags, IReadOnlyDictionary<string, string?> options, TextWriter output,
         TextWriter error, CancellationToken ct)
     {
-        if (!VerbArguments.Only(options, "since") || !VerbArguments.TrySince(options, out var since))
+        bool disagreements = options.ContainsKey("disagreements");
+        if (!VerbArguments.Only(options, "since", "disagreements", "limit") || !VerbArguments.TrySince(options, out var since)
+            || (!disagreements && options.ContainsKey("limit")) || !VerbArguments.TryInt(options, "limit", DefaultDisagreements, out var limit))
             return await UsageAsync(error);
-        var result = await tags.RelevanceAsync(new PostTagsRelevanceRequest
+        var request = new PostTagsRelevanceRequest
         {
             RulesFilterKey = OcharoFashionFilter.FilterKey, Wanted = [OcharoRelevanceFilter.Wanted], SinceUtc = since,
-        }, ct);
+        };
+        if (disagreements)
+        {
+            var listed = await tags.DisagreementsAsync(request, limit, ct);
+            if (listed is not Result<PostTagsDisagreementsModel>.Success { Value: var review })
+                return await VerbArguments.RefusedAsync(error, listed);
+            await output.WriteLineAsync(JsonSerializer.Serialize(review, JsonOptionsConstants.Default));
+            return 0;
+        }
+        var result = await tags.RelevanceAsync(request, ct);
         if (result is not Result<PostTagsRelevanceModel>.Success { Value: var report })
             return await VerbArguments.RefusedAsync(error, result);
         await output.WriteLineAsync(JsonSerializer.Serialize(report, JsonOptionsConstants.Default));

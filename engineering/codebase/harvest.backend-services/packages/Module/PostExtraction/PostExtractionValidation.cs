@@ -181,6 +181,20 @@ internal static partial class PostExtractionValidation
         Email().IsMatch(value) || Handle().IsMatch(value) || Messenger().IsMatch(value)
         || Phone().Matches(value).Any(match => match.Value.Count(char.IsAsciiDigit) >= 9);
 
+    /// <summary>Returns <paramref name="value"/> with every contact <see cref="HasContact"/> detects replaced by
+    /// <c>…</c>: an email, a messenger link, a handle, and a phone number of 9 or more digits; a text with none comes back
+    /// unchanged.</summary>
+    /// <remarks>The same patterns as <see cref="HasContact"/>, for a text a person reads whole (the relevance review's
+    /// title), where <c>Text</c> drops the whole value instead.</remarks>
+    internal static string Scrub(string value)
+    {
+        const string Removed = "…";
+        string text = Email().Replace(value, Removed);
+        text = Messenger().Replace(text, Removed);
+        text = Handle().Replace(text, Removed);
+        return Phone().Replace(text, match => match.Value.Count(char.IsAsciiDigit) >= 9 ? Removed : match.Value);
+    }
+
     private static List<PostTagsFlag> ModelFlags(IReadOnlyList<PostTagsFlag>? flags)
     {
         var list = new List<PostTagsFlag>();
@@ -324,6 +338,6 @@ internal static partial class PostExtractionValidation
     [GeneratedRegex(@"(?<![\w.])@[A-Za-z0-9_]{4,}", RegexOptions.CultureInvariant)]
     private static partial Regex Handle();
 
-    [GeneratedRegex(@"\b(?:t\.me|wa\.me|telegram\.me)/", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"\b(?:t\.me|wa\.me|telegram\.me)/\S*", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex Messenger();
 }

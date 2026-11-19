@@ -26,6 +26,21 @@ internal sealed record PostTagsSubject(PostModel Post, bool Current, ModelProces
 /// <summary>Represents one claimed queue row; a re-run's row carries its run and whether an operator named the post.</summary>
 internal sealed record PostTagsClaim(Guid PostId, Guid ContainerId, byte[] ContentHash, int Attempts, Guid? RunId = null, bool Explicit = false);
 
+/// <summary>Represents one current post the relevance comparison reads: the post, its source label
+/// (<c>{family}/{handle}</c> of the source supplying its title, else its text) and the done tags for its current title and
+/// text; the tag fields are empty while the post has no done answer.</summary>
+internal sealed record PostTagsRelevanceRow(
+    Guid PostId,
+    string? Source,
+    PostEnvelope Post,
+    string? EntityType,
+    IReadOnlyList<PostTagsDomain> Domains,
+    IReadOnlyList<string> Topics,
+    string? About,
+    string? Timeframe,
+    decimal? Confidence,
+    string? TitleEn);
+
 /// <summary>Holds the pass's SQL over <c>harvest_post_work</c>, <c>harvest_post_tags</c> and <c>harvest_taxonomy_nodes</c>.</summary>
 internal static class PostTagsStore
 {
@@ -203,15 +218,20 @@ internal static class PostTagsStore
     }
 
     /// <summary>Reads every current post whose words the model may read and that changed since a time, with the done tags
-    /// for its current title and text when it has them, and hands each to <paramref name="visit"/>; one pass, no post
-    /// text leaves the method.</summary>
+    /// for its current title and text when it has them, and hands each to <paramref name="visit"/>; one pass. The relevance
+    /// counts keep nothing of a post's text; the disagreement review keeps a post's scrubbed, clipped title.</summary>
     internal static async Task ReadRelevanceAsync(NpgsqlDataSource dataSource, DateTimeOffset since,
-        Action<PostEnvelope, string?, IReadOnlyList<PostTagsDomain>> visit, CancellationToken ct)
+        Action<PostTagsRelevanceRow> visit, CancellationToken ct)
     {
         await using var connection = await dataSource.OpenConnectionAsync(ct);
         string hash = PostTagsContent.SqlHash("p.base");
         await using var command = PostSql.Command(connection, null, $"""
-            SELECT p.base::text,t.entity_type,t.domains::text FROM harvest_posts p
+            SELECT p.base::text,t.entity_type,t.domains::text,p.id,
+                   (SELECT s.family||'/'||s.handle FROM harvest_post_links l JOIN harvest_sources s ON s.id=l.source_id
+                    WHERE l.post_id=p.id AND l.id::text IN (p.field_prov->>'title',p.field_prov->>'text')
+                    ORDER BY (l.id::text=p.field_prov->>'title') DESC,s.family,s.handle LIMIT 1),
+                   t.topics,t.about,t.timeframe,t.confidence,t.title_en
+            FROM harvest_posts p
             LEFT JOIN harvest_post_tags t ON t.post_id=p.id AND t.content_hash={hash} AND t.status='done'
             WHERE p.merged_into IS NULL AND p.purged_at IS NULL AND p.last_changed_at>=@since
               AND (btrim(COALESCE(p.base->>'title',''))<>'' OR btrim(COALESCE(p.base->>'text',''))<>'')
@@ -223,8 +243,13 @@ internal static class PostTagsStore
         {
             var post = StoreJson.Read(reader.GetString(0),
                 new PostEnvelope { Extraction = new ExtractionStamp { NormVersion = "unknown", RulesVersion = "unknown" } });
-            visit(post, reader.IsDBNull(1) ? null : reader.GetString(1),
-                reader.IsDBNull(2) ? none : Read(reader.GetString(2), new List<PostTagsDomain>()));
+            visit(new PostTagsRelevanceRow(
+                reader.GetGuid(3), reader.IsDBNull(4) ? null : reader.GetString(4), post,
+                reader.IsDBNull(1) ? null : reader.GetString(1),
+                reader.IsDBNull(2) ? none : Read(reader.GetString(2), new List<PostTagsDomain>()),
+                reader.IsDBNull(5) ? [] : reader.GetFieldValue<string[]>(5),
+                reader.IsDBNull(6) ? null : reader.GetString(6), reader.IsDBNull(7) ? null : reader.GetString(7),
+                reader.IsDBNull(8) ? null : reader.GetDecimal(8), reader.IsDBNull(9) ? null : reader.GetString(9)));
         }
     }
 

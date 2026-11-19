@@ -5,7 +5,7 @@ tags subscriptions and later steps rely on — entity type, IAB domains, open En
 
 | Implements | Over |
 |---|---|
-| `IPostTagsBroker` (this lane's own seam: run, backfill, report, the relevance shadow report, the worker's tick) · `IEvalSubjectSource` for `harvest:post:{id}@{revision}`, resolving `post-tags`, `extract-event` and `extract-listing` inputs | the shared AI contract `WoW2.Sdk.Beta.Be.Ai.Abstractions` (`IAiRunner`, `IPromptsBroker`, `IInferencesBroker`); the Posts lane's resolve and the Delivery lane's `post.changed` append |
+| `IPostTagsBroker` (this lane's own seam: run, backfill, report, the relevance shadow report and its disagreement review, the worker's tick) · `IEvalSubjectSource` for `harvest:post:{id}@{revision}`, resolving `post-tags`, `extract-event` and `extract-listing` inputs | the shared AI contract `WoW2.Sdk.Beta.Be.Ai.Abstractions` (`IAiRunner`, `IPromptsBroker`, `IInferencesBroker`); the Posts lane's resolve and the Delivery lane's `post.changed` append |
 
 - Owns: `harvest_taxonomy_nodes` (011), `harvest_post_tags` and `harvest_post_work` (012).
 - Taxonomy: IAB Tech Lab Content Taxonomy 3.1 (CC BY 3.0) — its 34 subject domains and their 623 descendants, keyed by
@@ -44,3 +44,6 @@ tags subscriptions and later steps rely on — entity type, IAB domains, open En
 - Relevance report: `RelevanceAsync` counts the current AI-allowed posts changed since a time by a registered filter's
   verdict and the tags' verdict for given pairs, with invalid answers, cost per tagged post and p95 latency; no post
   text and no write (`engineering/development/post-tags.md` § Shadow report).
+- Disagreement review: `DisagreementsAsync` lists, over the same posts, rules evaluation and tag lookup, the posts the rules
+  and the tags disagree on, with each title scrubbed of contacts (`PostExtractionValidation.Scrub`) and clipped to 140
+  characters: the one report that carries post text, for an operator (`post-tags.md` § Disagreements).

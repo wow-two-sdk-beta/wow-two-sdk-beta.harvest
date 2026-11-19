@@ -138,6 +138,18 @@ public sealed class PostExtractionValidationTests
         PostExtractionValidation.HasContact("t.me/fashionweek").Should().BeTrue();
     }
 
+    [Theory]
+    [InlineData("Fashion Week 2026, 12.12.2026", "Fashion Week 2026, 12.12.2026")]
+    [InlineData("Call +998 90 123 45 67 today", "Call … today")]
+    [InlineData("Write info@fw.uz or @fashion_uz", "Write … or …")]
+    [InlineData("Join t.me/fashionweek now", "Join … now")]
+    [InlineData("Дизайнеры, звоните 998901234567", "Дизайнеры, звоните …")]
+    public void Scrub_ShouldReplaceContacts_AndKeepTheRest(string title, string expected)
+    {
+        PostExtractionValidation.Scrub(title).Should().Be(expected);
+        PostExtractionValidation.HasContact(PostExtractionValidation.Scrub(title)).Should().BeFalse();
+    }
+
     [Fact]
     public void ValidateListing_ShouldCheckEachRentalTermOnItsOwn_AndKeepTheOthers()
     {

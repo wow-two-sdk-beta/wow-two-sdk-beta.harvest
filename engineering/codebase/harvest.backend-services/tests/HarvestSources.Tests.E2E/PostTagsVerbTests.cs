@@ -263,6 +263,116 @@ public sealed class PostTagsVerbTests
         (await RunAsync(host.Services, ["relevance", "--rules", "x"])).Exit.Should().Be(2);
     }
 
+    [Fact]
+    public async Task Relevance_disagreements_lists_only_the_posts_the_rules_and_the_tags_split_on()
+    {
+        var caller = new ScriptedAiModelCaller();
+        string database = await SourcePostgres.NewDatabaseAsync();
+        await using var host = Build(new Dictionary<string, string?>
+        {
+            [AiEnabledSetting] = "true",
+            ["DB_CONNECTION"] = database,
+            ["Ai:Module:RetriesPerModel"] = "0",
+            [$"{PostTagsConstants.SectionName}:Enabled"] = "true",
+        }, services => services.AddSingleton<IAiModelCaller>(caller));
+        await host.ConfigureAsync();
+        Version(await RunAsync(host.Services, ["prompt", "--file", "-", "--by", "operator"], Draft())).Should().Be(1);
+
+        await using var scope = host.Services.CreateAsyncScope();
+        var registry = scope.ServiceProvider.GetRequiredService<IRegistrationBroker>();
+        var container = (await registry.RegisterContainerAsync(new ContainerRegistration { Kind = ContainerKind.Pool })).ValueOrThrow();
+        var source = (await registry.RegisterSourceAsync(new SourceRegistration
+        {
+            ContainerId = container.Id, Family = SourceFamily.Site, Handle = "afisha.example", Coverage = SourceCoverage.Whole,
+            Completeness = SourceCompleteness.Complete, Posture = SourcePosture.OwnFetch,
+        })).ValueOrThrow();
+        var posts = scope.ServiceProvider.GetRequiredService<IPostBroker>();
+        var tags = scope.ServiceProvider.GetRequiredService<IPostTagsBroker>();
+        async Task<Guid> SaveAsync(string key, string title, string text, string? entityType, string node = "style-fashion")
+        {
+            var id = (await posts.SaveCaptureAsync(container.Id, source.Id, null, Capture(key, title, text), new PostEnvelope
+            {
+                Kind = PostKind.Event, Title = title, Text = text, Language = new PostLanguage { Code = "en" },
+                Extraction = new ExtractionStamp { NormVersion = "test@1", RulesVersion = "test@1" },
+            })).ValueOrThrow().Post.Id;
+            if (entityType is not null)
+            {
+                caller.Enqueue(ScriptedAiModelCaller.Answer(TagsAnswer(entityType, node)));
+                (await tags.RunAsync(id)).ValueOrThrow().Status.Should().Be("done");
+            }
+            return id;
+        }
+
+        const string Contacts = "+998 90 123 45 67 or info@fashline.uz @fashline_uz";
+        string longTitle = $"Fashline 2026 call {Contacts} " + new string('x', 200);
+        var rulesYesTagsNo = await SaveAsync("fashline-call", longTitle, "Apply to the fashion show.", "event", "business-and-finance");
+        var rulesYesTagsUnsure = await SaveAsync("fashline-expo", "Fashline Expo", "Fashion fair in Tashkent.", "unsure");
+        var agreeingYes = await SaveAsync("fashline-main", "Fashline 2026", "Fashion show in Tashkent.", "event");
+        var rulesNoTagsMatch = await SaveAsync("evening", "Evening at the gallery", "Young designers present a new collection.", "event");
+        var rulesNoTagsUnsure = await SaveAsync("jazz-ru", "Джаз вечер", "A jazz trio plays at the club.", "unsure");
+        var agreeingNo = await SaveAsync("jazz", "Jazz night", "A jazz trio plays at the club.", "event", "business-and-finance");
+        var untagged = await SaveAsync("later", "Book club", "Readers meet on Friday.", null);
+
+        long tagRows = await ScalarAsync<long>(database, "SELECT count(*) FROM harvest_post_tags");
+        var review = await RunAsync(host.Services, ["relevance", "--disagreements", "--since", "2020-01-01"]);
+
+        review.Exit.Should().Be(0, review.Error);
+        review.Output.TrimEnd().Split('\n').Should().ContainSingle("the verb prints one JSON line");
+        review.Output.Should().NotContain("998").And.NotContain("fashline.uz").And.NotContain("fashline_uz", "contacts are scrubbed from titles");
+        (await ScalarAsync<long>(database, "SELECT count(*) FROM harvest_post_tags")).Should().Be(tagRows, "the review writes nothing");
+        using var document = JsonDocument.Parse(review.Output);
+        var root = document.RootElement;
+        root.EnumerateObject().Select(property => property.Name).Should().Equal("rules", "wanted", "items");
+        root.GetProperty("rules").GetString().Should().Be(OcharoFashionFilter.FilterKey);
+        root.GetProperty("wanted").EnumerateArray().Select(pair => pair.GetString()).Should().Equal("event:style-fashion");
+        var items = root.GetProperty("items").EnumerateArray().ToArray();
+        string[] yes = Ids(rulesYesTagsNo, rulesYesTagsUnsure), no = Ids(rulesNoTagsMatch, rulesNoTagsUnsure);
+        items.Select(item => item.GetProperty("postId").GetString()).Should().Equal([.. yes, .. no],
+            "rules yes come first, each side by post id; agreeing, untagged and the filter's own throws are not listed");
+        items.Select(item => item.GetProperty("rules").GetString()).Should().Equal("yes", "yes", "no", "no");
+        items.Select(item => item.GetProperty("postId").GetString()).Should().NotContain(
+            [agreeingYes.ToString("D"), agreeingNo.ToString("D"), untagged.ToString("D")]);
+
+        var first = items.Single(item => item.GetProperty("postId").GetString() == rulesYesTagsNo.ToString("D"));
+        first.GetProperty("tags").GetString().Should().Be("noMatch");
+        first.GetProperty("source").GetString().Should().Be("site/afisha.example");
+        first.GetProperty("primaryDomain").GetString().Should().Be("business-and-finance");
+        first.GetProperty("title").GetString()!.Should().StartWith("Fashline 2026 call … or … …").And.HaveLength(140);
+        var unsure = items.Single(item => item.GetProperty("postId").GetString() == rulesYesTagsUnsure.ToString("D"));
+        unsure.GetProperty("tags").GetString().Should().Be("unsure");
+        unsure.GetProperty("entityType").GetString().Should().Be("unsure");
+        var match = items.Single(item => item.GetProperty("postId").GetString() == rulesNoTagsMatch.ToString("D"));
+        match.GetProperty("rules").GetString().Should().Be("no");
+        match.GetProperty("tags").GetString().Should().Be("match");
+        match.GetProperty("title").GetString().Should().Be("Evening at the gallery");
+        match.GetProperty("titleEn").GetString().Should().Be("An event");
+        match.GetProperty("entityType").GetString().Should().Be("event");
+        match.GetProperty("primaryDomain").GetString().Should().Be("style-fashion");
+        match.GetProperty("domains").EnumerateArray().Select(node => node.GetString()).Should().Equal("style-fashion");
+        match.GetProperty("topics").EnumerateArray().Select(topic => topic.GetString()).Should().Equal("show");
+        match.GetProperty("about").GetString().Should().Be("an event");
+        match.GetProperty("timeframe").GetString().Should().Be("upcoming");
+        match.GetProperty("confidence").GetDouble().Should().Be(0.8);
+        items.Single(item => item.GetProperty("postId").GetString() == rulesNoTagsUnsure.ToString("D"))
+            .GetProperty("title").GetString().Should().Be("Джаз вечер");
+
+        var capped = await RunAsync(host.Services, ["relevance", "--disagreements", "--limit", "3"]);
+        capped.Exit.Should().Be(0, capped.Error);
+        capped.Output.TrimEnd().Split('\n').Should().ContainSingle();
+        using (var cappedItems = JsonDocument.Parse(capped.Output))
+            cappedItems.RootElement.GetProperty("items").EnumerateArray().Select(item => item.GetProperty("postId").GetString())
+                .Should().Equal([.. yes, no[0]], "--limit keeps the first N");
+        using (var one = JsonDocument.Parse((await RunAsync(host.Services, ["relevance", "--disagreements", "--limit", "1"])).Output))
+            one.RootElement.GetProperty("items").GetArrayLength().Should().Be(1);
+
+        (await RunAsync(host.Services, ["relevance", "--limit", "3"])).Exit.Should().Be(2, "a limit belongs to the review");
+        (await RunAsync(host.Services, ["relevance", "--disagreements", "--limit", "0"])).Exit.Should().Be(2);
+        (await RunAsync(host.Services, ["relevance", "--disagreements", "--limit", "1001"])).Exit.Should().Be(1);
+        (await RunAsync(host.Services, ["relevance", "--disagreements", "yes"])).Exit.Should().Be(2);
+
+        static string[] Ids(params Guid[] ids) => [.. ids.Select(id => id.ToString("D")).Order(StringComparer.Ordinal)];
+    }
+
     private static long[] Row(JsonElement row) =>
         [row.GetProperty("match").GetInt64(), row.GetProperty("noMatch").GetInt64(), row.GetProperty("unsure").GetInt64(),
             row.GetProperty("notTagged").GetInt64()];

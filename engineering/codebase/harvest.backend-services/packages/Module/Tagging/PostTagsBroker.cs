@@ -28,6 +28,8 @@ internal sealed class PostTagsBroker(
     ILogger<PostTagsBroker> logger) : IPostTagsBroker
 {
     private const int MaxBackfill = 100_000;
+    private const int MaxDisagreements = 1000;
+    private const int MaxReviewTitle = 140;
     private const int LatencySample = 1000;
     private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromDays(1);
 
@@ -75,42 +77,29 @@ internal sealed class PostTagsBroker(
     {
         ArgumentNullException.ThrowIfNull(request);
         var now = time.GetUtcNow();
-        var since = (request.SinceUtc ?? now.AddDays(-7)).ToUniversalTime();
-        if (since >= now)
-            return Result<PostTagsRelevanceModel>.Fail(AppErrorFactory.Validation("The report must start before now."));
-        var wanted = PostExtractionDemand.Normalize(request.Wanted ?? []);
-        if (wanted.Count == 0)
-            return Result<PostTagsRelevanceModel>.Fail(AppErrorFactory.Validation("Name at least one (entity type, domain) pair."));
-        var rules = new DeliveryPostFilters(filters);
-        if (string.IsNullOrWhiteSpace(request.RulesFilterKey) || !rules.Contains(request.RulesFilterKey))
-            return Result<PostTagsRelevanceModel>.Fail(AppErrorFactory.Validation("The rules filter is not registered in this host."));
+        var (scope, refusal) = OpenRelevance(request, now);
+        if (scope is null)
+            return Result<PostTagsRelevanceModel>.Fail(refusal!);
 
         long posts = 0, undecided = 0, tagged = 0;
         long[] yes = new long[4], no = new long[4];
-        await PostTagsStore.ReadRelevanceAsync(dataSource, since, (envelope, entityType, domains) =>
+        await PostTagsStore.ReadRelevanceAsync(dataSource, scope.Since, row =>
         {
             posts++;
-            if (entityType is not null)
+            if (row.EntityType is not null)
                 tagged++;
-            if (rules.Evaluate(request.RulesFilterKey, envelope) is not { } passed)
+            if (scope.Judge(row) is not (bool passed, int column))
             {
                 undecided++;
                 return;
             }
-            int column = entityType is null ? 3
-                : PostTagsClassification.Verdict(entityType, domains, wanted)!.Value.Verdict switch
-                {
-                    ClassificationVerdict.Relevant => 0,
-                    ClassificationVerdict.Irrelevant => 1,
-                    _ => 2,
-                };
             (passed ? yes : no)[column]++;
         }, cancellationToken);
-        var invalid = await PostTagsStore.CountInvalidAsync(dataSource, since, cancellationToken);
-        var (attempts, cost, p95, sampled) = await InferenceStatsAsync(since, now, cancellationToken);
+        var invalid = await PostTagsStore.CountInvalidAsync(dataSource, scope.Since, cancellationToken);
+        var (attempts, cost, p95, sampled) = await InferenceStatsAsync(scope.Since, now, cancellationToken);
         return Result<PostTagsRelevanceModel>.Ok(new PostTagsRelevanceModel
         {
-            SinceUtc = since, Rules = request.RulesFilterKey, Wanted = [.. wanted.Select(want => $"{want.EntityType}:{want.Domain}")],
+            SinceUtc = scope.Since, Rules = scope.Key, Wanted = scope.WantedLabels,
             Posts = posts, RulesYes = Counts(yes), RulesNo = Counts(no), RulesUndecided = undecided, InvalidAnswers = invalid,
             TaggedPosts = tagged, Attempts = attempts, CostMicroUsd = cost,
             CostPerPostMicroUsd = cost is { } spent && tagged > 0 ? (long)Math.Round((double)spent / tagged) : null,
@@ -118,6 +107,85 @@ internal sealed class PostTagsBroker(
         });
 
         static PostTagsRelevanceCounts Counts(long[] row) => new() { Match = row[0], NoMatch = row[1], Unsure = row[2], NotTagged = row[3] };
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<PostTagsDisagreementsModel>> DisagreementsAsync(PostTagsRelevanceRequest request, int limit = 50,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (limit is < 1 or > MaxDisagreements)
+            return Result<PostTagsDisagreementsModel>.Fail(AppErrorFactory.Validation($"The limit must be between 1 and {MaxDisagreements}."));
+        var (scope, refusal) = OpenRelevance(request, time.GetUtcNow());
+        if (scope is null)
+            return Result<PostTagsDisagreementsModel>.Fail(refusal!);
+
+        var items = new List<PostTagsDisagreement>();
+        await PostTagsStore.ReadRelevanceAsync(dataSource, scope.Since, row =>
+        {
+            // Columns: 0 match, 1 no match, 2 unsure, 3 not tagged. Rules yes disagrees with a tag no match or unsure,
+            // rules no with a tag match or unsure; an untagged post or one the filter could not judge is never listed.
+            if (scope.Judge(row) is not (bool passed, int column) || column == 3 || (passed ? column == 0 : column == 1))
+                return;
+            var primary = row.Domains.FirstOrDefault(domain => domain.Primary);
+            items.Add(new PostTagsDisagreement
+            {
+                PostId = row.PostId, Source = row.Source, Title = ReviewTitle(row.Post.Title), TitleEn = row.TitleEn,
+                Rules = passed ? "yes" : "no", Tags = column switch { 0 => "match", 1 => "noMatch", _ => "unsure" },
+                EntityType = row.EntityType!, PrimaryDomain = primary?.Node, Domains = [.. row.Domains.Select(domain => domain.Node)],
+                Topics = row.Topics, About = row.About, Timeframe = row.Timeframe,
+                Confidence = row.Confidence is { } confidence ? (double)confidence : null,
+            });
+        }, cancellationToken);
+        return Result<PostTagsDisagreementsModel>.Ok(new PostTagsDisagreementsModel
+        {
+            Rules = scope.Key, Wanted = scope.WantedLabels,
+            Items = [.. items.OrderBy(item => item.Rules == "yes" ? 0 : 1).ThenBy(item => item.PostId.ToString("D"), StringComparer.Ordinal).Take(limit)],
+        });
+    }
+
+    /// <summary>Checks a relevance request once for both reports: the window, the pairs and the registered rules filter.</summary>
+    private (RelevanceScope? Scope, AppError? Refusal) OpenRelevance(PostTagsRelevanceRequest request, DateTimeOffset now)
+    {
+        var since = (request.SinceUtc ?? now.AddDays(-7)).ToUniversalTime();
+        if (since >= now)
+            return (null, AppErrorFactory.Validation("The report must start before now."));
+        var wanted = PostExtractionDemand.Normalize(request.Wanted ?? []);
+        if (wanted.Count == 0)
+            return (null, AppErrorFactory.Validation("Name at least one (entity type, domain) pair."));
+        var rules = new DeliveryPostFilters(filters);
+        if (string.IsNullOrWhiteSpace(request.RulesFilterKey) || !rules.Contains(request.RulesFilterKey))
+            return (null, AppErrorFactory.Validation("The rules filter is not registered in this host."));
+        return (new RelevanceScope(since, request.RulesFilterKey, wanted, rules), null);
+    }
+
+    /// <summary>Scrubs a post's title of contacts, then clips it for the operator review.</summary>
+    private static string ReviewTitle(string? title)
+    {
+        string text = PostExtractionValidation.Scrub((title ?? "").Trim());
+        return text.Length <= MaxReviewTitle ? text : text[..(char.IsHighSurrogate(text[MaxReviewTitle - 1]) ? MaxReviewTitle - 1 : MaxReviewTitle)];
+    }
+
+    /// <summary>Holds what both relevance reports compare a post by: the window, the rules filter and the wanted pairs.</summary>
+    private sealed record RelevanceScope(DateTimeOffset Since, string Key, IReadOnlyList<PostExtractionWant> Wanted, DeliveryPostFilters Rules)
+    {
+        internal IReadOnlyList<string> WantedLabels => [.. Wanted.Select(want => $"{want.EntityType}:{want.Domain}")];
+
+        /// <summary>Returns whether the rules pass the post and the column of the tags' verdict (0 match, 1 no match, 2 unsure,
+        /// 3 no done answer); none when the filter could not judge the post.</summary>
+        internal (bool Passed, int Column)? Judge(PostTagsRelevanceRow row)
+        {
+            if (Rules.Evaluate(Key, row.Post) is not { } passed)
+                return null;
+            int column = row.EntityType is null ? 3
+                : PostTagsClassification.Verdict(row.EntityType, row.Domains, Wanted)!.Value.Verdict switch
+                {
+                    ClassificationVerdict.Relevant => 0,
+                    ClassificationVerdict.Irrelevant => 1,
+                    _ => 2,
+                };
+            return (passed, column);
+        }
     }
 
     /// <summary>Reads the use case's attempts and cost since a time, and the p95 latency over the newest attempts; all

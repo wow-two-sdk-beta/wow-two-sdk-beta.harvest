@@ -17,8 +17,8 @@ internal static partial class VerbArguments
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
     };
 
-    /// <summary>Reads <c>--name value</c> pairs; <c>--dry-run</c> and <c>--all-sources</c> take no value. A repeated or
-    /// valueless option fails.</summary>
+    /// <summary>Reads <c>--name value</c> pairs; <c>--dry-run</c>, <c>--all-sources</c> and <c>--disagreements</c> take no
+    /// value. A repeated or valueless option fails.</summary>
     internal static bool TryOptions(IReadOnlyList<string> arguments, out Dictionary<string, string?> options)
     {
         options = new Dictionary<string, string?>(StringComparer.Ordinal);
@@ -27,7 +27,7 @@ internal static partial class VerbArguments
             if (!arguments[index].StartsWith("--", StringComparison.Ordinal) || arguments[index].Length == 2)
                 return false;
             string name = arguments[index][2..];
-            if (name is "dry-run" or "all-sources")
+            if (name is "dry-run" or "all-sources" or "disagreements")
             {
                 if (!options.TryAdd(name, null))
                     return false;
