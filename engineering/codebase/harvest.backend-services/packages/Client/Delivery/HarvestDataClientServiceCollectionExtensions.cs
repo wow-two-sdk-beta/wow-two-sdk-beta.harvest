@@ -5,10 +5,10 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Posts;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Client.Delivery;
 
-/// <summary>Registers the post and delivery HTTP forms under the Harvest client's configured endpoint.</summary>
+/// <summary>Registers the post, delivery and selector preview HTTP forms under the Harvest client's configured endpoint.</summary>
 public static class HarvestDataClientServiceCollectionExtensions
 {
-    /// <summary>Adds post and delivery brokers using the settings and credential registered by <c>AddHarvestClient</c>,
+    /// <summary>Adds post, delivery and selector preview brokers using the settings and credential registered by <c>AddHarvestClient</c>,
     /// which runs first.</summary>
     public static IServiceCollection AddHarvestDataClient(this IServiceCollection services)
     {
@@ -16,6 +16,7 @@ public static class HarvestDataClientServiceCollectionExtensions
         services.AddHttpClient<IPostBroker, ApiPostBroker>(HarvestHttp.Configure).WithCredentials();
         services.AddHttpClient<IPostProcessingBroker, ApiPostProcessingBroker>(HarvestHttp.Configure).WithCredentials();
         services.AddHttpClient<IDeliveryBroker, ApiDeliveryBroker>(HarvestHttp.Configure).WithCredentials();
+        services.AddHttpClient<ISubscriptionPreviewBroker, ApiSubscriptionPreviewBroker>(HarvestHttp.Configure).WithCredentials();
         return services;
     }
 }

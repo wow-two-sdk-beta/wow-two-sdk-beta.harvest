@@ -44,6 +44,7 @@ public static partial class HostConfiguration
         builder.Services.AddHarvestExtraction();
         builder.Services.AddHarvestPosts();
         builder.Services.AddHarvestDelivery();
+        builder.Services.AddHarvestSubscriptionPreview();
         builder.Services.AddHarvestEntityReads();
         builder.Services.AddHarvestSources();
         builder.Services.AddHarvestEngine();
