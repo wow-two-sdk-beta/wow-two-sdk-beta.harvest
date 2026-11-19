@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Schema;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
 
@@ -28,17 +29,20 @@ public static class PostTagsDefinition
     };
 
     // Declared after Wire: static initializers run in text order.
+    private static readonly AnswerNormalizer Normalizer = new(Wire);
+
     /// <summary>The JSON schema every answer must match, as the use case registry stores it.</summary>
     public static string OutputSchema { get; } = BuildSchema();
 
-    /// <summary>Reads a model answer, or returns null when it does not match the schema's shape.</summary>
+    /// <summary>Reads a model answer after <see cref="AnswerNormalizer"/> repaired its enum values and unknown properties
+    /// (each repair is a flag in the answer), or returns null when it still does not match the schema's shape.</summary>
     internal static PostTagsAnswer? Parse(string? output)
     {
         if (string.IsNullOrWhiteSpace(output))
             return null;
         try
         {
-            return JsonSerializer.Deserialize<PostTagsAnswer>(output, Wire);
+            return JsonSerializer.Deserialize<PostTagsAnswer>(Normalizer.Normalize(output, typeof(PostTagsAnswer)), Wire);
         }
         catch (JsonException)
         {

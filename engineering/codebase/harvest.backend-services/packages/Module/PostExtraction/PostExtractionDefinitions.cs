@@ -27,6 +27,8 @@ public static class PostExtractionDefinitions
         "entityType", "domains", "about", "timeframe", "titleEn",
     ];
 
+    internal static readonly AnswerNormalizer Normalizer = new(EvidenceWire.Options);
+
     /// <summary>Gets the JSON schema every <c>extract-event</c> answer must match, as the use case registry stores it.</summary>
     public static string EventSchema { get; } = BuildSchema(typeof(ExtractEventAnswer));
 
@@ -42,14 +44,15 @@ public static class PostExtractionDefinitions
         _ => null,
     };
 
-    /// <summary>Reads a model answer, or returns null when it does not match the schema's shape.</summary>
+    /// <summary>Reads a model answer after <see cref="AnswerNormalizer"/> repaired its enum values and unknown properties
+    /// (each repair is a flag in the answer), or returns null when it still does not match the schema's shape.</summary>
     internal static T? Parse<T>(string? output) where T : class
     {
         if (string.IsNullOrWhiteSpace(output))
             return null;
         try
         {
-            return JsonSerializer.Deserialize<T>(output, EvidenceWire.Options);
+            return JsonSerializer.Deserialize<T>(Normalizer.Normalize(output, typeof(T)), EvidenceWire.Options);
         }
         catch (JsonException)
         {

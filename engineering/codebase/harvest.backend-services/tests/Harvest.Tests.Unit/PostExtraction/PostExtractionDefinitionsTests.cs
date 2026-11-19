@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Schema;
 using AwesomeAssertions;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
 
 namespace Harvest.Tests.Unit.PostExtraction;
 
@@ -80,7 +81,7 @@ public sealed class PostExtractionDefinitionsTests
     }
 
     [Fact]
-    public void Parse_ShouldRefuseAnUnknownProperty_OrAMissingField()
+    public void Parse_ShouldRemoveAnUnknownProperty_AndRefuseAMissingField()
     {
         var valid = JsonSerializer.Serialize(new
         {
@@ -94,7 +95,8 @@ public sealed class PostExtractionDefinitionsTests
 
         PostExtractionDefinitions.Parse<ExtractListingAnswer>(valid).Should().NotBeNull();
         PostExtractionDefinitions.Parse<ExtractListingAnswer>(valid.Replace("\"author\":{\"kind\":\"owner\"}",
-            "\"author\":{\"kind\":\"owner\",\"phone\":\"+998\"}")).Should().BeNull();
+            "\"author\":{\"kind\":\"owner\",\"phone\":\"+998\"}"))!.Flags.Should().ContainSingle()
+            .Which.Should().Be(new PostTagsFlag("author.phone", AnswerNormalizer.UnknownField, null));
         PostExtractionDefinitions.Parse<ExtractListingAnswer>(valid.Replace(",\"flags\":[]", "")).Should().BeNull();
         PostExtractionDefinitions.Parse<ExtractListingAnswer>("not json").Should().BeNull();
     }

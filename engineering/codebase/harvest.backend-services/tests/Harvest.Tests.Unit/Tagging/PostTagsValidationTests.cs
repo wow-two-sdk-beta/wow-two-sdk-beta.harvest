@@ -85,7 +85,7 @@ public sealed class PostTagsValidationTests
     }
 
     [Fact]
-    public void Parse_ShouldReadAnAnswer_AndRefuseOneOutsideTheSchema()
+    public void Parse_ShouldReadAnAnswer_RepairItsEnumsAndProperties_AndRefuseAWrongShape()
     {
         string json = JsonSerializer.Serialize(new
         {
@@ -95,8 +95,12 @@ public sealed class PostTagsValidationTests
         });
 
         PostTagsDefinition.Parse(json)!.EntityType.Should().Be(PostEntityType.Listing);
-        PostTagsDefinition.Parse(json.Replace("\"listing\"", "\"job\"")).Should().BeNull();
-        PostTagsDefinition.Parse(json.Replace("\"flags\"", "\"extra\":1,\"flags\"")).Should().BeNull();
+        var repaired = PostTagsDefinition.Parse(json.Replace("\"listing\"", "\"job\"").Replace("\"flags\"", "\"extra\":1,\"flags\""))!;
+        repaired.EntityType.Should().Be(PostEntityType.Unsure);
+        repaired.Flags.Should().Equal(new PostTagsFlag("entityType", "value outside the list", "job"),
+            new PostTagsFlag("extra", "unknown field", null));
+        PostTagsDefinition.Parse(json.Replace("\"items\":1", "\"items\":\"one\"")).Should().BeNull();
+        PostTagsDefinition.Parse(json.Replace("\"topics\":[\"rent\"]", "\"topics\":\"rent\"")).Should().BeNull();
         PostTagsDefinition.Parse("not json").Should().BeNull();
     }
 

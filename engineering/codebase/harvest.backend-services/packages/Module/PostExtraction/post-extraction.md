@@ -23,6 +23,13 @@ takes only an `extract-event` answer's format, as its classification's kind, and
   `dates`, `place`, `prices`, `postedAt`, and the tags `entityType`, `domains`, `about`, `timeframe`, `titleEn`. Routes
   come from `Harvest:Processing:Extraction:Models`, default `anthropic/claude-sonnet-5-5`; `PromptVersions` pins a
   version per use case.
+- Normalizing: `PostExtractionDefinitions.Parse` runs `AnswerNormalizer` before the strict read, so a model value the
+  schema lacks no longer discards the answer. A value outside an enum becomes `unsure` (else `unknown`, else `null`
+  for a nullable field) with a flag `{field: json path, reason: "value outside the list", proposed}`; a list drops the
+  item and removes duplicates; case and `-` `_` space variants map without a flag; an unknown property is removed with
+  a flag. A wrong JSON type, a missing field and a required enum with no fallback (`occurrences[].precision`) still
+  reject the answer. The flags join the answer's `flags` and pass `PostExtractionValidation` like the model's.
+  `post-tags` uses the same normalizer (`../Tagging/tagging.md`); `rental-terms@2` keeps its strict read.
 - Evidence: a quote must appear verbatim, on whole tokens, in the title or the part of the text the model read
   (`RentalTermEvidence.Quoted`); a price's quote must also state its amount. A failing date, price or registration date
   is dropped, and a failing rental term turns `unknown` (`RentalTermEvidence.CheckTerms`); each gets a flag. The rest of
@@ -33,8 +40,9 @@ takes only an `extract-event` answer's format, as its classification's kind, and
   `status` added when the relation names a new status; free text is clipped, and a phone, email, handle or messenger link
   is removed with a `contacts` flag; the listing author keeps its kind only.
 - Outcomes: `done` stores the answer and clears the queue row; `failed` (refused, schema-invalid, provider errors, an
-  answer outside the schema) and `unavailable` (no runner, use case or prompt; a provider without key) store the
-  status, no answer, and retry after `RetryDelay` × attempts, capped at a day. A failure never replaces a done answer.
+  answer of the wrong shape: a wrong JSON type or a missing field) and `unavailable` (no runner, use case or prompt; a
+  provider without key) store the status, no answer, and retry after `RetryDelay` × attempts, capped at a day. A failure
+  never replaces a done answer.
 - Entities: a done answer queues the post's `entity-resolve` row in the same transaction while `Harvest:Entities:Enabled`
   is set; the Entities lane (`../Entities/entities.md`) reads the answer, never this lane.
 - Write-back: the answer is stored through the Posts lane (`ModulePostBroker.WriteExtractionAsync`), which resolves the

@@ -192,7 +192,7 @@ internal static partial class PostExtractionValidation
 
     private static void Unsure(bool unsure, string field, List<PostTagsFlag> flags)
     {
-        if (unsure && !flags.Any(flag => flag.Field == field))
+        if (unsure && !flags.Any(flag => flag.Field == field || flag.Field.StartsWith(field + ".", StringComparison.Ordinal)))
             flags.Add(new(field, ChoseUnsure, null));
     }
 

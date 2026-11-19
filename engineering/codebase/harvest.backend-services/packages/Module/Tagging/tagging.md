@@ -22,7 +22,9 @@ tags subscriptions and later steps rely on — entity type, IAB domains, open En
   (`yyyy-MM-dd` or `unknown`) and `taxonomy` (`key — label` lines in key order, for the system template so provider
   caching holds). Routes come from `Harvest:Processing:Tags:Models`, default `anthropic/claude-haiku-5-5`.
 - Validation: an unknown node becomes a `domains` flag carrying the proposed value, never a stored node; one known node
-  is primary; topics become English slugs or a `topics` flag; an `unsure` pick always carries a flag.
+  is primary; topics become English slugs or a `topics` flag; an `unsure` pick always carries a flag. Before this,
+  `PostTagsDefinition.Parse` runs the PostExtraction lane's `AnswerNormalizer`: an enum value the schema lacks becomes
+  `unsure` with a flag, an unknown property is removed with a flag, a wrong JSON type still fails the answer.
 - Outcomes: `done` stores the answer and resolves the post again; `failed` (refused, schema-invalid, provider errors)
   and `unavailable` (no runner, use case or prompt; a provider without key) store the status, write no tags and retry
   after `RetryDelay` × attempts, capped at a day.
