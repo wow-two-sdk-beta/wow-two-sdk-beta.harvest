@@ -17,7 +17,9 @@ public static partial class HostConfiguration
 {
     /// <summary>Configures the application builder (services).</summary>
     /// <param name="builder">The web application builder to configure.</param>
-    public static WebApplicationBuilder Configure(this WebApplicationBuilder builder)
+    /// <param name="defaults">Optional SDK API defaults a host applies after Harvest's own, such as the app bundle it
+    /// serves (<see cref="ApiDefaultsOptions.SpaHosting"/>).</param>
+    public static WebApplicationBuilder Configure(this WebApplicationBuilder builder, Action<ApiDefaultsOptions>? defaults = null)
     {
         // Lay the SDK boot floor before any domain seam. It reads the settings file a target mounts
         // (appsettings.Target.json) and, on a local run, this machine's (appsettings.Local.json).
@@ -27,6 +29,7 @@ public static partial class HostConfiguration
             options.EnableOtlpExporters = false;
             options.EnableHttpsRedirection = !builder.Environment.IsDevelopment();
             options.TrustProxiesFrom(builder.Configuration.GetSection("Deployment"));
+            defaults?.Invoke(options);
         });
 
         return builder

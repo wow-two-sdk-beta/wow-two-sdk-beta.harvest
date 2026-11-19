@@ -1,5 +1,6 @@
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Registration;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Reprocessing;
+using WoW.Two.Sdk.Beta.Be.Meta;
 
 namespace HarvestSources.Api.Configurations;
 
@@ -12,7 +13,7 @@ public static partial class HostConfiguration
     public static WebApplicationBuilder Configure(this WebApplicationBuilder builder)
     {
         builder.AddProcessingModels();
-        global::Harvest.Api.Configurations.HostConfiguration.Configure(builder);
+        global::Harvest.Api.Configurations.HostConfiguration.Configure(builder, ServeConsole);
         builder.AddRentalTermsAi();
         builder.AddPostTagsAi();
         builder.AddPostExtractionAi();
@@ -38,5 +39,16 @@ public static partial class HostConfiguration
         await app.SeedPipelineStagesAsync(app.Lifetime.ApplicationStopping);
         app.MapAiApiForOperators();
         return app;
+    }
+
+    /// <summary>Serves the console the image builds into <c>wwwroot</c>: its files before routing and authentication,
+    /// <c>index.html</c> for every other unmatched route, so a deep link reloads, and a JSON 404 for an unmatched
+    /// <c>/api</c> route, never the page. Without a built console a page route answers 404. The console shows a post's
+    /// images from the source's own host while SCFD's copy is pending, so no embedder policy blocks them.</summary>
+    /// <param name="options">The SDK API defaults Harvest's hosting configures.</param>
+    private static void ServeConsole(ApiDefaultsOptions options)
+    {
+        options.SpaHosting = static _ => { };
+        options.EnableCrossOriginEmbedderPolicy = false;
     }
 }

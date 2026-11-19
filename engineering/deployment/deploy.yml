@@ -43,6 +43,7 @@ services:
       dockerfile: deployment/Dockerfile
     paths:
       - codebase/harvest.backend-services/**
+      - codebase/harvest.frontend-services/**
       - deployment/Dockerfile
     health: /health
     memory: 512m
@@ -79,8 +80,25 @@ services:
         Harvest:Processing:Extraction:Wanted:0:Domain: {}
         Harvest:Processing:Extraction:Models:0: {}
         Harvest:Entities:Enabled: { type: boolean, default: false }
+        # Console sign-in through the environment's Identity issuer (deployment.md § Browser sign-in), off until the
+        # issuer registers the console's confidential client with callback `{app site URL}/api/identity/callback`.
+        # Operators are exact Identity subjects. Each client organization binds to its SCFD tenant under an owner key
+        # `Harvest:Console:OrganizationTenants:<organization id>`, typed per environment, since a key here names no
+        # organization.
+        Harvest:Console:IsIdentityEnabled: { type: boolean, default: false }
+        Harvest:Console:OperatorSubjectIds:0: {}
+        Identity:Client:Authority: { type: url }
+        Identity:Client:ClientId: { default: harvest-console }
+        Identity:Client:ClientSecret: { secret: true }
+        Identity:Client:CookieName: { default: __Host-scfd }
+        # The session key ring, on the keys volume, so a restart or deploy keeps operators signed in.
+        DataProtection:KeysPath: { default: /var/lib/harvest/keys }
+    volumes:
+      keys: /var/lib/harvest/keys
     needs: [postgres]
     # The bundle services harvest starts after: none, since PostgreSQL is a platform service under needs.
     dependsOn: []
+    # The console at the site root, its API under /api; the host falls back to the console's index.html for client
+    # routes and never for /api.
     sites:
-      app: { paths: [/api] }
+      app: { paths: [/, /api] }

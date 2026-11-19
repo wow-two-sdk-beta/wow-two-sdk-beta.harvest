@@ -1,9 +1,10 @@
 # SCFD deployment
 
-*Last updated: 2026-11-17*
+*Last updated: 2026-11-19*
 
-One image, one host: `HarvestSources.Api` runs the capture and delivery API, the worker and the source readers.
-Wheelhouse deploys it as product `harvest`, service `harvest` (`deploy.yml`); the dev SCFD runs this image.
+One image, one host: `HarvestSources.Api` runs the capture and delivery API, the worker and the source readers, and
+serves the console on the same origin. Wheelhouse deploys it as product `harvest`, service `harvest` (`deploy.yml`);
+the dev SCFD runs this image.
 
 ## Local Compose
 
@@ -19,7 +20,7 @@ curl --fail http://127.0.0.1:8397/api/system/status
 
 - Compose project `harvest`: `database` (PostgreSQL 18, named volume `sources-database`) and `harvest` (the image,
   built from `engineering/codebase`), both `restart: unless-stopped`; the API binds loopback only. Development boot
-  applies the migrations.
+  applies the migrations. The console answers at `http://127.0.0.1:8397/` and asks for the operator key.
 - To upgrade a local preview, reuse its Compose project and keep the database volume.
 - Two local instances: separate project names (`-p`) and env files, each with its own password, operator key and
   `HARVEST_HTTP_PORT`; start both with `HARVEST_WORKER_ENABLED=false` while configuring.
@@ -89,8 +90,27 @@ the SCFD tenant and grant the role the relevant permissions, such as `harvest:so
 permissions. Keep browser sign-in and service clients on separate Identity registrations.
 
 Local boot applies the session cache migration. For a deployed host, run `migrate` with the browser sign-in
-settings before starting the host so the SDK's `distributed_cache` set is applied. Keep the console client secret
-in host settings or the vault. `deploy.yml` routes only `/api` today, so no target serves the console yet.
+settings before starting the host so the SDK's `distributed_cache` set is applied; a Wheelhouse deploy's `migrate`
+step does that, since it runs with the service's settings. Keep the console client secret in the vault.
+
+`deploy.yml` routes `/` and `/api` of the `app` site to the host and declares the keys above. Its defaults:
+`IsIdentityEnabled` `false`, `ClientId` `harvest-console`, `CookieName` `__Host-scfd` and `DataProtection:KeysPath`
+`/var/lib/harvest/keys`, the `keys` volume. `OperatorSubjectIds:0`, `Authority` and `ClientSecret` are typed per
+environment; each organization binding is an owner key `Harvest:Console:OrganizationTenants:<organization id>`, since
+the descriptor cannot name an organization. Switch `IsIdentityEnabled` on only after the issuer registers the client.
+
+On dev the issuer is Ocharo's Identity, which registers clients from `ocharo-platform`'s descriptor. The console
+there is client `harvest-console`, a code-flow client with permission namespace `harvest`. Its callback and sign-out
+URIs are owner keys on `ocharo-dev`.
+
+The image serves the console from `wwwroot` (`HostConfiguration.ServeConsole`, the be sdk's SPA hosting):
+
+- files before routing and authentication;
+- `index.html` for every other unmatched route, so a deep link such as `/sources/{id}/posts/{postId}` reloads;
+- a JSON `404` for an unmatched `/api` or `/.well-known` route, never the page.
+
+Hashed `/assets` files cache for a year; documents revalidate. A host without a built console answers `404` on page
+routes.
 
 ## Source profiles
 
@@ -227,10 +247,12 @@ Provider setup and protocols: [integration-providers.md](../research/integration
 
 ## Wheelhouse
 
-- `Dockerfile` publishes `service/HarvestSources.Api` from `engineering/codebase`; nothing is downloaded. The image is
+- `Dockerfile` builds the console in a Node stage (`pnpm --filter "@harvest/web..." build`, fe-harvest first) into the
+  image's `wwwroot`, and publishes `service/HarvestSources.Api` from `engineering/codebase`. The image is
   built through shared pipelines `v0.15.0` (`publish-docker-image.yml`), whose CI runs the whole solution's tests and
   builds the release bundle. Wheelhouse v0.12+ runs migration, configuration check, rollout and verification.
-- The descriptor exposes `/api` on the `app` site. The service health probe calls `/health` over the platform network.
+- The descriptor exposes `/` and `/api` on the `app` site, and a change under `harvest.frontend-services` rebuilds the
+  image. The service health probe calls `/health` over the platform network.
 - Target settings in `/app/appsettings.Target.json` include `DatabaseSettings:ConnectionString`, the service access
   settings above, `HarvestSources:Audience`, the integration keys and ingress trust via `Deployment:TrustedProxies` or
   `Deployment:TrustedNetworks`.

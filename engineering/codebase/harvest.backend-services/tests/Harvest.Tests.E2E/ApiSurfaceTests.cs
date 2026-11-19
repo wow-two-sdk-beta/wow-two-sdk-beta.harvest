@@ -3,22 +3,11 @@ using AwesomeAssertions;
 
 namespace Harvest.Tests.E2E;
 
-/// <summary>Checks that the host exposes API routes and no page fallback.</summary>
+/// <summary>Checks that an unmatched API route answers the API's own status, never the console's page; the console's
+/// routes and its fallback are HarvestSources.Tests.E2E's <c>ConsoleHostingTests</c>.</summary>
 [Collection(HarvestApiCollection.Name)]
 public sealed class ApiSurfaceTests(HarvestApiFixture fixture)
 {
-    [Theory]
-    [InlineData("/")]
-    [InlineData("/some/client/route")]
-    public async Task Get_ShouldReturnNotFound_ForPageRoutes(string path)
-    {
-        using var client = fixture.Host.CreateClient();
-
-        using var response = await client.GetAsync(path);
-
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
-    }
-
     [Theory]
     [InlineData(null, HttpStatusCode.Unauthorized)]
     [InlineData(HarvestApiFixture.OperatorKey, HttpStatusCode.NotFound)]
