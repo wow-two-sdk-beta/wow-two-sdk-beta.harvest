@@ -1,6 +1,6 @@
 # SCFD — Backlog
 
-*Last updated: 2026-11-19*
+*Last updated: 2026-11-20*
 
 Every unbuilt item, grouped; top of each group = next. Shipped work lives in [`version-track/`](version-track/).
 Shape: wow-two-ws/conventions/planning/version-track/version-track.md
@@ -22,6 +22,7 @@ Shape: wow-two-ws/conventions/planning/version-track/version-track.md
 | Browsing state in the URL | feature | search, filters, collapse and scroll live in the console session only, so a link or reload loses them |
 | Custom source-group glyph | feature | the shared Group glyph is provisional |
 | Pipelines in the sidebar or the operator menu | decision | the console lists Pipelines in the sidebar; console decision #42 puts it in the operator menu · needs the developer |
+| Map pins for processed places | feature | a processed event's or listing's place opens as a Yandex Maps pin and a Google Maps pin; a place neither search resolves is flagged on the card and queued for the custom locations list; resolution comes from the shared WoW2 Locations domain (wow-two-ws `docs/platform-apps.md` #18), never a console-only geocoder |
 
 ## Events integration
 
