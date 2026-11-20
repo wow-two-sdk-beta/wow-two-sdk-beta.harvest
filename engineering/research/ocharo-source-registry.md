@@ -24,9 +24,63 @@ named readers above, Instagram's opt-in provider route and three generic routes 
 (`packages/Module/Readers/readers.md`), each at authority 60: `generic-feed` (RSS, Atom, ICS; no deletion check),
 `generic-structured` (pages with JSON-LD `Event` data) and `generic-site` (a sitemap), the last two with the daily
 `web-direct` check. A generic channel needs no new reader but follows the same rules: an owned channel, a unique
-HTTPS seed and `setup` `default` or `selected`; no registry channel is switched to one yet. A source reaches its reader
+HTTPS seed and `setup` `default` or `selected`; Wave 1 (below) switched 25 channels to them. A source reaches its reader
 by its family, so a generic route on a host a named reader serves runs that named reader. Every profile captures on the
 cron `0 1,7,13,19 * * *` in `Asia/Tashkent`.
+
+### Wave 1: generic routes (2026-11-21)
+
+25 channels of 22 publishers take a generic route with `mode` `harvest` and `setup` `default`: 7 `generic-feed`,
+1 `generic-structured` and 17 `generic-site`. The probe ledger of 2026-11-21 (`source-probes.md`, wow-two-ws)
+proposed 29. Each feed was fetched once that day under the identified agent, inside `robots.txt`, and every one parsed
+with dated items (6 RSS, 1 iCalendar). A fixture parse and a feed read are no live capture; the channels run only after
+`ocharo setup` provisions them.
+
+| Channel | Route | Pipeline seed |
+|---|---|---|
+| `caex/baraka-retail-fair` | `generic-feed` | `https://caex-barakafriday.com/feed/` |
+| `human-house/primary` | `generic-feed` | `https://human-house.com/feed/` |
+| `idem/festival-listings` | `generic-feed` | `https://idem.uz/cal/c/festival.ics` |
+| `hd-magazine/primary` | `generic-feed` | `https://mag.humodoc.com/ru/feed.xml` |
+| `kultura-uz/primary` | `generic-feed` | `https://www.kultura.uz/rss.cgi?lan=r` |
+| `spot/primary` | `generic-feed` | `https://www.spot.uz/ru/rss/` |
+| `expo-position/primary` | `generic-feed` | `https://expoposition.com/feed/` |
+| `atakent/primary` | `generic-structured` | `https://www.atakentexpo.kz/calendar` |
+| `hunarmand/association-calls` | `generic-site` | `https://www.hunarmandlar.uz/sitemap.xml` |
+| `bmca-uz/primary` | `generic-site` | `https://texworld-apparel.uz/sitemap.xml` |
+| `bmca-uz/portfolio` | `generic-site` | `https://bmca.uz/sitemap.xml` |
+| `bmca-uz/apparel-sourcing` | `generic-site` | `https://apparel-sourcing.uz/sitemap.xml` |
+| `catexpo/primary` | `generic-site` | `https://fashionexpo.kz/Sitemap.xml` |
+| `idem/primary` | `generic-site` | `https://idem.uz/sitemap.xml` |
+| `ttysi/primary` | `generic-site` | `https://ttysi.uz/sitemap.xml` |
+| `mrdi/primary` | `generic-site` | `https://mrdi.uz/sitemap.xml` |
+| `sdtu/primary` | `generic-site` | `https://sdtu.uz/sitemap.xml` |
+| `visituzbek/primary` | `generic-site` | `https://www.visituzbek.uz/sitemap.xml` |
+| `eventflow/primary` | `generic-site` | `https://eventflow.uz/sitemap.xml` |
+| `biexpo/primary` | `generic-site` | `https://biexpo.kg/sitemap.xml` |
+| `central-asia-textile-expo/primary` | `generic-site` | `https://centralasiatextileexpo.com/sitemap.xml` |
+| `olbilet/primary` | `generic-site` | `https://olbilet.uz/sitemap.xml` |
+| `aral-school/primary` | `generic-site` | `https://www.aralschool.uz/sitemap.xml` |
+| `ichkari/primary` | `generic-site` | `https://ichkari.com/sitemap.xml` |
+| `emkp/primary` | `generic-site` | `https://www.emkp.org/sitemap.xml` |
+
+- Seed rule: a feed channel seeds at its feed, a structured channel at its page and every site channel at the sitemap its
+  host's `robots.txt` names (17 channels), because a site seeded at a page reads that one page and follows no links, while
+  a sitemap seed walks article addresses, within `MaxPages` 5 a run. The registry's `seed` field carries it; a seed
+  equal to the channel URL stays unset. No two kept channels share a seed.
+- `idem/festival-listings` seeds at `https://idem.uz/cal/c/festival.ics`, the page's `webcal://` link read over HTTPS.
+  `bmca-uz/primary`'s `robots.txt` names its sitemap with `http://`; the seed is the `https://` form, which no probe
+  fetched. A sitemap lists a site's every page, not only its events, so a site channel reads as many of them as the run
+  bounds allow and the tagging model decides what is relevant.
+- `kultura-uz/primary`'s feed is `windows-1251`; the readers register the runtime's code-page provider once, so it
+  decodes cold.
+- Dropped by the registry check, which lets only an `owned` channel harvest: `acdf/bukhara-biennial-programme`,
+  `namangan-region/flower-festival-programme`, `kfw/astana-edition-publisher` are `related`; they stay `planned`.
+- Dropped: `glamour-avenue/primary`, because its robots.txt names a sitemap on another host (glamourboutique.uz, a
+  shop), not the channel's; it stays as it was.
+- Left out on purpose: the `gov.uz` channels (a Wave 2 reader), Ticketon (paused, a challenge), `afisha/calendar`
+  (Afisha's reader owns that host), and the newsrooms `uzdaily`, `kabar`, `yuz`, `dunyo`, `namangan-today` and
+  `tashkent-city` (whole sites; sections only, none confirmed).
 
 Other channels have a proposed method and a verification note in the registry. A new reader needs a readable public route,
 stable IDs, date/eligibility evidence, scoped destinations and tests before its mode moves to `harvest`. Reference pages,
@@ -35,8 +89,8 @@ archived editions, application forms, and unverified social feeds never become f
 `GET /api/ocharo/sources/registry` returns the complete inventory to a Harvest operator.
 `POST /api/ocharo/sources/setup` with `{"groupIds":["caex"],"enableSchedules":false}` returns the stable source,
 pipeline and subscription IDs. Setup makes no external fetch. Run the returned pipeline through Harvest and pull its
-`wow2.event.v1` deliveries for review. Existing defaults continue to provision five website scopes; CAEx requires
-explicit selection. Teplo's two provider channels require `groupIds: ["teplo"]` and `includeInstagram: true`; the
+`wow2.event.v1` deliveries for review. The default setup provisions the five named website scopes and the 25 Wave 1
+channels (30 pipelines); CAEx requires explicit selection. Teplo's two provider channels require `groupIds: ["teplo"]` and `includeInstagram: true`; the
 provider still needs configuration and publisher access, and setup keeps its schedules disabled.
 
 The registry describes collection. Harvest retains source observations and review candidates. Cross-publisher edition

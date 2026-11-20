@@ -1,0 +1,31 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//events.example.test//listings//EN
+METHOD:PUBLISH
+CALSCALE:GREGORIAN
+X-WR-CALNAME:Festivals - events.example.test
+X-WR-TIMEZONE:Asia/Tashkent
+BEGIN:VEVENT
+UID:example-textile-festival-1795608000-1@events.example.test
+DTSTAMP:20261120T212320Z
+CREATED:20261110T090000Z
+DTSTART:20261125T120000Z
+DTEND:20261125T140000Z
+SUMMARY:Example Textile Festival
+DESCRIPTION:Festivals\n150 000 sum\nhttps://events.example.test/e/example-textile-
+ festival/
+LOCATION:Example Hall\, Tashkent
+URL:https://events.example.test/e/example-textile-festival/
+END:VEVENT
+BEGIN:VEVENT
+UID:example-textile-festival-1795694400-1@events.example.test
+DTSTAMP:20261120T212320Z
+CREATED:20261110T090000Z
+DTSTART:20261126T120000Z
+DTEND:20261126T140000Z
+SUMMARY:Example Textile Festival
+DESCRIPTION:Festivals\n150 000 sum
+LOCATION:Example Hall\, Tashkent
+URL:https://events.example.test/e/example-textile-festival/
+END:VEVENT
+END:VCALENDAR

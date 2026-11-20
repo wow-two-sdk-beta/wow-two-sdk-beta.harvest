@@ -16,6 +16,10 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Readers;
 /// <summary>Shares deterministic, I/O-free parsing and capture normalization between the family readers.</summary>
 internal static partial class ReaderSupport
 {
+    // The runtime reads only Unicode, ASCII and Latin-1 by name. A legacy charset such as windows-1251 needs this provider,
+    // and a response names its charset in its header, so it is registered before the first decode; registering again is a no-op.
+    static ReaderSupport() => Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
     internal static string Decode(FetchedDocument document)
     {
         Encoding encoding = Encoding.UTF8;

@@ -91,9 +91,9 @@ public sealed class SourceHostTests
         using HttpClient client = host.CreateClient();
         client.DefaultRequestHeaders.Add("X-Api-Key", operatorKey);
         JsonElement presets = await Data(await client.GetAsync("/api/ocharo/sources/presets"));
-        presets.GetArrayLength().Should().Be(5);
+        presets.GetArrayLength().Should().Be(6);
         JsonElement setup = await Data(await client.PostAsJsonAsync("/api/ocharo/sources/setup", new { enableSchedules = false }));
-        setup.GetProperty("sources").GetArrayLength().Should().Be(5);
+        setup.GetProperty("sources").GetArrayLength().Should().Be(30);
         string tenant = setup.GetProperty("tenantId").GetString()!;
         string container = setup.GetProperty("containerId").GetString()!;
         JsonElement repeated = await Data(await client.PostAsJsonAsync("/api/ocharo/sources/setup", new { enableSchedules = false }));
@@ -101,7 +101,7 @@ public sealed class SourceHostTests
         var firstSubscriptions = setup.GetProperty("sources").EnumerateArray().Select(item => item.GetProperty("subscriptionId").GetString()).ToArray();
         repeated.GetProperty("sources").EnumerateArray().Select(item => item.GetProperty("subscriptionId").GetString()).Should().Equal(firstSubscriptions);
         JsonElement sources = await Data(await client.GetAsync("/api/sources?containerId=" + container));
-        sources.GetArrayLength().Should().Be(4);
+        sources.GetArrayLength().Should().Be(29);
         string afisha = sources.EnumerateArray().Single(item => item.GetProperty("handle").GetString()!.Contains("afisha")).GetProperty("id").GetString()!;
         JsonElement capabilities = await Data(await client.GetAsync($"/api/sources/{afisha}/capabilities"));
         capabilities.GetProperty("adapterKey").GetString().Should().Be("afisha-uz");

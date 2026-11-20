@@ -45,6 +45,8 @@ public sealed class OcharoRegistryTests
         registry.Validate();
 
         registry.Groups.Should().HaveCount(100);
+        registry.Groups.SelectMany(group => group.Channels).Count(channel => channel.Mode == "harvest")
+            .Should().Be(31, "the 6 named readers' channels and the 25 Wave 1 generic channels");
     }
 
     [Theory]
@@ -80,7 +82,8 @@ public sealed class OcharoRegistryTests
         var routes = registry.Routes(includeInstagram: true, registry.Groups.Select(group => group.Id).ToHashSet()).ToArray();
 
         routes.Select(route => route.Profile.Key).Distinct().Should().BeEquivalentTo(
-            "afisha-uz", "anons-uz", "craftfair-uz", "uzexpocentre-uz", "caex-uz", "instagram-business-discovery");
+            "afisha-uz", "anons-uz", "craftfair-uz", "uzexpocentre-uz", "caex-uz", "generic-feed", "generic-structured",
+            "generic-site", "instagram-business-discovery");
         routes.Should().OnlyContain(route => route.Profile.Cadence == OcharoSourceRegistry.CaptureCadence.Default);
         var cadence = OcharoSourceRegistry.CaptureCadence.Default;
         (cadence.Mode, cadence.Cron, cadence.Every, cadence.TimeZone).Should().Be((ScheduleMode.Cron, "0 1,7,13,19 * * *", (TimeSpan?)null, "Asia/Tashkent"));
@@ -206,12 +209,12 @@ public sealed class OcharoRegistryTests
         var provisioner = new OcharoSourceProvisioner(registry, Delivery(registry));
         Value(await provisioner.EnsureAsync(groupIds: ["afisha"]));
 
-        Value(await provisioner.ReadAsync()).Channels.Should().NotContain(channel => channel.GroupId == "caex");
+        Value(await provisioner.ReadAsync()).Channels.Should().NotContain(channel => channel.GroupId == "caex" && channel.ChannelId == "calendar");
 
-        var caex = Value(await provisioner.EnsureAsync(groupIds: ["caex"])).Sources.Single();
+        var caex = Value(await provisioner.EnsureAsync(groupIds: ["caex"])).Sources.Single(route => route.ChannelId == "calendar");
         var status = Value(await provisioner.ReadAsync());
 
-        status.Channels.Single(channel => channel.GroupId == "caex").Pipeline!.Id.Should().Be(caex.PipelineId);
+        status.Channels.Single(channel => channel.GroupId == "caex" && channel.ChannelId == "calendar").Pipeline!.Id.Should().Be(caex.PipelineId);
         status.Channels.Should().Contain(channel => channel.GroupId == "afisha");
     }
 
@@ -221,18 +224,151 @@ public sealed class OcharoRegistryTests
         var registry = new FakeRegistrationBroker();
         var provisioner = new OcharoSourceProvisioner(registry, Delivery(registry));
         var setup = Value(await provisioner.EnsureAsync(groupIds: ["caex"]));
-        var route = setup.Sources.Should().ContainSingle().Subject;
+        setup.Sources.Select(item => item.ChannelId).Should().BeEquivalentTo("calendar", "baraka-retail-fair");
+        var route = setup.Sources.Single(item => item.ChannelId == "calendar");
         route.GroupId.Should().Be("caex");
-        route.ChannelId.Should().Be("calendar");
         route.Seed.Should().Be("https://caexuzbekistan.com/events-calendar/");
-        var source = Value(await registry.ListSourcesAsync(setup.ContainerId)).Should().ContainSingle().Subject;
+        var source = Value(await registry.ListSourcesAsync(setup.ContainerId)).Single(item => item.ExternalRef == "caex-uz");
         source.Completeness.Should().Be(SourceCompleteness.Window);
         source.CheckPolicy.Should().Be("none");
         source.RobotsPolicy.Should().Be(RobotsPolicy.Obey);
-        var pipeline = Value(await registry.ListPipelinesAsync(setup.ContainerId)).Should().ContainSingle().Subject;
+        var pipeline = Value(await registry.ListPipelinesAsync(setup.ContainerId)).Single(item => item.SourceId == route.SourceId);
         var schedule = pipeline.Schedules.Should().ContainSingle().Subject;
         schedule.Kind.Should().Be(WorkKind.Capture);
         schedule.Enabled.Should().BeFalse();
+    }
+
+    /// <summary>Wave 1: each registry channel that takes a generic route, the route and its pipeline seed. A feed channel
+    /// seeds at its feed, a structured one at its page and a site one at the sitemap its robots.txt names, so the reader
+    /// walks articles. Seeds read 2026-11-21; the Wave 1 rows are in
+    /// <c>engineering/research/ocharo-source-registry.md</c>.</summary>
+    private static readonly (string Channel, string Route, string Seed)[] Wave1 =
+    [
+        ("caex/baraka-retail-fair", "generic-feed", "https://caex-barakafriday.com/feed/"),
+        ("human-house/primary", "generic-feed", "https://human-house.com/feed/"),
+        ("idem/festival-listings", "generic-feed", "https://idem.uz/cal/c/festival.ics"),
+        ("hd-magazine/primary", "generic-feed", "https://mag.humodoc.com/ru/feed.xml"),
+        ("kultura-uz/primary", "generic-feed", "https://www.kultura.uz/rss.cgi?lan=r"),
+        ("spot/primary", "generic-feed", "https://www.spot.uz/ru/rss/"),
+        ("expo-position/primary", "generic-feed", "https://expoposition.com/feed/"),
+        ("atakent/primary", "generic-structured", "https://www.atakentexpo.kz/calendar"),
+        ("hunarmand/association-calls", "generic-site", "https://www.hunarmandlar.uz/sitemap.xml"),
+        ("bmca-uz/primary", "generic-site", "https://texworld-apparel.uz/sitemap.xml"),
+        ("bmca-uz/portfolio", "generic-site", "https://bmca.uz/sitemap.xml"),
+        ("bmca-uz/apparel-sourcing", "generic-site", "https://apparel-sourcing.uz/sitemap.xml"),
+        ("catexpo/primary", "generic-site", "https://fashionexpo.kz/Sitemap.xml"),
+        ("idem/primary", "generic-site", "https://idem.uz/sitemap.xml"),
+        ("ttysi/primary", "generic-site", "https://ttysi.uz/sitemap.xml"),
+        ("mrdi/primary", "generic-site", "https://mrdi.uz/sitemap.xml"),
+        ("sdtu/primary", "generic-site", "https://sdtu.uz/sitemap.xml"),
+        ("visituzbek/primary", "generic-site", "https://www.visituzbek.uz/sitemap.xml"),
+        ("eventflow/primary", "generic-site", "https://eventflow.uz/sitemap.xml"),
+        ("biexpo/primary", "generic-site", "https://biexpo.kg/sitemap.xml"),
+        ("central-asia-textile-expo/primary", "generic-site", "https://centralasiatextileexpo.com/sitemap.xml"),
+        ("olbilet/primary", "generic-site", "https://olbilet.uz/sitemap.xml"),
+        ("aral-school/primary", "generic-site", "https://www.aralschool.uz/sitemap.xml"),
+        ("ichkari/primary", "generic-site", "https://ichkari.com/sitemap.xml"),
+        ("emkp/primary", "generic-site", "https://www.emkp.org/sitemap.xml"),
+    ];
+
+    private static IEnumerable<OcharoSourceRegistry.CollectionRoute> GenericRoutes() => OcharoSourceRegistry.Current
+        .Routes(includeInstagram: false).Where(route => route.Profile.Key.StartsWith("generic-", StringComparison.Ordinal));
+
+    [Fact]
+    public void Wave_1_routes_each_listed_channel_to_its_generic_profile_on_the_cron_capture_cadence()
+    {
+        var routes = GenericRoutes().ToArray();
+
+        routes.Select(route => $"{route.Group.Id}/{route.Channel.Id} {route.Profile.Key} {route.Channel.PipelineUrl}")
+            .Should().BeEquivalentTo(Wave1.Select(row => $"{row.Channel} {row.Route} {row.Seed}"));
+        routes.Should().OnlyContain(route => route.Channel.Mode == "harvest" && route.Channel.Setup == "default"
+            && route.Channel.Relationship == "owned" && (route.Channel.Note ?? string.Empty).Contains("2026-11-21")
+            && route.Profile.Authority == 60 && route.Profile.Cadence == OcharoSourceRegistry.CaptureCadence.Default);
+        foreach (var route in routes)
+            route.Profile.Family.Should().Be(route.Profile.Key switch
+            {
+                "generic-feed" => SourceFamily.Feed, "generic-structured" => SourceFamily.Structured, _ => SourceFamily.Site,
+            });
+    }
+
+    [Fact]
+    public void Wave_1_counts_per_route_are_the_feeds_structured_pages_and_sites_the_probes_found()
+    {
+        GenericRoutes().GroupBy(route => route.Profile.Key).ToDictionary(group => group.Key, group => group.Count())
+            .Should().BeEquivalentTo(new Dictionary<string, int> { ["generic-feed"] = 7, ["generic-structured"] = 1, ["generic-site"] = 17 });
+        Wave1.Should().HaveCount(25);
+    }
+
+    [Fact]
+    public void Wave_1_seeds_are_unique_and_https_and_follow_the_route_family_rule()
+    {
+        var routes = GenericRoutes().ToArray();
+
+        routes.Select(route => route.Channel.PipelineUrl).Should().OnlyHaveUniqueItems()
+            .And.OnlyContain(seed => seed.StartsWith("https://", StringComparison.Ordinal));
+        foreach (var route in routes)
+        {
+            var channel = route.Channel;
+            string where = $"{route.Group.Id}/{channel.Id}";
+            switch (route.Profile.Family)
+            {
+                case SourceFamily.Feed:
+                    channel.Seed.Should().NotBeNull(where + " seeds at its feed, not at the page that links it");
+                    break;
+                case SourceFamily.Structured:
+                    channel.Seed.Should().BeNull(where + " seeds at its page");
+                    break;
+                default:
+                    // A page seed reads one page and follows no links; a sitemap on the channel's own host walks articles.
+                    channel.Seed.Should().NotBeNull(where + " seeds at a sitemap");
+                    new Uri(channel.PipelineUrl).AbsolutePath.ToLowerInvariant().Should().EndWith("sitemap.xml", where);
+                    new Uri(channel.PipelineUrl).Host.Replace("www.", string.Empty).Should()
+                        .Be(new Uri(channel.Url).Host.Replace("www.", string.Empty), where + " reads its own host's sitemap");
+                    break;
+            }
+        }
+    }
+
+    [Fact]
+    public void Wave_1_leaves_out_the_gov_uz_channels_Ticketon_Afishas_calendar_the_newsrooms_the_related_channels_and_a_shop()
+    {
+        string[] newsrooms = ["uzdaily", "kabar", "yuz", "dunyo", "namangan-today", "tashkent-city"];
+        // Glamour Avenue's robots.txt names a sitemap on another host, a shop's. The related channels are not owned, so none
+        // passes the registry check for a harvest channel.
+        string[] related = ["acdf/bukhara-biennial-programme", "namangan-region/flower-festival-programme", "kfw/astana-edition-publisher"];
+        var channels = OcharoSourceRegistry.Current.Groups
+            .SelectMany(group => group.Channels.Select(channel => (Group: group.Id, Channel: channel))).ToArray();
+
+        var leftOut = channels.Where(row => new Uri(row.Channel.Url).Host is "gov.uz" or "www.gov.uz" || row.Group == "ticketon"
+            || newsrooms.Contains(row.Group) || row.Group == "afisha" && row.Channel.Id == "calendar"
+            || related.Contains($"{row.Group}/{row.Channel.Id}") || row.Group == "glamour-avenue" && row.Channel.Id == "primary").ToArray();
+
+        leftOut.Should().HaveCountGreaterThan(related.Length + newsrooms.Length);
+        leftOut.Should().OnlyContain(row => row.Channel.Mode != "harvest" && row.Channel.AdapterKey == null && row.Channel.Setup == null);
+        channels.Where(row => related.Contains($"{row.Group}/{row.Channel.Id}")).Should()
+            .HaveCount(related.Length).And.OnlyContain(row => row.Channel.Relationship == "related");
+    }
+
+    [Fact]
+    public async Task Default_setup_provisions_every_Wave_1_channel_as_its_own_source_with_the_capture_cron_and_the_profiles_check()
+    {
+        var registry = new FakeRegistrationBroker();
+        var provisioner = new OcharoSourceProvisioner(registry, Delivery(registry));
+
+        var setup = Value(await provisioner.EnsureAsync(enableSchedules: true));
+
+        var wave = setup.Sources.Where(route => route.SourceKey.StartsWith("generic-", StringComparison.Ordinal)).ToArray();
+        wave.Select(route => $"{route.GroupId}/{route.ChannelId} {route.SourceKey} {route.Seed}")
+            .Should().BeEquivalentTo(Wave1.Select(row => $"{row.Channel} {row.Route} {row.Seed}"));
+        wave.Select(route => route.SourceId).Should().OnlyHaveUniqueItems();
+        foreach (var route in wave)
+        {
+            var pipeline = Value(await registry.GetPipelineAsync(route.PipelineId));
+            var capture = pipeline.Schedules.Single(row => row.Kind == WorkKind.Capture);
+            (capture.Mode, capture.Cron, capture.TimeZone, capture.Enabled)
+                .Should().Be((ScheduleMode.Cron, "0 1,7,13,19 * * *", "Asia/Tashkent", true));
+            pipeline.Schedules.Count(row => row.Kind == WorkKind.Check).Should().Be(route.SourceKey == "generic-feed" ? 0 : 1);
+        }
     }
 
     private static OcharoSourceChannel Channel(string id, string adapterKey, string url, string relationship = "owned",

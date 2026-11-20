@@ -55,9 +55,9 @@ public sealed partial class SourcesVerbTests
         again.Exit.Should().Be(0, again.Error);
         Lines(again.Output).Should().Equal($"{afisha.Id:D} site/www.afisha.uz auto -> auto");
         again.Error.Should().Contain("0 of 1 source(s) changed");
-        var modes = (await OcharoSources(host.Services)).ToDictionary(source => source.Handle, source => source.ModelProcessing);
-        modes["www.afisha.uz"].Should().Be(ModelProcessingMode.Auto);
-        modes.Where(item => item.Key != "www.afisha.uz").Should().OnlyContain(item => item.Value == ModelProcessingMode.Off);
+        var modes = (await OcharoSources(host.Services)).ToDictionary(source => $"{source.Family}/{source.Handle}", source => source.ModelProcessing);
+        modes["Site/www.afisha.uz"].Should().Be(ModelProcessingMode.Auto);
+        modes.Where(item => item.Key != "Site/www.afisha.uz").Should().OnlyContain(item => item.Value == ModelProcessingMode.Off);
         (await Run(host.Services, "processing", "--list")).Output.Should().Contain($"{afisha.Id:D} site/www.afisha.uz auto");
     }
 

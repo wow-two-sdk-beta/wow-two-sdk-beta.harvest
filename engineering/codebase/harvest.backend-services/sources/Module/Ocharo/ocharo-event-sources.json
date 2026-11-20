@@ -1,6 +1,6 @@
 {
   "format": "ocharo.event-sources.v1",
-  "reviewedOn": "2026-11-09",
+  "reviewedOn": "2026-11-21",
   "groups": [
     {
       "id": "hunarmand",
@@ -42,10 +42,13 @@
           "role": "association calls",
           "relationship": "owned",
           "primary": false,
-          "mode": "planned",
+          "mode": "harvest",
           "method": "news-index",
           "plan": "Read each association call and its application instructions; distinguish publication and close dates.",
-          "note": "Additional calls and regional selection news. Inspect the event date in each notice."
+          "note": "Additional calls and regional selection news. Inspect the event date in each notice. Wave 1, reviewed 2026-11-21: generic-site; seed is the sitemap named in the Sitemap line of robots.txt.",
+          "adapterKey": "generic-site",
+          "setup": "default",
+          "seed": "https://www.hunarmandlar.uz/sitemap.xml"
         },
         {
           "id": "telegram-announcements",
@@ -403,12 +406,15 @@
           "role": "Baraka retail fair",
           "relationship": "owned",
           "primary": false,
-          "mode": "manual",
+          "mode": "harvest",
           "method": "manual-review",
           "plan": "Verify readable public event evidence and confirm this route before enabling any reader.",
           "checkState": "unavailable",
-          "note": "Consumer-fair programme and seller contact for apparel.",
-          "eventFamily": "caex-baraka"
+          "note": "Consumer-fair programme and seller contact for apparel. Wave 1, reviewed 2026-11-21: generic-feed; seed is the RSS feed the page links.",
+          "eventFamily": "caex-baraka",
+          "adapterKey": "generic-feed",
+          "setup": "default",
+          "seed": "https://caex-barakafriday.com/feed/"
         },
         {
           "id": "baraka-venue-subdomain",
@@ -712,10 +718,14 @@
           "role": "primary",
           "relationship": "owned",
           "primary": true,
-          "mode": "planned",
+          "mode": "harvest",
           "method": "index-detail",
           "plan": "Read dated gallery programme entries; record workshop bookings and designer calls separately.",
-          "checkState": "readable"
+          "checkState": "readable",
+          "note": "Wave 1, reviewed 2026-11-21: generic-feed; seed is the RSS feed the page links.",
+          "adapterKey": "generic-feed",
+          "setup": "default",
+          "seed": "https://human-house.com/feed/"
         },
         {
           "id": "instagram",
@@ -777,10 +787,14 @@
           "role": "primary",
           "relationship": "owned",
           "primary": true,
-          "mode": "planned",
+          "mode": "harvest",
           "method": "edition-page",
           "plan": "Read each fair microsite by explicit edition; keep visitor, buyer and exhibitor routes separate and do not merge co-located fairs.",
-          "checkState": "readable"
+          "checkState": "readable",
+          "note": "Wave 1, reviewed 2026-11-21: generic-site; seed is the sitemap, the https form of the Sitemap line of robots.txt.",
+          "adapterKey": "generic-site",
+          "setup": "default",
+          "seed": "https://texworld-apparel.uz/sitemap.xml"
         },
         {
           "id": "portfolio",
@@ -788,10 +802,13 @@
           "role": "portfolio",
           "relationship": "owned",
           "primary": false,
-          "mode": "planned",
+          "mode": "harvest",
           "method": "index-detail",
           "plan": "Review dated listing entries and verify event facts on each original announcement.",
-          "note": "Organizer portfolio. Keep relevant apparel and sourcing fairs."
+          "note": "Organizer portfolio. Keep relevant apparel and sourcing fairs. Wave 1, reviewed 2026-11-21: generic-site; seed is the sitemap named in the Sitemap line of robots.txt.",
+          "adapterKey": "generic-site",
+          "setup": "default",
+          "seed": "https://bmca.uz/sitemap.xml"
         },
         {
           "id": "apparel-sourcing",
@@ -799,11 +816,14 @@
           "role": "apparel sourcing",
           "relationship": "owned",
           "primary": false,
-          "mode": "planned",
+          "mode": "harvest",
           "method": "index-detail",
           "plan": "Review dated listing entries and verify event facts on each original announcement.",
-          "note": "Primary show material and exhibitor routes.",
-          "eventFamily": "apparel-sourcing-tashkent"
+          "note": "Primary show material and exhibitor routes. Wave 1, reviewed 2026-11-21: generic-site; seed is the sitemap named in the Sitemap line of robots.txt.",
+          "eventFamily": "apparel-sourcing-tashkent",
+          "adapterKey": "generic-site",
+          "setup": "default",
+          "seed": "https://apparel-sourcing.uz/sitemap.xml"
         },
         {
           "id": "texworld-stand-route",
@@ -898,10 +918,14 @@
           "role": "primary",
           "relationship": "owned",
           "primary": true,
-          "mode": "planned",
+          "mode": "harvest",
           "method": "edition-page",
           "plan": "Read the edition programme and separate exhibitor, buyer and visitor terms. Keep city and edition evidence.",
-          "checkState": "readable"
+          "checkState": "readable",
+          "note": "Wave 1, reviewed 2026-11-21: generic-site; seed is the sitemap named in the Sitemap line of robots.txt.",
+          "adapterKey": "generic-site",
+          "setup": "default",
+          "seed": "https://fashionexpo.kz/Sitemap.xml"
         },
         {
           "id": "organizer-portfolio",
@@ -1143,10 +1167,14 @@
           "role": "primary",
           "relationship": "owned",
           "primary": true,
-          "mode": "planned",
+          "mode": "harvest",
           "method": "aggregator-index",
           "plan": "Read exhibition and festival permalinks as discovery. Resolve named upstreams and route comparisons to the original publisher; do not duplicate their schedules.",
-          "checkState": "readable"
+          "checkState": "readable",
+          "note": "Wave 1, reviewed 2026-11-21: generic-site; seed is the sitemap named in the Sitemap line of robots.txt.",
+          "adapterKey": "generic-site",
+          "setup": "default",
+          "seed": "https://idem.uz/sitemap.xml"
         },
         {
           "id": "festival-listings",
@@ -1154,10 +1182,13 @@
           "role": "festival listings",
           "relationship": "owned",
           "primary": false,
-          "mode": "planned",
+          "mode": "harvest",
           "method": "index-detail",
           "plan": "Review dated listing entries and verify event facts on each original announcement.",
-          "note": "Same aggregator and different filter."
+          "note": "Same aggregator and different filter. Wave 1, reviewed 2026-11-21: generic-feed; seed is the iCalendar feed the page links as webcal://.",
+          "adapterKey": "generic-feed",
+          "setup": "default",
+          "seed": "https://idem.uz/cal/c/festival.ics"
         },
         {
           "id": "upstream-source-list",
@@ -1872,10 +1903,14 @@
           "role": "primary",
           "relationship": "owned",
           "primary": true,
-          "mode": "planned",
+          "mode": "harvest",
           "method": "news-index",
           "plan": "Discover dated programme, exhibition and call entries. Confirm application window and eligibility on the issuing programme page.",
-          "checkState": "readable"
+          "checkState": "readable",
+          "note": "Wave 1, reviewed 2026-11-21: generic-site; seed is the sitemap named in the Sitemap line of robots.txt.",
+          "adapterKey": "generic-site",
+          "setup": "default",
+          "seed": "https://ttysi.uz/sitemap.xml"
         }
       ]
     },
@@ -1896,10 +1931,13 @@
           "role": "primary",
           "relationship": "owned",
           "primary": true,
-          "mode": "planned",
+          "mode": "harvest",
           "method": "calendar-rows",
           "plan": "Read explicitly dated programme entries; keep venue evidence and verify participation with the organizer.",
-          "checkState": "readable"
+          "checkState": "readable",
+          "note": "Wave 1, reviewed 2026-11-21: generic-structured; seed is the channel page, which carries JSON-LD Event data.",
+          "adapterKey": "generic-structured",
+          "setup": "default"
         },
         {
           "id": "english-venue-calendar",
@@ -1931,10 +1969,14 @@
           "role": "primary",
           "relationship": "owned",
           "primary": true,
-          "mode": "planned",
+          "mode": "harvest",
           "method": "news-index",
           "plan": "Discover dated programme, exhibition and call entries. Confirm application window and eligibility on the issuing programme page.",
-          "checkState": "readable"
+          "checkState": "readable",
+          "note": "Wave 1, reviewed 2026-11-21: generic-site; seed is the sitemap named in the Sitemap line of robots.txt.",
+          "adapterKey": "generic-site",
+          "setup": "default",
+          "seed": "https://mrdi.uz/sitemap.xml"
         }
       ]
     },
@@ -1955,10 +1997,14 @@
           "role": "primary",
           "relationship": "owned",
           "primary": true,
-          "mode": "planned",
+          "mode": "harvest",
           "method": "news-index",
           "plan": "Discover dated programme, exhibition and call entries. Confirm application window and eligibility on the issuing programme page.",
-          "checkState": "readable"
+          "checkState": "readable",
+          "note": "Wave 1, reviewed 2026-11-21: generic-site; seed is the sitemap named in the Sitemap line of robots.txt.",
+          "adapterKey": "generic-site",
+          "setup": "default",
+          "seed": "https://sdtu.uz/sitemap.xml"
         }
       ]
     },
@@ -2170,10 +2216,14 @@
           "role": "primary",
           "relationship": "owned",
           "primary": true,
-          "mode": "planned",
+          "mode": "harvest",
           "method": "aggregator-index",
           "plan": "Trace dated listings to named upstreams and use the organizer to resolve conflicting information.",
-          "checkState": "readable"
+          "checkState": "readable",
+          "note": "Wave 1, reviewed 2026-11-21: generic-site; seed is the sitemap named in the Sitemap line of robots.txt.",
+          "adapterKey": "generic-site",
+          "setup": "default",
+          "seed": "https://www.visituzbek.uz/sitemap.xml"
         }
       ]
     },
@@ -2194,10 +2244,14 @@
           "role": "primary",
           "relationship": "owned",
           "primary": true,
-          "mode": "planned",
+          "mode": "harvest",
           "method": "news-index",
           "plan": "Use dated articles as discovery; corroborate edition dates, venue and access with the organizer. Exclude recaps from new event candidates.",
-          "checkState": "readable"
+          "checkState": "readable",
+          "note": "Wave 1, reviewed 2026-11-21: generic-feed; seed is the RSS feed the page links.",
+          "adapterKey": "generic-feed",
+          "setup": "default",
+          "seed": "https://mag.humodoc.com/ru/feed.xml"
         }
       ]
     },
@@ -2280,10 +2334,14 @@
           "role": "primary",
           "relationship": "owned",
           "primary": true,
-          "mode": "planned",
+          "mode": "harvest",
           "method": "index-detail",
           "plan": "Use public dated event pages and treat forms as routes; do not submit them or infer acceptance.",
-          "checkState": "readable"
+          "checkState": "readable",
+          "note": "Wave 1, reviewed 2026-11-21: generic-site; seed is the sitemap named in the Sitemap line of robots.txt.",
+          "adapterKey": "generic-site",
+          "setup": "default",
+          "seed": "https://eventflow.uz/sitemap.xml"
         }
       ]
     },
@@ -2445,10 +2503,14 @@
           "role": "primary",
           "relationship": "owned",
           "primary": true,
-          "mode": "planned",
+          "mode": "harvest",
           "method": "edition-page",
           "plan": "Find the current edition on the organizer programme or news page; read explicit dates and follow only published visitor/exhibitor routes as evidence.",
-          "checkState": "readable"
+          "checkState": "readable",
+          "note": "Wave 1, reviewed 2026-11-21: generic-site; seed is the sitemap named in the Sitemap line of robots.txt.",
+          "adapterKey": "generic-site",
+          "setup": "default",
+          "seed": "https://biexpo.kg/sitemap.xml"
         },
         {
           "id": "organizer-telegram",
@@ -2519,10 +2581,14 @@
           "role": "primary",
           "relationship": "owned",
           "primary": true,
-          "mode": "planned",
+          "mode": "harvest",
           "method": "edition-page",
           "plan": "Find the current edition on the organizer programme or news page; read explicit dates and follow only published visitor/exhibitor routes as evidence.",
-          "checkState": "readable"
+          "checkState": "readable",
+          "note": "Wave 1, reviewed 2026-11-21: generic-site; seed is the sitemap named in the Sitemap line of robots.txt.",
+          "adapterKey": "generic-site",
+          "setup": "default",
+          "seed": "https://centralasiatextileexpo.com/sitemap.xml"
         }
       ]
     },
@@ -2567,10 +2633,14 @@
           "role": "primary",
           "relationship": "owned",
           "primary": true,
-          "mode": "planned",
+          "mode": "harvest",
           "method": "news-index",
           "plan": "Use dated articles as discovery; corroborate edition dates, venue and access with the organizer. Exclude recaps from new event candidates.",
-          "checkState": "readable"
+          "checkState": "readable",
+          "note": "Wave 1, reviewed 2026-11-21: generic-feed; seed is the RSS feed the page links; it is windows-1251.",
+          "adapterKey": "generic-feed",
+          "setup": "default",
+          "seed": "https://www.kultura.uz/rss.cgi?lan=r"
         }
       ]
     },
@@ -2687,10 +2757,14 @@
           "role": "primary",
           "relationship": "owned",
           "primary": true,
-          "mode": "planned",
+          "mode": "harvest",
           "method": "news-index",
           "plan": "Use dated articles as discovery; corroborate edition dates, venue and access with the organizer. Exclude recaps from new event candidates.",
-          "checkState": "readable"
+          "checkState": "readable",
+          "note": "Wave 1, reviewed 2026-11-21: generic-feed; seed is the RSS feed the page links.",
+          "adapterKey": "generic-feed",
+          "setup": "default",
+          "seed": "https://www.spot.uz/ru/rss/"
         }
       ]
     },
@@ -2879,10 +2953,14 @@
           "role": "primary",
           "relationship": "owned",
           "primary": true,
-          "mode": "planned",
+          "mode": "harvest",
           "method": "ticket-index",
           "plan": "Use individual public offers for visitor price and availability. Exhibitor and designer access require separate evidence.",
-          "checkState": "readable"
+          "checkState": "readable",
+          "note": "Wave 1, reviewed 2026-11-21: generic-site; seed is the sitemap named in the Sitemap line of robots.txt.",
+          "adapterKey": "generic-site",
+          "setup": "default",
+          "seed": "https://olbilet.uz/sitemap.xml"
         }
       ]
     },
@@ -3233,10 +3311,14 @@
           "role": "primary",
           "relationship": "owned",
           "primary": true,
-          "mode": "planned",
+          "mode": "harvest",
           "method": "news-index",
           "plan": "Discover dated programme, exhibition and call entries. Confirm application window and eligibility on the issuing programme page.",
-          "checkState": "readable"
+          "checkState": "readable",
+          "note": "Wave 1, reviewed 2026-11-21: generic-site; seed is the sitemap named in the Sitemap line of robots.txt.",
+          "adapterKey": "generic-site",
+          "setup": "default",
+          "seed": "https://www.aralschool.uz/sitemap.xml"
         }
       ]
     },
@@ -3257,10 +3339,14 @@
           "role": "primary",
           "relationship": "owned",
           "primary": true,
-          "mode": "planned",
+          "mode": "harvest",
           "method": "news-index",
           "plan": "Find dated exhibitions or public programmes; ongoing display pages are reference.",
-          "checkState": "readable"
+          "checkState": "readable",
+          "note": "Wave 1, reviewed 2026-11-21: generic-site; seed is the sitemap named in the Sitemap line of robots.txt.",
+          "adapterKey": "generic-site",
+          "setup": "default",
+          "seed": "https://ichkari.com/sitemap.xml"
         }
       ]
     },
@@ -3307,10 +3393,14 @@
           "role": "primary",
           "relationship": "owned",
           "primary": true,
-          "mode": "planned",
+          "mode": "harvest",
           "method": "news-index",
           "plan": "Read the current call document and its explicit deadline, supported countries and requirements.",
-          "checkState": "readable"
+          "checkState": "readable",
+          "note": "Wave 1, reviewed 2026-11-21: generic-site; seed is the sitemap named in the Sitemap line of robots.txt.",
+          "adapterKey": "generic-site",
+          "setup": "default",
+          "seed": "https://www.emkp.org/sitemap.xml"
         },
         {
           "id": "grant-and-q-a-notice",
@@ -3343,10 +3433,14 @@
           "role": "primary",
           "relationship": "owned",
           "primary": true,
-          "mode": "planned",
+          "mode": "harvest",
           "method": "edition-page",
           "plan": "Find the current edition on the organizer programme or news page; read explicit dates and follow only published visitor/exhibitor routes as evidence.",
-          "checkState": "readable"
+          "checkState": "readable",
+          "note": "Wave 1, reviewed 2026-11-21: generic-feed; seed is the RSS feed the page links.",
+          "adapterKey": "generic-feed",
+          "setup": "default",
+          "seed": "https://expoposition.com/feed/"
         }
       ]
     },

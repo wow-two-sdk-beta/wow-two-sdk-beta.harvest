@@ -57,12 +57,12 @@ public sealed class OcharoRegistryHostTests
 
         var selection = new { groupIds = new[] { "caex" } };
         var route = (await Data(await client.PostAsJsonAsync("/api/ocharo/sources/setup", selection)))
-            .GetProperty("sources").EnumerateArray().Single();
+            .GetProperty("sources").EnumerateArray().Single(item => item.GetProperty("channelId").GetString() == "calendar");
         route.GetProperty("groupId").GetString().Should().Be("caex");
         string pipelineId = route.GetProperty("pipelineId").GetString()!;
         string subscriptionId = route.GetProperty("subscriptionId").GetString()!;
         var repeated = (await Data(await client.PostAsJsonAsync("/api/ocharo/sources/setup", selection)))
-            .GetProperty("sources").EnumerateArray().Single();
+            .GetProperty("sources").EnumerateArray().Single(item => item.GetProperty("channelId").GetString() == "calendar");
         repeated.GetProperty("subscriptionId").GetString().Should().Be(subscriptionId);
         fetcher.Calls.Should().Be(0);
 

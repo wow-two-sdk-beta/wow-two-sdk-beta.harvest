@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="windows-1251"?>
+<rss version="2.0">
+<channel>
+<title>Пример.uz</title>
+<link>http://www.example.test/?lan=r</link>
+<description>Синтетическая лента в кодировке windows-1251.</description>
+<language>ru</language>
+<lastBuildDate>Fri, 20 Nov 2026 10:22:01 +0500</lastBuildDate>
+<item>
+<title>Неделя моды открывает показы коллекций</title>
+<link>http://www.example.test/view_2_r_1001.html</link>
+<description><![CDATA[ Показы коллекций пройдут в выставочном зале с 25 по 27 ноября. ]]></description>
+<category>Мода</category>
+<pubDate>Fri, 20 Nov 2026 10:22:01 +0500</pubDate>
+</item>
+<item>
+<title>Выставка текстиля принимает заявки</title>
+<link>http://www.example.test/view_6_r_1000.html</link>
+<description><![CDATA[ Заявки на участие принимаются до 1 декабря. ]]></description>
+<category>Выставки</category>
+<pubDate>Fri, 20 Nov 2026 10:19:30 +0500</pubDate>
+</item>
+</channel>
+</rss>

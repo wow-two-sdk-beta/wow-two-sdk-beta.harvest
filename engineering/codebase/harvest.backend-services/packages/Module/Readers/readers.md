@@ -33,3 +33,5 @@ unpaced `HttpClient`.
 - sitemap `lastmod` is retained as source evidence and never used here to skip a fetch
 - OpenGraph metadata is read from the supplied page; oEmbed fetching is not implemented
 - feed-local IDs remain source-local, so a short GUID cannot merge unrelated feeds
+- a response decodes by the charset its header names; the readers register the runtime's code-page provider once, so a
+  legacy charset such as `windows-1251` reads, and an unknown one falls back to UTF-8
