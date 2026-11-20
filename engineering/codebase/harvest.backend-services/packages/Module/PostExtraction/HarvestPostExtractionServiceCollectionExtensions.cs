@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Budget;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Posts;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
@@ -24,6 +25,7 @@ public static class HarvestPostExtractionServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddHarvestPosts();
+        services.AddHarvestProcessingBudget();
         services.TryAddSingleton<IPostExtractionDemand, ConfiguredPostExtractionDemand>();
         services.TryAddScoped<IPostExtractionBroker, PostExtractionBroker>();
         return services.AddOptions<PostExtractionOptions>()

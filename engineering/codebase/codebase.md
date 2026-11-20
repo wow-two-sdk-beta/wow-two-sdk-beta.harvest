@@ -17,7 +17,8 @@ The code lives in `harvest.backend-services/` (.NET) and `harvest.frontend-servi
   `extract-event` and `extract-listing`, the demand gate and the evidence check `rental-terms@2` shares), `Entities/`
   (the entity layer: events with occurrences, cadence and prediction, listings with offers, relations, unsure flags,
   merge and split; the reads `IEntitiesBroker` and the entity change feed), `Reprocessing/` (operator re-runs of the AI
-  passes, their status and eval sets from stored posts), each with its lead doc. `Client/Entities/`,
+  passes, their status and eval sets from stored posts), `Budget/` (the AI spend guard over the inference log), each with
+  its lead doc. `Client/Entities/`,
   `Hosting/Entities/` and `Testing/Entities/` hold the entity reads' HTTP form, routes, fake and conformance suite.
 - `sources/` holds the named source readers `Afisha`, `Anons`, `Caex`, `Craftfair`, `Olx`, `Uzexpocentre`, the opt-in
   `Instagram` and `Integrations` clients, and `Module` (the Ocharo registry `Ocharo/ocharo-event-sources.json`,

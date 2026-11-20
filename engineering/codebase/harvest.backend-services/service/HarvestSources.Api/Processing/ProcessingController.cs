@@ -1,6 +1,7 @@
 using Harvest.Api.Registration.Access;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Budget;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Reprocessing;
 using WoW.Two.Sdk.Beta.Be.Web.Contracts;
 using WoW.Two.Sdk.Beta.Be.Web.ExceptionHandling.Extensions;
@@ -8,12 +9,12 @@ using WoW.Two.Sdk.Beta.Be.Web.ExceptionHandling.Extensions;
 namespace HarvestSources.Api.Processing;
 
 /// <summary>Exposes the operator controls of the AI passes on the internal source host: re-runs over named posts, listed
-/// sources or every source, their progress, and eval sets from stored posts. Operator only, as they spend on model calls
-/// and rewrite stored answers across containers.</summary>
-/// <remarks>Each route mirrors a <c>processing</c> host verb: <c>rerun</c>, <c>status</c>, <c>eval-set</c>.</remarks>
+/// sources or every source, their progress, eval sets from stored posts, and the AI spend guard's reading. Operator only, as
+/// they spend on model calls and rewrite stored answers across containers.</summary>
+/// <remarks>Each route mirrors a <c>processing</c> host verb: <c>rerun</c>, <c>status</c>, <c>eval-set</c>, <c>budget</c>.</remarks>
 [ApiController]
 [Authorize(Policy = AccessPolicies.ManageStorage)]
-public sealed class ProcessingController(IPostReprocessingBroker reprocessing) : ControllerBase
+public sealed class ProcessingController(IPostReprocessingBroker reprocessing, IProcessingBudget budget) : ControllerBase
 {
     /// <summary>Queues a re-run, or with <c>dryRun</c> counts it and estimates its cost without queueing anything.</summary>
     /// <param name="request">The scope (<c>postIds</c>, <c>sourceIds</c> or <c>allSources</c>), the filters and the use cases.</param>
@@ -37,6 +38,14 @@ public sealed class ProcessingController(IPostReprocessingBroker reprocessing) :
     public async Task<IActionResult> Status(Guid runId, CancellationToken ct) =>
         (await reprocessing.GetRunAsync(runId, ct)).Match<IActionResult>(
             value => Ok(ApiResponse<PostRerunStatusModel>.Ok(value)), this.ToProblem);
+
+    /// <summary>Reads the AI spend of the current window against its limit: the state (<c>off</c>, <c>open</c>, <c>soft</c>,
+    /// <c>hard</c>), the amounts, the monthly projection and the cost per use case and model. A reading is reused for
+    /// <c>Harvest:Processing:Budget:RefreshInterval</c>; <c>readAtUtc</c> says when it was summed.</summary>
+    /// <param name="ct">The token that cancels the request.</param>
+    [HttpGet(ProcessingRouteConstants.Budget)]
+    [ProducesResponseType<ApiResponse<BudgetReading>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Budget(CancellationToken ct) => Ok(ApiResponse<BudgetReading>.Ok(await budget.ReadAsync(ct)));
 
     /// <summary>Adds a seeded sample of stored posts to an eval set, creating it when missing; the AI API's eval routes then
     /// run models × prompt versions and report.</summary>

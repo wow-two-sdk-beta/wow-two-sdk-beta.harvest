@@ -11,4 +11,7 @@ public static class ProcessingRouteConstants
 
     /// <summary>Holds the eval sets built from stored posts: <c>POST</c> fills one.</summary>
     public const string EvalSets = Root + "/eval-sets";
+
+    /// <summary>Holds the AI spend guard: <c>GET</c> reads the current window's spend against its limit.</summary>
+    public const string Budget = Root + "/budget";
 }

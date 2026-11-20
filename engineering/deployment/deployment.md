@@ -230,6 +230,9 @@ A profile is data (`sources/Module/Marketplace/MarketplaceProfiles.cs`); another
   revision, but Haven's subscription is sent no `post.changed` for a revision that only moved the tags (the
   `marketplace-listing-v1` filter withholds it), while a changed title, text, price or state is; `extract backfill` then
   queues what has tags and no answer.
+- AI spend: `Harvest__Processing__Budget__LimitUsd` (with `SoftShare`, `CycleStartDay`, `SinceUtc`; `deploy.yml` declares
+  them) caps the AI cost of this target so one credit is not overrun; `processing budget` reads it
+  (`development/ai-operations.md` § Spend guard).
 - `--run` queues one bounded capture per active collection pipeline. BirBir has separate direct collection and
   import sections. The BirBir and Domtut import subscriptions report `importOnly: true`.
 - Haven's credential is a tenant API key named `haven-supply` with `events:read` only, sent as `X-Api-Key`.

@@ -7,6 +7,7 @@ using WoW.Two.Sdk.Beta.Be.Ai.Runs;
 using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Budget;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
@@ -63,6 +64,16 @@ internal sealed class RentalTermsV2Processor(IServiceProvider services, IOptions
         if (promptHash is null)
             return Failure(FetchOutcome.CapabilityUnavailable, PromptUnavailableMessage);
 
+        // The spend guard (Harvest:Processing:Budget), when the host composes it: at its limit the model is not called, and
+        // the stage reports its unavailable outcome so a later run retries once the window resets.
+        var spend = services.GetService<IProcessingBudget>() is { } guard ? await guard.ReadAsync(cancellationToken) : null;
+        if (spend is { State: BudgetState.Hard })
+        {
+            string exhausted = $"{ProcessingBudgetConstants.ExhaustedReason}: {spend.RefusalMessage()}";
+            await input.Trace.RunOperationAsync("call-model", () => Task.FromResult(0), _ => new("failed", Input: 0, Output: 0, Message: exhausted));
+            return Failure(FetchOutcome.CapabilityUnavailable, exhausted);
+        }
+
         bool truncated = input.Text.Length > MaxInputLength;
         int end = truncated && char.IsHighSurrogate(input.Text[MaxInputLength - 1]) ? MaxInputLength - 1 : MaxInputLength;
         string description = truncated ? input.Text[..end] : input.Text;
@@ -72,7 +83,7 @@ internal sealed class RentalTermsV2Processor(IServiceProvider services, IOptions
             UseCase = RentalTermsDefinition.UseCase,
             Subject = $"harvest:capture:{input.CaptureId:D}",
             Version = version,
-            Models = [route],
+            Models = spend?.Routes([route]) ?? [route],
             Variables = new Dictionary<string, string?> { ["description"] = description },
             // The shared cache only validates schema. Store and reuse the evidence-checked result in SCFD.
             Fresh = true,

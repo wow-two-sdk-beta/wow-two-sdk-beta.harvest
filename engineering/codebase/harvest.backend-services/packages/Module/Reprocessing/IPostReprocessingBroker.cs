@@ -1,4 +1,5 @@
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Budget;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Reprocessing;
 
@@ -93,6 +94,10 @@ public sealed record PostRerunModel
 
     /// <summary>Gets when the run was asked for (UTC).</summary>
     public required DateTimeOffset CreatedAtUtc { get; init; }
+
+    /// <summary>Gets the AI spend guard's reading (state, spent, limit) beside a dry run's estimate; none for a queued run.
+    /// A run queues at any state: the workers hold the spend back at <c>hard</c>.</summary>
+    public BudgetReading? Budget { get; init; }
 }
 
 /// <summary>Represents one use case's share of a re-run.</summary>

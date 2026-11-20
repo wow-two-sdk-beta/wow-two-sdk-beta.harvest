@@ -15,6 +15,7 @@ public static partial class HostConfiguration
         builder.AddProcessingModels();
         global::Harvest.Api.Configurations.HostConfiguration.Configure(builder, ServeConsole);
         builder.AddRentalTermsAi();
+        builder.AddProcessingBudget();
         builder.AddPostTagsAi();
         builder.AddPostExtractionAi();
         builder.AddSubscriptionSelectors();

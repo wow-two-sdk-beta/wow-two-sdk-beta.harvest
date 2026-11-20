@@ -7,6 +7,7 @@ using WoW.Two.Sdk.Beta.Be.Ai.Inferences;
 using WoW.Two.Sdk.Beta.Be.Ai.Runs;
 using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Budget;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Persistence;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
@@ -20,6 +21,7 @@ internal sealed partial class PostReprocessingBroker(
     PostExtractionGate extraction,
     IOptions<PostTagsOptions> tagOptions,
     IOptions<PostExtractionOptions> extractionOptions,
+    IProcessingBudget budget,
     IServiceProvider services,
     TimeProvider time) : IPostReprocessingBroker
 {
@@ -71,7 +73,7 @@ internal sealed partial class PostReprocessingBroker(
             RunId = request.DryRun ? null : runId, DryRun = request.DryRun, Scope = scope.Name, UseCases = useCases,
             Queued = counts.Values.Sum(count => count.Queued), Skipped = counts.Values.Sum(count => count.Skipped),
             Refused = counts.Values.Sum(count => count.Refused), EstimatedCostMicroUsd = estimates.Length > 0 ? estimates.Sum() : null,
-            ByUseCase = counts, CreatedAtUtc = now,
+            ByUseCase = counts, CreatedAtUtc = now, Budget = request.DryRun ? await budget.ReadAsync(cancellationToken) : null,
         });
     }
 

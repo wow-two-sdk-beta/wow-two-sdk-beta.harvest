@@ -4,12 +4,13 @@ using HarvestSources.Api.Configurations;
 using Microsoft.EntityFrameworkCore;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Foundation.Serialization;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Budget;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Reprocessing;
 
 namespace HarvestSources.Api.Processing;
 
-/// <summary>Operates the AI passes from the host: re-runs, their progress, and eval sets from stored posts — one sub-command
-/// per <c>api/processing</c> route.</summary>
+/// <summary>Operates the AI passes from the host: re-runs, their progress, eval sets from stored posts, and the spend guard's
+/// reading — one sub-command per <c>api/processing</c> route.</summary>
 /// <remarks>
 ///   - <c>rerun (--posts a,b | --sources a,b | --all-sources) [--use-case post-tags,extract-event,extract-listing]
 ///     [--since &lt;date&gt;] [--prompt-before &lt;version&gt;] [--dry-run] [--by &lt;actor&gt;]</c> mirrors
@@ -18,6 +19,8 @@ namespace HarvestSources.Api.Processing;
 ///   - <c>eval-set --set &lt;key&gt; --use-case &lt;use case&gt; [--sources a,b] [--sample N] [--seed N]
 ///     [--expected empty|current] [--since &lt;date&gt;] [--score-fields a,b] [--note &lt;text&gt;]</c> mirrors
 ///     <c>POST api/processing/eval-sets</c>
+///   - <c>budget</c> mirrors <c>GET api/processing/budget</c>: it reads the current window's AI spend against
+///     <c>Harvest:Processing:Budget</c>, writes nothing and exits <c>0</c>, including for the state <c>off</c>
 ///   - each prints one JSON line and no post text
 /// </remarks>
 public static class ProcessingVerb
@@ -29,6 +32,7 @@ public static class ProcessingVerb
         Usage: processing rerun (--posts <id,id> | --sources <id,id> | --all-sources) [--use-case <post-tags,extract-event,extract-listing>]
                                 [--since <date>] [--prompt-before <version>] [--dry-run] [--by <actor>]
                processing status --run <id>
+               processing budget
                processing eval-set --set <key> --use-case <use case> [--sources <id,id>] [--sample <n>] [--seed <n>]
                                    [--expected empty|current] [--since <date>] [--score-fields <a,b>] [--note <text>]
         """;
@@ -54,6 +58,7 @@ public static class ProcessingVerb
             {
                 "rerun" => await RerunAsync(reprocessing, options, output, error, ct),
                 "status" => await StatusAsync(reprocessing, options, output, error, ct),
+                "budget" => await BudgetAsync(scope.ServiceProvider.GetRequiredService<IProcessingBudget>(), options, output, error, ct),
                 "eval-set" => await EvalSetAsync(reprocessing, options, output, error, ct),
                 _ => await UsageAsync(error),
             };
@@ -93,6 +98,15 @@ public static class ProcessingVerb
         if (result is not Result<PostRerunStatusModel>.Success { Value: var status })
             return await VerbArguments.RefusedAsync(error, result);
         await output.WriteLineAsync(JsonSerializer.Serialize(status, JsonOptionsConstants.Default));
+        return 0;
+    }
+
+    private static async Task<int> BudgetAsync(IProcessingBudget budget, IReadOnlyDictionary<string, string?> options, TextWriter output,
+        TextWriter error, CancellationToken ct)
+    {
+        if (!VerbArguments.Only(options))
+            return await UsageAsync(error);
+        await output.WriteLineAsync(JsonSerializer.Serialize(await budget.ReadAsync(ct), JsonOptionsConstants.Default));
         return 0;
     }
 

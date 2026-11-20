@@ -260,10 +260,15 @@ public sealed class PostExtractionTests
 
     internal static Task<TagsHost> StartAsync(params PostExtractionWant[] wanted) => StartAsync(enabled: true, wanted);
 
-    internal static async Task<TagsHost> StartAsync(bool enabled, params PostExtractionWant[] wanted)
+    internal static Task<TagsHost> StartAsync(bool enabled, params PostExtractionWant[] wanted) => StartAsync(enabled, null, wanted);
+
+    internal static async Task<TagsHost> StartAsync(bool enabled, Action<IServiceCollection>? more, params PostExtractionWant[] wanted)
     {
-        var host = await TagsHost.StartAsync(enabled, configure: services => services.AddHarvestPostExtraction()
-            .Configure(options => options.Wanted = [.. wanted]));
+        var host = await TagsHost.StartAsync(enabled, configure: services =>
+        {
+            services.AddHarvestPostExtraction().Configure(options => options.Wanted = [.. wanted]);
+            more?.Invoke(services);
+        });
         var prompts = host.Scoped.GetRequiredService<IPromptsBroker>();
         foreach (var useCase in PostExtractionConstants.UseCases)
         {

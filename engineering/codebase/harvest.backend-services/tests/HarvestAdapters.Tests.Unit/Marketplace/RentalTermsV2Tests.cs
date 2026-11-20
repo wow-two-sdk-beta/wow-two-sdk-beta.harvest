@@ -5,6 +5,7 @@ using WoW.Two.Sdk.Beta.Be.Ai.Inferences;
 using WoW.Two.Sdk.Beta.Be.Ai.Prompts;
 using WoW.Two.Sdk.Beta.Be.Ai.Runs;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Budget;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
@@ -353,29 +354,74 @@ public sealed class RentalTermsV2Tests
         model.Requests.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task Process_ShouldNotCallTheModel_WhenTheSpendGuardIsHard()
+    {
+        var model = new ScriptedRunner(Answer());
+        var trace = new RecordingTrace();
+
+        var result = await Process(model, Input("Депозит: 500 USD.", trace), budget: new FixedBudget(BudgetState.Hard));
+
+        model.Requests.Should().BeEmpty();
+        result.StepResult.Outcome.Should().Be(FetchOutcome.CapabilityUnavailable);
+        result.Output.Should().BeNull();
+        result.Retryable.Should().BeTrue("the next window allows it");
+        result.StepResult.Message.Should().StartWith("budget-exhausted: The AI spend limit for this window is reached (")
+            .And.Contain("raise Harvest:Processing:Budget:LimitUsd");
+        trace.Operations.Should().Equal("resolve-model", "resolve-prompt", "call-model");
+    }
+
+    [Theory]
+    [InlineData(BudgetState.Off)]
+    [InlineData(BudgetState.Open)]
+    [InlineData(BudgetState.Soft)]
+    public async Task Process_ShouldCallThePinnedRoute_UnlessTheSpendGuardIsHard(BudgetState state)
+    {
+        var model = new ScriptedRunner(Answer());
+
+        var result = await Process(model, Input("Toshkent."), budget: new FixedBudget(state));
+
+        result.StepResult.Outcome.Should().Be(FetchOutcome.Ok);
+        model.Requests.Should().ContainSingle().Which.Models.Should().Equal(new[] { Route }, "a stage pins one route, which a soft guard keeps");
+    }
+
+    [Fact]
+    public async Task Process_ShouldStillSaveAnEmptyReading_WhenTheSpendGuardIsHard()
+    {
+        var model = new ScriptedRunner(Answer());
+
+        var result = await Process(model, Input(" "), budget: new FixedBudget(BudgetState.Hard));
+
+        result.StepResult.Outcome.Should().Be(FetchOutcome.Ok, "an empty description needs no model call");
+        model.Requests.Should().BeEmpty();
+    }
+
     private static JsonElement Field(JsonElement output, string key) =>
         output.GetProperty("fields").EnumerateArray().Single(field => field.GetProperty("key").GetString() == key);
 
     private static JsonElement Value(JsonElement output, string key) => Field(output, key).GetProperty("claims")[0].GetProperty("value");
 
-    private static async Task<CaptureProcessResult> Process(ScriptedRunner model, CaptureProcessInput input, ScriptedPrompts? prompts = null)
+    private static async Task<CaptureProcessResult> Process(ScriptedRunner model, CaptureProcessInput input, ScriptedPrompts? prompts = null,
+        IProcessingBudget? budget = null)
     {
-        await using var host = BuildHost(model, prompts ?? new ScriptedPrompts());
+        await using var host = BuildHost(model, prompts ?? new ScriptedPrompts(), budget);
         await using var scope = host.CreateAsyncScope();
         return await scope.ServiceProvider.GetRequiredKeyedService<ICaptureProcessor>(RentalTermsDefinition.ProcessorKey).ProcessAsync(input);
     }
 
-    private static ServiceProvider BuildHost(ScriptedRunner model, ScriptedPrompts prompts)
+    private static ServiceProvider BuildHost(ScriptedRunner model, ScriptedPrompts prompts, IProcessingBudget? budget = null)
     {
         var services = new ServiceCollection();
         services.AddHarvestListingSources();
+        if (budget is not null)
+            services.AddSingleton(budget);
         services.Configure<RentalTermsOptions>(options => options.Models = [Route]);
         services.AddSingleton<IAiRunner>(model);
         services.AddSingleton<IPromptsBroker>(prompts);
         return services.BuildServiceProvider();
     }
 
-    private static CaptureProcessInput Input(string text)
+    private static CaptureProcessInput Input(string text, ICaptureProcessTrace? trace = null)
     {
         Guid container = Guid.NewGuid();
         var source = new SourceModel
@@ -387,7 +433,7 @@ public sealed class RentalTermsV2Tests
             State = SourceState.Active, StateSinceUtc = DateTimeOffset.UnixEpoch, CreatedAtUtc = DateTimeOffset.UnixEpoch,
         };
         return new(container, source, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), null, text, null,
-            new Dictionary<string, JsonElement>(), Route, new DirectTrace(), PromptVersion);
+            new Dictionary<string, JsonElement>(), Route, trace ?? new DirectTrace(), PromptVersion);
     }
 
     private static string Answer(object? deposit = null, object? minimumStay = null, object? advanceRent = null, object? utilities = null) =>
@@ -407,6 +453,26 @@ public sealed class RentalTermsV2Tests
     {
         public Task<T> RunOperationAsync<T>(string key, Func<Task<T>> execute, Func<T, StepOperationResult>? describe = null) =>
             execute();
+    }
+
+    private sealed class RecordingTrace : ICaptureProcessTrace
+    {
+        internal List<string> Operations { get; } = [];
+
+        public Task<T> RunOperationAsync<T>(string key, Func<Task<T>> execute, Func<T, StepOperationResult>? describe = null)
+        {
+            Operations.Add(key);
+            return execute();
+        }
+    }
+
+    private sealed class FixedBudget(BudgetState state) : IProcessingBudget
+    {
+        public Task<BudgetReading> ReadAsync(CancellationToken cancellationToken = default) => Task.FromResult(new BudgetReading
+        {
+            State = state, WindowStartUtc = DateTimeOffset.UnixEpoch, SpentMicroUsd = 10_000_000, LimitMicroUsd = 10_000_000,
+            SoftMicroUsd = 8_000_000, ReadAtUtc = DateTimeOffset.UnixEpoch,
+        });
     }
 
     private sealed class ScriptedRunner(string output, int promptVersion = PromptVersion) : IAiRunner

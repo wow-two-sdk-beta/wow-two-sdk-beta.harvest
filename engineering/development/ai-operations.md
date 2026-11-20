@@ -3,8 +3,9 @@
 Operator controls over SCFD's AI passes — `post-tags` (`post-tags.md`), `extract-event` and `extract-listing`
 (`extraction.md`) — so a prompt can change and its answers be re-run and re-evaluated safely: a model-processing mode
 per source, re-runs over named posts, listed sources or every source, and eval sets built from stored posts.
-Code: `packages/Module/Reprocessing/` (lead doc `reprocessing.md`); routes and verb in `service/HarvestSources.Api/Processing/`;
-the `sources processing` verb in `service/HarvestSources.Api/Sources/`.
+Code: `packages/Module/Reprocessing/` (lead doc `reprocessing.md`) and the spend guard in `packages/Module/Budget/` (lead doc
+`budget.md`); routes and verb in `service/HarvestSources.Api/Processing/`; the `sources processing` verb in
+`service/HarvestSources.Api/Sources/`.
 
 ## Model processing per source
 
@@ -132,6 +133,68 @@ dotnet HarvestSources.Api.dll processing eval-set --set afisha-tags --use-case p
 - A new set takes `scoreFields` and `note`; an existing set of another use case is refused.
 - Then run models × prompt versions and read the report through `api/ai/evals/…` as for any set.
 
+## Spend guard
+
+One Anthropic credit (about $200) pays every AI call this host makes — Ocharo's `post-tags` and `extract-event`, OLX's
+`extract-listing` and `rental-terms@2`, eval runs — so the host slows down, then stops, before the credit runs out. The
+guard sums the AI module's inference log over a window and compares it with a limit; it adds no table and no migration.
+
+| Setting (`Harvest:Processing:Budget:`) | Default | Meaning |
+|---|---|---|
+| `LimitUsd` | none | the hard cap for the window; none turns the guard off (`off`, nothing changes) |
+| `SoftShare` | `0.8` | the soft threshold is `LimitUsd × SoftShare`; above 0, at most 1 |
+| `CycleStartDay` | `1` | the monthly window starts on this day of the month at 00:00 UTC; 1 to 28 |
+| `SinceUtc` | none | ISO 8601 with `Z`: the window is `[SinceUtc, now)` and never resets (a one-off credit); it wins over `CycleStartDay` |
+| `RefreshInterval` | `00:01:00` | how long a computed reading is reused; the workers poll every few seconds and never sum per claim |
+
+A value outside its range fails `config check` and a deployed boot (`ValidateOnStart`). `deploy.yml` declares `LimitUsd`,
+`SoftShare`, `CycleStartDay` and `SinceUtc`.
+
+| State | When | Workers (`post-tags`, extraction) | Route list for a call | Operator single runs |
+|---|---|---|---|---|
+| `off` | no `LimitUsd`, or the host composes no inference log | as today | configured `Models` in order | as today |
+| `open` | spent under the soft threshold | as today | configured `Models` in order | as today |
+| `soft` | spent at or over the soft threshold | as today | only the last configured route (one route: unchanged) | last route |
+| `hard` | spent at or over the limit | claim nothing and return `0`: rows stay queued, leases untouched | no model call | refused with `Conflict` |
+
+- **Spent** is the cost of every use case and data scope in the window, evals included.
+- **Operator single runs** are `post-tags run`, `extract run` and the `rental-terms@2` stage run. At `hard` the first two
+  answer `Conflict` — "The AI spend limit for this window is reached (… of … USD); raise
+  Harvest:Processing:Budget:LimitUsd or wait for the next window." — and the stage reports its unavailable outcome with
+  `budget-exhausted` in its message, the model not called. `rental-terms@2` takes one pinned route per stage, so `soft` leaves it as it is.
+- A batch claimed while the guard was `open` or `soft` and finished after it turned `hard` stores `unavailable` with reason
+  `budget-exhausted` and retries after its delay.
+- `processing rerun` queues at any state; the workers hold the spend back. Its dry run adds a `budget` object (the reading) to its output.
+- A reading the log cannot give (a database error) keeps the last good one; with none, a host that has a `LimitUsd` fails
+  closed at `hard` (`readFailed: true`, a warning in the log) until a read succeeds. A host with no limit stays `off`.
+- Each change of state is logged once, as a warning for `soft` and `hard`.
+
+```sh
+dotnet HarvestSources.Api.dll processing budget
+```
+
+| Route | Verb | Does |
+|---|---|---|
+| `GET api/processing/budget` | `processing budget` | reads the window's spend against the limit; `ApiResponse` envelope on the route, one JSON line from the verb |
+
+Operator only, as the re-run routes (`harvest:manage-storage`); a tenant key gets `403`. The verb writes nothing, exits `0`
+for every state including `off`, and works through Wheelhouse Run (no listener, no operator token). The reading holds `state`,
+`windowStartUtc`, `windowEndUtc` (monthly windows only), `limitMicroUsd`, `softMicroUsd`, `spentMicroUsd`,
+`projectedMicroUsd` (spent ÷ elapsed × the window's length; monthly windows only), `readAtUtc`, the same amounts in USD with
+four places (`limitUsd`, `softUsd`, `spentUsd`, `projectedUsd`) and `rows`: `{ useCase, model, attempts, costMicroUsd }` per
+use case and model. The route reuses a reading for `RefreshInterval`; `readAtUtc` says when it was summed.
+
+- **Evals are outside the guard.** Eval runs execute inside the AI module (`ModuleEvalsBroker`, the AI API's run routes
+  and the eval worker), which the guard does not stop; their cost still counts toward `spent` and can push the host to
+  `soft` or `hard`.
+- **Escalation.** The code has no flagged-answer escalation to a larger model. When it is added it runs only in `open`.
+- **Two targets, one key.** One host has one inference log. Two SCFD targets that share a provider key each count only their
+  own, so their `LimitUsd` values must add up to the credit.
+- **At `hard`.** Read `processing budget` for the spend and the `rows` that cost it. Then raise `LimitUsd` (the credit has
+  room, or was topped up) or wait for the next window: a monthly window resets at `CycleStartDay`, a `SinceUtc` window
+  never does, so move `SinceUtc` forward once the credit is renewed. Queued rows resume on the workers' next poll after
+  the reading refreshes (within `RefreshInterval`).
+
 ## Rollout
 
 1. Deploy: migrations `016-model-processing` and `017-processing-reruns`; every source keeps its old switch as `auto` or
@@ -141,3 +204,5 @@ dotnet HarvestSources.Api.dll processing eval-set --set afisha-tags --use-case p
    estimate, then run it without `--dry-run` and follow `processing status`.
 4. Build an eval set from stored posts, label its expected answers, and compare prompt versions with the AI API's eval
    runs and report.
+5. Before a credit-funded rollout, set `Harvest:Processing:Budget:LimitUsd` (and `SinceUtc` for a one-off credit), then read
+   `processing budget`: `open`, the limit and a zero spend.

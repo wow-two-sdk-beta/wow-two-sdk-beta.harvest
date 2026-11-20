@@ -10,6 +10,7 @@ using WoW.Two.Sdk.Beta.Be.Ai.Runs;
 using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Budget;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Posts;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
@@ -19,6 +20,7 @@ internal sealed class PostTagsBroker(
     [FromKeyedServices(HarvestModuleConstants.ServiceKey)] NpgsqlDataSource dataSource,
     ModulePostBroker posts,
     IOptions<PostTagsOptions> options,
+    IProcessingBudget budget,
     IServiceProvider services,
     TimeProvider time,
     ILogger<PostTagsBroker> logger) : IPostTagsBroker
@@ -34,6 +36,8 @@ internal sealed class PostTagsBroker(
     {
         if (services.GetService<IAiRunner>() is null)
             return Result<PostTagsRunModel>.Fail(AppErrorFactory.Conflict("The shared AI runner is not composed in this host."));
+        if (await budget.ReadAsync(cancellationToken) is { State: BudgetState.Hard } exhausted)
+            return Result<PostTagsRunModel>.Fail(AppErrorFactory.Conflict(exhausted.RefusalMessage()));
         var subject = await PostTagsStore.ReadSubjectAsync(dataSource, postId, cancellationToken);
         if (subject is null || !subject.Current)
             return Result<PostTagsRunModel>.Fail(AppErrorFactory.NotFound("Post not found, or merged or purged."));
@@ -95,6 +99,9 @@ internal sealed class PostTagsBroker(
     /// <inheritdoc />
     public async Task<int> ProcessDueAsync(CancellationToken cancellationToken = default)
     {
+        // At the spend limit nothing is claimed: the rows stay queued with their leases untouched until the window resets.
+        if (await budget.ReadAsync(cancellationToken) is { State: BudgetState.Hard })
+            return 0;
         var settings = options.Value;
         string owner = $"{Environment.MachineName}:{Environment.ProcessId}:{Guid.NewGuid():N}";
         var claims = await PostTagsStore.ClaimAsync(dataSource, owner, time.GetUtcNow(), settings.LeaseDuration, settings.BatchSize, cancellationToken);
@@ -159,6 +166,10 @@ internal sealed class PostTagsBroker(
         var settings = options.Value;
         if (settings.Models.Length == 0)
             return CallResult.Unavailable("no-model");
+        // The guard may have turned hard since the batch was claimed; a soft one keeps only the last route.
+        var spend = await budget.ReadAsync(ct);
+        if (spend.State == BudgetState.Hard)
+            return CallResult.Unavailable(ProcessingBudgetConstants.ExhaustedReason);
         if (await prompts.GetUseCaseAsync(PostTagsConstants.UseCase, ct) is not Result<UseCaseModel>.Success { Value: var useCase })
             return CallResult.Unavailable("use-case-missing");
         if (!Compatible(useCase))
@@ -171,7 +182,7 @@ internal sealed class PostTagsBroker(
             UseCase = PostTagsConstants.UseCase,
             Subject = $"{PostTagsConstants.SubjectPrefix}{post.Id:D}@{post.Revision}",
             Version = settings.PromptVersion,
-            Models = settings.Models,
+            Models = spend.Routes(settings.Models),
             Variables = PostTagsContent.Variables(post.Base, SourceCategory(subject), taxonomy.Value.Rendered, settings.MaxTextChars,
                 post.FirstSeenAtUtc),
             // The answer's parse maps an out-of-list value to its fallback and flags it (AnswerNormalizer).

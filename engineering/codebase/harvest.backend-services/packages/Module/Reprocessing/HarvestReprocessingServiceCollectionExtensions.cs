@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Budget;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Posts;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Reprocessing;
@@ -22,6 +23,7 @@ public static class HarvestReprocessingServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddHarvestPosts();
+        services.AddHarvestProcessingBudget();
         services.AddOptions();
         services.TryAddScoped<IPostReprocessingBroker, PostReprocessingBroker>();
         return services;

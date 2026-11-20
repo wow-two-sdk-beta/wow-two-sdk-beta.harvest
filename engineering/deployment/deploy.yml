@@ -83,6 +83,12 @@ services:
         Harvest:Processing:Extraction:Wanted:1:EntityType: {}
         Harvest:Processing:Extraction:Wanted:1:Domain: {}
         Harvest:Processing:Extraction:Models:0: {}
+        # The AI spend guard (development/ai-operations.md § Spend guard): unset LimitUsd leaves it off. SoftShare defaults to
+        # 0.8 and CycleStartDay to 1 in code; SinceUtc (ISO 8601 with Z) counts from that instant and never resets.
+        Harvest:Processing:Budget:LimitUsd: { type: number }
+        Harvest:Processing:Budget:SoftShare: { type: number }
+        Harvest:Processing:Budget:CycleStartDay: { type: number }
+        Harvest:Processing:Budget:SinceUtc: {}
         Harvest:Entities:Enabled: { type: boolean, default: false }
         # Console sign-in through the environment's Identity issuer (deployment.md § Browser sign-in), off until the
         # issuer registers the console's confidential client with callback `{app site URL}/api/identity/callback`.
