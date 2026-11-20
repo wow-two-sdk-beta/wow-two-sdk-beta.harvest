@@ -25,6 +25,7 @@ Shape: wow-two-ws/conventions/planning/version-track/version-track.md
 | Map pins for processed places | feature | a processed event's or listing's place opens as a Yandex Maps pin and a Google Maps pin; a place neither search resolves is flagged on the card and queued for the custom locations list; resolution comes from the shared WoW2 Locations domain (wow-two-ws `docs/platform-apps.md` #18), never a console-only geocoder · the links shipped 2026-11-20 as the fe sdk `domain/maps` `MapLinks` (a search on the place text, no geocoding); the links now show in the console beside every place; the unresolved flag and the custom list wait for Locations |
 | Evidence for every extracted field | feature | the processed post page quotes evidence only for dates, prices, registration and a listing's price and terms; the extraction answer stores none for name, place, format, access and status, so their rows show no quote. Add evidence spans to those fields in both extraction prompts, then the page shows them |
 | Console cards in light theme and at phone width | engineering | the 2026-11-20 card round (content-anchored blur, md pills, ↗ on Processed cards, the provider pill, the processed post page) was checked in dark theme at desktop width, and the page also at 390 px over the demo client; light theme and the dev host remain |
+| Available page lead | fix | the page shows its route description and the panel's own lead line, two lines saying the same; keep one |
 
 ## Events integration
 
