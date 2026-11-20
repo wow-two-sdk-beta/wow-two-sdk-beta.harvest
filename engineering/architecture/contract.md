@@ -560,8 +560,8 @@ operator setup (`HarvestSources:Audience` `internal` only):
   channel in those groups. An unknown group, or a group with no eligible channel, fails before any row is written.
   CAEx is selectable explicitly and has no link-check schedule. Instagram accounts have separate publisher sources
   and pipelines. Teplo Fest and Teplo Store belong to the Teplo Store group; their event-family metadata remains distinct.
-- Setup creates missing identities and keeps existing rows, cadences and keys. New website captures run every 6 hours
-  when enabled, plus a daily link check for individual-link sources; Instagram schedules start disabled. Sources stay
+- Setup creates missing identities and keeps existing rows, cadences and keys. New Ocharo website captures run on their profile's cron cadence (default 01:00, 07:00, 13:00 and 19:00
+  Asia/Tashkent) when enabled; existing pipelines keep their rows, plus a daily link check for individual-link sources; Instagram schedules start disabled. Sources stay
   private to the tenant, non-pool-shareable, AI-disabled, robots-obeying and window-complete; differing existing
   AI/sharing/robots settings need operator review. The host verb `ocharo setup|status`:
   `engineering/deployment/deployment.md` § Provisioning Ocharo on a target.

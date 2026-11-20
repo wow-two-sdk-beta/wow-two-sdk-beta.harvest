@@ -67,6 +67,8 @@ public sealed class OcharoSetupVerbTests
             var pipeline = Assert.IsType<Result<PipelineModel>.Success>(
                 await registry.GetPipelineAsync(subscription.GetProperty("pipelineId").GetGuid())).Value;
             pipeline.Schedules.Should().OnlyContain(schedule => !schedule.Enabled);
+            pipeline.Schedules.Should().ContainSingle().Which.Should().Match<ScheduleModel>(schedule => schedule.Kind == WorkKind.Capture
+                && schedule.Mode == ScheduleMode.Cron && schedule.Cron == "0 1,7,13,19 * * *" && schedule.TimeZone == "Asia/Tashkent");
         }
     }
 
@@ -113,10 +115,35 @@ public sealed class OcharoSetupVerbTests
         var result = JsonDocument.Parse(last).RootElement;
         result.GetProperty("tenant").GetString().Should().Be("ocharo");
         var lines = result.GetProperty("pipelines").EnumerateArray().Select(item => item.GetString()!).ToArray();
-        lines.Should().NotBeEmpty().And.OnlyContain(line => line.StartsWith("afisha/") && line.Contains("capture 6h due ")
+        lines.Should().NotBeEmpty().And.OnlyContain(line => line.StartsWith("afisha/") && line.Contains("capture cron due ")
             && line.Contains("check 1d due "));
         again.Output.Should().Be(status.Output, "status reads and never queues or writes");
         (await Run(host.Services, ["status", "--force"])).Exit.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Setup_with_schedules_gives_a_pipeline_without_schedules_the_cron_capture_and_the_daily_check()
+    {
+        await using var host = await StartAsync();
+
+        var setup = await Run(host.Services, ["setup", "--group", "afisha", "--schedules"]);
+
+        setup.Exit.Should().Be(0, setup.Error);
+        using var result = JsonDocument.Parse(setup.Output.TrimEnd().Split('\n')[^1]);
+        var pipelineIds = result.RootElement.GetProperty("subscriptions").EnumerateArray()
+            .Select(item => item.GetProperty("pipelineId").GetGuid()).ToArray();
+        pipelineIds.Should().NotBeEmpty();
+        using var scope = host.Services.CreateScope();
+        var registry = scope.ServiceProvider.GetRequiredService<IRegistrationBroker>();
+        foreach (Guid id in pipelineIds)
+        {
+            var pipeline = Assert.IsType<Result<PipelineModel>.Success>(await registry.GetPipelineAsync(id)).Value;
+            var capture = pipeline.Schedules.Single(row => row.Kind == WorkKind.Capture);
+            (capture.Mode, capture.Cron, capture.Every, capture.TimeZone, capture.Enabled)
+                .Should().Be((ScheduleMode.Cron, "0 1,7,13,19 * * *", (TimeSpan?)null, "Asia/Tashkent", true));
+            var check = pipeline.Schedules.Single(row => row.Kind == WorkKind.Check);
+            (check.Mode, check.Every, check.Enabled).Should().Be((ScheduleMode.Interval, (TimeSpan?)TimeSpan.FromHours(24), true));
+        }
     }
 
     [Fact]
@@ -312,20 +339,24 @@ public sealed class OcharoSetupVerbTests
     }
 
     [Fact]
-    public async Task Setup_WithSelector_ShouldRefuseAMissingGroup()
+    public async Task Setup_WithSelector_ShouldBindEachProvisionedPublisher_AndSkipTheOnesTheFileListsButSetupSkipped()
     {
         await using var host = await StartAsync();
 
-        var refused = await Run(host.Services, ["setup", "--group", "afisha", "--selector"]);
+        var first = await Run(host.Services, ["setup", "--group", "afisha", "--selector"]);
 
-        refused.Exit.Should().Be(1);
-        refused.Error.Should().Contain("Group anons is not provisioned in the Ocharo container; run setup with --group anons.");
-        refused.Output.Should().BeEmpty();
-        (await SelectorSubscriptionsAsync(host)).Should().BeEmpty();
+        first.Exit.Should().Be(0, first.Error);
+        Last(first.Output).GetProperty("selectorVersion").GetInt32().Should().Be(1);
+        var stored = Assert.Single(await SelectorSubscriptionsAsync(host));
+        stored.Selector!.Sources.Include.Select(reference => reference.Context["sourceGroup"]).Should().Equal("afisha");
 
-        var provisioned = await Run(host.Services, SelectorSetup());
-        provisioned.Exit.Should().Be(0, provisioned.Error);
-        (await SelectorSubscriptionsAsync(host)).Should().ContainSingle();
+        var more = await Run(host.Services, ["setup", "--group", "caex", "--group", "anons", "--selector", "--selector-reset"]);
+
+        more.Exit.Should().Be(0, more.Error);
+        Last(more.Output).GetProperty("selectorVersion").GetInt32().Should().Be(2);
+        var include = Assert.Single(await SelectorSubscriptionsAsync(host)).Selector!.Sources.Include;
+        include.Select(reference => reference.Context["sourceGroup"]).Should().Equal("afisha", "anons", "caex");
+        include.Single(reference => reference.Context["sourceGroup"] == "caex").Context["defaultKind"].Should().Be("exhibition");
     }
 
     private static string[] SelectorSetup() => ["setup", .. SelectorGroups.SelectMany(group => new[] { "--group", group }), "--selector"];

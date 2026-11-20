@@ -87,6 +87,60 @@ public sealed class OcharoSourcesTests
     }
 
     [Fact]
+    public async Task Setup_declares_the_capture_on_the_profiles_cron_and_the_check_on_a_day()
+    {
+        var registry = new FakeRegistrationBroker();
+        var delivery = new FakeDeliveryBroker(new FakePostBroker(registry), registry, null, [new OcharoFashionFilter()]);
+        var provisioner = new OcharoSourceProvisioner(registry, delivery);
+
+        OcharoSetup manual = Value(await provisioner.EnsureAsync(groupIds: ["afisha"]));
+        OcharoSetup scheduled = Value(await provisioner.EnsureAsync(enableSchedules: true, includeInstagram: true, groupIds: ["afisha", "teplo"]));
+
+        foreach (var route in manual.Sources)
+        {
+            var pipeline = Value(await registry.GetPipelineAsync(route.PipelineId));
+            var capture = pipeline.Schedules.Single(row => row.Kind == WorkKind.Capture);
+            (capture.Mode, capture.Cron, capture.Every, capture.TimeZone, capture.Enabled)
+                .Should().Be((ScheduleMode.Cron, "0 1,7,13,19 * * *", (TimeSpan?)null, "Asia/Tashkent", true), "the request switched the declared row on");
+            var check = pipeline.Schedules.Single(row => row.Kind == WorkKind.Check);
+            (check.Mode, check.Cron, check.Every, check.TimeZone, check.Enabled)
+                .Should().Be((ScheduleMode.Interval, (string?)null, (TimeSpan?)TimeSpan.FromHours(24), "Asia/Tashkent", true));
+        }
+        foreach (var route in scheduled.Sources.Where(route => route.GroupId == "teplo"))
+        {
+            var capture = Value(await registry.GetPipelineAsync(route.PipelineId)).Schedules.Should().ContainSingle().Subject;
+            (capture.Kind, capture.Mode, capture.Cron, capture.Enabled)
+                .Should().Be((WorkKind.Capture, ScheduleMode.Cron, "0 1,7,13,19 * * *", false), "Instagram capture stays disabled");
+        }
+    }
+
+    [Fact]
+    public async Task Setup_with_schedules_keeps_the_fixed_six_hours_an_earlier_setup_declared_and_adds_the_cron_where_there_is_no_capture()
+    {
+        var registry = new FakeRegistrationBroker();
+        var delivery = new FakeDeliveryBroker(new FakePostBroker(registry), registry, null, [new OcharoFashionFilter()]);
+        var provisioner = new OcharoSourceProvisioner(registry, delivery);
+        OcharoSetup earlier = Value(await provisioner.EnsureAsync(groupIds: ["afisha"]));
+        var (sixHours, bare) = (earlier.Sources[0].PipelineId, earlier.Sources[1].PipelineId);
+        foreach (var (id, schedules) in new (Guid, List<ScheduleDeclaration>)[]
+        {
+            (sixHours, [new() { Kind = WorkKind.Capture, Mode = ScheduleMode.Interval, Every = TimeSpan.FromHours(6), TimeZone = "Asia/Tashkent", Enabled = false }]),
+            (bare, []),
+        })
+        {
+            var pipeline = Value(await registry.GetPipelineAsync(id));
+            Value(await registry.UpdatePipelineAsync(id, new() { Name = pipeline.Name, Scope = pipeline.Scope, Schedules = schedules }));
+        }
+
+        Value(await provisioner.EnsureAsync(enableSchedules: true, groupIds: ["afisha"])).Should().BeEquivalentTo(earlier);
+
+        var kept = Value(await registry.GetPipelineAsync(sixHours)).Schedules.Single(row => row.Kind == WorkKind.Capture);
+        (kept.Mode, kept.Every, kept.Enabled).Should().Be((ScheduleMode.Interval, (TimeSpan?)TimeSpan.FromHours(6), true));
+        var added = Value(await registry.GetPipelineAsync(bare)).Schedules.Single(row => row.Kind == WorkKind.Capture);
+        (added.Mode, added.Cron, added.Enabled).Should().Be((ScheduleMode.Cron, "0 1,7,13,19 * * *", true));
+    }
+
+    [Fact]
     public async Task Setup_with_schedules_switches_on_existing_pipelines_and_keeps_a_tuned_cadence()
     {
         var registry = new FakeRegistrationBroker();
@@ -99,7 +153,8 @@ public sealed class OcharoSourcesTests
             Name = tuned.Name, Scope = tuned.Scope,
             Schedules = tuned.Schedules.Select(row => new ScheduleDeclaration
             {
-                Kind = row.Kind, Mode = row.Mode, Every = row.Kind == WorkKind.Capture ? TimeSpan.FromHours(12) : row.Every,
+                Kind = row.Kind, Mode = row.Kind == WorkKind.Capture ? ScheduleMode.Interval : row.Mode,
+                Every = row.Kind == WorkKind.Capture ? TimeSpan.FromHours(12) : row.Every,
                 TimeZone = row.TimeZone, Enabled = false,
             }).ToList(),
         }));

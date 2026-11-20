@@ -1,6 +1,6 @@
 # Ocharo source registry and collection review
 
-*Last updated: 2026-11-09*
+*Last updated: 2026-11-21*
 
 The [registry](../codebase/harvest-adapters.backend-services/packages/Module/Ocharo/ocharo-event-sources.json)
 is the ranked, reviewed collection inventory: 100 publishers and 189 channels. It keeps priority separate from
@@ -18,6 +18,15 @@ event index. A publisher can have several channels; shared social or government 
 | [Teplo](https://teplo.world/) | Programme and ownership reference. Review Market, Fest and store pop-ups separately. The first two have opt-in publisher routes via the existing official Instagram integration. | Publisher API eligibility and current posts are unverified. Store reposts are corroboration; post time is not event time. |
 | [Tourism Committee](https://gov.uz/en/uzbektourism/news/events) | Calendar view showed filters without event rows. Evaluate the committee news and [National PR Centre](https://uzbekistan.travel/en/c/announcements/) streams independently. Use the same section-scoped approach for city and regional authority pages. | Use the original issuer notice for dates, call rounds, eligibility and deadlines. |
 | [Idem](https://idem.uz/c/exhibition/) and ticket sellers | Idem supplies dated discovery and references to independent upstreams. Ticket pages can supply visitor admission and price; add a reader only if it adds distinct coverage. | Aggregation never transfers authority or schedules. Seller access needs the organizer. |
+
+A `harvest` channel reaches its collector through its `adapterKey`, one of the profiles the host routes to: the five
+named readers above, Instagram's opt-in provider route and three generic routes over the generic readers
+(`packages/Module/Readers/readers.md`), each at authority 60: `generic-feed` (RSS, Atom, ICS; no deletion check),
+`generic-structured` (pages with JSON-LD `Event` data) and `generic-site` (a sitemap), the last two with the daily
+`web-direct` check. A generic channel needs no new reader but follows the same rules: an owned channel, a unique
+HTTPS seed and `setup` `default` or `selected`; no registry channel is switched to one yet. A source reaches its reader
+by its family, so a generic route on a host a named reader serves runs that named reader. Every profile captures on the
+cron `0 1,7,13,19 * * *` in `Asia/Tashkent`.
 
 Other channels have a proposed method and a verification note in the registry. A new reader needs a readable public route,
 stable IDs, date/eligibility evidence, scoped destinations and tests before its mode moves to `harvest`. Reference pages,

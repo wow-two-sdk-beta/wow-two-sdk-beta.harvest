@@ -10,8 +10,8 @@ conformance suites. The named readers (Afisha, ANONS, CAEx, Craftfair/Hunarmand,
 registry, setup and filter, and the opt-in Instagram and provider integrations build into the same image through
 `HarvestSources.Api`. Fixture tests establish no live source access; developer acceptance stays in the version track.
 
-The dev SCFD runs this image. Ocharo's two Afisha pipelines (fashion, exhibitions) capture every 6 hours with a daily
-link check; ANONS, Uzexpocentre and CAEx capture every 6 hours. Events pulls their `wow2.event.v1` subscriptions.
+The dev SCFD runs this image. Ocharo pipelines capture on their profile cadence (cron windows for new pipelines; existing ones keep 6 hours
+until reset), with a daily link check for individual-link sources. Events pulls their `wow2.event.v1` subscriptions.
 No proxy, CAPTCHA, session or Instagram provider is configured; no paid call, account login or application has been
 made. Prod rollout remains open.
 

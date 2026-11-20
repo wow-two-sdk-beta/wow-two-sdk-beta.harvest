@@ -20,7 +20,9 @@ public sealed class OcharoSourceProvisioner(IRegistrationBroker registry, IDeliv
     public const string DefaultTenantSlug = "ocharo";
 
     /// <summary>Creates missing registry rows and filtered subscriptions. Cadences start disabled unless requested; a
-    /// request also switches on the registry cadences of pipelines that already exist. A source with no group joins
+    /// request also switches on the registry cadences of pipelines that already exist, keeping any row they hold (a
+    /// tuned interval, or the old fixed six hours) and adding the rows they lack. The capture cadence comes from the
+    /// channel's profile, four daily windows on a cron by default, and the check runs every 24 hours. A source with no group joins
     /// its publisher's group, named as the registry names the publisher, and a source with no display name gets one;
     /// a group or name an operator set is kept. With <c>selector</c> it also provisions Ocharo's one selector
     /// subscription, <c>ocharo-events</c> (<see cref="OcharoSelector"/>).</summary>
@@ -32,8 +34,9 @@ public sealed class OcharoSourceProvisioner(IRegistrationBroker registry, IDeliv
     /// has, so a source an operator switched to <c>manual</c> or <c>auto</c> never makes a later setup refuse.
     /// <paramref name="selector"/> binds the shipped selector file to the container's source groups and creates the tenant's
     /// <c>ocharo-events</c> subscription over it, live from now on; one that already exists, whatever its state short of
-    /// archived, is kept as it is so a client's edits survive. Every publisher the file lists must already have a source
-    /// group in the container, so a selected setup that skips one refuses before the subscription is touched.
+    /// archived, is kept as it is so a client's edits survive. A file that lists its publishers needs every one to have a
+    /// source group in the container, so a selected setup that skips one refuses before the subscription is touched; a file
+    /// that follows the registry binds every provisioned publisher and refuses only when there is none.
     /// <paramref name="selectorReset"/> puts the file's selector back on an existing subscription as a selector change by
     /// <c>ocharo setup</c>; a file equal to the stored selector changes nothing, so the version stays.</remarks>
     public async Task<Result<OcharoSetup>> EnsureAsync(bool enableSchedules = false, CancellationToken cancellationToken = default,
@@ -134,7 +137,7 @@ public sealed class OcharoSourceProvisioner(IRegistrationBroker registry, IDeliv
                 PipelineModel? pipeline = pipelines.SingleOrDefault(item => item.SourceId == source.Id && item.Scope.Url == seed);
                 var schedules = new List<ScheduleDeclaration>
                 {
-                    new() { Kind = WorkKind.Capture, Mode = ScheduleMode.Interval, Every = TimeSpan.FromHours(6), TimeZone = "Asia/Tashkent", Enabled = enableSchedules && !instagram },
+                    profile.Cadence.Declare(enableSchedules && !instagram),
                 };
                 if (profile.CheckPolicy == "web-direct")
                     schedules.Add(new() { Kind = WorkKind.Check, Mode = ScheduleMode.Interval, Every = TimeSpan.FromHours(24), TimeZone = "Asia/Tashkent", Enabled = enableSchedules });

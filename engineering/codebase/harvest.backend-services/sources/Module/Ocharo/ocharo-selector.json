@@ -3,6 +3,7 @@
   "name": "ocharo-events",
   "schema": "wow2.event.v1",
   "context": { "catalog": "ocharo-fashion" },
+  "followRegistry": true,
   "selector": {
     "entityTypes": ["event"],
     "domains": [

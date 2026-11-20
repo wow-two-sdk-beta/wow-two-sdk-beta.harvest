@@ -1,7 +1,10 @@
 using AwesomeAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Readers;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
+using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 using WoW.Two.Sdk.Beta.Be.Harvest.Testing.Delivery;
 using WoW.Two.Sdk.Beta.Be.Harvest.Testing.Posts;
 using WoW.Two.Sdk.Beta.Be.Harvest.Testing.Registration;
@@ -32,6 +35,92 @@ public sealed class OcharoRegistryTests
         var visa = registry.Groups.Single(group => group.Id == "vfw-tashkent");
         visa.Channels.Single(channel => channel.RelatedGroupId == "uzexpocentre")
             .Mode.Should().Be("reference");
+    }
+
+    [Fact]
+    public void The_shipped_registry_still_validates()
+    {
+        var registry = OcharoSourceRegistry.Current;
+
+        registry.Validate();
+
+        registry.Groups.Should().HaveCount(100);
+    }
+
+    [Theory]
+    [InlineData("generic-feed", SourceFamily.Feed, "none", "https://news.example.test/feed.xml")]
+    [InlineData("generic-structured", SourceFamily.Structured, "web-direct", "https://events.example.test/calendar")]
+    [InlineData("generic-site", SourceFamily.Site, "web-direct", "https://venue.example.test/")]
+    public void A_generic_route_is_listed_with_its_family_and_the_cron_capture_cadence(string key, SourceFamily family,
+        string checkPolicy, string url)
+    {
+        var registry = Registry(Channel("news", key, url));
+
+        registry.Validate();
+        var route = registry.Routes(includeInstagram: false).Should().ContainSingle().Subject;
+
+        route.Profile.Key.Should().Be(key);
+        route.Profile.Family.Should().Be(family);
+        route.Profile.Authority.Should().Be(60);
+        route.Profile.CheckPolicy.Should().Be(checkPolicy);
+        route.Profile.MaxPages.Should().Be(5);
+        route.Channel.PipelineUrl.Should().Be(url);
+        route.Profile.Cadence.Should().Be(OcharoSourceRegistry.CaptureCadence.Default);
+        route.Profile.Cadence.Declare(enabled: true).Should().BeEquivalentTo(new ScheduleDeclaration
+        {
+            Kind = WorkKind.Capture, Mode = ScheduleMode.Cron, Cron = "0 1,7,13,19 * * *", TimeZone = "Asia/Tashkent", Enabled = true,
+        });
+        route.Profile.Cadence.Declare(enabled: false).Enabled.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Every_profile_takes_the_default_capture_cadence_named_ones_included()
+    {
+        var registry = OcharoSourceRegistry.Current;
+        var routes = registry.Routes(includeInstagram: true, registry.Groups.Select(group => group.Id).ToHashSet()).ToArray();
+
+        routes.Select(route => route.Profile.Key).Distinct().Should().BeEquivalentTo(
+            "afisha-uz", "anons-uz", "craftfair-uz", "uzexpocentre-uz", "caex-uz", "instagram-business-discovery");
+        routes.Should().OnlyContain(route => route.Profile.Cadence == OcharoSourceRegistry.CaptureCadence.Default);
+        var cadence = OcharoSourceRegistry.CaptureCadence.Default;
+        (cadence.Mode, cadence.Cron, cadence.Every, cadence.TimeZone).Should().Be((ScheduleMode.Cron, "0 1,7,13,19 * * *", (TimeSpan?)null, "Asia/Tashkent"));
+    }
+
+    [Fact]
+    public void A_generic_channel_keeps_the_harvest_rules()
+    {
+        const string feed = "https://news.example.test/feed.xml";
+        var invalid = new Dictionary<string, Func<OcharoSourceRegistry>>
+        {
+            ["not owned"] = () => Registry(Channel("news", "generic-feed", feed, relationship: "related")),
+            ["repeated seed"] = () => Registry(Channel("a", "generic-feed", feed), Channel("b", "generic-site", feed)),
+            ["not https"] = () => Registry(Channel("news", "generic-feed", "http://news.example.test/feed.xml")),
+            ["no such route"] = () => Registry(Channel("news", "generic-page", "https://news.example.test/")),
+            ["no setup"] = () => Registry(Channel("news", "generic-feed", feed, setup: "later")),
+        };
+
+        foreach (var (reason, build) in invalid)
+            build().Invoking(registry => registry.Validate()).Should().Throw<InvalidOperationException>(reason);
+    }
+
+    [Fact]
+    public void A_generic_routes_source_reaches_the_generic_adapter_of_its_family_and_a_named_host_keeps_its_reader()
+    {
+        using var provider = new ServiceCollection().AddHarvestReaders().AddOcharoEventSources().BuildServiceProvider();
+        var adapters = provider.GetServices<ISourceAdapter>().ToList();
+        // The engine takes the last adapter that serves the source, so a named adapter wins over a generic one.
+        ISourceAdapter Serving(SourceFamily family, string handle) => adapters.Last(adapter => adapter.Serves(Source(family, handle)));
+        var registry = Registry(
+            Channel("feed", "generic-feed", "https://news.example.test/feed.xml"),
+            Channel("events", "generic-structured", "https://events.example.test/calendar"),
+            Channel("site", "generic-site", "https://venue.example.test/"));
+
+        var routes = registry.Routes(includeInstagram: false).ToArray();
+
+        routes.Should().HaveCount(3);
+        foreach (var route in routes)
+            Serving(route.Profile.Family, new Uri(route.Channel.PipelineUrl).IdnHost).Key.Should().Be(route.Profile.Key);
+        Serving(SourceFamily.Site, "afisha.uz").Key.Should().Be("afisha-uz");
     }
 
     [Theory]
@@ -145,6 +234,45 @@ public sealed class OcharoRegistryTests
         schedule.Kind.Should().Be(WorkKind.Capture);
         schedule.Enabled.Should().BeFalse();
     }
+
+    private static OcharoSourceChannel Channel(string id, string adapterKey, string url, string relationship = "owned",
+        string setup = "default") => new()
+    {
+        Id = id, Url = url, Role = "a synthetic channel", Relationship = relationship, Mode = "harvest", Method = "feed",
+        Plan = "Read the synthetic channel.", AdapterKey = adapterKey, Setup = setup,
+    };
+
+    /// <summary>A registry of one synthetic publisher: its reference home page and the given harvest channels.</summary>
+    private static OcharoSourceRegistry Registry(params OcharoSourceChannel[] channels) => new()
+    {
+        Format = "ocharo.event-sources.v1", ReviewedOn = new DateOnly(2026, 11, 21),
+        Groups =
+        [
+            new()
+            {
+                Id = "synthetic", Name = "Synthetic publisher", Rank = 1, Tier = "P1", SourceType = "Media", Coverage = "Nowhere",
+                Rationale = "A synthetic publisher.", EventFamilies = [], Aggregates = [],
+                Channels =
+                [
+                    new()
+                    {
+                        Id = "home", Url = "https://home.example.test/", Role = "home page", Relationship = "owned", Primary = true,
+                        Mode = "reference", Method = "reference", Plan = "None.",
+                    },
+                    .. channels,
+                ],
+            },
+        ],
+    };
+
+    private static SourceModel Source(SourceFamily family, string handle) => new()
+    {
+        Id = Guid.NewGuid(), ContainerId = Guid.NewGuid(), Family = family, Handle = handle,
+        Coverage = SourceCoverage.Filtered, Completeness = SourceCompleteness.Window, Posture = SourcePosture.OwnFetch,
+        Permission = SourcePermission.Open, PoolShareable = false, RobotsPolicy = RobotsPolicy.Obey,
+        ConsentBasis = ConsentBasis.None, Authority = 60, RetentionClass = "standard", CapabilityPolicy = new(),
+        State = SourceState.Active, StateSinceUtc = DateTimeOffset.UnixEpoch, CreatedAtUtc = DateTimeOffset.UnixEpoch,
+    };
 
     private static FakeDeliveryBroker Delivery(FakeRegistrationBroker registry) =>
         new(new FakePostBroker(registry), registry, null, [new OcharoFashionFilter()]);

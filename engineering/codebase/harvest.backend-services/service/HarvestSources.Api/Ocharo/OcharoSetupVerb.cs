@@ -20,7 +20,9 @@ namespace HarvestSources.Api.Ocharo;
 ///     existing ones are updated; without it new sources register <c>off</c> and existing ones keep their mode
 ///   - <c>--selector</c> also provisions the tenant's <c>ocharo-events</c> selector subscription from the shipped selector
 ///     file: created when missing, kept as it is when it exists, so a client's edits survive; every publisher the file lists
-///     must already have a source group in the container, else the verb refuses and names the <c>--group</c> to add.
+///     must already have a source group in the container, else the verb refuses and names the <c>--group</c> to add;
+///     that refusal applies to the explicit selector form only: with <c>followRegistry</c> setup binds every provisioned
+///     registry publisher and skips the rest.
 ///     <c>--selector-reset</c>, only with <c>--selector</c>, puts the file's selector back on the existing subscription as a
 ///     selector change by <c>ocharo setup</c>; a file equal to the stored selector keeps the version
 ///   - <c>--schedules</c> enables the other registry cadences, on existing pipelines too, keeping a tuned interval; <c>--run</c> queues one bounded capture run per pipeline

@@ -1,6 +1,6 @@
 # SCFD deployment
 
-*Last updated: 2026-11-19*
+*Last updated: 2026-11-21*
 
 One image, one host: `HarvestSources.Api` runs the capture and delivery API, the worker and the source readers, and
 serves the console on the same origin. Wheelhouse deploys it as product `harvest`, service `harvest` (`deploy.yml`);
@@ -139,8 +139,10 @@ runs on the target's own settings through Wheelhouse Run, with no listener and n
   startup fills missing sections for existing sources. Only the selected Ocharo channels receive the setup cadence and
   subscription.
 - Schedules stay off unless `--schedules` is given; the flag also switches on the registry cadences of existing
-  pipelines (capture every 6 h, plus a daily check where the source's check policy is `web-direct`), keeping an
-  interval an operator tuned.
+  pipelines (capture on the cron `0 1,7,13,19 * * *` in `Asia/Tashkent`, four windows a day, plus a 24 h check where
+  the source's check policy is `web-direct`; Instagram capture stays off), keeping the rows a pipeline holds, such as
+  a tuned interval or the old fixed 6 h capture, and adding the ones it lacks. Every profile takes that capture
+  cadence, the generic routes (`generic-feed`, `generic-structured`, `generic-site`) included.
 - `--model-processing off|manual|auto` sets that model-processing mode (`engineering/development/ai-operations.md`) on
   every selected source: a new source registers with it, an existing one is updated. Without the option a new source
   registers `off` and an existing one keeps whatever mode it has, so setup never refuses a source an operator opened
@@ -149,17 +151,21 @@ runs on the target's own settings through Wheelhouse Run, with no listener and n
   (`ai-operations.md` § Setting the mode from the host).
 - `--selector` also provisions Ocharo's one selector subscription, `ocharo-events` (schema `wow2.event.v1`, context
   `catalog=ocharo-fashion`, live from now on), from the file the image ships, `ocharo-selector.json`: the type, domain,
-  topic and timeframe clauses and the four publishers it follows (Afisha, ANONS, CAEx, Uzexpocentre; Hunarmand stays
-  out while it is paused). The file names publishers by registry id, so setup binds each to the container's source group
-  of that name and adds `sourceGroup` and `sourceName` to that ref's context, where the payload `context` carries
-  them. Every listed publisher needs its group first, so run the groups together
+  topic and timeframe clauses and `followRegistry: true`: the selector follows every registry publisher the container
+  provisions, in registry rank order, so a publisher joins by being provisioned and needs no file edit. The file's four
+  `sources` entries (Afisha, ANONS, CAEx, Uzexpocentre) only give per-publisher context, such as the `defaultKind` of
+  CAEx and Uzexpocentre; a listed publisher that is not provisioned is skipped. Setup binds each provisioned publisher
+  to the container's source group of that name and adds `sourceGroup` and `sourceName` to that ref's context, where
+  the payload `context` carries them. Name the publishers Ocharo should see
   (`ocharo setup --group afisha --group anons --group caex --group uzexpocentre --selector`; CAEx's calendar is a
-  selected channel the default setup lacks); a missing one refuses with `Group {id} is not provisioned in the Ocharo
-  container; run setup with --group {id}.`, after the channel rows are written, so adding the group and repeating the
-  verb finishes it. Repeating the verb keeps the subscription as it is, a client's edits included; `--selector-reset`
-  (only with `--selector`) puts the file's selector back as a selector change by `ocharo setup`, and a file equal to the
-  stored selector keeps the version. The per-pipeline `ocharo-fashion-v1` subscriptions keep being created beside it
-  until they retire.
+  selected channel the default setup lacks, and Hunarmand stays out while it is paused, so leave its group out); a
+  container with no registry publisher refuses with `No registry publisher is provisioned in the Ocharo container; run
+  setup.`, after the channel rows are written. A file without `followRegistry` lists the publishers it follows, each
+  needs its group first, and a missing one refuses with `Group {id} is not provisioned in the Ocharo container; run
+  setup with --group {id}.`. Repeating the verb keeps the subscription as it is, a client's edits included;
+  `--selector-reset` (only with `--selector`) puts the file's selector back as a selector change by `ocharo setup`, and
+  a file equal to the stored selector keeps the version. The per-pipeline `ocharo-fashion-v1` subscriptions keep being
+  created beside it until they retire.
 - `--run` queues one bounded capture run per pipeline for the running worker. `--refresh` queues one refresh run per
   pipeline: the worker re-reads every known post, so a changed reader emits `post.changed` for each post whose
   projection changed.
@@ -172,7 +178,7 @@ runs on the target's own settings through Wheelhouse Run, with no listener and n
 
 `dotnet HarvestSources.Api.dll ocharo status [--group afisha]` writes nothing. Its last stdout line names the tenant
 and, per channel, each schedule's cadence, next due time and latest run of its kind, for example
-`afisha/fashion capture 6h due 11-10T19:12Z last partial/page_limit 11-10T13:12Z; check 1d due …`; it exits `1`
+`afisha/fashion capture cron due 11-11T02:00Z last partial/page_limit 11-10T20:03Z; check 1d due …`; it exits `1`
 when setup has not run for the tenant.
 
 The HTTP form, `POST /api/ocharo/sources/setup`, takes `{ enableSchedules, includeInstagram, groupIds?, selector,

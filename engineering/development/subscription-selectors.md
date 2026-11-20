@@ -15,7 +15,8 @@ A selector judges the Layer 1 tags a post revision carries (`type:`, `domain:`, 
 
 - `Harvest__Processing__Ai__Enabled` and `Harvest__Processing__Tags__Enabled` are on (`post-tags.md` § Host settings).
 - The sources it follows are Model processing `auto` (`ai-operations.md`): `sources processing --list --tenant <slug>`
-  shows the mode, `ocharo setup … --model-processing auto` sets it.
+  shows the mode, `ocharo setup … --model-processing auto` sets it. Ocharo's selector follows every registry publisher
+  the container provisions (`followRegistry`), so each provisioned source needs it, not only the four its file lists.
 - `post-tags backfill` has queued the posts stored before tagging was on, and `post-tags report` shows the queue empty.
 - Extraction demand: each active selector adds an (entity type × domain include) pair beside
   `Harvest__Processing__Extraction__Wanted__N__*`, so no new setting is needed. A change queues the extractions for its
@@ -123,7 +124,13 @@ adopter.
 ## Provisioning and switching a consumer
 
 Ocharo's selector is `ocharo setup … --selector` (`deployment.md` § Provisioning Ocharo on a target); `--selector-reset`
-puts the shipped file back after a client's edit. A consumer's cutover to a selector subscription runs in this order:
+puts the shipped file back after a client's edit. The file, `ocharo-selector.json` (format `ocharo-selector@1`), sets
+`followRegistry: true` (optional, false by default): setup binds the source group of every registry publisher the
+container provisions, in registry rank order, each with `sourceGroup` and `sourceName` in its context. Its `sources[]`
+entries then only override a publisher's context (CAEx and Uzexpocentre keep `defaultKind`), and a listed publisher that
+is not provisioned is skipped; a container with no registry publisher refuses, and `sources` may be empty only with the
+flag. Without it the file lists the publishers it binds and refuses one whose group is missing. A consumer's cutover to
+a selector subscription runs in this order:
 
 1. Provision the selector once the sources are `auto` and tagged (§ What the selector needs); a second `ocharo setup …
    --selector` prints the same id and version.

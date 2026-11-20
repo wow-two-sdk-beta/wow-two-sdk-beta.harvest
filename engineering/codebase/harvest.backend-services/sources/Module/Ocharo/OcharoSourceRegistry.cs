@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Caex;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Instagram;
@@ -10,6 +11,10 @@ namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Ocharo;
 /// <summary>The reviewed source registry. Listing it has no network or storage side effects.</summary>
 public sealed partial record OcharoSourceRegistry
 {
+    // A generic-* key is the key of that family's generic adapter from AddHarvestReaders(). A source reaches its adapter
+    // by family, never by ExternalRef (which only carries the profile key): the generic adapter of the profile's family
+    // serves it, unless a named adapter serves its host, and the named one wins. A generic-site channel on a host a
+    // named reader owns therefore runs that reader.
     private static readonly CollectionProfile[] Profiles =
     [
         new("afisha-uz", "Afisha", 50, SourceFamily.Site, "web-direct"),
@@ -17,6 +22,9 @@ public sealed partial record OcharoSourceRegistry
         new("craftfair-uz", "Craftfair / Hunarmand", 80, SourceFamily.Site, "web-direct"),
         new("uzexpocentre-uz", "Uzexpocentre", 80, SourceFamily.Site, "none"),
         new(CaexSourceAdapter.AdapterKey, "CAEx", 80, SourceFamily.Site, "none"),
+        new("generic-feed", "Generic feed", 60, SourceFamily.Feed, "none"),
+        new("generic-structured", "Generic structured page", 60, SourceFamily.Structured, "web-direct"),
+        new("generic-site", "Generic site", 60, SourceFamily.Site, "web-direct"),
         new(InstagramSourceAdapter.AdapterKey, "Instagram", 80, SourceFamily.Instagram, "none"),
     ];
 
@@ -73,7 +81,7 @@ public sealed partial record OcharoSourceRegistry
         return registry;
     }
 
-    private void Validate()
+    internal void Validate()
     {
         var groupIds = Groups.Select(group => group.Id).ToHashSet(StringComparer.Ordinal);
         if (Format != "ocharo.event-sources.v1" || Groups.Count == 0 || groupIds.Count != Groups.Count
@@ -121,7 +129,29 @@ public sealed partial record OcharoSourceRegistry
     /// <summary>A publisher's collection settings. <paramref name="MaxPages"/> bounds a run's listing and detail pages
     /// together; a publisher whose listing holds more events than fit in five pages takes a larger bound.</summary>
     internal sealed record CollectionProfile(string Key, string Name, int Authority, SourceFamily Family, string CheckPolicy,
-        int MaxPages = 5);
+        int MaxPages = 5)
+    {
+        /// <summary>Gets when the profile's capture runs; every profile takes <see cref="CaptureCadence.Default"/> unless it names its own.</summary>
+        internal CaptureCadence Cadence { get; init; } = CaptureCadence.Default;
+    }
+
+    /// <summary>When a profile's capture runs, as the schedule row the provisioner declares for it.</summary>
+    /// <param name="Mode">How the row decides when its work is due.</param>
+    /// <param name="Cron">The cron expression for <see cref="ScheduleMode.Cron"/>.</param>
+    /// <param name="Every">The interval for <see cref="ScheduleMode.Interval"/>.</param>
+    /// <param name="TimeZone">The IANA time zone the cron expression reads in.</param>
+    internal sealed record CaptureCadence(ScheduleMode Mode, string? Cron = null, TimeSpan? Every = null, string TimeZone = "Asia/Tashkent")
+    {
+        /// <summary>Gets four captures a day, at 01:00, 07:00, 13:00 and 19:00 Tashkent time, so the posts of a window reach
+        /// tagging as one burst.</summary>
+        internal static CaptureCadence Default { get; } = new(ScheduleMode.Cron, "0 1,7,13,19 * * *");
+
+        /// <summary>Returns the capture schedule row, live or disabled.</summary>
+        internal ScheduleDeclaration Declare(bool enabled) => new()
+        {
+            Kind = WorkKind.Capture, Mode = Mode, Cron = Cron, Every = Every, TimeZone = TimeZone, Enabled = enabled,
+        };
+    }
 
     internal sealed record CollectionRoute(OcharoSourceGroup Group, OcharoSourceChannel Channel, CollectionProfile Profile);
 }

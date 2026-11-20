@@ -13,6 +13,7 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Module.Engine;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Extraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Posts;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Readers;
+using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Posts;
 using WoW.Two.Sdk.Beta.Be.Harvest.Readers;
 using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
@@ -58,6 +59,8 @@ public sealed class OcharoPipelineTests
         var festPipeline = Value(await registry.GetPipelineAsync(fest.PipelineId));
         var storePipeline = Value(await registry.GetPipelineAsync(store.PipelineId));
         festPipeline.Schedules.Concat(storePipeline.Schedules).Should().OnlyContain(schedule => !schedule.Enabled);
+        festPipeline.Schedules.Should().ContainSingle().Which.Should().Match<ScheduleModel>(schedule => schedule.Kind == WorkKind.Capture
+            && schedule.Mode == ScheduleMode.Cron && schedule.Cron == "0 1,7,13,19 * * *" && schedule.TimeZone == "Asia/Tashkent");
         (await registry.UpdatePipelineAsync(fest.PipelineId, new()
         {
             Scope = storePipeline.Scope, Schedules = [],
