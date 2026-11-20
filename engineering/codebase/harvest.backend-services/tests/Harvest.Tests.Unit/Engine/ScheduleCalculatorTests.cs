@@ -25,6 +25,15 @@ public sealed class ScheduleCalculatorTests
     }
 
     [Fact]
+    public void Cron_WithoutAWindow_ShouldReturnItsSlotInUtc()
+    {
+        var schedule = Schedule(ScheduleMode.Cron) with { Cron = "0 1,7,13,19 * * *", TimeZone = "Asia/Tashkent" };
+        var next = ScheduleCalculator.Next(schedule, DateTimeOffset.Parse("2026-11-20T23:20:00Z"));
+        next.Should().Be(DateTimeOffset.Parse("2026-11-21T02:00:00Z"));
+        next!.Value.Offset.Should().Be(TimeSpan.Zero, "the store accepts only UTC instants");
+    }
+
+    [Fact]
     public void Cron_ShouldSupportSixFieldExpressions()
     {
         var schedule = Schedule(ScheduleMode.Cron) with { Cron = "*/10 * * * * *" };

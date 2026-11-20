@@ -32,7 +32,7 @@ internal static class ScheduleCalculator
         }
 
         if (due is null || schedule.Window is null)
-            return due;
+            return due?.ToUniversalTime();
 
         for (int attempt = 0; attempt < 370 && due is not null; attempt++)
         {

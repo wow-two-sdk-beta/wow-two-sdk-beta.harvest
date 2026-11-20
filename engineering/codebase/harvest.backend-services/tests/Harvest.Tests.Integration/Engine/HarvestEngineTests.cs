@@ -700,6 +700,22 @@ public sealed class HarvestEngineTests
         (await host.ScalarAsync<long>("SELECT count(*) FROM harvest_runs WHERE pipeline_id=@pipeline", ("pipeline", registration.PipelineId))).Should().Be(2);
     }
 
+    [Fact]
+    public async Task Scheduler_ShouldStoreACronSlotWithoutAWindowInUtc()
+    {
+        await using var host = await EngineHost.StartAsync();
+        var registration = await host.RegisterAsync(schedules:
+        [new() { Kind = WorkKind.Capture, Mode = ScheduleMode.Cron, Cron = "0 1,7,13,19 * * *", TimeZone = "Asia/Tashkent" }]);
+        Fixtures(host, "mstar.uz", count: 1);
+        using var scope = host.Services.CreateScope();
+        var engine = scope.ServiceProvider.GetRequiredService<HarvestEngine>();
+        await engine.QueueDueAsync();
+        var due = await host.ScalarAsync<DateTimeOffset>(
+            "SELECT next_due_at FROM harvest_schedules WHERE pipeline_id=@pipeline", ("pipeline", registration.PipelineId));
+        due.Offset.Should().Be(TimeSpan.Zero);
+        due.Should().BeAfter(host.Clock.GetUtcNow());
+    }
+
     private static void Fixtures(EngineHost host, string site, int count)
     {
         host.Fetcher.Set($"https://{site}/sitemap.xml", "<urlset>" + string.Concat(Enumerable.Range(1, count)
