@@ -73,7 +73,8 @@ internal static partial class PostExtractionDemand
     private static partial Regex TaxonomyKey();
 }
 
-/// <summary>Reads demand from <see cref="PostExtractionOptions.Wanted"/>; stands in until the selector supplies it.</summary>
+/// <summary>Reads demand from <see cref="PostExtractionOptions.Wanted"/> alone; a host that composes the subscription selectors
+/// replaces it with one that adds each active selector's pairs and keeps this list for pairs no selector names.</summary>
 internal sealed class ConfiguredPostExtractionDemand(IOptionsMonitor<PostExtractionOptions> options) : IPostExtractionDemand
 {
     public ValueTask<IReadOnlyList<PostExtractionWant>> WantedAsync(CancellationToken cancellationToken = default) =>

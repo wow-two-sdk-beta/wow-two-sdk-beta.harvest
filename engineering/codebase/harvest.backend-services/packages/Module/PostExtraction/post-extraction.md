@@ -7,13 +7,16 @@ takes only an `extract-event` answer's format, as its classification's kind, and
 
 | Implements | Over |
 |---|---|
-| `IPostExtractionBroker` (run, backfill, report, the worker's tick) · `IPostExtractionDemand` (the demand gate; the configured default stands in for the subscription selector) | the shared AI contract `WoW2.Sdk.Beta.Be.Ai.Abstractions` (`IAiRunner`, `IPromptsBroker`, `IInferencesBroker`); the Tagging lane's done answers, subject read and content hash; the Posts lane's queue hook |
+| `IPostExtractionBroker` (run, backfill, report, the worker's tick) · `IPostExtractionDemand` (the demand gate: the configured list plus each active selector subscription's (entity type × domain) pairs) | the shared AI contract `WoW2.Sdk.Beta.Be.Ai.Abstractions` (`IAiRunner`, `IPromptsBroker`, `IInferencesBroker`); the Tagging lane's done answers, subject read and content hash; the Posts lane's queue hook |
 
 - Owns: `harvest_post_extractions` and the `extract-event` / `extract-listing` kinds of `harvest_post_work` (013).
 - Demand: `Harvest:Processing:Extraction:Wanted` lists `{ entityType, domain }` pairs (`event` + `style-fashion`,
   `listing` + `real-estate`). A post qualifies when its done tags have the pair's entity type and any node at or under
-  the key (`style-fashion/womens-fashion` is under `style-fashion`; `style-fashion-x` is not). The selector replaces
-  `ConfiguredPostExtractionDemand` by registering its own `IPostExtractionDemand` first.
+  the key (`style-fashion/womens-fashion` is under `style-fashion`; `style-fashion-x` is not). A host that composes the
+  selectors registers the Delivery lane's `SelectorPostExtractionDemand` in place of `ConfiguredPostExtractionDemand`: it
+  adds each active selector's (entity type × domain) pairs, its required entity types or both, crossed with its domain
+  includes, and the configured list keeps serving pairs no selector names. The selector, not this lane, decides what a
+  subscription receives (`subscription-selectors.md`).
 - Queue: the Posts lane queues in the write's transaction — after a done tags answer about the current content, and on
   any resolve whose content already has done tags — keyed by the same title-and-text hash, so the tag-only revision
   queues nothing and a changed text queues again once its new tags are done. `extract backfill` queues stored posts for

@@ -23,8 +23,9 @@ Extraction needs the shared AI module (`Harvest:Processing:Ai:Enabled`, internal
 
 - Ocharo's pair: `event` + `style-fashion`. Haven's: `listing` + `real-estate`.
 - A post qualifies when its done tags have the pair's entity type and any taxonomy node at or under the key.
-- The pairs stand in for the subscription selector (S09): it will register its own `IPostExtractionDemand`, and the
-  setting then goes unused.
+- Each active selector subscription adds its (entity type × domain) pairs beside these: its required entity types, or
+  both when it names none, crossed with its domain includes (`subscription-selectors.md` § What the selector needs); the
+  setting keeps serving pairs no selector names, such as Haven's.
 - **Model processing** is a mode per source (`ai-operations.md`): automatic extraction needs every source supplying the
   title and text to be `auto`; `run --post`, a re-run naming posts or listing sources and the extraction that follows them serve `manual`
   too; `off` sends nothing. The worker reads the mode again when it claims a row.

@@ -54,8 +54,11 @@ printing only use case, version, content hash and ID. It refuses an existing inc
 | `post-tags run --post <id> [--dry-run]` | tags one post now and prints the answer; a dry run stores nothing and raises no revision |
 | `post-tags backfill [--since <date>] [--limit N] [--source <id>]` | queues stored posts whose current title and text have no done answer (default limit 1000) |
 | `post-tags report [--since <date>]` | one JSON line: answers by status, entity type and primary domain, flags by proposed value, queue depth, attempts, cost and p95 latency from the inference log; no post text |
-| `post-tags relevance --filter <key> --wanted <type:domain[,…]> [--since <date>]` | the shadow report (S15): one JSON line comparing a registered delivery filter's verdict with the tags' verdict for the named pairs; no post text |
-| `post-tags relevance --filter … --wanted … --disagreements [--since <date>] [--limit N]` | an operator review: one JSON line listing the posts the rules and the tags disagree on; carries scrubbed titles -> § Disagreements |
+
+Comparing the tags with a delivery filter is not a `post-tags` verb: `subscriptions diff --subscription <id|name> --against
+<filter key>` judges every post of a selector's container with the selector and with the named filter, counts where they
+differ and lists those posts for an operator review (`subscription-selectors.md` § Diff and § Shadow procedure). Cost and
+latency stay in `post-tags report`.
 
 Re-runs over named posts, listed sources or every source, with `--prompt-before`, `--since` and `--dry-run`, and eval sets
 from stored posts: the `processing` verb and `api/processing` routes (`ai-operations.md`).
@@ -78,7 +81,9 @@ from stored posts: the `processing` verb and `api/processing` routes (`ai-operat
 ## Classification (S16)
 
 The same resolve that writes the tags writes the post's `classification`: one revision, one `post.changed`. It judges
-the tags against the wanted pairs (`Harvest:Processing:Extraction:Wanted`, `extraction.md`); with no pair, or no done
+the tags against the wanted pairs: `Harvest:Processing:Extraction:Wanted` (`extraction.md`) plus the
+(entity type × domain) pairs of each active selector subscription, its required entity types, or both when it names none,
+crossed with its domain includes (`subscription-selectors.md` § What the selector needs); with no pair, or no done
 answer, the post keeps exactly its readers' envelope.
 
 | Tags | `verdict` | `reason` |
@@ -93,58 +98,10 @@ answer, the post keeps exactly its readers' envelope.
 - `kind` is the `format` of a done `extract-event` answer about the same title and text (`runway`, `trade-fair`, …), else
   the entity type; an unsure entity type names none. An extraction answer that changes the kind raises its own revision.
 - `wow2.event.v1` carries it as `classification` and top-level `kind`; Events' `payload` classifier reads it.
-- Filter `ocharo-relevance-v1` (`sources/Module/Ocharo/OcharoRelevanceFilter.cs`) passes what `ocharo-fashion-v1`
-  passes, plus a `relevant` verdict at 0.5 or above on a post whose model tags are `type:event` and
-  `domain:style-fashion`; the tag check keeps Haven's `listing` + `real-estate` pair out. No subscription uses it yet:
-  Ocharo's new subscription waits on the selector (S09), and `ocharo setup` still provisions `ocharo-fashion-v1`.
-- Tagging off (the default) writes no tags, so no verdict: the relevance filter selects exactly what the rules select.
+- The verdict is a field of the post, not a delivery gate: a selector subscription (`subscription-selectors.md`) decides
+  delivery from the tags themselves (`type:`, `domain:`, `topic:`, `timeframe:`), and a post it cannot judge yet is pending.
+  The Ocharo rule filters, `ocharo-fashion-v1` and `ocharo-relevance-v1`, retire once Ocharo's cutover to its selector is
+  done (SL9). Until then `ocharo setup` still creates a per-pipeline subscription for `ocharo-fashion-v1`;
+  `ocharo-relevance-v1` is registered but has no subscription.
+- Tagging off (the default) writes no tags, so no verdict, and a selector subscription holds every post pending.
   Turning tagging off later stops new verdicts; a post keeps its last one, like its tags, until a new answer replaces it.
-
-## Shadow report (S15)
-
-`post-tags relevance --filter <key> --wanted <type:domain[,…]>` counts the current posts whose sources are all `auto`
-and that changed since `--since` (seven days back by default), split by the named filter's verdict (rules yes, rules no)
-and by the tags' verdict for the named pairs — the same mapping as the classification. The verb names no product's
-filter; the example compares `--filter ocharo-fashion-v1 --wanted event:style-fashion`:
-
-```json
-{"sinceUtc":"…","rules":"ocharo-fashion-v1","wanted":["event:style-fashion"],"posts":4,
- "rulesYes":{"match":1,"noMatch":0,"unsure":0,"notTagged":0},"rulesNo":{"match":1,"noMatch":1,"unsure":0,"notTagged":1},
- "rulesUndecided":0,"invalidAnswers":0,"taggedPosts":3,"attempts":3,"costMicroUsd":0,"costPerPostMicroUsd":0,
- "p95LatencyMs":0,"latencySample":3}
-```
-
-- `notTagged`: the current title and text have no done answer yet. `rulesUndecided`: the filter threw.
-- `invalidAnswers`: answers stored since `--since` as `schema-invalid` or `answer-invalid` that no done answer replaced.
-- `costPerPostMicroUsd`: the use case's cost since `--since` over the counted posts with a done answer; attempts and
-  p95 latency come from the inference log, as `report`'s do.
-- The rules verdict is the registered filter's own `Matches`, run on the stored post; nothing is written.
-- Ocharo's sources are provisioned with Model processing `off`: set the sources to compare (Afisha first) to `auto` and
-  enable tagging, or the report counts none of their posts.
-
-## Disagreements
-
-`post-tags relevance --filter … --wanted … --disagreements [--since <date>] [--limit N]` prints one JSON line instead of the counts, over the same
-posts, rules verdict and tag verdict as the shadow report. It is an **operator review that prints post titles** — the
-only `post-tags` output that does; read it where the report's counts would be read, never forward it to a subscriber.
-
-```json
-{"rules":"ocharo-fashion-v1","wanted":["event:style-fashion"],"items":[
- {"postId":"…","source":"site/afisha.example","title":"Evening at the gallery","titleEn":"An evening at the gallery",
-  "rules":"no","tags":"match","entityType":"event","primaryDomain":"style-fashion","domains":["style-fashion"],
-  "topics":["fashion-show"],"about":"young designers present a collection","timeframe":"upcoming","confidence":0.8}]}
-```
-
-- Listed: a post the rules pass whose tags say `noMatch` or `unsure` (`rules` `yes`), and a post the rules reject whose tags
-  say `match` or `unsure` (`rules` `no`). Posts that agree, posts with no done answer and posts the filter threw on are
-  not listed.
-- Order: `rules` `yes` first, then by post id; `--limit N` keeps the first N (default 50, at most 1,000). `--limit` without
-  `--disagreements` is refused.
-- `source` is `{family}/{handle}` of the source supplying the post's title, else its text. `primaryDomain` is the primary
-  node's key and `domains` every node key the answer kept; `tags` is the verdict the classification would give.
-- `title` has phone numbers (9 or more digits), emails, handles and messenger links replaced by `…` — the patterns
-  extraction uses to drop contacts from free text (`PostExtractionValidation.Scrub`) — then is clipped to 140 characters; a
-  date followed by a time (`12.12.2026 18:00`) holds 9 digits and is scrubbed like a phone number, as extraction would drop it.
-  `titleEn`, `about` and `topics` come from the stored answer, which already holds no contact.
-- Wheelhouse's one-off command keeps the last output line whole only up to 16 KiB; an item runs from about 350 bytes to
-  well over 600 with a full-length title and answer, so the default 50 can overflow — lower `--limit` when the line is cut.
