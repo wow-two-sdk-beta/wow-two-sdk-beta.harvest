@@ -9,7 +9,7 @@ import type {
   ProcessedPriceModel,
   ProcessedTagsModel,
 } from '../../contracts';
-import { eventDatesOf, type PillTone } from './SourceWords';
+import { agoOf, eventDatesOf, type PillTone } from './SourceWords';
 
 /** A brand's name as people write it: `Claude` for a Claude model, else the provider key as given. */
 export function providerName(provider?: string, model?: string) {
@@ -89,51 +89,25 @@ export function answerLine(answer: ProcessedAnswerModel) {
     .join(' · ');
 }
 
-/** The tooltip's lines: one per answer, the pass named first — `tags haiku-5-5 · …`, `event haiku-5-5 · …`. */
-export function provenanceLines(tags: ProcessedTagsModel, extraction?: ProcessedExtractionModel) {
-  const lines = [`tags ${answerLine(tags.answer)}`];
-  if (extraction)
-    lines.push(`${extraction.useCase === 'extract-listing' ? 'listing' : 'event'} ${answerLine(extraction.answer)}`);
-  return lines;
-}
-
-/** One model's share of a card's answers: its label and the passes it answered, each with its cost, speed and tokens. */
-export interface AnswerGroup {
-  readonly provider?: string;
-  readonly model?: string;
-  /** The brand-led model label, as the mark is named. */
-  readonly label: string;
-  readonly passes: readonly { readonly name: string; readonly text: string }[];
-}
-
-/**
- * The card footer's answers grouped by the model that gave them: tags and extraction on one model make one group, on
- * two models two, each with its own mark. A pass with no cost, latency or tokens adds no text.
- */
-export function answerGroups(tags: ProcessedTagsModel, extraction?: ProcessedExtractionModel): AnswerGroup[] {
-  const answers = [
-    { name: 'tags', answer: tags.answer },
-    ...(extraction ? [{ name: 'extraction', answer: extraction.answer }] : []),
-  ];
-  const groups = new Map<string, { provider?: string; model?: string; passes: { name: string; text: string }[] }>();
-  for (const { name, answer } of answers) {
-    const key = `${answer.provider ?? ''}/${answer.model ?? ''}`;
-    const group = groups.get(key) ?? { provider: answer.provider, model: answer.model, passes: [] };
-    groups.set(key, group);
-    const text = [costText(answer.costMicroUsd), latencyText(answer.latencyMs), tokensText(answer)]
-      .filter(Boolean)
-      .join(' · ');
-    if (text) group.passes.push({ name, text });
-  }
-  return [...groups.values()].map((group) => ({ ...group, label: markLabel(group.provider, group.model) }));
-}
-
 /** When a card was last answered: the later of its tags' and extraction's answers. */
 export function answeredAt(tags: ProcessedTagsModel, extraction?: ProcessedExtractionModel) {
   return [tags.answer.answeredAt, extraction?.answer.answeredAt]
     .filter((value): value is string => !!value)
     .sort()
     .at(-1);
+}
+
+/**
+ * The brand mark tooltip's lines: one per answer, the pass named first — `tags haiku-5-5 · …`, `event haiku-5-5 · …` —
+ * then when the card was last answered, `answered 3 hours ago`.
+ */
+export function provenanceLines(tags: ProcessedTagsModel, extraction?: ProcessedExtractionModel, now = new Date()) {
+  const lines = [`tags ${answerLine(tags.answer)}`];
+  if (extraction)
+    lines.push(`${extraction.useCase === 'extract-listing' ? 'listing' : 'event'} ${answerLine(extraction.answer)}`);
+  const answered = answeredAt(tags, extraction);
+  if (answered) lines.push(`answered ${agoOf(answered, now)}`);
+  return lines;
 }
 
 /** The provider a card shows: the tags answer's, else the extraction's. */

@@ -10,7 +10,6 @@ import SourceProcessedTab from '../src/admin/harvestConsole/SourceProcessedTab.v
 import ProcessedPostCard from '../src/admin/harvestConsole/ProcessedPostCard.vue';
 import ProviderMark from '../src/admin/harvestConsole/ProviderMark.vue';
 import {
-  answerGroups,
   answerLine,
   costText,
   eventLines,
@@ -25,7 +24,6 @@ import {
 } from '../src/admin/harvestConsole/ProcessedWords';
 
 let session: HarvestConsole;
-const sectionParts = vi.fn((pipelineId: string) => ({ name: pipelineId, locale: 'ru' }));
 vi.mock('../src/admin/harvestConsole/HarvestConsole', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../src/admin/harvestConsole/HarvestConsole')>()),
   useHarvestConsole: () => session,
@@ -193,7 +191,7 @@ const mystery: SourceProcessedPostModel = {
 
 function show(pages: SourceProcessedPage[]) {
   const query = vi.fn(async () => ResultExtensions.ok(pages.shift() ?? { items: [], total: 0 }));
-  session = { querySourceProcessed: query, sectionParts } as unknown as HarvestConsole;
+  session = { querySourceProcessed: query } as unknown as HarvestConsole;
   const wrapper = mount(SourceProcessedTab, {
     props: { source },
     global: { stubs: { ConsoleLink: LinkStub } },
@@ -213,10 +211,13 @@ describe('processed words', () => {
     expect(latencyText(1840)).toBe('1.8s');
     expect(answerLine(runway.tags.answer)).toBe('haiku-5-5 · $0.0003 · 1.8s · 1.4k tok · p2');
     expect(answerLine(essay.tags.answer)).toBe('gpt-5-mini · p1');
-    expect(provenanceLines(runway.tags, runway.extraction)).toEqual([
+    const now = new Date('2026-11-19T12:00:00Z');
+    expect(provenanceLines(runway.tags, runway.extraction, now)).toEqual([
       'tags haiku-5-5 · $0.0003 · 1.8s · 1.4k tok · p2',
       'event haiku-5-5 · $0.0011 · 2.4s · 2.8k tok · p3',
+      'answered 3 hours ago',
     ]);
+    expect(provenanceLines(showroom.tags, showroom.extraction, now).at(-1)).toBe('answered 2 hours ago');
     expect(unsureFields(runway.tags, runway.extraction)).toEqual(['timeframe', 'occurrences[0].ends']);
     expect(unsureFlags(runway.tags, runway.extraction)).toEqual([
       { field: 'timeframe', reason: 'unsure', proposed: 'upcoming' },
@@ -237,26 +238,6 @@ describe('processed words', () => {
     expect(markLabel('google', 'gemini-2.5-flash')).toBe('Gemini 2.5 Flash');
     expect(markLabel('acme', 'zeta-1')).toBe('acme zeta-1');
     expect(markLabel(undefined, undefined)).toBe('Unknown provider');
-  });
-
-  it('groups the answers by model so a card shows one mark per model', () => {
-    expect(answerGroups(runway.tags, runway.extraction)).toEqual([
-      {
-        provider: 'anthropic',
-        model: 'claude-haiku-5-5',
-        label: 'Claude Haiku 5.5',
-        passes: [
-          { name: 'tags', text: '$0.0003 · 1.8s · 1.4k tok' },
-          { name: 'extraction', text: '$0.0011 · 2.4s · 2.8k tok' },
-        ],
-      },
-    ]);
-    expect(answerGroups(showroom.tags, showroom.extraction).map((group) => [group.label, group.passes.length])).toEqual(
-      [
-        ['Gemini 2.5 Flash', 1],
-        ['OpenAI GPT-5 mini', 0],
-      ],
-    );
   });
 
   it('summarizes an event and a listing extraction in a few lines', () => {
@@ -290,6 +271,7 @@ describe('processed tab', () => {
     const card = wrapper.get(`article[aria-label="${runway.title}"]`);
     expect(card.text()).toContain('Relevant');
     expect(card.text()).toContain('Event');
+    expect(card.get('ul[aria-label="Entity type, verdict and language"]').text()).toContain('Russian');
     expect(card.text()).toContain("Women's Fashion");
     expect(card.text()).toContain('Style & Fashion');
     expect(card.text()).toContain('#fashion-show');
@@ -301,7 +283,8 @@ describe('processed tab', () => {
     expect(card.get('[data-line="terms"]').text()).toContain('150,000 UZS');
     const mark = card.get('header [role="img"][aria-label="Claude Haiku 5.5"]');
     expect(mark.get('[data-ai-brand]').attributes('data-ai-brand')).toBe('claude');
-    const unsure = card.get('footer [aria-label^="2 unsure"]');
+    expect(card.find('footer').exists()).toBe(false);
+    const unsure = card.get('[aria-label="Event extraction"] [aria-label^="2 unsure"]');
     expect(unsure.attributes('aria-label')).toBe('2 unsure: timeframe, occurrences[0].ends');
     expect(unsure.text()).toBe('? 2 unsure');
     expect(JSON.parse(card.get('a[data-to]').attributes('data-to')!)).toEqual({
@@ -333,7 +316,7 @@ describe('processed tab', () => {
       .mockResolvedValueOnce(ResultExtensions.ok({ items: [runway, essay], total: 8 }))
       .mockImplementationOnce(() => new Promise((resolve) => (finish = (page) => resolve(ResultExtensions.ok(page)))))
       .mockResolvedValueOnce(ResultExtensions.ok({ items: [runway, essay], total: 8 }));
-    session = { querySourceProcessed: query, sectionParts } as unknown as HarvestConsole;
+    session = { querySourceProcessed: query } as unknown as HarvestConsole;
     const wrapper = mount(SourceProcessedTab, { props: { source }, global: { stubs: { ConsoleLink: LinkStub } } });
     wrappers.push(wrapper);
     await flushPromises();
@@ -357,7 +340,7 @@ describe('processed tab', () => {
 
   it('reads only the match count when the host sends no source total', async () => {
     const query = vi.fn().mockResolvedValue(ResultExtensions.ok({ items: [runway], total: 1 }));
-    session = { querySourceProcessed: query, sectionParts } as unknown as HarvestConsole;
+    session = { querySourceProcessed: query } as unknown as HarvestConsole;
     const wrapper = mount(SourceProcessedTab, {
       props: { source: { ...source, processedCount: undefined } },
       global: { stubs: { ConsoleLink: LinkStub } },
@@ -406,7 +389,7 @@ describe('processed tab', () => {
       .fn()
       .mockResolvedValueOnce(ResultExtensions.fail({ kind: 'offline' }))
       .mockResolvedValueOnce(ResultExtensions.ok({ items: [], total: 0 }));
-    session = { querySourceProcessed: query, sectionParts } as unknown as HarvestConsole;
+    session = { querySourceProcessed: query } as unknown as HarvestConsole;
     const wrapper = mount(SourceProcessedTab, { props: { source }, global: { stubs: { ConsoleLink: LinkStub } } });
     wrappers.push(wrapper);
     await flushPromises();
@@ -422,7 +405,7 @@ describe('processed tab', () => {
 
 describe('processed card', () => {
   const card = (post: SourceProcessedPostModel, extra: Record<string, unknown> = {}) => {
-    session = { sectionParts } as unknown as HarvestConsole;
+    session = {} as unknown as HarvestConsole;
     const wrapper = mount(ProcessedPostCard, {
       props: { source, post, ...extra },
       global: { stubs: { ConsoleLink: LinkStub } },
@@ -440,6 +423,7 @@ describe('processed card', () => {
     expect(header.findAll('[data-tone="glass"], [data-tone="glassSuccess"]').map((pill) => pill.text())).toEqual([
       'Event',
       'Relevant',
+      'Russian',
     ]);
     expect(header.get('a[data-to]').text()).toBe(runway.title);
     expect(header.find('[class*="backdrop-blur-xl"]').exists()).toBe(true);
@@ -462,14 +446,30 @@ describe('processed card', () => {
     expect(failing.find('header img').exists()).toBe(false);
   });
 
-  it('shows a post removed from its source, and the language unless every post of the source shares it', () => {
+  it('shows a post removed from its source', () => {
     const gone = card(mystery);
     expect(gone.get('header').text()).toContain('removed');
-    const wrapper = card(showroom);
-    expect(wrapper.get('header').text()).toContain('Uzbek');
-    expect(card(showroom, { hiddenLanguage: 'uz' }).get('header').text()).not.toContain('Uzbek');
-    expect(card(runway).get('header').text()).toContain('Russian');
-    expect(card(runway, { hiddenLanguage: 'ru' }).get('header').text()).not.toContain('Russian');
+  });
+
+  it('shows the language as a pill with its icon after the verdict, never in the subline', () => {
+    const wrapper = card(runway);
+    const pills = wrapper.get('ul[aria-label="Entity type, verdict and language"]');
+    const language = pills.findAll('li').at(-1)!;
+    expect(pills.findAll('li').map((item) => item.text())).toEqual(['Event', 'Relevant', 'Russian']);
+    expect(language.get('[data-tone]').attributes('data-tone')).toBe('glass');
+    expect(language.find('svg').exists()).toBe(true);
+    expect(wrapper.get('header').text()).toContain('Russian');
+    const subline = wrapper.get('header p');
+    expect(subline.text()).toContain('first seen');
+    expect(subline.text()).not.toContain('Russian');
+
+    const uzbek = card(showroom).get('ul[aria-label="Entity type, verdict and language"]');
+    expect(uzbek.findAll('li').map((item) => item.text())).toEqual(['Event', 'Uncertain', 'Uzbek']);
+    expect(card(showroom).get('header p').text()).not.toContain('Uzbek');
+
+    const quiet = card(essay).get('ul[aria-label="Entity type, verdict and language"]');
+    expect(quiet.text()).not.toMatch(/Russian|Uzbek/);
+    expect(card(essay).find('header [data-tone="outline"]').exists()).toBe(false);
   });
 
   it('keeps the tags to a primary domain, two more and four topics, the rest behind a count', () => {
@@ -515,7 +515,7 @@ describe('processed card', () => {
     });
     expect(document.body.textContent).toContain('94% confident');
     expect(document.body.textContent).toContain('model:anthropic/claude-haiku-5-5@post-tags:2');
-    const unsure = wrapper.get('footer [aria-label^="2 unsure"]');
+    const unsure = wrapper.get('[aria-label="Event extraction"] [aria-label^="2 unsure"]');
     await unsure.trigger('focus');
     await vi.waitFor(() => {
       expect(document.body.textContent).toContain('the post states no end → 2026-11-23');
@@ -531,24 +531,46 @@ describe('processed card', () => {
     expect(card(mystery).get('header [role="img"]').attributes('aria-label')).toBe('acme zeta-1');
   });
 
-  it('shows one mark per answering model in the footer, with cost, latency, tokens and the answer time', () => {
-    const wrapper = card(runway);
-    const footer = wrapper.get('footer');
-    expect(footer.findAll('[data-ai-brand]').map((mark) => mark.attributes('data-ai-brand'))).toEqual(['claude']);
-    expect(footer.text()).toContain('Claude Haiku 5.5');
-    expect(footer.get('[data-pass="tags"]').text()).toBe('· tags $0.0003 · 1.8s · 1.4k tok');
-    expect(footer.get('[data-pass="extraction"]').text()).toBe('· extraction $0.0011 · 2.4s · 2.8k tok');
-    expect(footer.get('time').attributes('datetime')).toBe('2026-11-19T09:00:00Z');
+  it('keeps the AI stats out of the card body: no footer and no per-pass text', () => {
+    for (const post of [runway, essay, showroom, mystery]) {
+      const wrapper = card(post);
+      expect(wrapper.find('footer').exists()).toBe(false);
+      expect(wrapper.find('time').exists()).toBe(false);
+      expect(wrapper.find('[data-pass]').exists()).toBe(false);
+      expect(wrapper.text()).not.toMatch(/\$0\.|\btok\b|\d(\.\d)?m?s\b|Claude Haiku|answered/);
+    }
+    expect(card(runway).findAll('[data-ai-brand]')).toHaveLength(1);
+  });
 
-    const mixed = card(showroom).get('footer');
-    expect(mixed.findAll('[data-ai-brand]').map((mark) => mark.attributes('data-ai-brand'))).toEqual([
-      'gemini',
-      'openai',
+  it('hands the provider mark each pass with its cost, time and tokens, and when it answered', () => {
+    const lines = card(runway).getComponent(ProviderMark).props('lines');
+    expect(lines.slice(0, 2)).toEqual([
+      'tags haiku-5-5 · $0.0003 · 1.8s · 1.4k tok · p2',
+      'event haiku-5-5 · $0.0011 · 2.4s · 2.8k tok · p3',
     ]);
-    expect(mixed.text()).toContain('Gemini 2.5 Flash');
-    expect(mixed.text()).toContain('OpenAI GPT-5 mini');
-    expect(mixed.get('time').attributes('datetime')).toBe('2026-11-19T10:00:00Z');
-    expect(card(essay).find('[data-pass]').exists()).toBe(false);
+    expect(lines).toHaveLength(3);
+    expect(lines[2]).toMatch(/^answered .+ ago$/);
+    expect(card(showroom).getComponent(ProviderMark).props('lines')).toHaveLength(3);
+    expect(card(essay).getComponent(ProviderMark).props('lines')[0]).toBe('tags gpt-5-mini · p1');
+  });
+
+  it('shows the answered time and every pass in the mark tooltip on hover or focus', async () => {
+    const wrapper = card(runway);
+    await wrapper.get('header [role="img"][aria-label="Claude Haiku 5.5"]').trigger('focus');
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain('event haiku-5-5 · $0.0011 · 2.4s · 2.8k tok · p3');
+    });
+    expect(document.body.textContent).toContain('tags haiku-5-5 · $0.0003 · 1.8s · 1.4k tok · p2');
+    expect(document.body.textContent).toMatch(/answered .+ ago/);
+  });
+
+  it('keeps the unsure pill, with its flags, at the end of the extraction summary top row', () => {
+    const wrapper = card(runway);
+    const row = wrapper.get('[aria-label="Event extraction"] p');
+    expect(row.get('[aria-label^="2 unsure"]').text()).toBe('? 2 unsure');
+    expect(row.get('[aria-label^="2 unsure"]').classes()).toContain('ms-auto');
+    expect(card(essay).find('[aria-label*="unsure"]').exists()).toBe(false);
+    expect(card(showroom).find('[aria-label*="unsure"]').exists()).toBe(false);
   });
 
   it('lists the model, cost, latency, tokens and prompt in the mark tooltip', async () => {

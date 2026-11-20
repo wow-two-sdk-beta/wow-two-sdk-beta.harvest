@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { MapPin } from 'lucide-vue-next';
-import { AiBrandMark } from '@wow-two-beta/fe/domain/aiBrands';
 import { Tooltip } from '@wow-two-beta/fe/presentation/overlays';
 import type { SourceOverviewModel, SourceProcessedPostModel } from '../../contracts';
 import ConsoleLink from './ConsoleLink.vue';
@@ -12,8 +11,6 @@ import SourceIcon from './SourceIcon.vue';
 import SourceImage from './SourceImage.vue';
 import { kindGlyphOf, type GlyphName } from './PostGlyphs';
 import {
-  answeredAt,
-  answerGroups,
   cardModel,
   cardProvider,
   entityTypeWords,
@@ -29,22 +26,18 @@ import { agoOf, imageSrcOf, type PillTone } from './SourceWords';
 
 /**
  * One post as the AI passes read it, in the Posts card's look: a header with the post's first image (a tile with the
- * source icon when it has none), the entity type and relevance verdict as glass pills, the answering AI's brand mark
- * and the title over the image's blurred fade. Below it the tags — primary domain, other domains, topics, timeframe —
- * what the post is about and, for an extracted event or listing, a compact summary. The footer names the answering
- * models with their cost, speed and tokens, and a `? N unsure` pill lists the fields the model was unsure of. Evidence
- * quotes stay on the post's own page, which the title opens.
+ * source icon when it has none), the entity type, relevance verdict and language as glass pills, the answering AI's
+ * brand mark and the title over the image's blurred fade. The brand mark's hover lists each pass with its model, cost,
+ * speed and tokens, and when it answered; the card carries no other AI stats. Below the header the tags — primary
+ * domain, other domains, topics, timeframe — what the post is about and, for an extracted event or listing, a compact
+ * summary whose top row ends with a `? N unsure` pill that lists the fields the model was unsure of. Evidence quotes
+ * stay on the post's own page, which the title opens.
  */
 defineOptions({ name: 'ProcessedPostCard' });
-const props = withDefaults(
-  defineProps<{
-    source: Pick<SourceOverviewModel, 'sourceId' | 'family' | 'faviconUrl'>;
-    post: SourceProcessedPostModel;
-    /** The language every post of the source shares; the card leaves it out of the subline. */
-    hiddenLanguage?: string;
-  }>(),
-  { hiddenLanguage: undefined },
-);
+const props = defineProps<{
+  source: Pick<SourceOverviewModel, 'sourceId' | 'family' | 'faviconUrl'>;
+  post: SourceProcessedPostModel;
+}>();
 
 const DomainLimit = 2;
 const TopicLimit = 4;
@@ -61,8 +54,6 @@ const hiddenTopics = computed(() => tags.value.topics.slice(TopicLimit));
 const flags = computed(() => unsureFlags(tags.value, extraction.value));
 const flagNames = computed(() => flags.value.map((flag) => flag.field).join(', '));
 const lines = computed(() => provenanceLines(tags.value, extraction.value));
-const groups = computed(() => answerGroups(tags.value, extraction.value));
-const answered = computed(() => answeredAt(tags.value, extraction.value));
 const summary = computed(() => {
   const value = extraction.value;
   if (!value || value.status !== 'done') return [];
@@ -75,11 +66,8 @@ const titleEn = computed(() =>
     ? tags.value.titleEn
     : undefined,
 );
-const language = computed(() =>
-  props.post.language && props.post.language !== props.hiddenLanguage ? languageName(props.post.language) : undefined,
-);
 const subline = computed(() =>
-  [titleEn.value, `first seen ${agoOf(props.post.firstSeenAt)}`, language.value].filter(Boolean).join(' · '),
+  [titleEn.value, `first seen ${agoOf(props.post.firstSeenAt)}`].filter(Boolean).join(' · '),
 );
 const classification = computed(() => props.post.classification);
 const verdictTip = computed(() => {
@@ -144,7 +132,7 @@ const LineGlyphs: Record<string, GlyphName | 'place'> = {
       <div v-else class="absolute end-4 top-1/2 -z-10 -translate-y-1/2 opacity-35" aria-hidden="true">
         <SourceIcon :family="props.source.family" :favicon-url="props.source.faviconUrl" size="lg" bare decorative />
       </div>
-      <ul class="z-10 flex min-w-0 flex-wrap items-center gap-1.5 pe-10" aria-label="Entity type and verdict">
+      <ul class="z-10 flex min-w-0 flex-wrap items-center gap-1.5 pe-10" aria-label="Entity type, verdict and language">
         <li>
           <HarvestPill :tone="image ? 'glass' : 'info'">
             <PillIcon :name="kindGlyphOf(tags.entityType ?? 'other')" />
@@ -163,6 +151,12 @@ const LineGlyphs: Record<string, GlyphName | 'place'> = {
             </template>
           </Tooltip>
           <HarvestPill v-else :tone="verdictPillTone">{{ VerdictWords[classification.verdict] }}</HarvestPill>
+        </li>
+        <li v-if="props.post.language">
+          <HarvestPill :tone="image ? 'glass' : 'outline'">
+            <PillIcon name="language" />
+            {{ languageName(props.post.language) }}
+          </HarvestPill>
         </li>
         <li v-if="removed">
           <HarvestPill :tone="image ? 'glass' : 'outline'">
@@ -257,18 +251,41 @@ const LineGlyphs: Record<string, GlyphName | 'place'> = {
       </template>
 
       <section
-        v-if="extraction"
-        class="grid gap-1.5 rounded-xl bg-muted/50 px-3 py-2.5 text-[13px]"
-        :aria-label="extractionLabel"
+        v-if="extraction || flags.length"
+        class="grid gap-1.5 text-[13px]"
+        :class="extraction ? 'rounded-xl bg-muted/50 px-3 py-2.5' : ''"
+        :aria-label="extraction ? extractionLabel : undefined"
       >
         <p class="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs font-semibold text-muted-foreground">
-          <span>{{ extraction.useCase === 'extract-listing' ? 'Listing' : 'Event' }}</span>
-          <span v-if="extraction.role">· {{ extraction.role }}</span>
-          <template v-if="extraction.status !== 'done'">
-            <HarvestPill tone="warning">{{ extraction.status }}</HarvestPill>
-            <span v-if="extraction.error" class="font-normal">{{ extraction.error }}</span>
+          <template v-if="extraction">
+            <span>{{ extraction.useCase === 'extract-listing' ? 'Listing' : 'Event' }}</span>
+            <span v-if="extraction.role">· {{ extraction.role }}</span>
+            <template v-if="extraction.status !== 'done'">
+              <HarvestPill tone="warning">{{ extraction.status }}</HarvestPill>
+              <span v-if="extraction.error" class="font-normal">{{ extraction.error }}</span>
+            </template>
+            <span v-else>· done</span>
           </template>
-          <span v-else>· done</span>
+          <Tooltip v-if="flags.length" :open-delay="150" placement="top-end">
+            <HarvestPill
+              tone="warning"
+              class="ms-auto"
+              v-bind="{ tabindex: 0, role: 'img', 'aria-label': `${flags.length} unsure: ${flagNames}` }"
+            >
+              ? {{ flags.length }} unsure
+            </HarvestPill>
+            <template #content>
+              <span class="grid max-w-72 gap-1 text-xs leading-4">
+                <span v-for="flag in flags" :key="flag.field" class="grid">
+                  <span class="font-semibold">{{ flag.field }}</span>
+                  <span>
+                    {{ flag.reason }}
+                    <template v-if="flag.proposed">→ {{ flag.proposed }}</template>
+                  </span>
+                </span>
+              </span>
+            </template>
+          </Tooltip>
         </p>
         <p
           v-for="line in summary"
@@ -286,38 +303,5 @@ const LineGlyphs: Record<string, GlyphName | 'place'> = {
         </p>
       </section>
     </div>
-
-    <footer
-      class="mt-auto flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-border px-4 py-2.5 text-xs text-muted-foreground"
-    >
-      <span v-for="group in groups" :key="group.label" class="inline-flex min-w-0 flex-wrap items-center gap-x-1.5">
-        <AiBrandMark :provider="group.provider" :model="group.model" :size="14" />
-        <span class="font-semibold text-foreground">{{ group.label }}</span>
-        <span v-for="pass in group.passes" :key="pass.name" v-bind="{ 'data-pass': pass.name }">
-          · {{ pass.name }} {{ pass.text }}
-        </span>
-      </span>
-      <time v-if="answered" :datetime="answered">{{ agoOf(answered) }}</time>
-      <Tooltip v-if="flags.length" :open-delay="150" placement="top-end">
-        <HarvestPill
-          tone="warning"
-          class="ms-auto"
-          v-bind="{ tabindex: 0, role: 'img', 'aria-label': `${flags.length} unsure: ${flagNames}` }"
-        >
-          ? {{ flags.length }} unsure
-        </HarvestPill>
-        <template #content>
-          <span class="grid max-w-72 gap-1 text-xs leading-4">
-            <span v-for="flag in flags" :key="flag.field" class="grid">
-              <span class="font-semibold">{{ flag.field }}</span>
-              <span>
-                {{ flag.reason }}
-                <template v-if="flag.proposed">→ {{ flag.proposed }}</template>
-              </span>
-            </span>
-          </span>
-        </template>
-      </Tooltip>
-    </footer>
   </article>
 </template>

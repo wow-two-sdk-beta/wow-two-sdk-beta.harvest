@@ -100,7 +100,7 @@ describe('console routes', () => {
     expect(show.text()).toContain('Relevant');
     expect(show.get('header [data-ai-brand]').attributes('data-ai-brand')).toBe('claude');
     expect(show.get('header [role="img"]').attributes('aria-label')).toBe('Claude Haiku 5.5');
-    expect(show.get('footer').text()).toContain('tags $0.0003 · 1.8s · 1.4k tok');
+    expect(show.find('footer').exists()).toBe(false);
     expect(show.get('[aria-label="Event extraction"]').text()).toContain('Youth Creativity Palace');
     const href = show.get('a').attributes('href')!;
     expect(href).toMatch(new RegExp(`^${Afisha}/posts/`));

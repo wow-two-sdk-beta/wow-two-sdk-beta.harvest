@@ -43,12 +43,6 @@ const matchText = computed(() => {
   const all = props.source.processedCount;
   return all === undefined ? `${total.value} matching` : `${total.value} of ${Math.max(all, total.value)}`;
 });
-/** The one language every section of the source reads in, so a card names a language only when it differs. */
-const uniformLanguage = computed(() => {
-  const locales = new Set(props.source.sections.map((section) => session.sectionParts(section.pipelineId).locale));
-  const [only] = locales;
-  return locales.size === 1 ? only : undefined;
-});
 let read: AbortController | undefined;
 
 const EntityChoices = [
@@ -155,13 +149,7 @@ onScopeDispose(() => read?.abort());
       {{ filtered ? 'No processed post matches.' : 'No processed posts yet. Posts appear here once the AI tags them.' }}
     </p>
     <div v-else class="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(min(100%,24rem),1fr))]">
-      <ProcessedPostCard
-        v-for="post in items"
-        :key="post.postId"
-        :source="props.source"
-        :post="post"
-        :hidden-language="uniformLanguage"
-      />
+      <ProcessedPostCard v-for="post in items" :key="post.postId" :source="props.source" :post="post" />
     </div>
 
     <div v-if="state === 'ready' && (next || appendFailed)" class="flex items-center gap-3">
