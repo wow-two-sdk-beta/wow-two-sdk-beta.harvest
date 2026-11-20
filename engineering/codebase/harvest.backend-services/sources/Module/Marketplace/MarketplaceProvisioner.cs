@@ -13,7 +13,7 @@ namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Marketplace;
 /// <summary>Applies a marketplace profile: the consumer's tenant, its private container, sources by marketplace and intake mode,
 /// one pipeline and one listing subscription per saved search, and the consumer's key. Existing rows and operator settings
 /// are kept.</summary>
-public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDeliveryBroker delivery)
+public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDeliveryBroker delivery, ISourceCatalogRecords? records = null)
 {
     private static readonly SemaphoreSlim SetupGate = new(1, 1);
 
@@ -33,10 +33,16 @@ public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDelive
     /// <paramref name="modelProcessing"/> it is refused unless that is <see cref="ModelProcessingMode.Auto"/>.</param>
     /// <param name="modelProcessing">The model-processing mode to set on the profile's collected sources, or none to keep each as it is.</param>
     /// <param name="cancellationToken">The token that cancels setup.</param>
-    /// <returns>The IDs, and a key secret only when this call issued one.</returns>
+    /// <param name="siteKey">The one site to set up, as the catalog names an entry: only that site's searches, wherever the profile lists
+    /// them, and its entry turns on even when it was off; none sets up the whole profile.</param>
+    /// <param name="recordCatalog">Whether setup stamps the instance's catalog key on the sources it sets up and turns their entries on
+    /// (<c>setup</c>); false leaves both to the caller, as the catalog's own set-up does. Without the instance's catalog records
+    /// (<see cref="ISourceCatalogRecords"/>) setup neither stamps nor skips.</param>
+    /// <returns>The IDs, the entries a whole-profile setup skipped because the instance turned them off
+    /// (<see cref="MarketplaceSetup.Skipped"/>), and a key secret only when this call issued one.</returns>
     public async Task<Result<MarketplaceSetup>> EnsureAsync(MarketplaceProfile profile, bool enableSchedules = false,
         MarketplaceKeyAction keys = MarketplaceKeyAction.None, bool allowAi = false, ModelProcessingMode? modelProcessing = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, string? siteKey = null, bool recordCatalog = true)
     {
         ArgumentNullException.ThrowIfNull(profile);
         if (allowAi && modelProcessing is { } other && other != ModelProcessingMode.Auto)
@@ -48,6 +54,24 @@ public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDelive
         if (profile.Searches.FirstOrDefault(search => !Uri.TryCreate(search.Url, UriKind.Absolute, out Uri? url)
                 || url.Scheme != Uri.UriSchemeHttps || url.IdnHost != search.Site.Handle) is { } stray)
             return Invalid($"Search {stray.Key} must be an https URL on {stray.Site.Handle}.");
+
+        IReadOnlyList<MarketplaceSearch> selected = profile.Searches;
+        List<string> skipped = [];
+        if (siteKey is not null)
+        {
+            selected = [.. profile.Searches.Where(search => search.Site.Key == siteKey)];
+            if (selected.Count == 0)
+                return Invalid($"The profile {profile.Key} has no searches on the site {siteKey}.");
+        }
+        else if (records is not null && recordCatalog)
+        {
+            // A whole-profile setup never turns a site the operator deliberately turned off back on.
+            var off = await records.OffKeysAsync(cancellationToken);
+            var held = profile.Searches.Where(search => off.Contains(MarketplaceSourceCatalog.EntryKey(search.Site.Key))).ToArray();
+            foreach (string key in held.Select(search => MarketplaceSourceCatalog.EntryKey(search.Site.Key)).Distinct(StringComparer.Ordinal))
+                skipped.Add(key);
+            selected = [.. profile.Searches.Except(held)];
+        }
 
         await SetupGate.WaitAsync(cancellationToken);
         try
@@ -68,7 +92,7 @@ public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDelive
             var pipelines = Value(await registry.ListPipelinesAsync(container.Id, cancellationToken)).ToList();
             var subscriptions = Value(await delivery.ListSubscriptionsAsync(tenant.Id, cancellationToken)).ToList();
             var rows = new List<MarketplaceSearchRegistration>();
-            foreach (MarketplaceSearch search in profile.Searches)
+            foreach (MarketplaceSearch search in selected)
             {
                 if (!sources.TryGetValue(search.Site, out var source))
                     sources[search.Site] = source = await EnsureSourceAsync(container.Id, search.Site, modelProcessing, opensOnly, cancellationToken);
@@ -116,8 +140,13 @@ public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDelive
                     canCapture && pipeline.State == PipelineState.Active));
             }
 
+            if (records is not null && recordCatalog)
+                foreach (var entry in sources.GroupBy(pair => pair.Key.Key, StringComparer.Ordinal))
+                    await records.RecordSetUpAsync(MarketplaceSourceCatalog.EntryKey(entry.Key), [.. entry.Select(pair => pair.Value.Id).Distinct()],
+                        overrideOff: siteKey is not null, cancellationToken);
+
             MarketplaceConsumerKey? key = await EnsureKeyAsync(tenant.Id, profile.Consumer, keys, cancellationToken);
-            return Result<MarketplaceSetup>.Ok(new(profile.Key, tenant.Id, container.Id, rows, key));
+            return Result<MarketplaceSetup>.Ok(new(profile.Key, tenant.Id, container.Id, rows, key) { Skipped = skipped });
         }
         catch (ProvisioningFailure failure) { return Result<MarketplaceSetup>.Fail(failure.Error); }
         finally { SetupGate.Release(); }
@@ -204,7 +233,11 @@ public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDelive
         }, cancellationToken));
     }
 
-    private static SourceFamily Family(MarketplaceSite site) => site.ImportOnly ? SourceFamily.Manual : SourceFamily.Site;
+    /// <summary>Gets the family a site's source carries: manual for an import-only site, else a site.</summary>
+    /// <param name="site">The marketplace site.</param>
+    internal static SourceFamily FamilyOf(MarketplaceSite site) => site.ImportOnly ? SourceFamily.Manual : SourceFamily.Site;
+
+    private static SourceFamily Family(MarketplaceSite site) => FamilyOf(site);
 
     /// <summary>Issues or rotates the consumer's <c>events:read</c> key as asked, and reports the newest active one.</summary>
     private async Task<MarketplaceConsumerKey?> EnsureKeyAsync(Guid tenantId, string consumer, MarketplaceKeyAction action,

@@ -8,6 +8,7 @@ using WoW.Two.Sdk.Beta.Be.Foundation.Serialization;
 using WoW.Two.Sdk.Beta.Be.Harvest.Capabilities.Challenges;
 using WoW.Two.Sdk.Beta.Be.Harvest.Capabilities.Fetching;
 using WoW.Two.Sdk.Beta.Be.Harvest.Capabilities.Rendering;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Catalog;
 using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Capabilities;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Persistence;
@@ -52,7 +53,7 @@ public sealed class HarvestEngine(
 
         var candidates = new List<(Guid Id, Guid PipelineId, DateTimeOffset? Due)>();
         await using (NpgsqlCommand query = EngineSql.Command(connection, transaction,
-            """
+            $"""
             SELECT s.id,s.pipeline_id,s.next_due_at FROM harvest_schedules s
             JOIN harvest_pipelines p ON p.id=s.pipeline_id JOIN harvest_sources src ON src.id=p.source_id
             WHERE s.enabled AND s.mode<>'manual' AND p.state='active' AND src.state='active'
@@ -61,7 +62,7 @@ public sealed class HarvestEngine(
                   SELECT 1 FROM harvest_schedules staged WHERE staged.pipeline_id=s.pipeline_id
                     AND staged.kind IN ('discover','harvest') AND staged.enabled AND staged.mode<>'manual'
                     AND staged.stage_options->>'disabled' IS DISTINCT FROM 'true'))
-              AND src.permission IN ('open','granted') AND (s.next_due_at IS NULL OR s.next_due_at<=@now)
+              AND src.permission IN ('open','granted') AND NOT {CatalogGate.Off("src")} AND (s.next_due_at IS NULL OR s.next_due_at<=@now)
             ORDER BY s.next_due_at NULLS FIRST,s.id LIMIT 100
             FOR UPDATE OF s SKIP LOCKED
             """, ("now", now)))
@@ -252,7 +253,7 @@ public sealed class HarvestEngine(
         await using NpgsqlConnection connection = await database.OpenConnectionAsync(ct);
         await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(ct);
         await using NpgsqlCommand command = EngineSql.Command(connection, transaction,
-            """
+            $"""
             SELECT w.id,w.run_id,w.pipeline_id,w.container_id,w.step,w.lane,w.host_key,w.target,w.payload,w.attempts,w.plan_ref,r.frozen
             FROM harvest_work_item w JOIN harvest_runs r ON r.id=w.run_id
             JOIN harvest_pipelines p ON p.id=w.pipeline_id JOIN harvest_sources s ON s.id=p.source_id
@@ -261,6 +262,7 @@ public sealed class HarvestEngine(
             WHERE (w.state='queued' OR (w.state='running' AND w.lease_until<=@now))
               AND w.due_at<=@now AND w.not_before<=@now AND r.status IN ('queued','running')
               AND NOT r.cancellation_requested AND p.state='active' AND s.state='active' AND s.permission IN ('open','granted')
+              AND NOT {CatalogGate.SourceOff}
               AND (h.paused_until IS NULL OR h.paused_until<=@now)
               AND (r.kind='process' OR COALESCE(GREATEST(hs.paused_until,hs.retry_after_until),@now)<=@now)
               AND NOT EXISTS(SELECT 1 FROM harvest_work_item busy WHERE busy.host_key=w.host_key AND busy.lane=w.lane

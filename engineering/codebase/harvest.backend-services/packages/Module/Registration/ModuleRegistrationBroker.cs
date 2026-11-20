@@ -288,8 +288,13 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
         var checkPolicy = row.CheckPolicyId is { } id
             ? await db.CheckPolicies.AsNoTracking().Where(policy => policy.Id == id).Select(policy => policy.Key).SingleOrDefaultAsync(cancellationToken)
             : null;
-        return Result<SourceModel>.Ok(row.ToModel(checkPolicy));
+        return Result<SourceModel>.Ok(row.ToModel(checkPolicy, await TurnedOnAsync(row, cancellationToken)));
     }
+
+    /// <summary>Reads whether the instance keeps the row's catalog entry on: a row with no key, or an entry with no record or an
+    /// <c>on</c> one, is on.</summary>
+    private async Task<bool> TurnedOnAsync(SourceRow row, CancellationToken cancellationToken) =>
+        row.CatalogKey is not { } key || !await db.CatalogRecords.AsNoTracking().AnyAsync(record => record.Key == key && !record.TurnedOn, cancellationToken);
 
     /// <inheritdoc />
     public async Task<Result<IReadOnlyList<SourceModel>>> ListSourcesAsync(Guid containerId, CancellationToken cancellationToken = default)
@@ -299,9 +304,11 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
 
         var keys = await CheckPolicyKeysAsync(cancellationToken);
         var rows = await db.Sources.AsNoTracking().Where(row => row.ContainerId == containerId).ToListAsync(cancellationToken);
+        var off = await db.CatalogRecords.AsNoTracking().Where(record => !record.TurnedOn).Select(record => record.Key).ToListAsync(cancellationToken);
         return Result<IReadOnlyList<SourceModel>>.Ok([.. rows
             .OrderBy(row => row.Family).ThenBy(row => row.Handle, StringComparer.Ordinal)
-            .Select(row => row.ToModel(row.CheckPolicyId is { } id ? keys.GetValueOrDefault(id) : null))]);
+            .Select(row => row.ToModel(row.CheckPolicyId is { } id ? keys.GetValueOrDefault(id) : null,
+                row.CatalogKey is not { } key || !off.Contains(key)))]);
     }
 
     /// <inheritdoc />
@@ -363,7 +370,7 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
         var checkPolicy = row.CheckPolicyId is { } id
             ? await db.CheckPolicies.AsNoTracking().Where(policy => policy.Id == id).Select(policy => policy.Key).SingleOrDefaultAsync(cancellationToken)
             : null;
-        return Result<SourceModel>.Ok(row.ToModel(checkPolicy));
+        return Result<SourceModel>.Ok(row.ToModel(checkPolicy, await TurnedOnAsync(row, cancellationToken)));
     }
 
     /// <inheritdoc />

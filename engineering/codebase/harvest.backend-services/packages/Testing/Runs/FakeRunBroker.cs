@@ -33,6 +33,8 @@ public sealed class FakeRunBroker(FakeRegistrationBroker registry, TimeProvider?
             return Result<RunModel>.Fail(RegistrationErrors.SourceNotFound(pipeline.SourceId));
         if (pipeline.State != PipelineState.Active)
             return Result<RunModel>.Fail(AppErrorFactory.Conflict("The pipeline is not active."));
+        if (!source.TurnedOn)
+            return Result<RunModel>.Fail(SourceCatalogConstants.TurnedOff());
         if (source.State != SourceState.Active || source.Permission is not (SourcePermission.Open or SourcePermission.Granted))
             return Result<RunModel>.Fail(AppErrorFactory.Forbidden("The source is not available for fetching."));
 
@@ -107,6 +109,8 @@ public sealed class FakeRunBroker(FakeRegistrationBroker registry, TimeProvider?
         if (await registry.GetPipelineAsync(pipelineId, cancellationToken) is not Result<PipelineModel>.Success { Value: var pipeline })
             return Result<PipelineModel>.Fail(RegistrationErrors.PipelineNotFound(pipelineId));
         var source = await registry.GetSourceAsync(pipeline.SourceId, cancellationToken);
+        if (!paused && source is Result<SourceModel>.Success { Value.TurnedOn: false })
+            return Result<PipelineModel>.Fail(SourceCatalogConstants.TurnedOff());
         if (pipeline.State is not (PipelineState.Active or PipelineState.Paused)
             || pipeline.State == PipelineState.Paused && pipeline.PauseReason != PipelinePauseReason.Operator
             || !paused && source is not Result<SourceModel>.Success { Value: { State: SourceState.Active, Permission: SourcePermission.Open or SourcePermission.Granted } })

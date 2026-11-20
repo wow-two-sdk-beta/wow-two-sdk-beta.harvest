@@ -8,6 +8,8 @@ export interface ConsoleDestination {
   readonly icon: ConsoleIconName;
   /** Other routes that belong to this destination, such as one source under Sources. */
   readonly within?: readonly string[];
+  /** Shown only to a session that operates SCFD. */
+  readonly operatorOnly?: boolean;
 }
 
 /** One labelled group of destinations — SCFD's own flow, from source to subscriber. */
@@ -48,6 +50,7 @@ export const ConsoleSections: readonly ConsoleSection[] = [
     label: 'Collect',
     destinations: [
       { label: 'Sources', route: 'sources', icon: 'sources', within: SourceRoutes },
+      { label: 'Available', route: 'available', icon: 'available', operatorOnly: true },
       { label: 'Pipelines', route: 'pipelines', icon: 'pipelines', within: PipelineRoutes },
       { label: 'Entities', route: 'entities', icon: 'entities', within: ['entity'] },
     ],

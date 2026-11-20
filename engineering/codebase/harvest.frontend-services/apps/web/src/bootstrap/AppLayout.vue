@@ -54,8 +54,8 @@ const frame = useTemplateRef<{ scrollToTop(): void }>('frame');
 const routeName = computed(() => String(route.name ?? ''));
 const isSource = computed(() => isSourceRoute(routeName.value));
 const isPipeline = computed(() => isPipelineRoute(routeName.value));
-/** The galleries carry the Cards | Rows switch: Sources and a source's Posts. */
-const hasViewSwitch = computed(() => routeName.value === 'sources' || routeName.value === 'source-posts');
+/** The galleries carry the Cards | Rows switch: Sources, Available and a source's Posts. */
+const hasViewSwitch = computed(() => ['sources', 'available', 'source-posts'].includes(routeName.value));
 
 /** Section › page › group › source › tab › post, the last one the current page. */
 const crumbs = computed(() => {

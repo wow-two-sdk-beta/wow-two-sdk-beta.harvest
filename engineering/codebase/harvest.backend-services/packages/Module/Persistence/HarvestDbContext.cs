@@ -28,6 +28,8 @@ internal sealed class HarvestDbContext(DbContextOptions<HarvestDbContext> option
 
     public DbSet<SourceGroupRow> SourceGroups => Set<SourceGroupRow>();
 
+    public DbSet<CatalogRecordRow> CatalogRecords => Set<CatalogRecordRow>();
+
     public DbSet<PipelineRow> Pipelines => Set<PipelineRow>();
 
     public DbSet<ScheduleRow> Schedules => Set<ScheduleRow>();
@@ -65,6 +67,9 @@ internal sealed class HarvestDbContext(DbContextOptions<HarvestDbContext> option
 
         var group = modelBuilder.Entity<SourceGroupRow>().ToTable(SourceGroupRow.TableName);
         group.HasKey(row => row.Id);
+
+        var catalog = modelBuilder.Entity<CatalogRecordRow>().ToTable(CatalogRecordRow.TableName);
+        catalog.HasKey(row => row.Key);
 
         var pipeline = modelBuilder.Entity<PipelineRow>().ToTable(PipelineRow.TableName);
         pipeline.HasKey(row => row.Id);

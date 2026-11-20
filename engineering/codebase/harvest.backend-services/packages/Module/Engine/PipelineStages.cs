@@ -76,7 +76,7 @@ public sealed class PipelineStages(
             pending[WorkKind.Discover] = reader.GetInt64(0);
             pending[WorkKind.Harvest] = reader.GetInt64(1);
         }
-        bool active = pipeline.State == PipelineState.Active && source.State == SourceState.Active
+        bool active = pipeline.State == PipelineState.Active && source.State == SourceState.Active && source.TurnedOn
             && source.Permission is SourcePermission.Open or SourcePermission.Granted;
         var catalog = RunPlanner.DiscoverySection(adapter, source, pipeline.Scope);
         var processorLabels = CaptureProcessors.PublicLabels(services, source);

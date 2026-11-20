@@ -12,7 +12,7 @@ using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Instagram;
 namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Ocharo;
 
 /// <summary>Explicitly registers reviewed channels; existing operator settings are preserved.</summary>
-public sealed class OcharoSourceProvisioner(IRegistrationBroker registry, IDeliveryBroker delivery)
+public sealed class OcharoSourceProvisioner(IRegistrationBroker registry, IDeliveryBroker delivery, ISourceCatalogRecords? records = null)
 {
     private static readonly SemaphoreSlim SetupGate = new(1, 1);
 
@@ -38,10 +38,15 @@ public sealed class OcharoSourceProvisioner(IRegistrationBroker registry, IDeliv
     /// source group in the container, so a selected setup that skips one refuses before the subscription is touched; a file
     /// that follows the registry binds every provisioned publisher and refuses only when there is none.
     /// <paramref name="selectorReset"/> puts the file's selector back on an existing subscription as a selector change by
-    /// <c>ocharo setup</c>; a file equal to the stored selector changes nothing, so the version stays.</remarks>
+    /// <c>ocharo setup</c>; a file equal to the stored selector changes nothing, so the version stays.
+    /// With the instance's catalog records (<see cref="ISourceCatalogRecords"/>) every publisher entry it sets up is stamped on its
+    /// sources and turned on (<c>setup</c>). A setup that names no group skips the entries the instance turned off, lists their keys
+    /// in <see cref="OcharoSetup.Skipped"/> and leaves them off; naming a group (<paramref name="groupIds"/>) turns that entry on even when
+    /// it was off. <paramref name="recordCatalog"/> false leaves the stamping and the record to the caller, as the catalog's own
+    /// set-up does.</remarks>
     public async Task<Result<OcharoSetup>> EnsureAsync(bool enableSchedules = false, CancellationToken cancellationToken = default,
         bool includeInstagram = false, IReadOnlyList<string>? groupIds = null, string tenantSlug = DefaultTenantSlug,
-        ModelProcessingMode? modelProcessing = null, bool selector = false, bool selectorReset = false)
+        ModelProcessingMode? modelProcessing = null, bool selector = false, bool selectorReset = false, bool recordCatalog = true)
     {
         if (selectorReset && !selector)
             return Invalid("A selector reset needs the selector: ask for both.");
@@ -52,6 +57,16 @@ public sealed class OcharoSourceProvisioner(IRegistrationBroker registry, IDeliv
             return Invalid("Select one or more distinct publisher IDs from the Ocharo source registry.");
 
         var routes = catalog.Routes(includeInstagram, selection).ToArray();
+        List<string> skipped = [];
+        if (selection is null && records is not null && recordCatalog)
+        {
+            // A setup that names no group never turns an entry the operator deliberately turned off back on.
+            var off = await records.OffKeysAsync(cancellationToken);
+            var held = routes.Where(route => off.Contains(OcharoSourceCatalog.EntryKey(route.Group.Id))).ToArray();
+            foreach (var key in held.Select(route => OcharoSourceCatalog.EntryKey(route.Group.Id)).Distinct(StringComparer.Ordinal))
+                skipped.Add(key);
+            routes = [.. routes.Except(held)];
+        }
         if (selection is not null)
         {
             var unavailable = selection.Except(routes.Select(route => route.Group.Id)).Order(StringComparer.Ordinal).ToArray();
@@ -189,10 +204,14 @@ public sealed class OcharoSourceProvisioner(IRegistrationBroker registry, IDeliv
                     GroupId = group.Id, ChannelId = channel.Id, EventFamily = channel.EventFamily,
                 });
             }
+            if (records is not null && recordCatalog)
+                foreach (var entry in rows.GroupBy(row => row.GroupId, StringComparer.Ordinal))
+                    await records.RecordSetUpAsync(OcharoSourceCatalog.EntryKey(entry.Key), [.. entry.Select(row => row.SourceId).Distinct()],
+                        overrideOff: selection is not null, cancellationToken);
             SubscriptionModel? selected = selector ? await EnsureSelectorAsync(tenant, container, subscriptions, selectorReset, cancellationToken) : null;
             return Result<OcharoSetup>.Ok(new(tenant.Id, container.Id, rows)
             {
-                SelectorSubscriptionId = selected?.Id, SelectorVersion = selected?.SelectorVersion,
+                SelectorSubscriptionId = selected?.Id, SelectorVersion = selected?.SelectorVersion, Skipped = skipped,
             });
         }
         catch (ProvisioningFailure failure) { return Result<OcharoSetup>.Fail(failure.Error); }

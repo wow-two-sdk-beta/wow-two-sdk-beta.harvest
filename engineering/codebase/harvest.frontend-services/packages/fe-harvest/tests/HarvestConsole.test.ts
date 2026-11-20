@@ -607,13 +607,13 @@ describe('pipeline activity', () => {
 });
 
 describe('Sources gallery', () => {
-  it('defaults to available sources and can show the rest', async () => {
+  it('defaults to active sources and can show the rest', async () => {
     const wrapper = mountConsole({
       options: { client: createHarvestClient({ fetch: fixtureFetch({ groups: 2, restrictIdle: true }) }) },
       panels: () => h(SourcesGallery),
     });
     await flushPromises();
-    const activeOnly = button(wrapper, 'Available only')!;
+    const activeOnly = button(wrapper, 'Active only')!;
     expect(activeOnly.attributes('aria-pressed')).toBe('true');
     expect(wrapper.find('article[aria-label="Afisha.uz"]').exists()).toBe(true);
     expect(wrapper.find('article[aria-label="Afisha Telegram"]').exists()).toBe(false);

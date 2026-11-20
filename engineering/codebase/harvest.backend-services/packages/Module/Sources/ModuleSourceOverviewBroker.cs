@@ -34,9 +34,11 @@ internal sealed partial class ModuleSourceOverviewBroker(
     {
         if (await registry.GetContainerAsync(containerId, cancellationToken) is not Result<ContainerModel>.Success)
             return Result<IReadOnlyList<SourceOverviewModel>>.Fail(RegistrationErrors.ContainerNotFound(containerId));
-        if (await registry.ListSourcesAsync(containerId, cancellationToken) is not Result<IReadOnlyList<SourceModel>>.Success { Value: var sources }
+        if (await registry.ListSourcesAsync(containerId, cancellationToken) is not Result<IReadOnlyList<SourceModel>>.Success { Value: var listed }
             || await registry.ListPipelinesAsync(containerId, cancellationToken) is not Result<IReadOnlyList<PipelineModel>>.Success { Value: var pipelines })
             return Result<IReadOnlyList<SourceOverviewModel>>.Fail(RegistrationErrors.ContainerNotFound(containerId));
+        // The overview lists the sources the instance keeps on; an off source still answers its own reads, so Available can open its page.
+        var sources = listed.Where(source => source.TurnedOn).ToList();
         var now = time.GetUtcNow();
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
@@ -74,6 +76,7 @@ internal sealed partial class ModuleSourceOverviewBroker(
                 Name = source.Name ?? source.Handle,
                 Family = source.Family,
                 Handle = source.Handle,
+                CatalogKey = source.CatalogKey,
                 FaviconUrl = favicons.TryGetValue(source.Id, out Guid icon) ? SourceRouteConstants.AssetUrl(source.Id, icon) : null,
                 GroupId = source.GroupId,
                 State = readable ? SourceOverviewRules.State(active.Contains(source.Id), health, lastHarvest, sections)

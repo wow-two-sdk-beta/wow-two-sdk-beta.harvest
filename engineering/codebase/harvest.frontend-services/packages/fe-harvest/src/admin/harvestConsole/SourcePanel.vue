@@ -34,6 +34,11 @@ const session = useHarvestConsole();
 const { overviewState, navigation, canOperate, canWrite } = session;
 
 const source = computed(() => session.overviewOf(props.sourceId));
+/** A source its catalog entry turned off is registered but left out of the overview, so its page names that. */
+const turnedOff = computed(() => {
+  const registered = session.sourceOf(props.sourceId);
+  return registered?.turnedOn === false ? registered : undefined;
+});
 const canSet = computed(() => canOperate.value && (canWrite('pipelines:manage') || canWrite('sources:manage')));
 const postCount = computed(
   () => source.value?.postCount ?? source.value?.sections.reduce((sum, section) => sum + section.posts, 0) ?? 0,
@@ -103,6 +108,18 @@ function choose(value: string) {
   >
     <p class="mb-3 text-sm">Could not load this source.</p>
     <Button variant="outline" @click="session.refresh">Retry source</Button>
+  </div>
+  <div v-else-if="turnedOff" class="rounded-2xl border border-border bg-card p-2">
+    <EmptyState
+      title="This source is turned off"
+      description="Its entry is turned off on this instance, so it collects nothing. Its posts, runs and settings stay, and Available can turn it back on."
+    >
+      <template v-if="canOperate" #actions>
+        <ConsoleLink :to="{ kind: 'available' }" class="text-sm text-primary hover:underline">
+          Open Available
+        </ConsoleLink>
+      </template>
+    </EmptyState>
   </div>
   <div v-else class="rounded-2xl border border-border bg-card p-2">
     <EmptyState title="Source not found" description="This source is not among the sources you can see.">

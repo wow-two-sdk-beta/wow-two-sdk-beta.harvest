@@ -18,7 +18,7 @@ will be ever turned on - saved in db"; "we can remove afisha etc from this one -
 | Catalog | Entry | Key | 2026-11-21 |
 |---|---|---|---|
 | Ocharo registry (`ocharo-event-sources.json`) | a publisher group with at least one channel in `mode` `harvest` or `provider` | `ocharo.{groupId}`, e.g. `ocharo.afisha` | 27 entries |
-| Marketplace (`MarketplaceProfile` sites) | a site | `marketplace.{siteKey}`, e.g. `marketplace.olx-uz` | 5 entries |
+| Marketplace (`MarketplaceProfile` sites) | a site | `marketplace.{siteKey}`, e.g. `marketplace.olx-uz` | 4 entries (BirBir's import and collection sites share `birbir-uz`) |
 
 - An entry is the unit the console and the developer name: a publisher (Afisha, ANONS) or a site (OLX, BirBir). Its
   channels or searches turn on and off with it; a channel's own choice stays with its pipeline (sections, pause).
@@ -59,7 +59,8 @@ it, and every gate reads it when it acts, not when the work was queued.
 | Manual runs, setup `--run`, run resume | `RunPlanner.QueueAsync`, `ModuleRunBroker` resume | refused with `source-turned-off` |
 | Capture | the work claim (`HarvestEngine.ClaimAsync`) | leaves its queued work queued and unclaimed |
 | Capture writes and imports | `ModulePostBroker.SaveCaptureAsync` | refused |
-| AI: tags, extraction, entities, re-runs, the Process stage | the model-processing fragments (`PostTagsStore.AutoSql`, `ModeSql`), re-checked at claim | reads as `off` |
+| AI: tags, extraction, entities, re-runs, the Process stage | the model-processing fragments (`PostTagsStore.AutoSql`, `ModeSql`), re-checked at claim | reads as `off`: queues nothing, and drops queued work at claim as mode `off` does; `processing rerun` restores it |
+| Image copies | the source-asset worker (`SourceAssetStore`) | leaves its queued copies queued and unfetched |
 | Delivery | the event writes and the selector scope | writes no event for a post whose every link is an off source |
 | Section staging at boot | `ReconcileHarvestSourceSectionsAsync` | is skipped |
 
@@ -107,7 +108,7 @@ it, and every gate reads it when it acts, not when the work was queued.
   profile that lists it, with that profile's searches on the site as pipelines.
 - The source then reads Manual on Sources until its schedules are switched on in its Settings, or a setup with
   `--schedules` runs.
-- An `off` entry turned on sets nothing up and resumes as it was.
+- An `off` entry turned on resumes as it was; one turned off before anything was set up is set up as a `new` one.
 
 ## Setup verbs
 
@@ -133,4 +134,5 @@ it, and every gate reads it when it acts, not when the work was queued.
 
 - Two groups claiming one host would share one source row and the first group's key; the registry has none
   (each Instagram account is its own source).
+- A source's favicon copy still fetches while it is off: one request per host, outside the posts.
 - The catalog has no `packages/Client` broker: the console reads it over HTTP, and no product embeds it yet.

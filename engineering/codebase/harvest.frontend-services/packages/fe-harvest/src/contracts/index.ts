@@ -8,6 +8,7 @@ export type { SourceModel } from './SourceModel';
 export type { SourceCapabilitiesModel } from './SourceCapabilitiesModel';
 export type { SourcePostFacet, SourcePostFilterDefinition, SourcePostPage, SourcePostQuery } from './SourcePostQuery';
 export type * from './SourceOverviewModel';
+export type * from './CatalogSourceModel';
 export type { PipelineModel, PipelineLimits, ScheduleModel, PipelineUpdate } from './PipelineModel';
 export { RegistrationRouteConstants } from './RegistrationRouteConstants';
 export { ApiKeyConstants, HarvestScopeConstants } from './HarvestScopeConstants';

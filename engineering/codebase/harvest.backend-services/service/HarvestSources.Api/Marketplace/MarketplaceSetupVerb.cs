@@ -23,8 +23,10 @@ namespace HarvestSources.Api.Marketplace;
 ///     with <c>--model-processing</c>
 ///   - <c>--issue-key</c> issues the consumer's <c>events:read</c> key when it holds no active one; <c>--rotate-key</c>
 ///     revokes its active keys and issues one. The secret goes only into the last stdout line, once; stderr never carries it
+///   - every site setup sets up joins the instance's source catalog (<c>sources catalog</c>) and is turned on; a site the instance
+///     turned off is skipped, and its key (<c>marketplace.olx-uz</c>) is listed under <c>skipped</c>
 ///   - stderr carries the report; the last stdout line is one JSON object with the tenant, container, searches (source,
-///     pipeline and subscription each), the consumer key and queued runs
+///     pipeline and subscription each), the consumer key, queued runs and the skipped entries
 ///   - <c>marketplace status --profile &lt;key&gt;</c> writes nothing; its last stdout line names each search's cadence,
 ///     next due time, latest run of its kind and how many events its subscription's first pull page holds
 ///     (<c>events 100+</c> past one page), so a deployed host proves delivery with no consumer key
@@ -93,6 +95,8 @@ public static class MarketplaceSetupVerb
         string key = value.ConsumerKey is { } consumer
             ? $"key {consumer.Prefix} ({consumer.Id})" + (consumer.Secret is null ? "" : ", issued now; its secret is on stdout only")
             : "no consumer key";
+        foreach (var entry in value.Skipped)
+            await error.WriteLineAsync($"skipped {entry}: the instance turned it off; turn it on with sources catalog on {entry}");
         await error.WriteLineAsync($"tenant {value.TenantId}, container {value.ContainerId}, "
             + $"{value.Searches.Count} subscription(s), {key}, {runs.Count} run(s) queued");
         await output.WriteLineAsync(JsonSerializer.Serialize(new
@@ -112,6 +116,7 @@ public static class MarketplaceSetupVerb
             }),
             consumerKey = value.ConsumerKey is { } issued ? new { id = issued.Id, prefix = issued.Prefix, secret = issued.Secret } : null,
             runs,
+            skipped = value.Skipped,
         }));
         return 0;
     }

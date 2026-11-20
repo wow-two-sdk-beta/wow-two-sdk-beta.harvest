@@ -48,7 +48,8 @@ internal static class RegistrationMapper
         CreatedAtUtc = row.CreatedAt,
     };
 
-    public static SourceModel ToModel(this SourceRow row, string? checkPolicy) => new()
+    /// <summary>Maps a source row; <paramref name="turnedOn"/> is false when the instance turned the row's catalog entry off.</summary>
+    public static SourceModel ToModel(this SourceRow row, string? checkPolicy, bool turnedOn = true) => new()
     {
         Id = row.Id,
         ContainerId = row.ContainerId,
@@ -69,6 +70,8 @@ internal static class RegistrationMapper
         RetentionClass = row.RetentionClass,
         CheckPolicy = checkPolicy,
         CapabilityPolicy = StoreJson.Read(row.CapabilityPolicy, new CapabilityPolicy()),
+        CatalogKey = row.CatalogKey,
+        TurnedOn = turnedOn,
         State = row.State,
         StateSinceUtc = row.StateSince,
         CreatedAtUtc = row.CreatedAt,

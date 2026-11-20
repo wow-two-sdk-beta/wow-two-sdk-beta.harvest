@@ -1,15 +1,23 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Catalog;
 using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
 using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 
 namespace HarvestSources.Api.Sources;
 
-/// <summary>Answers <c>sources processing</c>: reads and sets each source's model-processing mode from the deployed
-/// host, so a platform job switches sources with no operator token — the verb form of <c>PUT api/sources/{id}</c>
-/// <c>{ "modelProcessing": … }</c>.</summary>
+/// <summary>Answers <c>sources processing</c> and <c>sources catalog</c>: reads and sets each source's model-processing mode, and
+/// the instance's source catalog, from the deployed host, so a platform job switches sources with no operator token — the verb
+/// form of <c>PUT api/sources/{id}</c> <c>{ "modelProcessing": … }</c> and of <c>GET|PUT api/sources/catalog</c>.</summary>
 /// <remarks>
+///   - <c>sources catalog [--state new|on|off]</c> lists the catalog's entries (key, catalog, name, kind, hosts, channels, state, who
+///     changed it and when, and the sources it set up), <c>sources catalog on &lt;key&gt;</c> turns an entry on, setting a
+///     <c>new</c> one up first with schedules and model processing off, and <c>sources catalog off &lt;key&gt;</c> turns it
+///     off; each writes one JSON line to stdout: <c>{"entries":[…]}</c> for the list, <c>{"entry":{…}}</c> for a switch
+///   - a switch is recorded as changed by <c>operator-key</c>; an unknown key or a set-up that fails exits <c>1</c> with the reason
+///     on stderr, and the record stays as it was
 ///   - <c>sources processing (--source &lt;id|family/handle&gt;... | --group &lt;name&gt;...) --mode off|manual|auto [--tenant &lt;slug&gt;]</c>
 ///     sets the mode of every source named; a source is an id or <c>family/handle</c> (<c>site/afisha.uz</c>), a group is
 ///     a source group's name without regard to case, and a source named by both is set once
@@ -30,7 +38,14 @@ public static class SourcesVerb
     private const string Usage = """
         Usage: sources processing (--source <id|family/handle>... | --group <name>...) --mode <off|manual|auto> [--tenant <slug>]
                sources processing --list [--source <id|family/handle>...] [--group <name>...] [--tenant <slug>]
+               sources catalog [--state <new|on|off>]
+               sources catalog (on|off) <key>
         """;
+
+    private static readonly JsonSerializerOptions CatalogJson = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
+    };
 
     /// <summary>Runs the verb over the host's services.</summary>
     /// <param name="services">The built host's services.</param>
@@ -42,6 +57,8 @@ public static class SourcesVerb
     public static async Task<int> RunAsync(IServiceProvider services, IReadOnlyList<string> arguments, TextWriter output,
         TextWriter error, CancellationToken ct)
     {
+        if (arguments is ["catalog", ..])
+            return await CatalogAsync(services, arguments, output, error, ct);
         if (!TryParse(arguments, out var request))
         {
             await error.WriteLineAsync(Usage);
@@ -89,6 +106,55 @@ public static class SourcesVerb
             await error.WriteLineAsync("sources processing: " + refusal.Message);
             return 1;
         }
+    }
+
+    private static async Task<int> CatalogAsync(IServiceProvider services, IReadOnlyList<string> arguments, TextWriter output,
+        TextWriter error, CancellationToken ct)
+    {
+        CatalogState? state = null;
+        string? key = null;
+        bool? turnedOn = null;
+        switch (arguments)
+        {
+            case ["catalog"]:
+                break;
+            case ["catalog", "--state", var value] when Enum.TryParse<CatalogState>(value, ignoreCase: true, out var parsed)
+                && Enum.IsDefined(parsed) && value.All(char.IsLetter):
+                state = parsed;
+                break;
+            case ["catalog", "on" or "off", var entry] when !string.IsNullOrWhiteSpace(entry) && !entry.StartsWith("--", StringComparison.Ordinal):
+                key = entry;
+                turnedOn = arguments[1] == "on";
+                break;
+            default:
+                await error.WriteLineAsync(Usage);
+                return 2;
+        }
+
+        await using var scope = services.CreateAsyncScope();
+        if (scope.ServiceProvider.GetService<SourceCatalogBroker>() is not { } broker)
+        {
+            await error.WriteLineAsync("sources catalog runs on the internal source host; HarvestSources:Audience is public.");
+            return 1;
+        }
+
+        if (key is null)
+        {
+            var entries = (await broker.ListAsync(ct)).Where(entry => state is null || entry.State == state).ToArray();
+            await output.WriteLineAsync(JsonSerializer.Serialize(new { entries }, CatalogJson));
+            await error.WriteLineAsync($"{entries.Length} catalog entr{(entries.Length == 1 ? "y" : "ies")}");
+            return 0;
+        }
+
+        var result = await broker.SwitchAsync(key, turnedOn!.Value, SourceCatalogConstants.ChangedByOperatorKey, ct);
+        if (result is not Result<CatalogSourceModel>.Success { Value: var switched })
+        {
+            await error.WriteLineAsync($"sources catalog {(turnedOn.Value ? "on" : "off")}: " + ((Result<CatalogSourceModel>.Failure)result).Error.Message);
+            return 1;
+        }
+        await output.WriteLineAsync(JsonSerializer.Serialize(new { entry = switched }, CatalogJson));
+        await error.WriteLineAsync($"{switched.Key} is {switched.State.ToString().ToLowerInvariant()}");
+        return 0;
     }
 
     /// <summary>Reads a mode as the verbs spell it: <c>off</c>, <c>manual</c> or <c>auto</c>, in any case.</summary>

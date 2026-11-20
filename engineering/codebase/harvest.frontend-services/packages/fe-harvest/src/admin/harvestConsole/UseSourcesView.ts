@@ -4,7 +4,7 @@ import type { HarvestConsole } from './HarvestConsole';
 interface SourcesView {
   search: string;
   filter: string;
-  availableOnly: boolean;
+  activeOnly: boolean;
   collapsed: Set<string>;
   scrollTop: number;
 }
@@ -25,7 +25,7 @@ export function useSourcesView(session: HarvestConsole) {
     const key = session.containerId.value;
     let saved = containers.get(key);
     if (!saved) {
-      saved = reactive({ search: '', filter: 'all', availableOnly: true, collapsed: new Set<string>(), scrollTop: 0 });
+      saved = reactive({ search: '', filter: 'all', activeOnly: true, collapsed: new Set<string>(), scrollTop: 0 });
       containers.set(key, saved);
     }
     return saved;

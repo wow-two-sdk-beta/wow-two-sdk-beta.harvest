@@ -58,7 +58,7 @@ public sealed class FakeSourceOverviewBroker(
         }
 
         var overviews = new List<SourceOverviewModel>();
-        foreach (var source in sources)
+        foreach (var source in sources.Where(candidate => candidate.TurnedOn))
         {
             var own = pipelines.Where(pipeline => pipeline.SourceId == source.Id).OrderBy(pipeline => pipeline.CreatedAtUtc).ThenBy(pipeline => pipeline.Id).ToList();
             var ids = own.Select(pipeline => pipeline.Id).ToHashSet();
@@ -89,6 +89,7 @@ public sealed class FakeSourceOverviewBroker(
                 Name = source.Name ?? source.Handle,
                 Family = source.Family,
                 Handle = source.Handle,
+                CatalogKey = source.CatalogKey,
                 GroupId = source.GroupId,
                 State = state,
                 SourceState = source.State,

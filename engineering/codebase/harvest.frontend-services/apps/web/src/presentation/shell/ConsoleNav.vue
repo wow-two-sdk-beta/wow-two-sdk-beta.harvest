@@ -74,11 +74,19 @@ const activeDestination = computed(() => {
   if (current === 'pipelines' && trail.value?.pipeline && inPipeline.value) return undefined;
   return current;
 });
-/** Each destination's count beside its label: sources, subscribers. */
+/** Each destination's count beside its label: sources, the sources still to turn on, subscribers. */
 const counts = computed<Record<string, number | undefined>>(() => ({
   sources: session.overviews.value.length || undefined,
+  available: session.availableCount.value || undefined,
   subscribers: session.tenants.value.length || undefined,
 }));
+/** The destinations this session sees: Available is the operator's. */
+const sections = computed(() =>
+  ConsoleSections.map((section) => ({
+    ...section,
+    destinations: section.destinations.filter((destination) => !destination.operatorOnly || session.canOperate.value),
+  })),
+);
 </script>
 
 <template>
@@ -87,7 +95,7 @@ const counts = computed<Record<string, number | undefined>>(() => ({
     :is-collapsed="props.collapsed"
     class="min-h-0 flex-1 overflow-y-auto overflow-x-hidden [scrollbar-width:thin]"
   >
-    <SidebarMenuSection v-for="section in ConsoleSections" :key="section.label" :label="section.label">
+    <SidebarMenuSection v-for="section in sections" :key="section.label" :label="section.label">
       <template v-for="destination in section.destinations" :key="destination.route">
         <Tooltip :content="destination.label" :is-disabled="!props.collapsed" :open-delay="150" placement="right">
           <SidebarMenuItem as-child :is-active="activeDestination === destination.route">

@@ -60,6 +60,9 @@ internal sealed class SourceRow
     /// <summary>Gets or sets the jsonb capability policy.</summary>
     public required string CapabilityPolicy { get; set; }
 
+    /// <summary>Gets or sets the catalog entry the source was set up for (019); null for a source registered by hand.</summary>
+    public string? CatalogKey { get; set; }
+
     public required SourceState State { get; set; }
 
     public required DateTimeOffset StateSince { get; set; }

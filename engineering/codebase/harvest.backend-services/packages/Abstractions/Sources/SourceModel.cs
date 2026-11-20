@@ -74,6 +74,14 @@ public sealed record SourceModel
     /// <summary>Gets the operator's capability limits for the source's steps.</summary>
     public required CapabilityPolicy CapabilityPolicy { get; init; }
 
+    /// <summary>Gets the catalog entry the source was set up for (<c>ocharo.afisha</c>); null for a source registered by hand,
+    /// which stays outside the catalog.</summary>
+    public string? CatalogKey { get; init; }
+
+    /// <summary>Gets whether the instance keeps the source's catalog entry turned on: true with no <see cref="CatalogKey"/> or
+    /// an entry that is not off. A source that is not turned on never schedules, captures, is processed by a model or delivers.</summary>
+    public bool TurnedOn { get; init; } = true;
+
     /// <summary>Gets the source's availability.</summary>
     public required SourceState State { get; init; }
 

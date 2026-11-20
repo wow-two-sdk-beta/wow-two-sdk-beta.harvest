@@ -60,8 +60,8 @@ const saved = useSourcesView(session);
 const search = computed({ get: () => saved.value.search, set: (value: string) => (saved.value.search = value) });
 const filter = computed({ get: () => saved.value.filter, set: (value: string) => (saved.value.filter = value) });
 const activeOnly = computed({
-  get: () => saved.value.availableOnly,
-  set: (value: boolean) => (saved.value.availableOnly = value),
+  get: () => saved.value.activeOnly,
+  set: (value: boolean) => (saved.value.activeOnly = value),
 });
 const collapsed = computed({
   get: () => saved.value.collapsed,
@@ -214,7 +214,7 @@ watch(overviewState, () => void restoreView());
       </div>
       <ToggleInput v-model="activeOnly" variant="solid" class="min-h-9 shrink-0 gap-1.5 rounded-full px-3">
         <PillIcon name="active" :size="15" />
-        Available only
+        Active only
       </ToggleInput>
       <FilterToggleGroup
         :model-value="filter"

@@ -78,6 +78,8 @@ export interface SourceOverviewModel {
   readonly faviconUrl?: string;
   /** Omitted when the source belongs to no group. */
   readonly groupId?: string;
+  /** The catalog entry that set the source up; omitted or null for a source registered by hand. */
+  readonly catalogKey?: string | null;
   readonly state: SourceOverviewState;
   /** Source master gate and access; optional when connected to an older host. */
   readonly sourceState?: SourceState;

@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using WoW.Two.Sdk.Beta.Be.Harvest.Delivery;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Readers;
+using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Afisha;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Anons;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Caex;
@@ -14,7 +15,8 @@ namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Ocharo;
 public static class OcharoServiceCollectionExtensions
 {
     /// <summary>Registers source brokers and the Ocharo delivery filters, <c>ocharo-fashion-v1</c> (rules) and
-    /// <c>ocharo-relevance-v1</c> (rules plus a relevant tag verdict); registration performs no I/O.</summary>
+    /// <c>ocharo-relevance-v1</c> (rules plus a relevant tag verdict), the provisioner and the publisher catalog
+    /// (<see cref="OcharoSourceCatalog"/>); registration performs no I/O.</summary>
     public static IServiceCollection AddOcharoEventSources(this IServiceCollection services)
     {
         services.AddHarvestWebBroker<AfishaSourceAdapter, AfishaCaptureReader>();
@@ -25,6 +27,7 @@ public static class OcharoServiceCollectionExtensions
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IDeliveryPostFilter, OcharoFashionFilter>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IDeliveryPostFilter, OcharoRelevanceFilter>());
         services.TryAddScoped<OcharoSourceProvisioner>();
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<ISourceCatalog, OcharoSourceCatalog>());
         return services;
     }
 }

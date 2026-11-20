@@ -38,6 +38,7 @@ async function renderAt(path: string) {
 const places = [
   ['/', 'Home', 'Home', 'Health'],
   ['/sources', 'Sources', 'Sources', 'Sources'],
+  ['/available', 'Available', 'Available', 'Available sources'],
   [Afisha, 'Afisha.uz', 'Afisha.uz', 'Sections being harvested'],
   [`${Afisha}/posts`, 'Afisha.uz', 'Afisha.uz', 'Posts'],
   [`${Afisha}/processed`, 'Afisha.uz', 'Afisha.uz', 'Filter processed posts'],
@@ -78,6 +79,7 @@ describe('console routes', () => {
       'Home',
       'Collect',
       'Sources',
+      'Available',
       'Pipelines',
       'Entities',
       'Deliver',
@@ -368,8 +370,83 @@ describe('console routes', () => {
   });
 });
 
+describe('Available', () => {
+  /** The sidebar's Available entry. */
+  const entry = (wrapper: Awaited<ReturnType<typeof renderAt>>['wrapper']) =>
+    wrapper.get('nav[aria-label="Console"] a[href="/available"]');
+  const card = (wrapper: Awaited<ReturnType<typeof renderAt>>['wrapper'], name: string) =>
+    wrapper.find(`article[aria-label="${name}"]`);
+
+  it('lists the demo’s new and turned-off entries, counts them in the sidebar and leaves the turned-on ones out', async () => {
+    const { wrapper } = await renderAt('/available');
+    await vi.waitFor(() => expect(card(wrapper, 'BirBir').exists()).toBe(true));
+    expect(wrapper.findAll('article')).toHaveLength(6);
+    expect(wrapper.findAll('section h2').map((heading) => heading.text())).toEqual(['Events', 'Listings']);
+    expect(card(wrapper, 'Afisha').exists()).toBe(false);
+    expect(card(wrapper, 'Kultura').text()).toContain('Turned off');
+    expect(card(wrapper, 'Kultura').get('a').attributes('href')).toMatch(/^\/sources\/[0-9a-f-]+$/);
+    expect(entry(wrapper).text()).toContain('6');
+  });
+
+  it('puts a turned-on entry on Sources and takes it off Available, and the same for one that was turned off', async () => {
+    const { router, wrapper } = await renderAt('/available');
+    await vi.waitFor(() => expect(card(wrapper, 'Kultura').exists()).toBe(true));
+    await wrapper.get('button[aria-label="Turn on BirBir"]').trigger('click');
+    await vi.waitFor(() => expect(card(wrapper, 'BirBir').exists()).toBe(false));
+    await vi.waitFor(() => expect(entry(wrapper).text()).toContain('5'));
+    await wrapper.get('button[aria-label="Turn on Kultura"]').trigger('click');
+    await vi.waitFor(() => expect(card(wrapper, 'Kultura').exists()).toBe(false));
+    await vi.waitFor(() => expect(entry(wrapper).text()).toContain('4'));
+
+    await router.push('/sources');
+    await vi.waitFor(() => expect(wrapper.find('article[aria-label="birbir.uz"]').exists()).toBe(true));
+    // Kultura.uz resumes as it was, which is disabled, so only the unfiltered page lists it.
+    expect(wrapper.find('article[aria-label="Kultura.uz"]').exists()).toBe(false);
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Active only')!
+      .trigger('click');
+    await vi.waitFor(() => expect(wrapper.find('article[aria-label="Kultura.uz"]').exists()).toBe(true));
+  });
+
+  it('leaves a source its entry turned off out of Sources', async () => {
+    const { wrapper } = await renderAt('/sources');
+    await vi.waitFor(() => expect(wrapper.find('article[aria-label="Afisha.uz"]').exists()).toBe(true));
+    expect(wrapper.find('article[aria-label="Kultura.uz"]').exists()).toBe(false);
+    expect(wrapper.get('[aria-label="Sources"]').text()).toContain('of 12 sources');
+  });
+
+  it('turns an entry off from a source’s Settings, after a confirm, and opens Available', async () => {
+    const { router, wrapper } = await renderAt(`${Afisha}/settings`);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Turned on for this instance'));
+    const control = () => wrapper.findAll('button').find((button) => button.text() === 'Turn off');
+    await control()!.trigger('click');
+    await vi.waitFor(() => expect(document.body.querySelector('[role="alertdialog"]')).not.toBeNull());
+    const dialog = document.body.querySelector('[role="alertdialog"]')!;
+    expect(dialog.textContent).toContain('Turn off Afisha?');
+    for (const name of ['Afisha.uz', 'Afisha Telegram', 'Afisha Instagram']) expect(dialog.textContent).toContain(name);
+    [...dialog.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Turn off')!.click();
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('available'));
+    await vi.waitFor(() => expect(card(wrapper, 'Afisha').exists()).toBe(true));
+    expect(card(wrapper, 'Afisha').text()).toContain('Turned off');
+  });
+
+  it('carries the Cards | Rows switch in the bar, sharing the remembered choice', async () => {
+    useGalleryView().value = 'cards';
+    const { wrapper } = await renderAt('/available');
+    await vi.waitFor(() => expect(card(wrapper, 'BirBir').exists()).toBe(true));
+    const bar = wrapper.get('[data-app-frame-bar]');
+    expect(bar.find('[aria-label="View"]').exists()).toBe(true);
+    expect(wrapper.get('[aria-label="Available sources"]').find('[aria-label="View"]').exists()).toBe(false);
+    const rows = bar.findAll('[aria-label="View"] button').find((button) => button.text() === 'Rows')!;
+    await rows.trigger('click');
+    await vi.waitFor(() => expect(wrapper.find('li[aria-label="BirBir"]').exists()).toBe(true));
+    expect(window.localStorage.getItem('scfd.gallery-view')).toBe('"rows"');
+  });
+});
+
 describe('the Cards | Rows switch', () => {
-  it('shows only on Sources and a source’s Posts, with one remembered choice for both', async () => {
+  it('shows only on Sources, Available and a source’s Posts, with one remembered choice for all', async () => {
     useGalleryView().value = 'cards';
     const { router, wrapper } = await renderAt('/sources');
     const bar = () => wrapper.get('[data-app-frame-bar]');
@@ -391,6 +468,7 @@ describe('the Cards | Rows switch', () => {
       [`${Afisha}/settings`, false],
       ['/subscribers', false],
       ['/access', false],
+      ['/available', true],
       [`${Afisha}/posts`, true],
     ] as const) {
       await router.push(path);

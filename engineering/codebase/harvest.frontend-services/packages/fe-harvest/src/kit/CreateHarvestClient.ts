@@ -1,6 +1,7 @@
 import { ApiFailureFactory, createApiClient, type ApiFailure } from '@wow-two-beta/fe/foundation/http';
 import { ResultExtensions, type Result } from '@wow-two-beta/fe/foundation/results';
 import type {
+  CatalogSourceModel,
   ContainerModel,
   SourceModel,
   PipelineModel,
@@ -115,6 +116,14 @@ export interface HarvestClient extends RegistryClient {
   listSourceGroups(containerId: string, signal?: AbortSignal): Promise<Result<readonly SourceGroupModel[], ApiFailure>>;
   /** Declares a group, idempotent by name. */
   createSourceGroup(body: SourceGroupDraft, signal?: AbortSignal): Promise<Result<SourceGroupModel, ApiFailure>>;
+  /** Reads every source the image registers with whether this instance turned it on; operators only. */
+  listSourceCatalog(signal?: AbortSignal): Promise<Result<readonly CatalogSourceModel[], ApiFailure>>;
+  /** Turns one catalog entry on or off; a `new` entry is set up first. Answers with the updated entry. */
+  setCatalogSourceTurnedOn(
+    key: string,
+    turnedOn: boolean,
+    signal?: AbortSignal,
+  ): Promise<Result<CatalogSourceModel, ApiFailure>>;
   /** Sets a source's display name and group. */
   updateSource(sourceId: string, body: SourceUpdate, signal?: AbortSignal): Promise<Result<SourceModel, ApiFailure>>;
   /** Sets the gap between two page reads of a source's host; answers with the source's health. */
@@ -205,6 +214,36 @@ function sourceOverviews(value: unknown): Result<readonly SourceOverviewModel[],
     });
   return ok
     ? ResultExtensions.ok(value as readonly SourceOverviewModel[])
+    : ResultExtensions.fail(ApiFailureFactory.create('protocol'));
+}
+
+/** Whether a value is a catalog entry with the fields the Available page and the Settings confirm read. */
+function isCatalogEntry(value: unknown): value is CatalogSourceModel {
+  const row = value as Partial<CatalogSourceModel> | null;
+  return (
+    row !== null &&
+    typeof row === 'object' &&
+    typeof row.key === 'string' &&
+    typeof row.name === 'string' &&
+    (row.state === 'new' || row.state === 'on' || row.state === 'off') &&
+    (row.kind === 'events' || row.kind === 'listings') &&
+    typeof row.channels === 'number' &&
+    Array.isArray(row.hosts) &&
+    Array.isArray(row.sources)
+  );
+}
+
+/** Validates the catalog list before the Available page draws an entry. */
+function catalogEntries(value: unknown): Result<readonly CatalogSourceModel[], ApiFailure> {
+  return Array.isArray(value) && value.every(isCatalogEntry)
+    ? ResultExtensions.ok(value as readonly CatalogSourceModel[])
+    : ResultExtensions.fail(ApiFailureFactory.create('protocol'));
+}
+
+/** Validates the entry a switch answers with. */
+function catalogEntry(value: unknown): Result<CatalogSourceModel, ApiFailure> {
+  return isCatalogEntry(value)
+    ? ResultExtensions.ok(value)
     : ResultExtensions.fail(ApiFailureFactory.create('protocol'));
 }
 
@@ -432,6 +471,13 @@ export function createHarvestClient(options: RegistryClientOptions = {}): Harves
       api.get('/api/sources/groups', { query: { containerId }, ...signalOf(signal), decode: list<SourceGroupModel> }),
     createSourceGroup: (body, signal) =>
       api.post('/api/sources/groups', { body, ...signalOf(signal), decode: object<SourceGroupModel> }),
+    listSourceCatalog: (signal) => api.get('/api/sources/catalog', { ...signalOf(signal), decode: catalogEntries }),
+    setCatalogSourceTurnedOn: (key, turnedOn, signal) =>
+      api.put(`/api/sources/catalog/${encodeURIComponent(key)}`, {
+        body: { turnedOn },
+        ...signalOf(signal),
+        decode: catalogEntry,
+      }),
     updateSource: (sourceId, body, signal) =>
       api.put(`/api/sources/${encodeURIComponent(sourceId)}`, {
         body,

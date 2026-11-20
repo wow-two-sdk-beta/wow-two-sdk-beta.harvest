@@ -1,3 +1,4 @@
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Catalog;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Registration;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Reprocessing;
 using WoW.Two.Sdk.Beta.Be.Meta;
@@ -37,6 +38,7 @@ public static partial class HostConfiguration
     {
         await global::Harvest.Api.Configurations.HostConfiguration.ConfigureAsync(app);
         await app.MigrateRentalTermsAiLocallyAsync(app.Lifetime.ApplicationStopping);
+        await app.Services.ReconcileHarvestSourceCatalogAsync(app.Lifetime.ApplicationStopping);
         await app.Services.ReconcileHarvestSourceSectionsAsync(app.Lifetime.ApplicationStopping);
         await app.SeedPipelineStagesAsync(app.Lifetime.ApplicationStopping);
         app.MapAiApiForOperators();

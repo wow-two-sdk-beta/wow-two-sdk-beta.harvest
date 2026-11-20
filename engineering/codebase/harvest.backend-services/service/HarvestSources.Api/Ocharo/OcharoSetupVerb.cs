@@ -28,8 +28,11 @@ namespace HarvestSources.Api.Ocharo;
 ///   - <c>--schedules</c> enables the other registry cadences, on existing pipelines too, keeping a tuned interval; <c>--run</c> queues one bounded capture run per pipeline
 ///     for the running worker; <c>--refresh</c> queues one refresh run per pipeline, which re-reads every known post so
 ///     a changed reader emits new revisions
+///   - every publisher setup sets up joins the instance's source catalog (<c>sources catalog</c>) and is turned on; a setup with no
+///     <c>--group</c> skips a publisher the instance turned off and lists its key (<c>ocharo.afisha</c>) under <c>skipped</c>, while
+///     <c>--group &lt;id&gt;</c> turns that publisher on even when it was off
 ///   - stderr carries the report; the last stdout line is one JSON object with the tenant, container, subscriptions,
-///     with <c>--selector</c> the selector subscription's id and version, and queued runs
+///     with <c>--selector</c> the selector subscription's id and version, queued runs and the skipped entries
 ///   - <c>ocharo status [--group &lt;id&gt;]... [--tenant &lt;slug&gt;]</c> writes nothing: its last stdout line names
 ///     the tenant and, per channel, each schedule's cadence and next due time and the latest run of its kind, short
 ///     enough for a platform job's last-line readout
@@ -104,6 +107,8 @@ public static class OcharoSetupVerb
             await error.WriteLineAsync($"{source.GroupId}/{source.ChannelId}: pipeline {source.PipelineId}, subscription {source.SubscriptionId}");
         if (value.SelectorSubscriptionId is { } selectorId)
             await error.WriteLineAsync($"selector {OcharoSelector.Current.Name}: subscription {selectorId}, version {value.SelectorVersion}");
+        foreach (var entry in value.Skipped)
+            await error.WriteLineAsync($"skipped {entry}: the instance turned it off; name it with --group to turn it on again");
         await error.WriteLineAsync($"tenant {value.TenantId}, container {value.ContainerId}, {value.Sources.Count} subscription(s), {runs.Count} run(s) queued");
         var result = new OrderedDictionary<string, object?>
         {
@@ -123,6 +128,7 @@ public static class OcharoSetupVerb
             result["selectorVersion"] = value.SelectorVersion;
         }
         result["runs"] = runs;
+        result["skipped"] = value.Skipped;
         await output.WriteLineAsync(JsonSerializer.Serialize(result));
         return 0;
     }

@@ -6,12 +6,14 @@ using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Delivery;
 using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Catalog;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Delivery;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Persistence;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
 using WoW.Two.Sdk.Beta.Be.Harvest.Posts;
 using WoW.Two.Sdk.Beta.Be.Harvest.Readers;
+using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Posts;
 
@@ -39,10 +41,13 @@ internal sealed partial class ModulePostBroker(
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         await PostSql.LockAsync(connection, transaction, containerId, cancellationToken);
-        if (await PostSql.ScalarAsync(connection, transaction,
-                "SELECT 1 FROM harvest_sources WHERE container_id=@container AND id=@source", cancellationToken,
-                ("container", containerId), ("source", sourceId)) is null)
+        var available = await PostSql.ScalarAsync(connection, transaction,
+            $"SELECT NOT {CatalogGate.SourceOff} FROM harvest_sources s WHERE s.container_id=@container AND s.id=@source", cancellationToken,
+            ("container", containerId), ("source", sourceId));
+        if (available is null)
             return Missing<CaptureSaveResult>("Source not found in the container.");
+        if (available is false)
+            return Result<CaptureSaveResult>.Fail(SourceCatalogConstants.TurnedOff());
         if (runId is not null && await PostSql.ScalarAsync(connection, transaction,
                 "SELECT 1 FROM harvest_runs r JOIN harvest_pipelines p ON p.id=r.pipeline_id WHERE r.container_id=@container AND r.id=@run AND p.source_id=@source", cancellationToken,
                 ("container", containerId), ("run", runId), ("source", sourceId)) is null)

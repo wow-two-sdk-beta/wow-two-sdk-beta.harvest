@@ -16,6 +16,7 @@ import { feedbackQueryErrors, NoticeTone, type FeedbackBus } from '@wow-two-beta
 import { ApiFailureFactory, type ApiFailure } from '@wow-two-beta/fe/foundation/http';
 import { ResultExtensions, type Result } from '@wow-two-beta/fe/foundation/results';
 import type {
+  CatalogSourceModel,
   ContainerModel,
   CursorPage,
   DeliveryEvent,
@@ -57,6 +58,8 @@ export type PipelineTab = 'overview' | 'logs' | 'discoveries';
 export type ConsolePlace =
   | { readonly kind: 'home' }
   | { readonly kind: 'sources'; readonly group?: string }
+  /** The registered sources this instance has not turned on, for operators. */
+  | { readonly kind: 'available' }
   | {
       readonly kind: 'source';
       readonly id: string;
@@ -209,12 +212,17 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
   const overviews = shallowRef<readonly SourceOverviewModel[]>([]);
   const overviewState = ref<ListState>('loading');
   const groups = shallowRef<readonly SourceGroupModel[]>([]);
+  /** The instance's source catalog: every registered source and whether this instance turned it on. */
+  const catalog = shallowRef<readonly CatalogSourceModel[]>([]);
+  const catalogState = ref<ListState>('loading');
   const subscriptions = shallowRef<readonly SubscriptionModel[]>([]);
   const capabilities = shallowRef<Readonly<Record<string, SourceCapabilitiesModel>>>({});
   const capabilityErrors = shallowRef<Readonly<Record<string, string>>>({});
 
   let connectedApiKey = '';
   let read: AbortController | null = null;
+  let catalogRead: AbortController | null = null;
+  let catalogRequested = false;
   let action: AbortController | null = null;
   let capabilityRead = new AbortController();
   const capabilityRequested = new Set<string>();
@@ -240,6 +248,8 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
   const connectionManaged = computed(() => options.connectionManaged === true);
   /** Whether the session operates SCFD; without the account's role the server decides. */
   const canOperate = computed(() => options.isOperator !== false);
+  /** The registered sources this instance has not turned on: never turned on, or turned off. */
+  const availableCount = computed(() => catalog.value.filter((entry) => entry.state !== 'on').length);
 
   /** Whether the session holds a scope; without a permission list the server decides. */
   function can(scope: string) {
@@ -455,6 +465,11 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
       reportRefreshFailure(failedRead?.failure ?? overviewFailure);
       loaded.value = true;
       void loadCapabilities();
+      // The sidebar counts the available sources, so an operator's session reads the catalog once, outside the poll.
+      if (!catalogRequested && canOperate.value) {
+        catalogRequested = true;
+        void loadCatalog();
+      }
     } catch {
       if (!controller.signal.aborted) {
         sourceListState.value = failedState(sourceListState.value);
@@ -462,6 +477,23 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
         if (options.feedback) reportRefreshFailure(ApiFailureFactory.create('protocol'));
         else failure.value = 'The console could not refresh. Try again.';
       }
+    }
+  }
+
+  /** Reads the instance's source catalog; the Available page calls it on mount, and a switch calls it after. */
+  async function loadCatalog() {
+    const api = client.value;
+    if (!api || !canOperate.value) return;
+    catalogRead?.abort();
+    const controller = new AbortController();
+    catalogRead = controller;
+    try {
+      const result = await api.listSourceCatalog(controller.signal);
+      if (controller.signal.aborted || disposed || client.value !== api) return;
+      if (result.ok) catalog.value = result.value;
+      catalogState.value = result.ok ? 'ready' : failedState(catalogState.value);
+    } catch {
+      if (!controller.signal.aborted) catalogState.value = failedState(catalogState.value);
     }
   }
 
@@ -582,7 +614,11 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
     capabilityErrors.value = {};
     action?.abort();
     read?.abort();
+    catalogRead?.abort();
+    catalogRequested = false;
     client.value = null;
+    catalog.value = [];
+    catalogState.value = 'loading';
     containers.value = [];
     sources.value = [];
     pipelines.value = [];
@@ -884,6 +920,25 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
     );
   }
 
+  /**
+   * Turns a catalog entry on or off for this instance. A `new` entry is set up first, so a failure keeps the entry as
+   * it was; `name` words the notice when the catalog is not loaded. Resolves `true` on success.
+   */
+  async function setCatalogSourceTurnedOn(key: string, turnedOn: boolean, name?: string) {
+    const label = name ?? catalog.value.find((entry) => entry.key === key)?.name ?? key;
+    const done = await mutate(
+      async (api, signal) => {
+        const result = await api.setCatalogSourceTurnedOn(key, turnedOn, signal);
+        if (result.ok && !signal.aborted)
+          catalog.value = catalog.value.map((entry) => (entry.key === key ? result.value : entry));
+        return result;
+      },
+      turnedOn ? `${label} is turned on.` : `${label} is turned off.`,
+    );
+    await loadCatalog();
+    return done;
+  }
+
   /** Sets the gap between two page reads of a source. */
   function setReadingPace(sourceId: string, minDelayMs: number) {
     return mutate(
@@ -1070,6 +1125,7 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
     capabilityRead.abort();
     action?.abort();
     read?.abort();
+    catalogRead?.abort();
     if (timer) clearInterval(timer);
   });
 
@@ -1095,6 +1151,9 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
     overviews: overviews as Readonly<ShallowRef<readonly SourceOverviewModel[]>>,
     overviewState: overviewState as Readonly<Ref<ListState>>,
     groups: groups as Readonly<ShallowRef<readonly SourceGroupModel[]>>,
+    catalog: catalog as Readonly<ShallowRef<readonly CatalogSourceModel[]>>,
+    catalogState: catalogState as Readonly<Ref<ListState>>,
+    availableCount,
     subscriptions: visibleSubscriptions,
     capabilities: capabilities as Readonly<ShallowRef<Readonly<Record<string, SourceCapabilitiesModel>>>>,
     capabilityErrors: capabilityErrors as Readonly<ShallowRef<Readonly<Record<string, string>>>>,
@@ -1121,6 +1180,7 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
     pipelineLabel,
     clearMessages,
     refresh,
+    loadCatalog,
     connect,
     disconnect,
     createPool,
@@ -1139,6 +1199,7 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
     saveSectionSchedule,
     harvestNow,
     setSourcePaused,
+    setCatalogSourceTurnedOn,
     setReadingPace,
     updateSource,
     createGroup,

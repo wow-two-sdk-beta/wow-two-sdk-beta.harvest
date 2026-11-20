@@ -153,6 +153,60 @@ public sealed class SourceAssetsTests
         fixture.Files.Uploads.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task Image_copies_of_a_post_whose_every_link_is_an_off_source_stay_queued_and_unclaimed_until_it_is_turned_on()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var off = await fixture.SourceAsync("instagram", "offpublisher", "official");
+        var live = await fixture.SourceAsync("instagram", "livepublisher", "official");
+        await fixture.CaptureAsync(off, CdnImage);
+        await fixture.CaptureAsync(live, SecondImage);
+        await fixture.TurnOffAsync(off);
+        var store = fixture.Host.Services.GetRequiredService<SourceAssetStore>();
+        await store.QueueMissingAsync(default);
+        (await fixture.ScalarAsync<long>("SELECT count(*) FROM harvest_source_assets")).Should().Be(2, "the copy is queued for the off source too");
+
+        var worker = fixture.Worker();
+        var asset = (await store.ClaimAsync(default))!;
+        asset.Url.Should().Be(SecondImage);
+        await worker.CopyAsync(asset, default);
+
+        (await store.ClaimAsync(default)).Should().BeNull("the off source's copy stays unclaimed");
+        fixture.Fetcher.Requests.Should().ContainSingle().Which.Uri.ToString().Should().Be(SecondImage, "nothing was fetched for the off source");
+        (await fixture.ScalarAsync<long>("SELECT count(*) FROM harvest_source_assets WHERE file_id IS NULL")).Should().Be(1, "its row stays queued");
+
+        await fixture.ExecuteAsync("UPDATE harvest_catalog_sources SET turned_on=true WHERE key=@key", ("key", Fixture.OffKey));
+        var resumed = (await store.ClaimAsync(default))!;
+        resumed.Url.Should().Be(CdnImage, "turning the source on resumes the queued copy as it was");
+        await worker.CopyAsync(resumed, default);
+        fixture.Files.Uploads.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task Image_copies_still_fetch_when_another_source_that_is_on_also_links_the_post()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var off = await fixture.SourceAsync("instagram", "offpublisher", "official");
+        await fixture.CaptureAsync(off, CdnImage);
+        var other = await DataAsync(await fixture.Client.PostAsJsonAsync("/api/sources", new
+        {
+            containerId = off.Container, family = "instagram", handle = "onpublisher", posture = "official", coverage = "filtered", completeness = "window",
+        }));
+        await fixture.ExecuteAsync("""
+            INSERT INTO harvest_post_links(id,container_id,source_id,post_id,external_key,url,url_key,origin_key,role,state_since,first_seen_at,last_changed_at,check_capability)
+            SELECT gen_random_uuid(),container_id,@other,post_id,'second-link',url || '/second',url_key,origin_key,role,state_since,first_seen_at,last_changed_at,check_capability
+            FROM harvest_post_links WHERE source_id=@off
+            """, ("other", Guid.Parse(other.GetProperty("id").GetString()!)), ("off", Guid.Parse(off.Source)));
+        await fixture.TurnOffAsync(off);
+        var store = fixture.Host.Services.GetRequiredService<SourceAssetStore>();
+        await store.QueueMissingAsync(default);
+        (await fixture.ScalarAsync<long>("SELECT count(*) FROM harvest_source_assets")).Should().Be(2);
+
+        (await store.ClaimAsync(default)).Should().NotBeNull("the post is not held by off sources alone");
+        (await store.ClaimAsync(default)).Should().NotBeNull("the off source's own copy of the same post fetches as well");
+        (await store.ClaimAsync(default)).Should().BeNull();
+    }
+
     [Theory]
     [InlineData("https://scontent.example.cdninstagram.com/a.jpg", true)]
     [InlineData("https://scontent.example.fbcdn.net/a.jpg", true)]
@@ -245,6 +299,14 @@ public sealed class SourceAssetsTests
                     extraction = new { normVersion = "norm@1", rulesVersion = "rules@1" } },
             }));
         }
+
+        public const string OffKey = "ocharo.assets-off";
+
+        /// <summary>Stamps the source with a catalog entry and records the entry as turned off.</summary>
+        public async Task TurnOffAsync(Lane lane) => await ExecuteAsync("""
+            UPDATE harvest_sources SET catalog_key=@key WHERE id=@source;
+            INSERT INTO harvest_catalog_sources(key,turned_on,changed_by) VALUES (@key,false,'subject-1') ON CONFLICT (key) DO UPDATE SET turned_on=false
+            """, ("key", OffKey), ("source", Guid.Parse(lane.Source)));
 
         public async Task<HttpClient> ReaderAsync(string tenant, string scope)
         {

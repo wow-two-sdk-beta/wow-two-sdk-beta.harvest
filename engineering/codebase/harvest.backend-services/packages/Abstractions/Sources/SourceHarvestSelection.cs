@@ -9,8 +9,8 @@ public static class SourceHarvestSelection
     public static bool IsCollection(WorkKind kind) =>
         kind is WorkKind.Capture or WorkKind.Discover or WorkKind.Harvest or WorkKind.Process;
 
-    /// <summary>Tells whether the source may execute collection work.</summary>
-    public static bool CanRead(SourceModel source) => source.State == SourceState.Active
+    /// <summary>Tells whether the source may execute collection work: active, open or granted, and turned on by the instance.</summary>
+    public static bool CanRead(SourceModel source) => source.State == SourceState.Active && source.TurnedOn
         && source.Permission is SourcePermission.Open or SourcePermission.Granted;
 
     /// <summary>Gets enabled automatic collection schedules, excluding individually disabled stages.</summary>

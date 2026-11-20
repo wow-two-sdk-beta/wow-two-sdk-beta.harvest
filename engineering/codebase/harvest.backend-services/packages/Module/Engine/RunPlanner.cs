@@ -38,6 +38,8 @@ internal static class RunPlanner
                 return Result<Guid>.Fail(AppErrorFactory.Conflict("The pipeline is not active."));
         }
 
+        if (!source.TurnedOn)
+            return Result<Guid>.Fail(SourceCatalogConstants.TurnedOff());
         if (source.State != SourceState.Active || source.Permission is not (SourcePermission.Open or SourcePermission.Granted))
             return Result<Guid>.Fail(AppErrorFactory.Forbidden("The source is not available for fetching."));
 

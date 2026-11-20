@@ -78,6 +78,68 @@ describe('standalone demo client', () => {
     expect(reading.ok && reading.value.minDelayMs).toBe(10000);
   });
 
+  it('serves the source catalog: twelve sources on seven turned-on entries, five new entries and one turned off', async () => {
+    const api = createDemoHarvestClient();
+    const containers = await api.listContainers();
+    if (!containers.ok) throw new Error('Demo container missing');
+    const container = containers.value[0]!.id;
+    const read = async () => {
+      const result = await api.listSourceCatalog();
+      if (!result.ok) throw new Error('Demo catalog missing');
+      return result.value;
+    };
+    const overview = async () => {
+      const result = await api.listSourceOverview(container);
+      if (!result.ok) throw new Error('Demo overview missing');
+      return result.value;
+    };
+
+    const entries = await read();
+    const ofState = (state: string) => entries.filter((entry) => entry.state === state);
+    expect(ofState('on')).toHaveLength(7);
+    expect(ofState('new')).toHaveLength(5);
+    expect(ofState('off')).toHaveLength(1);
+    expect(ofState('new').filter((entry) => entry.kind === 'events')).toHaveLength(3);
+    expect(ofState('new').filter((entry) => entry.kind === 'listings')).toHaveLength(2);
+    expect(ofState('new').every((entry) => entry.sources.length === 0 && entry.hosts.length > 0)).toBe(true);
+    expect(ofState('on').flatMap((entry) => entry.sources)).toHaveLength(12);
+    const off = ofState('off')[0]!;
+    expect(off).toMatchObject({ key: 'ocharo.kultura', name: 'Kultura', catalog: 'ocharo' });
+    expect(off.changedAtUtc).toBeTruthy();
+
+    const shown = await overview();
+    expect(shown).toHaveLength(12);
+    expect(shown.some((source) => source.sourceId === off.sources[0]!.sourceId)).toBe(false);
+    expect(shown.find((source) => source.name === 'Afisha.uz')?.catalogKey).toBe('ocharo.afisha');
+    const registered = await api.listSources(container);
+    if (!registered.ok) throw new Error('Demo sources missing');
+    expect(registered.value).toHaveLength(13);
+    expect(registered.value.find((source) => source.id === off.sources[0]!.sourceId)).toMatchObject({
+      catalogKey: 'ocharo.kultura',
+      turnedOn: false,
+    });
+    expect(registered.value.filter((source) => source.turnedOn)).toHaveLength(12);
+
+    const back = await api.setCatalogSourceTurnedOn(off.key, true);
+    expect(back.ok && back.value.state).toBe('on');
+    expect(await overview()).toHaveLength(13);
+
+    const birbir = ofState('new').find((entry) => entry.key === 'marketplace.birbir-uz')!;
+    const setUp = await api.setCatalogSourceTurnedOn(birbir.key, true);
+    expect(setUp.ok && setUp.value.state).toBe('on');
+    expect(setUp.ok && setUp.value.sources.map((source) => source.name)).toEqual(['birbir.uz']);
+    const withSetUp = await overview();
+    expect(withSetUp).toHaveLength(14);
+    expect(withSetUp.find((source) => source.name === 'birbir.uz')?.catalogKey).toBe(birbir.key);
+
+    const afisha = await api.setCatalogSourceTurnedOn('ocharo.afisha', false);
+    expect(afisha.ok && afisha.value.state).toBe('off');
+    expect(await overview()).toHaveLength(11);
+    expect((await read()).filter((entry) => entry.state !== 'on')).toHaveLength(5);
+    const missing = await api.setCatalogSourceTurnedOn('ocharo.unknown', true);
+    expect(!missing.ok && missing.failure.status).toBe(404);
+  });
+
   it('keeps changes local to one demo instance and honours cancellation', async () => {
     const first = createDemoHarvestClient();
     const second = createDemoHarvestClient();

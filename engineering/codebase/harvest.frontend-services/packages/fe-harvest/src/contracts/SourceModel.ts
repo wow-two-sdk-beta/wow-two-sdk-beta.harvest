@@ -21,6 +21,10 @@ export interface SourceModel {
   /** The group the source belongs to; omitted when it has none. */
   readonly groupId?: string;
   readonly externalRef?: string;
+  /** The catalog entry that set the source up; omitted or null for a source registered by hand. */
+  readonly catalogKey?: string | null;
+  /** False while the source's catalog entry is off on this instance; such a source collects, processes and delivers nothing. */
+  readonly turnedOn: boolean;
   readonly coverage: SourceCoverage;
   readonly completeness: SourceCompleteness;
   readonly posture: SourcePosture;

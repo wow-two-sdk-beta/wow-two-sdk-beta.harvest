@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Npgsql;
 using WoW.Two.Sdk.Beta.Be.Harvest.Delivery;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Catalog;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Persistence;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Posts;
 using WoW.Two.Sdk.Beta.Be.Harvest.Posts;
@@ -139,14 +140,17 @@ internal static class DeliveryEventWriter
         : null;
 
     /// <summary>Appends one event of a post revision to a subscription's log; a repeat of the same item and type writes nothing.</summary>
-    /// <remarks>A selector subscription's event carries its verdict json (<see cref="SelectorStore.Matched"/>) in <c>matched</c>.
+    /// <remarks>It writes nothing, an unmatch included, for a post whose every link is a source the instance turned off in its
+    /// source catalog: this is the one insert every delivery write reaches, ingest, extraction, backfill, selector change and adopt.
+    /// A selector subscription's event carries its verdict json (<see cref="SelectorStore.Matched"/>) in <c>matched</c>.
     /// An item suffix such as <c>:s2</c>, a selector change's version, joins the item hash input so a second unmatch or
     /// re-match at the same revision stays a distinct item.</remarks>
     internal static Task<int> AppendOneAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid subscriptionId, PostModel post, string type, Guid? runId, Guid? linkId, string reason, DateTimeOffset at, CancellationToken ct,
         string? matched = null, string? itemSuffix = null) =>
-        PostSql.ExecuteAsync(connection, transaction, """
+        PostSql.ExecuteAsync(connection, transaction, $"""
             INSERT INTO harvest_subscription_event(subscription_id,event_id,item_id,type,post_id,post_key,revision,link_id,run_id,reason,occurred_at,payload,matched)
-            VALUES(@subscription,@event,@item,@type,@post,@key,@revision,@link,@run,@reason,@at,CAST(@payload AS jsonb),CAST(@matched AS jsonb))
+            SELECT @subscription,@event,@item,@type,@post,@key,@revision,@link,@run,@reason,@at,CAST(@payload AS jsonb),CAST(@matched AS jsonb)
+            WHERE NOT {CatalogGate.PostOff}
             ON CONFLICT(subscription_id,item_id,type) DO NOTHING
             """, ct, ("subscription", subscriptionId), ("event", Guid.CreateVersion7(at)),
             ("item", Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{post.Id:N}:{post.Revision}:{type}{itemSuffix}"))).ToLowerInvariant()),

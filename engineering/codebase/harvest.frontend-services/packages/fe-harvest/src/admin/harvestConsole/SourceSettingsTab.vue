@@ -1,10 +1,22 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { Button } from '@wow-two-beta/fe/presentation/actions';
 import { SwitchInput, TextInput } from '@wow-two-beta/fe/presentation/forms';
+import {
+  AlertModal,
+  AlertModalAction,
+  AlertModalCancel,
+  AlertModalContent,
+  ModalBody,
+  ModalDescription,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+} from '@wow-two-beta/fe/presentation/overlays';
 import type { ModelProcessingMode, PipelineModel, SourceOverviewModel } from '../../contracts';
 import ChoicePicker from './ChoicePicker.vue';
 import ConsoleLink from './ConsoleLink.vue';
+import PillIcon from './PillIcon.vue';
 import SourceProfilePipelines from './SourceProfilePipelines.vue';
 import { sourceProfileSchema } from './SourceProfileSchema';
 import { useHarvestConsole, type SectionCheck } from './HarvestConsole';
@@ -24,7 +36,9 @@ const NoGroup = 'none';
 /**
  * A source's Settings, for operators only: every section the adapter lists, each with its harvest on or off, how often
  * it is harvested and checked for changes and where it stops; how the source is read — on or off, and its pace; and
- * its group and name. Catalog sections use the adapter's URLs; custom profiles use its URL schema and run bounds.
+ * its group and name. Catalog sections use the adapter's URLs; custom profiles use its URL schema and run bounds. A
+ * source its catalog entry set up also reads "Turned on for this instance" with **Turn off**, after a confirm that names
+ * every source the entry covers.
  */
 defineOptions({ name: 'SourceSettingsTab' });
 const props = defineProps<{ source: SourceOverviewModel }>();
@@ -143,6 +157,30 @@ const paceChoices = computed(() =>
     .sort((a, b) => a - b)
     .map((seconds) => ({ value: String(seconds), label: paceWords(seconds * 1000) })),
 );
+
+/* The instance gate: the source's catalog entry turns on and off with every source it set up. */
+const catalogKey = computed(() => props.source.catalogKey || undefined);
+const catalogEntry = computed(() => session.catalog.value.find((entry) => entry.key === catalogKey.value));
+/** The entry's name for the confirm: the catalog's, else the source's own when the catalog has not loaded. */
+const entryName = computed(() => catalogEntry.value?.name ?? props.source.name);
+/** Every source the entry covers: the catalog's list, else the sources of the open container that share its key. */
+const coveredNames = computed(() => {
+  const listed = catalogEntry.value?.sources.map((source) => source.name) ?? [];
+  if (listed.length) return listed;
+  const named = session.sources.value
+    .filter((source) => source.catalogKey === catalogKey.value)
+    .map((source) => session.sourceName(source.id));
+  return named.length ? named : [props.source.name];
+});
+const confirmOff = ref(false);
+onMounted(() => {
+  if (catalogKey.value && session.catalogState.value !== 'ready') void session.loadCatalog();
+});
+async function turnOff() {
+  if (!catalogKey.value) return;
+  const done = await session.setCatalogSourceTurnedOn(catalogKey.value, false, entryName.value);
+  if (done) session.navigation.value?.go({ kind: 'available' });
+}
 
 /* Group and name. */
 const name = ref(props.source.name);
@@ -393,6 +431,13 @@ function saveName() {
               @update:model-value="setModelProcessing"
             />
           </dd>
+          <template v-if="catalogKey">
+            <dt class="text-muted-foreground">Instance</dt>
+            <dd class="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <span class="font-semibold">Turned on for this instance</span>
+              <Button variant="outline" :is-disabled="pending" @click="confirmOff = true">Turn off</Button>
+            </dd>
+          </template>
         </dl>
         <p class="mt-3 text-xs text-muted-foreground">
           {{ readingReason || 'Disabling the source preserves each section’s settings.' }}
@@ -402,6 +447,30 @@ function saveName() {
             modelProcessing ? modelNotes[modelProcessing] : 'Model processing is unavailable until the source loads.'
           }}
         </p>
+        <AlertModal v-if="catalogKey" v-model:open="confirmOff">
+          <AlertModalContent>
+            <ModalHeader>
+              <ModalTitle class="flex items-center gap-2">
+                <PillIcon name="attention" :size="18" />
+                Turn off {{ entryName }}?
+              </ModalTitle>
+              <ModalDescription>
+                It stops collecting, processing and delivering on this instance. Its posts, runs and settings stay, and
+                Available can turn it back on.
+              </ModalDescription>
+            </ModalHeader>
+            <ModalBody class="space-y-2 text-sm">
+              <p>It covers {{ coveredNames.length === 1 ? 'this source' : `these ${coveredNames.length} sources` }}:</p>
+              <ul class="list-disc ps-5" aria-label="Sources it covers">
+                <li v-for="covered in coveredNames" :key="covered">{{ covered }}</li>
+              </ul>
+            </ModalBody>
+            <ModalFooter>
+              <AlertModalCancel>Cancel</AlertModalCancel>
+              <AlertModalAction @action="turnOff">Turn off</AlertModalAction>
+            </ModalFooter>
+          </AlertModalContent>
+        </AlertModal>
       </section>
 
       <section class="@container/fields min-w-0 rounded-2xl border border-border bg-card p-4 sm:p-6" aria-label="Group">

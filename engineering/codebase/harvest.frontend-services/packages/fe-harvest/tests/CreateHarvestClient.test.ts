@@ -53,6 +53,89 @@ describe('Harvest console client', () => {
     expect(JSON.parse(String(fetch.mock.calls[6]?.[1]?.body))).toEqual({ groupId: null, clearGroup: true });
   });
 
+  describe('source catalog', () => {
+    /** A catalog entry as the service answers it. */
+    const entry = {
+      key: 'ocharo.afisha',
+      catalog: 'ocharo',
+      name: 'Afisha',
+      description: null,
+      kind: 'events',
+      hosts: [{ family: 'site', handle: 'www.afisha.uz' }],
+      channels: 4,
+      state: 'new',
+      changedAtUtc: null,
+      changedBy: null,
+      sources: [],
+    };
+
+    it('reads the catalog from its route at the origin root', async () => {
+      const fetch = vi.fn<typeof globalThis.fetch>(async () => Response.json({ data: [entry] }));
+      const result = await createHarvestClient({ fetch }).listSourceCatalog();
+      expect(result.ok && result.value).toEqual([entry]);
+      const [url, init] = fetch.mock.calls[0]!;
+      const address = new URL(String(url), 'https://console.example/available');
+      expect(`${init?.method ?? 'GET'} ${address.pathname}${address.search}`).toBe('GET /api/sources/catalog');
+    });
+
+    it('rejects a catalog entry without its state or its sources', async () => {
+      for (const bad of [
+        { ...entry, state: 'maybe' },
+        { ...entry, sources: undefined },
+        { ...entry, key: 7 },
+      ]) {
+        const api = createHarvestClient({ fetch: async () => Response.json({ data: [bad] }) });
+        expect((await api.listSourceCatalog()).ok).toBe(false);
+      }
+      const notAList = createHarvestClient({ fetch: async () => Response.json({ data: entry }) });
+      expect((await notAList.listSourceCatalog()).ok).toBe(false);
+    });
+
+    it('switches one entry with its key in the path and the choice in the body', async () => {
+      const turnedOn = { ...entry, state: 'on', sources: [{ sourceId: 's', containerId: 'c', name: 'Afisha.uz' }] };
+      const fetch = vi.fn<typeof globalThis.fetch>(async () => Response.json({ data: turnedOn }));
+      const api = createHarvestClient({ fetch });
+      const result = await api.setCatalogSourceTurnedOn('marketplace.olx-uz', true);
+      expect(result.ok && result.value.state).toBe('on');
+      await api.setCatalogSourceTurnedOn('marketplace.olx-uz', false);
+      const [url, init] = fetch.mock.calls[0]!;
+      const address = new URL(String(url), 'https://console.example/available');
+      expect(`${init?.method} ${address.pathname}`).toBe('PUT /api/sources/catalog/marketplace.olx-uz');
+      expect(JSON.parse(String(init?.body))).toEqual({ turnedOn: true });
+      expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toEqual({ turnedOn: false });
+    });
+
+    it('escapes a key that is not path-safe', async () => {
+      const fetch = vi.fn<typeof globalThis.fetch>(async () => Response.json({ data: entry }));
+      await createHarvestClient({ fetch }).setCatalogSourceTurnedOn('odd key/1', true);
+      expect(String(fetch.mock.calls[0]?.[0])).toContain('/api/sources/catalog/odd%20key%2F1');
+    });
+
+    it('rejects a switch answer that is not an entry', async () => {
+      const api = createHarvestClient({ fetch: async () => Response.json({ data: { key: 'ocharo.afisha' } }) });
+      expect((await api.setCatalogSourceTurnedOn('ocharo.afisha', true)).ok).toBe(false);
+    });
+
+    it.each([
+      [404, 'Unknown source'],
+      [403, 'Operators only'],
+      [409, 'Setting up Afisha failed: the container is missing'],
+    ])('maps a %s answer to a failure that carries its status and the service’s reason', async (status, title) => {
+      const api = createHarvestClient({ fetch: async () => Response.json({ title }, { status }) });
+      const result = await api.setCatalogSourceTurnedOn('ocharo.afisha', true);
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.failure.status).toBe(status);
+      expect(result.failure.problem?.['title']).toBe(title);
+    });
+
+    it('maps a refused catalog read to a failure', async () => {
+      const api = createHarvestClient({ fetch: async () => Response.json({ title: 'Forbidden' }, { status: 403 }) });
+      const result = await api.listSourceCatalog();
+      expect(!result.ok && result.failure.status).toBe(403);
+    });
+  });
+
   it('rejects an overview row without its health', async () => {
     const api = createHarvestClient({
       fetch: async () =>

@@ -71,6 +71,15 @@ export const routes: RouteConfig = [
           (route) => ({ focusGroup: groupOfHash(route) }),
         ),
       },
+      {
+        path: 'available',
+        id: 'available',
+        handle: {
+          title: 'Available',
+          description: 'Turn on a registered source to start collecting it on this instance.',
+        },
+        lazy: lazyRoute(() => import('../../presentation/console/pages/AvailablePage.vue')),
+      },
       sourceTab('sources/:id', 'source', 'Source', 'overview'),
       sourceTab('sources/:id/posts', 'source-posts', 'Posts', 'posts'),
       sourceTab('sources/:id/processed', 'source-processed', 'Processed', 'processed'),

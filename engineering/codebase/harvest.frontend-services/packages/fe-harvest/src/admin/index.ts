@@ -35,6 +35,7 @@ export { default as SourceIcon } from './harvestConsole/SourceIcon.vue';
 export { default as NewPostsBars } from './harvestConsole/NewPostsBars.vue';
 export { default as HomePanel } from './harvestConsole/HomePanel.vue';
 export { default as SourcesGallery } from './harvestConsole/SourcesGallery.vue';
+export { default as AvailableSources } from './harvestConsole/AvailableSources.vue';
 export { default as SourceGroupsDialog } from './harvestConsole/SourceGroupsDialog.vue';
 export { default as SourcePanel } from './harvestConsole/SourcePanel.vue';
 export { default as RunAuditPanel } from './harvestConsole/RunAuditPanel.vue';

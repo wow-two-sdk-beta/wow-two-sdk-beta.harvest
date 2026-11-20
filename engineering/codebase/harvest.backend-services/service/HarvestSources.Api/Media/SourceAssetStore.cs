@@ -63,7 +63,12 @@ internal sealed class SourceAssetStore([FromKeyedServices(HarvestModuleConstants
                         CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(p.base->'media')='array'
                             THEN p.base->'media' ELSE '[]'::jsonb END) WITH ORDINALITY m(value,position)
                         WHERE l.source_id=a.source_id AND l.retired_at IS NULL AND p.merged_into IS NULL AND p.state<>'gone'
-                            AND m.value->>'kind'='image' AND m.position<=@images AND m.value->>'url'=a.origin_url))
+                            AND m.value->>'kind'='image' AND m.position<=@images AND m.value->>'url'=a.origin_url
+                            -- Source catalog (CatalogGate.PostOff, which this host cannot reach): a post whose every link
+                            -- is a source the instance turned off is not fetched; its copy stays queued and unclaimed until one is on.
+                            AND EXISTS (SELECT 1 FROM harvest_post_links gl JOIN harvest_sources gs ON gs.id=gl.source_id
+                                WHERE gl.container_id=p.container_id AND gl.post_id=p.id AND gl.retired_at IS NULL
+                                    AND NOT EXISTS (SELECT 1 FROM harvest_catalog_sources cg WHERE cg.key=gs.catalog_key AND NOT cg.turned_on))))
                     AND (h.paused_until IS NULL OR h.paused_until<=now())
                     AND (h.retry_after_until IS NULL OR h.retry_after_until<=now())
                 ORDER BY CASE WHEN a.kind='favicon' THEN 0 ELSE 1 END,a.retry_at,a.id

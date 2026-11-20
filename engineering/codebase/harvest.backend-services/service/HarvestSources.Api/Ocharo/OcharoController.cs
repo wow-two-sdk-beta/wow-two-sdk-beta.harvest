@@ -21,7 +21,9 @@ public sealed class OcharoController(OcharoSourceProvisioner provisioner) : Cont
     [HttpGet("registry")]
     public IActionResult Registry() => Ok(ApiResponse<OcharoSourceRegistry>.Ok(OcharoSourceRegistry.Current));
 
-    /// <summary>Creates missing private registry rows; repeated calls preserve existing operator settings.</summary>
+    /// <summary>Creates missing private registry rows; repeated calls preserve existing operator settings. Every publisher it
+    /// sets up joins the instance's source catalog and is turned on; a request that names no group skips the publishers the
+    /// instance turned off and lists them under <c>skipped</c>, while naming a group turns that publisher on even when it was off.</summary>
     [HttpPost("setup")]
     public async Task<IActionResult> Setup([FromBody] OcharoSetupRequest request, CancellationToken cancellationToken) =>
         (await provisioner.EnsureAsync(request.EnableSchedules, cancellationToken, request.IncludeInstagram, request.GroupIds,

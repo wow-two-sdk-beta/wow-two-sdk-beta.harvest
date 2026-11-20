@@ -9,6 +9,10 @@ public static class SourceRouteConstants
     /// <summary>Holds the source groups resource, listed with <c>containerId</c>.</summary>
     public const string Groups = "api/sources/groups";
 
+    /// <summary>Holds the instance's source catalog: every registered entry and whether it is turned on; an entry's key follows
+    /// the route (<c>api/sources/catalog/{key}</c>).</summary>
+    public const string Catalog = "api/sources/catalog";
+
     /// <summary>Holds a source's posts, under <c>api/sources/{sourceId}</c>.</summary>
     public const string Posts = "posts";
 

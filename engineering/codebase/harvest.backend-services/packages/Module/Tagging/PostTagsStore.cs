@@ -2,6 +2,7 @@ using System.Text.Json;
 using Npgsql;
 using WoW.Two.Sdk.Beta.Be.Foundation.Serialization;
 using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Catalog;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Persistence;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Posts;
 using WoW.Two.Sdk.Beta.Be.Harvest.Posts;
@@ -31,17 +32,18 @@ internal static class PostTagsStore
 {
     /// <summary>The condition, over post alias <c>p</c>, that the links supplying the title and text exist and that
     /// every one of their sources processes automatically (<c>auto</c>): what any queue nobody named needs. A source in
-    /// <c>manual</c> or <c>off</c> mode keeps its words away from automatic work.</summary>
-    internal const string AutoSql = """
+    /// <c>manual</c> or <c>off</c> mode, or one the instance turned off in its source catalog, keeps its words away from automatic work.</summary>
+    internal const string AutoSql = $"""
         EXISTS(SELECT 1 FROM harvest_post_links l WHERE l.post_id=p.id AND l.id::text IN (p.field_prov->>'title',p.field_prov->>'text'))
         AND NOT EXISTS(SELECT 1 FROM harvest_post_links l JOIN harvest_sources s ON s.id=l.source_id
-            WHERE l.post_id=p.id AND l.id::text IN (p.field_prov->>'title',p.field_prov->>'text') AND s.model_processing<>'auto')
+            WHERE l.post_id=p.id AND l.id::text IN (p.field_prov->>'title',p.field_prov->>'text')
+              AND (s.model_processing<>'auto' OR {CatalogGate.SourceOff}))
         """;
 
     /// <summary>The strictest mode, over post alias <c>p</c>, of the sources supplying the title and text: <c>off</c> when
-    /// none supplies them or any is off, <c>manual</c> when any is manual, else <c>auto</c>.</summary>
-    internal const string ModeSql = """
-        (SELECT CASE WHEN count(*)=0 OR bool_or(s.model_processing='off') THEN 'off'
+    /// none supplies them or any is off (its mode, or the instance's catalog), <c>manual</c> when any is manual, else <c>auto</c>.</summary>
+    internal const string ModeSql = $"""
+        (SELECT CASE WHEN count(*)=0 OR bool_or(s.model_processing='off' OR {CatalogGate.SourceOff}) THEN 'off'
                      WHEN bool_or(s.model_processing='manual') THEN 'manual' ELSE 'auto' END
          FROM harvest_post_links l JOIN harvest_sources s ON s.id=l.source_id
          WHERE l.post_id=p.id AND l.id::text IN (p.field_prov->>'title',p.field_prov->>'text'))

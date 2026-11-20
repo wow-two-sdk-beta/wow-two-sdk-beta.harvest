@@ -9,6 +9,8 @@ export const RegistrationRouteConstants = {
   sourceOverview: '/api/sources/overview',
   /** The publishers sources are grouped under. */
   sourceGroups: '/api/sources/groups',
+  /** The sources the image registers and whether this instance turned each on; an entry's key follows the slash. */
+  sourceCatalog: '/api/sources/catalog',
   posts: '/api/posts',
   pipelines: '/api/pipelines',
   tenantIdParameter: 'tenantId',

@@ -16,6 +16,9 @@ public sealed record SourceOverviewModel
     /// <summary>Gets the source's normalized identity.</summary>
     public required string Handle { get; init; }
 
+    /// <summary>Gets the catalog entry the source was set up for; null for a source registered by hand.</summary>
+    public string? CatalogKey { get; init; }
+
     /// <summary>Gets the source's stored favicon address, when available.</summary>
     public string? FaviconUrl { get; init; }
 

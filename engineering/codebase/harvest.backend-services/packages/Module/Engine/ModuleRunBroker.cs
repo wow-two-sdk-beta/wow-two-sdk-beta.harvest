@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Catalog;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Persistence;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Sources;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
@@ -85,15 +86,18 @@ internal sealed class ModuleRunBroker(
 
     public async Task<Result<PipelineModel>> SetPausedAsync(Guid pipelineId, bool paused, CancellationToken cancellationToken = default)
     {
-        if (await registry.GetPipelineAsync(pipelineId, cancellationToken) is not Result<PipelineModel>.Success)
+        if (await registry.GetPipelineAsync(pipelineId, cancellationToken) is not Result<PipelineModel>.Success { Value: var pipeline })
             return Result<PipelineModel>.Fail(RegistrationErrors.PipelineNotFound(pipelineId));
+        // A resume of a section whose source the instance turned off is refused, as a manual run is.
+        if (!paused && await registry.GetSourceAsync(pipeline.SourceId, cancellationToken) is Result<SourceModel>.Success { Value.TurnedOn: false })
+            return Result<PipelineModel>.Fail(SourceCatalogConstants.TurnedOff());
         await using NpgsqlConnection connection = await database.OpenConnectionAsync(cancellationToken);
         int changed = await EngineSql.ExecuteAsync(connection, null,
-            """
+            $"""
             UPDATE harvest_pipelines p SET state=@state,pause_reason=@reason,state_since=@now
             FROM harvest_sources s WHERE p.id=@id AND s.id=p.source_id
               AND (p.state='active' OR (p.state='paused' AND p.pause_reason='operator'))
-              AND (@paused OR (s.permission IN ('open','granted') AND s.state='active'))
+              AND (@paused OR (s.permission IN ('open','granted') AND s.state='active' AND NOT {CatalogGate.SourceOff}))
             """, cancellationToken, ("id", pipelineId), ("paused", paused), ("state", paused ? "paused" : "active"),
             ("reason", paused ? "operator" : null), ("now", clock.GetUtcNow()));
         if (changed == 0)

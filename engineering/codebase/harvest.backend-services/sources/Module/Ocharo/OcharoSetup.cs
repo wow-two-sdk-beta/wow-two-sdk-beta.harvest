@@ -11,4 +11,8 @@ public sealed record OcharoSetup(Guid TenantId, Guid ContainerId, IReadOnlyList<
 
     /// <summary>Gets the version of that subscription's selector as it stands, from 1; null when setup was not asked for it.</summary>
     public int? SelectorVersion { get; init; }
+
+    /// <summary>Gets the keys (<c>ocharo.{groupId}</c>) of the catalog entries a setup that named no group left alone because the instance
+    /// turned them off; empty when none was skipped.</summary>
+    public IReadOnlyList<string> Skipped { get; init; } = [];
 }

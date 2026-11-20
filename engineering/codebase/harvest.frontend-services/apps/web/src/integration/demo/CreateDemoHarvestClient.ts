@@ -1,5 +1,9 @@
 import { createHarvestClient, type HarvestClient } from '@wow-two-beta/fe-harvest/kit';
 import type {
+  CatalogSourceHostModel,
+  CatalogSourceKind,
+  CatalogSourceModel,
+  CatalogSourceState,
   PipelineModel,
   PostModel,
   PostRevisionModel,
@@ -26,7 +30,10 @@ interface DemoSource {
   readonly history?: readonly number[];
 }
 
-/** Twelve sources of seven publishers, as the iteration 1 mocks show them; only Afisha.uz is harvested. */
+/**
+ * Twelve sources of seven publishers, as the iteration 1 mocks show them, all turned on; only Afisha.uz is harvested.
+ * A thirteenth, Kultura.uz, belongs to a catalog entry the instance turned off, so the Sources page leaves it out.
+ */
 const DemoSources: readonly DemoSource[] = [
   {
     name: 'Afisha.uz',
@@ -81,6 +88,82 @@ const DemoSources: readonly DemoSource[] = [
     group: 'OLX',
     sections: [{ label: 'Events', path: '/events' }],
   },
+  {
+    name: 'Kultura.uz',
+    handle: 'kultura.uz',
+    family: 'site',
+    group: 'Kultura',
+    sections: [{ label: 'Events', path: '/events' }],
+  },
+];
+
+/** The catalog entry each publisher's sources belong to, and what the entry collects. */
+const DemoCatalogOf: Readonly<Record<string, { key: string; kind: CatalogSourceKind }>> = {
+  Afisha: { key: 'ocharo.afisha', kind: 'events' },
+  Anons: { key: 'ocharo.anons', kind: 'events' },
+  Uzexpocentre: { key: 'ocharo.uzexpocentre', kind: 'events' },
+  'Craft fair': { key: 'ocharo.craftfair', kind: 'events' },
+  Teplo: { key: 'marketplace.teplo', kind: 'listings' },
+  CAEx: { key: 'ocharo.caex', kind: 'events' },
+  OLX: { key: 'marketplace.olx-uz', kind: 'listings' },
+  Kultura: { key: 'ocharo.kultura', kind: 'events' },
+};
+
+/** The entry the instance turned off, so its source stays registered but out of the Sources page. */
+const DemoOffKey = 'ocharo.kultura';
+
+/** Registered sources the instance has never turned on: three publishers of events and two listing sites. */
+const DemoNewEntries: readonly {
+  readonly key: string;
+  readonly name: string;
+  readonly description: string;
+  readonly kind: CatalogSourceKind;
+  readonly hosts: readonly CatalogSourceHostModel[];
+  readonly channels: number;
+}[] = [
+  {
+    key: 'ocharo.city-philharmonic',
+    name: 'City Philharmonic',
+    description: 'Concerts of the city philharmonic.',
+    kind: 'events',
+    hosts: [{ family: 'site', handle: 'city-philharmonic.example' }],
+    channels: 2,
+  },
+  {
+    key: 'ocharo.opera-theatre',
+    name: 'Opera and Ballet Theatre',
+    description: 'Performances and premieres.',
+    kind: 'events',
+    hosts: [
+      { family: 'site', handle: 'opera-theatre.example' },
+      { family: 'telegram', handle: 'operatheatre_uz' },
+    ],
+    channels: 3,
+  },
+  {
+    key: 'ocharo.kassa-tickets',
+    name: 'Kassa Tickets',
+    description: 'Ticket sales for concerts and shows.',
+    kind: 'events',
+    hosts: [{ family: 'site', handle: 'kassa.example' }],
+    channels: 4,
+  },
+  {
+    key: 'marketplace.birbir-uz',
+    name: 'BirBir',
+    description: 'Classified listings.',
+    kind: 'listings',
+    hosts: [{ family: 'listing', handle: 'birbir.uz' }],
+    channels: 3,
+  },
+  {
+    key: 'marketplace.domtut-uz',
+    name: 'Domtut',
+    description: 'Homes to rent and to buy.',
+    kind: 'listings',
+    hosts: [{ family: 'listing', handle: 'domtut.uz' }],
+    channels: 2,
+  },
 ];
 
 /** Each publisher's line on its tile. */
@@ -131,12 +214,18 @@ export function createDemoHarvestClient(): HarvestClient {
   }));
   const groupId = (name: string) => groups.find((group) => group.name === name)?.id;
 
-  const sources: SourceModel[] = DemoSources.map((demo, index) => ({
-    id: fixed(200 + index),
+  /** The demo sources, one per entry of `sources`, in the same order: what each is and how it is read. */
+  const demoSources: DemoSource[] = [...DemoSources];
+  let sourceSequence = 200;
+  /** Builds a registered source from its demo record; a catalog source is off while its entry is. */
+  const sourceOf = (demo: DemoSource, turnedOn = true): SourceModel => ({
+    id: fixed(sourceSequence++),
     containerId,
     handle: demo.handle,
     name: demo.name,
     ...(groupId(demo.group) ? { groupId: groupId(demo.group)! } : {}),
+    ...(DemoCatalogOf[demo.group] ? { catalogKey: DemoCatalogOf[demo.group]!.key } : {}),
+    turnedOn,
     family: demo.family,
     coverage: 'filtered',
     completeness: 'window',
@@ -150,11 +239,12 @@ export function createDemoHarvestClient(): HarvestClient {
     authority: 50,
     retentionClass: 'standard',
     capabilityPolicy: {},
-    state: 'active',
+    state: demo.group === 'Kultura' ? 'paused' : 'active',
     stateSinceUtc: ago(60 * 24 * 30),
     createdAtUtc: ago(60 * 24 * 30),
-  }));
-  const demoOf = (sourceId: string) => DemoSources[sources.findIndex((source) => source.id === sourceId)];
+  });
+  const sources: SourceModel[] = DemoSources.map((demo) => sourceOf(demo, demo.group !== 'Kultura'));
+  const demoOf = (sourceId: string) => demoSources[sources.findIndex((source) => source.id === sourceId)];
   const sectionUrl = (demo: DemoSource, path: string) => `https://${demo.handle.split('/')[0]}${path}`;
   const health = new Map<string, SourceHealthModel>(
     sources.map((source) => [
@@ -162,6 +252,72 @@ export function createDemoHarvestClient(): HarvestClient {
       { hostKey: source.handle.split('/')[0]!, minDelayMs: 5000, consecutiveFailures: 0 },
     ]),
   );
+
+  /** An entry as the instance keeps it, before the sources it set up are listed. */
+  type DemoCatalogRow = Omit<CatalogSourceModel, 'sources'>;
+  const catalogRows: DemoCatalogRow[] = [
+    ...Object.entries(DemoCatalogOf).map(([group, { key, kind }]): DemoCatalogRow => {
+      const members = DemoSources.filter((demo) => demo.group === group);
+      const off = key === DemoOffKey;
+      return {
+        key,
+        catalog: key.split('.')[0]!,
+        name: group,
+        description: DemoGroups.find((row) => row.name === group)?.description ?? 'Events and announcements.',
+        kind,
+        hosts: members.map((demo) => ({ family: demo.family, handle: demo.handle })),
+        channels: members.reduce((total, demo) => total + Math.max(1, demo.sections.length), 0),
+        state: off ? 'off' : 'on',
+        changedAtUtc: ago(off ? 60 * 24 * 3 : 60 * 24 * 30),
+        changedBy: off ? 'demo-operator' : 'existing',
+      };
+    }),
+    ...DemoNewEntries.map((entry): DemoCatalogRow => ({
+      ...entry,
+      catalog: entry.key.split('.')[0]!,
+      state: 'new',
+      changedAtUtc: null,
+      changedBy: null,
+    })),
+  ];
+  /** An entry with the sources it set up on this instance. */
+  const entryOf = (row: DemoCatalogRow): CatalogSourceModel => ({
+    ...row,
+    sources: sources
+      .filter((source) => source.catalogKey === row.key)
+      .map((source) => ({ sourceId: source.id, containerId: source.containerId, name: source.name ?? source.handle })),
+  });
+  /**
+   * Turns an entry on or off. A `new` entry is set up first: one source per address, with no sections and no
+   * schedules, as the service sets one up. Neither switch changes a source's pause, so an `off` entry resumes as it was.
+   */
+  function switchCatalogEntry(row: DemoCatalogRow, turnedOn: boolean) {
+    if (turnedOn && row.state === 'new') {
+      for (const host of row.hosts) {
+        const demo: DemoSource = {
+          name: host.handle,
+          handle: host.handle,
+          family: host.family as SourceFamily,
+          group: row.name,
+          sections: [],
+        };
+        demoSources.push(demo);
+        const source = { ...sourceOf(demo), catalogKey: row.key };
+        sources.push(source);
+        health.set(source.id, { hostKey: source.handle, minDelayMs: 5000, consecutiveFailures: 0 });
+      }
+    }
+    for (const [index, source] of sources.entries())
+      if (source.catalogKey === row.key) sources[index] = { ...source, turnedOn };
+    const next: DemoCatalogRow = {
+      ...row,
+      state: (turnedOn ? 'on' : 'off') satisfies CatalogSourceState,
+      changedAtUtc: now(),
+      changedBy: 'demo-operator',
+    };
+    catalogRows[catalogRows.indexOf(row)] = next;
+    return next;
+  }
 
   const afisha = sources[0]!;
   const schedule = (kind: ScheduleModel['kind'], every: string): ScheduleModel => ({
@@ -469,6 +625,7 @@ export function createDemoHarvestClient(): HarvestClient {
       family: source.family,
       handle: source.handle,
       ...(source.groupId ? { groupId: source.groupId } : {}),
+      ...(source.catalogKey ? { catalogKey: source.catalogKey } : {}),
       state,
       sourceState: source.state,
       permission: source.permission,
@@ -586,7 +743,9 @@ export function createDemoHarvestClient(): HarvestClient {
     if (method === 'GET') {
       if (resource === 'tenants') return reply(tenants);
       if (resource === 'containers') return reply(containers);
-      if (resource === 'sources' && itemId === 'overview') return reply(inContainer ? sources.map(overviewOf) : []);
+      if (resource === 'sources' && itemId === 'catalog') return reply(catalogRows.map(entryOf));
+      if (resource === 'sources' && itemId === 'overview')
+        return reply(inContainer ? sources.filter((source) => source.turnedOn).map(overviewOf) : []);
       if (resource === 'sources' && itemId === 'groups') return reply(inContainer ? groups : []);
       if (resource === 'sources' && itemId && path[3] === 'posts')
         return reply(sourcePosts(itemId).slice(0, Number(url.searchParams.get('limit') ?? 200)));
@@ -723,6 +882,11 @@ export function createDemoHarvestClient(): HarvestClient {
       };
       groups.push(row);
       return reply(row);
+    }
+    if (method === 'PUT' && resource === 'sources' && itemId === 'catalog' && path[3]) {
+      const key = decodeURIComponent(path[3]);
+      const row = catalogRows.find((entry) => entry.key === key);
+      return row ? reply(entryOf(switchCatalogEntry(row, body.turnedOn === true))) : missing();
     }
     if (method === 'PUT' && resource === 'sources' && itemId && path[3] === 'reading') {
       const host = health.get(itemId);

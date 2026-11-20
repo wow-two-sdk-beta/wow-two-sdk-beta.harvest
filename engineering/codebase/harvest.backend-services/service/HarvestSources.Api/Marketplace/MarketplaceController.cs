@@ -20,8 +20,9 @@ public sealed class MarketplaceController(MarketplaceProvisioner provisioner, Ma
     [HttpGet("profiles")]
     public IActionResult Profiles() => Ok(ApiResponse<IReadOnlyList<MarketplaceProfile>>.Ok(MarketplaceProfiles.All));
 
-    /// <summary>Creates the profile's missing rows; repeated calls keep existing rows, cadences and keys. The response
-    /// carries a key secret only when this call issued it.</summary>
+    /// <summary>Creates the profile's missing rows; repeated calls keep existing rows, cadences and keys. Every site it sets up
+    /// joins the instance's source catalog and is turned on; a site the instance turned off is skipped and listed under
+    /// <c>skipped</c>. The response carries a key secret only when this call issued it.</summary>
     [HttpPost("{profile}/setup")]
     public async Task<IActionResult> Setup(string profile, [FromBody] MarketplaceSetupRequest request, CancellationToken cancellationToken)
     {

@@ -9,15 +9,18 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Registration;
 
-/// <summary>Registers the adapter's sections as dormant pipelines on source creation and backfills existing sources.</summary>
+/// <summary>Registers the adapter's sections as dormant pipelines on source creation and backfills existing sources, except those the
+/// instance turned off.</summary>
 internal sealed class SourceSectionRegistration(HarvestDbContext db, IEnumerable<ISourceAdapter> adapters, TimeProvider clock)
 {
     internal async Task ReconcileAsync(CancellationToken ct)
     {
         if (!adapters.Any(adapter => adapter is ISourceSectionCatalog))
             return;
+        // A source the instance turned off is skipped: staging adds dormant pipelines to it, and nothing of it changes while it is off.
+        var off = await db.CatalogRecords.AsNoTracking().Where(record => !record.TurnedOn).Select(record => record.Key).ToListAsync(ct);
         var sources = await db.Sources.AsNoTracking().Where(row => row.State == SourceState.Active
-            && row.Permission != SourcePermission.Denied).ToListAsync(ct);
+            && row.Permission != SourcePermission.Denied && (row.CatalogKey == null || !off.Contains(row.CatalogKey))).ToListAsync(ct);
         foreach (SourceRow row in sources)
         {
             if (PassiveSections(row.ToModel(null)).Count == 0)

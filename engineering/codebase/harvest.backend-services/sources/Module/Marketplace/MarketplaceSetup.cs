@@ -10,7 +10,12 @@ namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Marketplace;
 /// <param name="ConsumerKey">The consumer's newest active key, or null when it has none; its secret only when this call
 /// issued it.</param>
 public sealed record MarketplaceSetup(string Profile, Guid TenantId, Guid ContainerId,
-    IReadOnlyList<MarketplaceSearchRegistration> Searches, MarketplaceConsumerKey? ConsumerKey);
+    IReadOnlyList<MarketplaceSearchRegistration> Searches, MarketplaceConsumerKey? ConsumerKey)
+{
+    /// <summary>Gets the keys (<c>marketplace.{siteKey}</c>) of the catalog entries a whole-profile setup left alone because the instance
+    /// turned them off; empty when none was skipped.</summary>
+    public IReadOnlyList<string> Skipped { get; init; } = [];
+}
 
 /// <summary>One saved search's pipeline and subscription.</summary>
 /// <param name="Key">The search's key in the profile.</param>
