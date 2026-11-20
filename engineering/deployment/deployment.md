@@ -265,6 +265,20 @@ operator credential. The search key is `birbir-apartments-rent` or `domtut-apart
 `externalId`, listing `url` and `title`. The [marketplace contract](../architecture/contract.md#marketplace-sources)
 lists the optional listing fields. Set Haven's corresponding subscription variable from the setup output.
 
+Haven's OLX searches on harvest-prod run at a 15 s host pace. That host has no operator route, so the `pipelines` host verb
+does the operator's pace, run and schedule steps through Wheelhouse Run with no operator token. Each form prints one JSON
+object as its last stdout line and exits `0` done, `1` refused or not found, `2` usage; the pipeline ids are the setup
+output's `searches[].pipelineId`.
+
+- `pipelines pace --source site/www.olx.uz --tenant haven --ms 15000` sets the least gap between two requests to the source's
+  host, 1000–60000 ms. Every source on that host shares it, so the pace is the host's, not Haven's alone.
+- `pipelines run --pipeline <id> [--kind capture|check|refresh]` queues one run (capture by default) and is refused while a run
+  of that kind is queued or running.
+- `pipelines schedule --pipeline <id> --kind capture|check|refresh --every 2h [--off]` sets that kind's interval (`15m`, `1h`,
+  `2h30m` or `01:00:00`, at least 5 minutes), disabled with `--off`; the other schedules, the name, the scope and the limits stay.
+- `pipelines show --pipeline <id> [--runs <n>]` writes nothing; it reads the pipeline's name, state, limits and schedules and
+  its newest runs' counters, with no post text and no URL.
+
 ## Integrations
 
 Every provider integration ships in the image and stays inactive until configured. `HarvestIntegrations:Enabled`

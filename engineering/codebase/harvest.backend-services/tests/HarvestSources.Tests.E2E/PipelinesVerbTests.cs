@@ -1,0 +1,519 @@
+using System.Text.Json;
+using AwesomeAssertions;
+using HarvestAdapters.Tests.Shared;
+using HarvestSources.Api.Configurations;
+using HarvestSources.Api.Ocharo;
+using HarvestSources.Api.Pipelines;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
+using WoW.Two.Sdk.Beta.Be.Foundation.Results;
+using WoW.Two.Sdk.Beta.Be.Harvest.Containers;
+using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
+using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
+using WoW.Two.Sdk.Beta.Be.Harvest.Runs;
+using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
+using WoW.Two.Sdk.Beta.Be.Harvest.Tenants;
+using WoW.Two.Sdk.Beta.Be.Meta;
+
+namespace HarvestSources.Tests.E2E;
+
+/// <summary>The <c>pipelines</c> host verb: it queues a run, sets a host's reading pace and one schedule's interval, and
+/// reads a pipeline, on the deployed host's own services with no operator token.</summary>
+public sealed class PipelinesVerbTests
+{
+    [Fact]
+    public async Task Run_queues_a_capture_run_by_default_and_prints_the_run_line()
+    {
+        await using var host = await StartAsync();
+        var pipelineId = await PipelineAsync(host.Services);
+
+        var run = await Run(host.Services, "run", "--pipeline", pipelineId.ToString("D"));
+
+        run.Exit.Should().Be(0, run.Error);
+        var line = LastLine(run.Output);
+        line.GetProperty("pipelineId").GetGuid().Should().Be(pipelineId);
+        line.GetProperty("kind").GetString().Should().Be("capture");
+        line.GetProperty("status").GetString().Should().Be("queued");
+        var stored = (await RunsAsync(host.Services, pipelineId)).Should().ContainSingle().Subject;
+        stored.Id.Should().Be(line.GetProperty("runId").GetGuid());
+        (stored.Kind, stored.Status).Should().Be((WorkKind.Capture, RunStatus.Queued));
+    }
+
+    [Fact]
+    public async Task Run_names_its_kind_and_refuses_a_second_run_of_that_kind_while_one_is_queued()
+    {
+        await using var host = await StartAsync();
+        var pipelineId = await PipelineAsync(host.Services);
+        var first = await Run(host.Services, "run", "--pipeline", pipelineId.ToString("D"), "--kind", "capture");
+
+        var second = await Run(host.Services, "run", "--pipeline", pipelineId.ToString("D"), "--kind", "CAPTURE");
+        var again = await Run(host.Services, "run", "--pipeline", pipelineId.ToString("D"));
+        var other = await Run(host.Services, "run", "--pipeline", pipelineId.ToString("D"), "--kind", "refresh");
+
+        first.Exit.Should().Be(0, first.Error);
+        LastLine(first.Output).GetProperty("status").GetString().Should().Be("queued");
+        foreach (var refused in new[] { second, again })
+        {
+            refused.Exit.Should().Be(1);
+            refused.Error.Should().Contain("pipelines run:").And.Contain("already has a capture run").And.Contain("queued");
+            refused.Output.Should().BeEmpty();
+        }
+        other.Exit.Should().Be(0, "another kind is not blocked by the queued capture run");
+        LastLine(other.Output).GetProperty("kind").GetString().Should().Be("refresh");
+        (await RunsAsync(host.Services, pipelineId)).Select(item => item.Kind).Should().BeEquivalentTo([WorkKind.Capture, WorkKind.Refresh]);
+    }
+
+    [Fact]
+    public async Task Run_is_refused_while_a_run_of_that_kind_is_running_and_allowed_again_once_it_has_finished()
+    {
+        await using var host = await StartAsync();
+        var pipelineId = await PipelineAsync(host.Services);
+        var first = await Run(host.Services, "run", "--pipeline", pipelineId.ToString("D"));
+        string runId = LastLine(first.Output).GetProperty("runId").GetGuid().ToString("D");
+
+        await SetStatusAsync(host.Services, runId, "running");
+        var running = await Run(host.Services, "run", "--pipeline", pipelineId.ToString("D"));
+        await SetStatusAsync(host.Services, runId, "completed");
+        var finished = await Run(host.Services, "run", "--pipeline", pipelineId.ToString("D"));
+
+        running.Exit.Should().Be(1);
+        running.Error.Should().Contain("already has a capture run").And.Contain("running");
+        finished.Exit.Should().Be(0, finished.Error);
+        LastLine(finished.Output).GetProperty("runId").GetGuid().Should().NotBe(Guid.Parse(runId));
+    }
+
+    [Fact]
+    public async Task Run_of_a_pipeline_that_does_not_exist_is_refused()
+    {
+        await using var host = await StartAsync();
+
+        var run = await Run(host.Services, "run", "--pipeline", Guid.NewGuid().ToString("D"));
+
+        run.Exit.Should().Be(1);
+        run.Error.Should().Contain("pipelines run:");
+        run.Output.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Pace_sets_the_hosts_reading_pace_by_family_handle_or_id_and_prints_the_health_line()
+    {
+        await using var host = await StartAsync();
+        await Ocharo(host.Services, "setup", "--group", "afisha");
+        var afisha = (await OcharoSourcesAsync(host.Services)).Single(source => source.Handle == "www.afisha.uz");
+
+        var byLabel = await Run(host.Services, "pace", "--source", "Site/WWW.Afisha.uz", "--ms", "15000");
+        var byId = await Run(host.Services, "pace", "--source", afisha.Id.ToString("D"), "--ms", "1000");
+
+        byLabel.Exit.Should().Be(0, byLabel.Error);
+        var line = LastLine(byLabel.Output);
+        line.GetProperty("sourceId").GetGuid().Should().Be(afisha.Id);
+        line.GetProperty("host").GetString().Should().Be("www.afisha.uz");
+        line.GetProperty("minDelayMs").GetInt32().Should().Be(15000);
+        byId.Exit.Should().Be(0, byId.Error);
+        LastLine(byId.Output).GetProperty("minDelayMs").GetInt32().Should().Be(1000);
+        (await PaceAsync(host.Services, afisha)).Should().Be(1000);
+
+        (await Run(host.Services, "pace", "--source", "site/www.afisha.uz", "--ms", "15000")).Exit.Should().Be(0);
+        (await PaceAsync(host.Services, afisha)).Should().Be(15000);
+    }
+
+    [Theory]
+    [InlineData("999")]
+    [InlineData("60001")]
+    public async Task Pace_out_of_range_is_refused_and_leaves_the_pace(string ms)
+    {
+        await using var host = await StartAsync();
+        await Ocharo(host.Services, "setup", "--group", "afisha");
+        var afisha = (await OcharoSourcesAsync(host.Services)).Single(source => source.Handle == "www.afisha.uz");
+        var before = await PaceAsync(host.Services, afisha);
+
+        var run = await Run(host.Services, "pace", "--source", "site/www.afisha.uz", "--ms", ms);
+
+        run.Exit.Should().Be(1);
+        run.Error.Should().Contain("pipelines pace:").And.Contain("1000");
+        run.Output.Should().BeEmpty();
+        (await PaceAsync(host.Services, afisha)).Should().Be(before);
+    }
+
+    [Fact]
+    public async Task Pace_of_an_unknown_source_or_tenant_is_refused()
+    {
+        await using var host = await StartAsync();
+        await Ocharo(host.Services, "setup", "--group", "afisha");
+
+        var source = await Run(host.Services, "pace", "--source", "site/nowhere.example", "--ms", "5000");
+        var tenant = await Run(host.Services, "pace", "--source", "site/www.afisha.uz", "--ms", "5000", "--tenant", "no-such-tenant");
+
+        source.Exit.Should().Be(1);
+        source.Error.Should().Contain("No source matches");
+        tenant.Exit.Should().Be(1);
+        tenant.Error.Should().Contain("No tenant");
+    }
+
+    [Fact]
+    public async Task A_family_handle_in_two_tenants_is_ambiguous_until_the_tenant_is_named()
+    {
+        await using var host = await StartAsync();
+        await Ocharo(host.Services, "setup", "--group", "afisha");
+        await Ocharo(host.Services, "setup", "--group", "afisha", "--tenant", "isolation-check");
+
+        var ambiguous = await Run(host.Services, "pace", "--source", "site/www.afisha.uz", "--ms", "20000");
+        var narrowed = await Run(host.Services, "pace", "--source", "site/www.afisha.uz", "--ms", "20000", "--tenant", "isolation-check");
+
+        ambiguous.Exit.Should().Be(1);
+        ambiguous.Error.Should().Contain("matches 2 sources");
+        ambiguous.Output.Should().BeEmpty();
+        narrowed.Exit.Should().Be(0, narrowed.Error);
+        LastLine(narrowed.Output).GetProperty("minDelayMs").GetInt32().Should().Be(20000);
+    }
+
+    [Fact]
+    public async Task Schedule_replaces_only_the_named_kinds_schedule_and_keeps_the_others_the_name_the_scope_and_the_limits()
+    {
+        await using var host = await StartAsync();
+        var pipelineId = await PipelineAsync(host.Services, "--schedules");
+        await TuneAsync(host.Services, pipelineId);
+        var before = await ReadAsync(host.Services, pipelineId);
+
+        var run = await Run(host.Services, "schedule", "--pipeline", pipelineId.ToString("D"), "--kind", "capture", "--every", "15m");
+
+        run.Exit.Should().Be(0, run.Error);
+        var after = await ReadAsync(host.Services, pipelineId);
+        var capture = after.Schedules.Single(schedule => schedule.Kind == WorkKind.Capture);
+        (capture.Mode, capture.Every, capture.Cron, capture.Enabled).Should().Be((ScheduleMode.Interval, (TimeSpan?)TimeSpan.FromMinutes(15), (string?)null, true));
+        capture.TimeZone.Should().Be(before.Schedules.Single(schedule => schedule.Kind == WorkKind.Capture).TimeZone);
+        after.Schedules.Where(schedule => schedule.Kind != WorkKind.Capture).Should()
+            .BeEquivalentTo(before.Schedules.Where(schedule => schedule.Kind != WorkKind.Capture), "the other schedules, stages included, stay as stored");
+        after.Name.Should().Be("Afisha for the verb test").And.Be(before.Name);
+        after.Scope.Should().BeEquivalentTo(before.Scope);
+        after.Limits.Should().BeEquivalentTo(before.Limits);
+        after.Limits.MaxPages.Should().Be(7);
+        after.Steps.Should().BeEquivalentTo(before.Steps);
+        after.State.Should().Be(before.State);
+        after.Schedules.Single(schedule => schedule.Kind == WorkKind.Harvest).Stage!.BatchSize.Should().Be(17);
+
+        var line = LastLine(run.Output);
+        line.GetProperty("pipelineId").GetGuid().Should().Be(pipelineId);
+        var printed = line.GetProperty("schedules").EnumerateArray().ToDictionary(item => item.GetProperty("kind").GetString()!);
+        printed.Keys.Should().BeEquivalentTo(after.Schedules.Select(schedule => schedule.Kind.ToString().ToLowerInvariant()));
+        printed["capture"].GetProperty("mode").GetString().Should().Be("interval");
+        printed["capture"].GetProperty("every").GetString().Should().Be("15m");
+        printed["capture"].GetProperty("cron").ValueKind.Should().Be(JsonValueKind.Null);
+        printed["capture"].GetProperty("enabled").GetBoolean().Should().BeTrue();
+        printed["check"].GetProperty("every").GetString().Should().Be("24h");
+    }
+
+    [Fact]
+    public async Task Schedule_off_disables_the_schedule_and_a_kind_without_one_gets_an_interval_schedule()
+    {
+        await using var host = await StartAsync();
+        var pipelineId = await PipelineAsync(host.Services, "--schedules");
+        var before = await ReadAsync(host.Services, pipelineId);
+
+        var off = await Run(host.Services, "schedule", "--pipeline", pipelineId.ToString("D"), "--kind", "check", "--every", "2h30m", "--off");
+        var added = await Run(host.Services, "schedule", "--pipeline", pipelineId.ToString("D"), "--kind", "refresh", "--every", "01:00:00");
+
+        off.Exit.Should().Be(0, off.Error);
+        added.Exit.Should().Be(0, added.Error);
+        var after = await ReadAsync(host.Services, pipelineId);
+        var check = after.Schedules.Single(schedule => schedule.Kind == WorkKind.Check);
+        (check.Mode, check.Every, check.Enabled).Should().Be((ScheduleMode.Interval, (TimeSpan?)TimeSpan.FromMinutes(150), false));
+        var refresh = after.Schedules.Single(schedule => schedule.Kind == WorkKind.Refresh);
+        (refresh.Mode, refresh.Every, refresh.Enabled).Should().Be((ScheduleMode.Interval, (TimeSpan?)TimeSpan.FromHours(1), true));
+        after.Schedules.Single(schedule => schedule.Kind == WorkKind.Capture).Should()
+            .BeEquivalentTo(before.Schedules.Single(schedule => schedule.Kind == WorkKind.Capture));
+        after.Schedules.Should().HaveCount(before.Schedules.Count + 1);
+        var printed = LastLine(added.Output).GetProperty("schedules").EnumerateArray().Single(item => item.GetProperty("kind").GetString() == "check");
+        printed.GetProperty("every").GetString().Should().Be("2h30m");
+        printed.GetProperty("enabled").GetBoolean().Should().BeFalse("the line reads the saved pipeline");
+    }
+
+    [Theory]
+    [InlineData("4m")]
+    [InlineData("0:04:59")]
+    [InlineData("-01:00:00")]
+    public async Task Schedule_under_five_minutes_is_refused_and_changes_nothing(string every)
+    {
+        await using var host = await StartAsync();
+        var pipelineId = await PipelineAsync(host.Services, "--schedules");
+        var before = await ReadAsync(host.Services, pipelineId);
+
+        var run = await Run(host.Services, "schedule", "--pipeline", pipelineId.ToString("D"), "--kind", "capture", "--every", every);
+
+        run.Exit.Should().Be(1);
+        run.Error.Should().Contain("pipelines schedule:").And.Contain("5 minutes");
+        run.Output.Should().BeEmpty();
+        (await ReadAsync(host.Services, pipelineId)).Should().BeEquivalentTo(before);
+    }
+
+    [Fact]
+    public async Task Schedule_of_a_pipeline_that_does_not_exist_is_refused()
+    {
+        await using var host = await StartAsync();
+
+        var run = await Run(host.Services, "schedule", "--pipeline", Guid.NewGuid().ToString("D"), "--kind", "capture", "--every", "1h");
+
+        run.Exit.Should().Be(1);
+        run.Error.Should().Contain("pipelines schedule:");
+    }
+
+    [Fact]
+    public async Task Show_prints_one_parseable_line_with_the_state_and_the_newest_runs_and_writes_nothing()
+    {
+        await using var host = await StartAsync();
+        var pipelineId = await PipelineAsync(host.Services, "--schedules");
+        await TuneAsync(host.Services, pipelineId);
+        await Run(host.Services, "run", "--pipeline", pipelineId.ToString("D"), "--kind", "refresh");
+        await Run(host.Services, "run", "--pipeline", pipelineId.ToString("D"), "--kind", "capture");
+        var before = await ReadAsync(host.Services, pipelineId);
+
+        var show = await Run(host.Services, "show", "--pipeline", pipelineId.ToString("D"));
+        var newest = await Run(host.Services, "show", "--pipeline", pipelineId.ToString("D"), "--runs", "1");
+        var none = await Run(host.Services, "show", "--pipeline", pipelineId.ToString("D"), "--runs", "0");
+
+        show.Exit.Should().Be(0, show.Error);
+        show.Output.TrimEnd().Split('\n').Should().ContainSingle("the verb prints one JSON line");
+        var line = LastLine(show.Output);
+        line.GetProperty("pipelineId").GetGuid().Should().Be(pipelineId);
+        line.GetProperty("name").GetString().Should().Be(before.Name);
+        line.GetProperty("state").GetString().Should().Be("active");
+        line.GetProperty("limits").GetProperty("maxPages").GetInt32().Should().Be(7);
+        line.GetProperty("limits").GetProperty("maxItems").GetInt32().Should().Be(before.Limits.MaxItems!.Value);
+        line.GetProperty("schedules").EnumerateArray().Select(item => item.GetProperty("kind").GetString())
+            .Should().BeEquivalentTo(before.Schedules.Select(schedule => schedule.Kind.ToString().ToLowerInvariant()));
+        var runs = line.GetProperty("runs").EnumerateArray().ToArray();
+        runs.Select(item => item.GetProperty("kind").GetString()).Should().Equal("capture", "refresh");
+        runs.Select(item => item.GetProperty("status").GetString()).Should().Equal("queued", "completed");
+        runs[1].GetProperty("completionReason").GetString().Should().Be("no_items", "a refresh of an empty frontier ends at once");
+        runs[1].GetProperty("finishedAtUtc").ValueKind.Should().Be(JsonValueKind.String);
+        runs[0].GetProperty("completionReason").ValueKind.Should().Be(JsonValueKind.Null);
+        runs[0].EnumerateObject().Select(property => property.Name).Should().Equal("runId", "kind", "status", "fetchOutcome",
+            "completionReason", "requests", "captured", "newPosts", "failed", "startedAtUtc", "finishedAtUtc");
+        show.Output.Should().NotContain("http", "no scope URL or address is printed");
+        LastLine(newest.Output).GetProperty("runs").GetArrayLength().Should().Be(1);
+        LastLine(none.Output).GetProperty("runs").GetArrayLength().Should().Be(0);
+        (await ReadAsync(host.Services, pipelineId)).Should().BeEquivalentTo(before);
+        (await RunsAsync(host.Services, pipelineId)).Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task Show_of_a_pipeline_that_does_not_exist_is_refused()
+    {
+        await using var host = await StartAsync();
+
+        var show = await Run(host.Services, "show", "--pipeline", Guid.NewGuid().ToString("D"));
+
+        show.Exit.Should().Be(1);
+        show.Error.Should().Contain("pipelines show:");
+        show.Output.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("1h", 3600)]
+    [InlineData("15m", 900)]
+    [InlineData("2h30m", 9000)]
+    [InlineData("1d", 86400)]
+    [InlineData("1D2H", 93600)]
+    [InlineData("90s", 90)]
+    [InlineData("01:00:00", 3600)]
+    [InlineData("1.00:00:00", 86400)]
+    public void A_duration_reads_as_units_or_a_timespan(string text, int seconds)
+    {
+        PipelinesVerb.TryParseDuration(text, out var duration).Should().BeTrue();
+        duration.Should().Be(TimeSpan.FromSeconds(seconds));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("15")]
+    [InlineData("m15")]
+    [InlineData("1h 30m")]
+    [InlineData("0m")]
+    [InlineData("1x")]
+    [InlineData("99999999999h")]
+    public void Anything_else_is_not_a_duration(string text) => PipelinesVerb.TryParseDuration(text, out _).Should().BeFalse();
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("list")]
+    [InlineData("run")]
+    [InlineData("run --kind capture")]
+    [InlineData("run --pipeline not-a-guid")]
+    [InlineData("run --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --kind sweep")]
+    [InlineData("run --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --kind")]
+    [InlineData("run --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11")]
+    [InlineData("run --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --ms 5000")]
+    [InlineData("pace")]
+    [InlineData("pace --source site/www.afisha.uz")]
+    [InlineData("pace --ms 15000")]
+    [InlineData("pace --source site/www.afisha.uz --ms fast")]
+    [InlineData("pace --source site/www.afisha.uz --ms -5")]
+    [InlineData("pace --source site/www.afisha.uz --ms 15000 --kind capture")]
+    [InlineData("schedule --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --every 1h")]
+    [InlineData("schedule --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --kind capture")]
+    [InlineData("schedule --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --kind capture --every soon")]
+    [InlineData("schedule --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --kind capture --every 1h --off --off")]
+    [InlineData("schedule --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --kind discover --every 1h")]
+    [InlineData("show")]
+    [InlineData("show --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --runs 21")]
+    [InlineData("show --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --runs many")]
+    [InlineData("show --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --off")]
+    public async Task Usage_is_answered_before_any_service_is_resolved(string commandLine)
+    {
+        await using var services = new ServiceCollection().BuildServiceProvider();
+
+        var run = await Run(services, commandLine.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+
+        run.Exit.Should().Be(2);
+        run.Error.Should().Contain("Usage: pipelines");
+        run.Output.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task The_verb_answers_its_usage_through_the_service_host_without_serving()
+    {
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        int exit = await ServiceHost.RunAsync(["pipelines", "show"],
+            builder =>
+            {
+                builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["DB_CONNECTION"] = "Host=127.0.0.1;Port=1;Database=unreachable;Username=synthetic;Timeout=1",
+                });
+                builder.Configure();
+            },
+            _ => throw new InvalidOperationException("A verb must not start the source host."),
+            verbs => verbs.AddHostVerb(PipelinesVerb.Name, (services, verb, ct) =>
+                PipelinesVerb.RunAsync(services, verb.Arguments, verb.Output, verb.Error, ct)),
+            output, error, CancellationToken.None);
+
+        exit.Should().Be(2, error.ToString());
+        error.ToString().Should().Contain("Usage: pipelines");
+        output.ToString().Should().BeEmpty();
+    }
+
+    private static JsonElement LastLine(string output)
+    {
+        using var document = JsonDocument.Parse(output.TrimEnd().Split('\n')[^1]);
+        return document.RootElement.Clone();
+    }
+
+    /// <summary>Sets up the Ocharo Afisha channels and returns the pipeline of the first.</summary>
+    private static async Task<Guid> PipelineAsync(IServiceProvider services, params string[] extra)
+    {
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        int exit = await OcharoSetupVerb.RunAsync(services, ["setup", "--group", "afisha", .. extra], output, error, CancellationToken.None);
+        exit.Should().Be(0, error.ToString());
+        return LastLine(output.ToString()).GetProperty("subscriptions")[0].GetProperty("pipelineId").GetGuid();
+    }
+
+    /// <summary>Names the pipeline and sets a page limit, and adds a disabled harvest stage with its own settings, so a schedule
+    /// edit has a name, a limit and a stage to keep; an enabled harvest stage would conflict with the capture schedule.</summary>
+    private static async Task TuneAsync(IServiceProvider services, Guid pipelineId)
+    {
+        using var scope = services.CreateScope();
+        var registry = scope.ServiceProvider.GetRequiredService<IRegistrationBroker>();
+        var original = Value(await registry.GetPipelineAsync(pipelineId));
+        Value(await registry.UpdatePipelineAsync(pipelineId, new()
+        {
+            Name = "Afisha for the verb test",
+            Scope = original.Scope,
+            Schedules =
+            [
+                .. original.Schedules.Select(schedule => new ScheduleDeclaration
+                {
+                    Kind = schedule.Kind, Mode = schedule.Mode, Every = schedule.Every, MaxEvery = schedule.MaxEvery, Cron = schedule.Cron,
+                    TimeZone = schedule.TimeZone, Window = schedule.Window, Enabled = schedule.Enabled,
+                    Stage = schedule.Stage,
+                }),
+                new() { Kind = WorkKind.Harvest, Mode = ScheduleMode.Interval, Every = TimeSpan.FromMinutes(30), Enabled = false, Stage = new() { BatchSize = 17 } },
+            ],
+            Limits = new() { MaxPages = 7 },
+        }));
+    }
+
+    private static async Task<PipelineModel> ReadAsync(IServiceProvider services, Guid pipelineId)
+    {
+        using var scope = services.CreateScope();
+        return Value(await scope.ServiceProvider.GetRequiredService<IRegistrationBroker>().GetPipelineAsync(pipelineId));
+    }
+
+    private static async Task<IReadOnlyList<RunModel>> RunsAsync(IServiceProvider services, Guid pipelineId)
+    {
+        using var scope = services.CreateScope();
+        return Value(await scope.ServiceProvider.GetRequiredService<IRunBroker>().ListAsync(pipelineId));
+    }
+
+    private static async Task SetStatusAsync(IServiceProvider services, string runId, string status)
+    {
+        await using var connection = new NpgsqlConnection(services.GetRequiredService<IConfiguration>()["DatabaseSettings:ConnectionString"]);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("UPDATE harvest_runs SET status=@status WHERE id=@id", connection);
+        command.Parameters.AddWithValue("status", status);
+        command.Parameters.AddWithValue("id", Guid.Parse(runId));
+        (await command.ExecuteNonQueryAsync()).Should().Be(1);
+    }
+
+    private static async Task<int> PaceAsync(IServiceProvider services, SourceModel source)
+    {
+        using var scope = services.CreateScope();
+        var overview = Value(await scope.ServiceProvider.GetRequiredService<ISourceOverviewBroker>().ListOverviewAsync(source.ContainerId));
+        return overview.Single(item => item.SourceId == source.Id).Health.MinDelayMs;
+    }
+
+    private static async Task<List<SourceModel>> OcharoSourcesAsync(IServiceProvider services)
+    {
+        using var scope = services.CreateScope();
+        var registry = scope.ServiceProvider.GetRequiredService<IRegistrationBroker>();
+        var tenant = Value(await registry.ListTenantsAsync()).Single(item => item.Slug == "ocharo");
+        var sources = new List<SourceModel>();
+        foreach (var container in Value(await registry.ListContainersAsync(tenant.Id)))
+            sources.AddRange(Value(await registry.ListSourcesAsync(container.Id)));
+        return sources;
+    }
+
+    private static async Task Ocharo(IServiceProvider services, params string[] arguments)
+    {
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        int exit = await OcharoSetupVerb.RunAsync(services, arguments, output, error, CancellationToken.None);
+        exit.Should().Be(0, error.ToString());
+    }
+
+    private static T Value<T>(Result<T> result) where T : notnull => Assert.IsType<Result<T>.Success>(result).Value;
+
+    private static async Task<WebApplication> StartAsync()
+    {
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        {
+            ApplicationName = typeof(Program).Assembly.GetName().Name,
+            EnvironmentName = "Development",
+        });
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["DatabaseSettings:ConnectionString"] = await SourcePostgres.NewDatabaseAsync(),
+            ["Harvest:Operator:ApiKey"] = "hv_" + new string('p', 32),
+            ["Harvest:Worker:Enabled"] = "false",
+            ["AllowedHosts"] = "localhost",
+            ["Logging:LogLevel:Default"] = "Warning",
+        });
+        builder.WebHost.UseTestServer();
+        builder.Configure();
+        var host = builder.Build();
+        await host.ConfigureAsync();
+        return host;
+    }
+
+    private static async Task<(int Exit, string Output, string Error)> Run(IServiceProvider services, params string[] arguments)
+    {
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        int exit = await PipelinesVerb.RunAsync(services, arguments, output, error, CancellationToken.None);
+        return (exit, output.ToString(), error.ToString());
+    }
+}
