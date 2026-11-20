@@ -2,7 +2,7 @@
 
 A selector subscription follows Layer 1 tags and sources over one container instead of one pipeline: entity types, taxonomy
 domains, topics, timeframes and source groups, as data a client edits. The `subscriptions` host verb lists, changes,
-previews, diffs, explains and adopts them from the deployed host, so the shadow period and the consumer's switch run
+previews, diffs, explains and adopts them from the deployed host, so the shadow period and the consumer's cutover run
 through Wheelhouse Run with no operator token.
 Contract: `../architecture/contract.md` § Subscription selectors (wire, limits, evaluation, deliverability, operations).
 Code: `packages/Abstractions/Delivery/` (selector, rules, matcher), `packages/Module/Delivery/` (delivery, preview,
@@ -123,14 +123,14 @@ adopter.
 ## Provisioning and switching a consumer
 
 Ocharo's selector is `ocharo setup … --selector` (`deployment.md` § Provisioning Ocharo on a target); `--selector-reset`
-puts the shipped file back after a client's edit. A consumer's switch to a selector subscription runs in this order:
+puts the shipped file back after a client's edit. A consumer's cutover to a selector subscription runs in this order:
 
 1. Provision the selector once the sources are `auto` and tagged (§ What the selector needs); a second `ocharo setup …
    --selector` prints the same id and version.
 2. `preview` it over the window the tags cover and read coverage, counts, clause counts and near misses.
 3. `explain` a few posts that must match and a few that must not.
 4. Run the shadow procedure for at least three days.
-5. When the shadow rows are clean and the product owner gives the switch: `adopt --dry-run`, then `adopt`, naming the
+5. When the shadow rows are clean and the product owner gives the go: `adopt --dry-run`, then `adopt`, naming the
    subscriptions the consumer's intake sources hold now.
 6. Point the consumer at the selector subscription (its intake source binds `selector:{name}`) and check its intake.
 7. `state --state archived` for each older channel subscription that `list` shows; the filters retire after.
@@ -144,4 +144,4 @@ The diff is stateless: it compares current verdicts, so nothing accumulates on t
 - Record each run outside this repository, since titles stay out of it: one row per run with the date, `since`, `posts`,
   `both`, `filterOnly`, `selectorOnly`, `pending` and `outOfScope`, then each listed item's `titleEn`, verdicts, clauses
   and `timeframe`.
-- The switch wants at least three daily rows and `pending` at 0 or explained, such as posts of a source still `off`.
+- The cutover wants at least three daily rows and `pending` at 0 or explained, such as posts of a source still `off`.
