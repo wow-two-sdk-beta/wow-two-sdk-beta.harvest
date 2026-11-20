@@ -190,9 +190,12 @@ Set `HarvestAssets:Files:BaseAddress` and either a dedicated Files tenant key in
 Identity client settings under `HarvestAssets:Files:Identity`. The client needs `files.read` and `files.write` in the
 Files tenant used for SCFD. Use a policy allowing raster images and ICO files up to 5 MiB with no orphan expiry.
 
-The internal host queues icons for registered web sources with pipelines and copies same-host HTTPS images from
-captured posts, including existing posts. Requests use Harvest's robots policy and host pacing. SCFD serves the stored
-bytes through the source's authorized API and uses the source URL while an image copy is pending or unavailable.
+The internal host queues icons for registered web sources with pipelines and copies HTTPS images from captured posts,
+including existing posts: those on the source's own host, and those on the image domains its adapter declares
+(`AdapterDescriptor.Media`; OLX declares `olxcdn.com`, first 6 images of a post), a declared domain and its subdomains
+only, with the default port and no credentials in the URL. Requests use Harvest's robots policy and host pacing, and a
+declared domain's images keep the adapter's gap per image host. SCFD serves the stored bytes through the source's
+authorized API and uses the source URL while an image copy is pending or unavailable.
 
 ## Provisioning Haven on a target
 

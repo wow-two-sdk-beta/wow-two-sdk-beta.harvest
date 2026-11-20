@@ -1,6 +1,6 @@
 # SCFD — Backlog
 
-*Last updated: 2026-11-20*
+*Last updated: 2026-11-21*
 
 Every unbuilt item, grouped; top of each group = next. Shipped work lives in [`version-track/`](version-track/).
 Shape: wow-two-ws/conventions/planning/version-track/version-track.md
@@ -91,6 +91,7 @@ ChatGPT builds these in the pull order of wow-two-ws `system/sessions/events-int
 | ANONS JavaScript challenge | engineering | 2026-11-20 08:28 UTC, at 6 pages and a 30 s pace, 1 of 6 requests read as `javascript_interstitial` (`fetch_outcome` challenge); the lane paused 15 min as designed and 2 new posts were captured. First check whether it is a real challenge or the detector's false positive (as with Craftfair's complete 200 listing), then measure a week's rate and lower pages or pace if it repeats; never solve or bypass a challenge |
 | Instagram Phase 1 target acceptance | product | the collector ships in v0.2.12 and local capture/deduplication passed. After the shared Ocharo AI/delivery work closes, configure the test connection on `harvest-dev`, register approved publisher profiles, enable chosen table-managed schedules and verify scheduled capture through filtered delivery to Events/Desk. Production requires a separate account and grant. See [Instagram operation and readiness](../deployment/instagram.md#integration-boundary-and-phase-1-acceptance). |
 | Ocharo Identity on the source host | feature | operator email sign-in passes on the local console; the phone/code round trip, role review, sign-out and restart checks remain |
+| OLX phone reveal | decision | not built (#17, 2026-11-21). OLX reveals a phone through its friction gate (`friction.olxgroup.com` challenge → token → `limited-phones`), which escalates `delay` → `recaptcha_v2_checkbox` → `blocked` after about 20 reveals per window (Haven history). Revealing in volume would mean solving reCAPTCHA v2 to defeat a control against bulk phone harvesting, and the building agent declines that; auto mode refused even the read-only probe. The `TwoCaptchaSolver` stays uncalled. Open routes: phones a seller writes in the ad text into `contacts`, a person revealing on demand, or OLX data access · the phone route needs the developer |
 | Configured providers | feature | supply approved credentials and origins, then verify one real source protocol; a dedicated outgoing server per source is allowed, rotating proxy pools are not built (events-integration #50) |
 | Render companion | engineering | core companion package on Playwright; iticket waits on it |
 | ICS recurrence expansion and oEmbed | feature | recurrence masters and OpenGraph metadata work; expansion and secondary fetches remain separate |

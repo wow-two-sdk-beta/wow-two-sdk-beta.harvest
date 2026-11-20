@@ -56,6 +56,7 @@ public static partial class HostConfiguration
 
         builder.Services.AddFilesClient(options => configuration.Bind(options))
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
+        builder.Services.AddSingleton<SourceMediaRules>();
         builder.Services.AddSingleton<SourceAssetStore>();
         builder.Services.AddHostedService<SourceAssetWorker>();
         return builder;

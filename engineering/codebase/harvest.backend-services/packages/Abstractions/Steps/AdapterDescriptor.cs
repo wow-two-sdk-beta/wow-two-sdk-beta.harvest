@@ -13,6 +13,10 @@ public sealed record AdapterDescriptor
     /// otherwise the source URL's host, or the legacy registry handle, is used.</summary>
     public string? HostKey { get; init; }
 
+    /// <summary>Gets the other hosts that serve the source's post images, so the image copy worker may fetch from them;
+    /// null when the source's images come from its own host only.</summary>
+    public SourceMediaHosts? Media { get; init; }
+
     /// <summary>Gets the steps the adapter offers.</summary>
     public required IReadOnlyList<StepDescriptor> Steps { get; init; }
 

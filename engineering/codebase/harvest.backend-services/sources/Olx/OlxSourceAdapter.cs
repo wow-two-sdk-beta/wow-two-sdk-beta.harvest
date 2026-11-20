@@ -61,6 +61,7 @@ public sealed class OlxSourceAdapter : ISourceAdapter, ISourceConfigurationProvi
         var requirements = new StepRequirements { MinDelay = TimeSpan.FromSeconds(2) };
         return new()
         {
+            Media = new() { Domains = ["olxcdn.com"], Limit = 6, MinDelay = TimeSpan.FromSeconds(2) },
             Steps =
             [
                 new() { Key = "enumerate", Role = StepRole.Enumerate, Requires = requirements },

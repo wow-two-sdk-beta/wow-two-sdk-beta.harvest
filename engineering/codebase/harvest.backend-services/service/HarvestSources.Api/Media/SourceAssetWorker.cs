@@ -11,6 +11,7 @@ namespace HarvestSources.Api.Media;
 /// <summary>Copies eligible source images through Harvest's guarded fetcher and the Files upload API.</summary>
 internal sealed class SourceAssetWorker(
     SourceAssetStore store,
+    SourceMediaRules mediaRules,
     IPageFetcher fetcher,
     IFileUploadsBroker uploads,
     TimeProvider clock,
@@ -49,7 +50,8 @@ internal sealed class SourceAssetWorker(
 
     internal async Task CopyAsync(SourceAsset asset, CancellationToken ct)
     {
-        var policy = new SourceAssetDestination(asset.Host, asset.Instagram);
+        var rule = asset.Favicon || asset.Instagram ? null : await mediaRules.FindAsync(asset.SourceId, ct);
+        var policy = new SourceAssetDestination(asset.Host, asset.Instagram, rule?.Domains);
         if (!Uri.TryCreate(asset.Url, UriKind.Absolute, out Uri? origin) || !policy.Allows(origin))
         {
             await store.FinishAsync(asset.Id, null, TimeSpan.FromDays(7), ct);
@@ -57,9 +59,11 @@ internal sealed class SourceAssetWorker(
         }
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(TimeSpan.FromMinutes(2));
+        // An image served from a declared domain paces that host by the adapter's gap; the source's own host keeps its pacing.
+        TimeSpan? imageDelay = rule is not null && !string.Equals(origin.IdnHost, asset.Host, StringComparison.OrdinalIgnoreCase) ? rule.MinDelay : null;
         var result = asset.Favicon
             ? await FaviconAsync(origin, policy, deadline.Token)
-            : await ReadAsync(origin, policy, deadline.Token, asset.Instagram ? RobotsPolicy.Ignore : RobotsPolicy.Obey);
+            : await ReadAsync(origin, policy, deadline.Token, asset.Instagram ? RobotsPolicy.Ignore : RobotsPolicy.Obey, imageDelay);
         if (result.Outcome != FetchOutcome.Ok || result.Document is not { } document
             || !policy.Allows(document.FinalUrl)
             || SourceImageFormat.From(document.ContentType) is not { } format
@@ -117,10 +121,14 @@ internal sealed class SourceAssetWorker(
 
     /// <summary>Official Instagram media URLs deliver signed API artifacts, not website documents to crawl.
     /// Only those image jobs omit robots discovery; Meta CDN destination, public-IP, redirect, host pacing and
-    /// response guards remain active. Web images and favicons retain the default robots checks.</summary>
+    /// response guards remain active. Web images, including those from a declared image domain, and favicons retain the
+    /// default robots checks.</summary>
     private Task<FetchResponse> ReadAsync(Uri url, SourceAssetDestination policy, CancellationToken ct,
-        RobotsPolicy robotsPolicy = RobotsPolicy.Obey) =>
-        fetcher.FetchAsync(new FetchRequest { Uri = url, DestinationPolicy = policy, CacheResponse = false, RobotsPolicy = robotsPolicy }, ct);
+        RobotsPolicy robotsPolicy = RobotsPolicy.Obey, TimeSpan? minDelay = null) =>
+        fetcher.FetchAsync(new FetchRequest
+        {
+            Uri = url, DestinationPolicy = policy, CacheResponse = false, RobotsPolicy = robotsPolicy, MinDelay = minDelay,
+        }, ct);
 }
 
 internal sealed record SourceImageFormat(string ContentType, string Extension)

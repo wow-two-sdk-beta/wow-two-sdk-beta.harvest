@@ -19,6 +19,7 @@ using WoW.Two.Sdk.Beta.Be.Files.Store;
 using WoW.Two.Sdk.Beta.Be.Files.Uploads;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Capabilities.Fetching;
+using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Readers;
 using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
@@ -225,6 +226,163 @@ public sealed class SourceAssetsTests
         new SourceAssetDestination("web.example.test", instagram: false).Allows(new Uri("https://web.example.test/image.jpg")).Should().BeTrue();
     }
 
+    [Theory]
+    [InlineData("https://www.olx.uz/a.jpg", true)]
+    [InlineData("https://apollo.olxcdn.com/a.jpg", true)]
+    [InlineData("https://APOLLO.OLXCDN.COM/a.jpg", true)]
+    [InlineData("https://olxcdn.com/a.jpg", true)]
+    [InlineData("https://a.b.olxcdn.com/a.jpg", true)]
+    [InlineData("https://apollo.olxcdn.com:443/a.jpg", true)]
+    [InlineData("https://olxcdn.com.evil.test/a.jpg", false)]
+    [InlineData("https://apollo.olxcdn.com.evil.test/a.jpg", false)]
+    [InlineData("https://evilolxcdn.com/a.jpg", false)]
+    [InlineData("https://apollo.evilolxcdn.com/a.jpg", false)]
+    [InlineData("https://olxcdn.co/a.jpg", false)]
+    [InlineData("http://apollo.olxcdn.com/a.jpg", false)]
+    [InlineData("https://apollo.olxcdn.com:8443/a.jpg", false)]
+    [InlineData("https://user@apollo.olxcdn.com/a.jpg", false)]
+    [InlineData("https://user:password@apollo.olxcdn.com/a.jpg", false)]
+    [InlineData("https://127.0.0.1/a.jpg", false)]
+    [InlineData("https://scontent.example.fbcdn.net/a.jpg", false)]
+    public void Web_destination_allows_the_source_host_and_the_declared_domain_family_only(string url, bool allowed)
+    {
+        new SourceAssetDestination("www.olx.uz", instagram: false, ["olxcdn.com"]).Allows(new Uri(url)).Should().Be(allowed);
+        // Undeclared sources keep today's rule: their own host and nothing else.
+        new SourceAssetDestination("www.olx.uz", instagram: false).Allows(new Uri(url)).Should().Be(new Uri(url).Host == "www.olx.uz");
+        // Declared domains never widen the Instagram branch, which still allows Meta's media CDNs only.
+        new SourceAssetDestination("www.olx.uz", instagram: true, ["olxcdn.com"]).Allows(new Uri(url))
+            .Should().Be(url == "https://scontent.example.fbcdn.net/a.jpg");
+    }
+
+    [Fact]
+    public async Task A_declared_image_domain_queues_the_first_images_only_and_copies_them_privately_at_the_declared_pace()
+    {
+        await using var fixture = await Fixture.CreateAsync(new MediaAdapter("shop.example.test", new SourceMediaHosts { Domains = ["cdn.example"], Limit = 2 }));
+        var lane = await fixture.SourceAsync("site", "shop.example.test", "ownFetch");
+        string[] original = ["https://img.cdn.example/1.jpg", "https://img.cdn.example/2.jpg", "https://img.cdn.example/3.jpg", "https://cdn.example.evil.test/4.jpg"];
+        await fixture.CaptureAsync(lane, original);
+        // Every image of these posts is inside the limit, so only its host, scheme, port or userinfo keeps it out.
+        string[] rejected =
+        [
+            "https://cdn.example.evil.test/a.jpg", "https://evilcdn.example/b.jpg", "https://img.cdn.example:8443/c.jpg",
+            "https://user@img.cdn.example/d.jpg", "http://img.cdn.example/e.jpg", "https://cdn.example.evil.test@img.cdn.example/f.jpg",
+            "https://img.cdn.example\\@evil.test/g.jpg", "ftp://img.cdn.example/h.jpg",
+        ];
+        foreach (var pair in rejected.Chunk(2)) await fixture.CaptureAsync(lane, pair);
+        var store = fixture.Host.Services.GetRequiredService<SourceAssetStore>();
+        await store.QueueMissingAsync(default);
+        await store.QueueMissingAsync(default);
+        (await fixture.ScalarAsync<long>("SELECT count(*) FROM harvest_source_assets")).Should().Be(2);
+        (await fixture.ScalarAsync<long>("SELECT count(*) FROM harvest_source_assets WHERE origin_url IN ('https://img.cdn.example/1.jpg','https://img.cdn.example/2.jpg')"))
+            .Should().Be(2);
+
+        // A recapture that moves an image past the limit stops its claim; moving it back restores it.
+        string Media(params string[] urls) => JsonSerializer.Serialize(urls.Select(url => new { kind = "image", url }));
+        const string Reorder = "UPDATE harvest_posts SET base=jsonb_set(base,'{media}',@media::jsonb) WHERE container_id=@container AND jsonb_array_length(base->'media')=4";
+        var container = ("container", (object)Guid.Parse(lane.Container));
+        await fixture.ExecuteAsync(Reorder, ("media", Media(original[1], original[2], original[3], original[0])), container);
+        using var worker = fixture.Worker();
+        var first = (await store.ClaimAsync(default))!;
+        first.SourceId.Should().Be(Guid.Parse(lane.Source));
+        first.Url.Should().Be(original[1]);
+        await worker.CopyAsync(first, default);
+        (await store.ClaimAsync(default)).Should().BeNull();
+        await fixture.ExecuteAsync(Reorder, ("media", Media(original)), container);
+        while (await store.ClaimAsync(default) is { } asset) await worker.CopyAsync(asset, default);
+
+        fixture.Files.Uploads.Should().HaveCount(2).And.OnlyContain(upload => upload.Visibility == FileVisibility.Private);
+        fixture.Files.Uploads.Select(upload => upload.IdempotencyKey).Should().OnlyHaveUniqueItems();
+        fixture.Fetcher.Requests.Select(request => request.Uri.AbsoluteUri).Should().BeEquivalentTo(original[..2]);
+        fixture.Fetcher.Requests.Should().OnlyContain(request => request.MinDelay == TimeSpan.FromSeconds(2)
+            && request.RobotsPolicy == RobotsPolicy.Obey && !request.CacheResponse && request.Cookies == null);
+        foreach (var request in fixture.Fetcher.Requests)
+        {
+            request.DestinationPolicy!.Allows(new Uri("https://other.cdn.example/x.jpg")).Should().BeTrue();
+            request.DestinationPolicy.Allows(new Uri("https://shop.example.test/x.jpg")).Should().BeTrue();
+            request.DestinationPolicy.Allows(new Uri("https://cdn.example.evil.test/x.jpg")).Should().BeFalse();
+            request.DestinationPolicy.Allows(new Uri("https://evilcdn.example/x.jpg")).Should().BeFalse();
+            request.DestinationPolicy.Allows(new Uri("https://img.cdn.example:8443/x.jpg")).Should().BeFalse();
+            request.DestinationPolicy.Allows(new Uri("https://127.0.0.1/x.jpg")).Should().BeFalse();
+        }
+
+        JsonElement posts = await DataAsync(await fixture.Client.GetAsync($"/api/sources/{lane.Source}/posts"));
+        string[] images = posts.EnumerateArray().Single(post => post.GetProperty("imageUrls").GetArrayLength() == 4)
+            .GetProperty("imageUrls").EnumerateArray().Select(value => value.GetString()!).ToArray();
+        images.Take(2).Should().OnlyContain(url => url.StartsWith($"/api/sources/{lane.Source}/assets/", StringComparison.Ordinal));
+        images.Skip(2).Should().Equal(original[2], original[3]);
+        using var image = await fixture.Client.GetAsync(images[0]);
+        image.StatusCode.Should().Be(HttpStatusCode.OK);
+        await store.QueueMissingAsync(default);
+        (await store.ClaimAsync(default)).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task A_declared_image_domain_covers_its_apex_and_every_subdomain_without_regard_to_case_and_keeps_the_source_host()
+    {
+        await using var fixture = await Fixture.CreateAsync(new MediaAdapter("shop.example.test", new SourceMediaHosts { Domains = ["cdn.example"] }));
+        var lane = await fixture.SourceAsync("site", "shop.example.test", "ownFetch");
+        string[] queued = ["https://cdn.example/a.jpg", "https://IMG.CDN.EXAMPLE/b.jpg", "https://deep.img.cdn.example/c.jpg", "https://shop.example.test/own.jpg"];
+        await fixture.CaptureAsync(lane, [.. queued, "https://cdn.example.evil.test/d.jpg", "https://notcdn.example/e.jpg"]);
+        var store = fixture.Host.Services.GetRequiredService<SourceAssetStore>();
+        await store.QueueMissingAsync(default);
+        (await fixture.ScalarAsync<long>("SELECT count(*) FROM harvest_source_assets")).Should().Be(4);
+        using var worker = fixture.Worker();
+        while (await store.ClaimAsync(default) is { } asset) await worker.CopyAsync(asset, default);
+        fixture.Files.Uploads.Should().HaveCount(4);
+        // The source's own host keeps the host's pacing; only the declared domain's images carry the declared gap.
+        fixture.Fetcher.Requests.Where(request => request.Uri.Host == "shop.example.test").Should().ContainSingle().Which.MinDelay.Should().BeNull();
+        fixture.Fetcher.Requests.Where(request => request.Uri.Host != "shop.example.test").Should().HaveCount(3)
+            .And.OnlyContain(request => request.MinDelay == TimeSpan.FromSeconds(2) && request.RobotsPolicy == RobotsPolicy.Obey);
+    }
+
+    [Fact]
+    public async Task A_site_source_without_declared_media_still_queues_only_its_own_host_images()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var plain = await fixture.SourceAsync("site", "plain.example.test", "ownFetch");
+        await fixture.CaptureAsync(plain, "https://img.cdn.example/1.jpg", "https://plain.example.test/own.png", "https://olxcdn.com/2.jpg");
+        var store = fixture.Host.Services.GetRequiredService<SourceAssetStore>();
+        await store.QueueMissingAsync(default);
+        (await fixture.ScalarAsync<long>("SELECT count(*) FROM harvest_source_assets")).Should().Be(1);
+        var asset = (await store.ClaimAsync(default))!;
+        asset.Url.Should().Be("https://plain.example.test/own.png");
+        await fixture.Worker().CopyAsync(asset, default);
+        fixture.Fetcher.Requests.Should().ContainSingle().Which.MinDelay.Should().BeNull();
+        fixture.Fetcher.Requests.Single().RobotsPolicy.Should().Be(RobotsPolicy.Obey);
+        fixture.Fetcher.Requests.Single().DestinationPolicy!.Allows(new Uri("https://img.cdn.example/1.jpg")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task The_last_installed_adapter_that_serves_a_source_decides_its_media_rules_and_they_are_read_once_a_minute()
+    {
+        var declared = new SourceMediaHosts { Domains = [".CDN.Example", "localhost", "not a host.example"], Limit = 3, MinDelay = TimeSpan.FromSeconds(5) };
+        await using var fixture = await Fixture.CreateAsync(
+            new MediaAdapter("shadowed.example.test", declared), new MediaAdapter("shadowed.example.test", null),
+            new MediaAdapter("shop.example.test", null), new MediaAdapter("shop.example.test", declared));
+        var shadowed = await fixture.SourceAsync("site", "shadowed.example.test", "ownFetch");
+        var shop = await fixture.SourceAsync("site", "shop.example.test", "ownFetch");
+        var clock = new ManualClock(DateTimeOffset.UtcNow);
+        var rules = new SourceMediaRules(fixture.Host.Services.GetRequiredService<IServiceScopeFactory>(),
+            fixture.Host.Services.GetServices<ISourceAdapter>(), clock);
+
+        var found = await rules.ListAsync(default);
+        found.Should().ContainSingle().Which.Should().BeEquivalentTo(new { SourceId = Guid.Parse(shop.Source), Domains = new[] { "cdn.example" }, Limit = 3, MinDelay = TimeSpan.FromSeconds(5) });
+        (await rules.FindAsync(Guid.Parse(shadowed.Source), default)).Should().BeNull();
+
+        // The answer is cached for one scan interval, then resolved again.
+        var late = await fixture.SourceAsync("site", "shop.example.test", "ownFetch");
+        clock.Advance(TimeSpan.FromSeconds(59));
+        (await rules.ListAsync(default)).Should().HaveCount(1);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        (await rules.ListAsync(default)).Select(rule => rule.SourceId).Should().BeEquivalentTo([Guid.Parse(shop.Source), Guid.Parse(late.Source)]);
+
+        // A paused source or a denied one holds no rule.
+        await fixture.ExecuteAsync("UPDATE harvest_sources SET state='paused' WHERE id=@source", ("source", Guid.Parse(late.Source)));
+        await fixture.ExecuteAsync("UPDATE harvest_sources SET permission='denied' WHERE id=@source", ("source", Guid.Parse(shop.Source)));
+        clock.Advance(TimeSpan.FromMinutes(2));
+        (await rules.ListAsync(default)).Should().BeEmpty();
+    }
+
     private static async Task<JsonElement> DataAsync(HttpResponseMessage response)
     {
         using (response)
@@ -245,7 +403,7 @@ public sealed class SourceAssetsTests
         public FixtureFiles Files { get; } = files;
         public HttpClient Client { get; } = ClientFor(host, "hv_SourceAssetOperatorFixture000000");
 
-        public static async Task<Fixture> CreateAsync()
+        public static async Task<Fixture> CreateAsync(params ISourceAdapter[] adapters)
         {
             string database = await SourcePostgres.NewDatabaseAsync();
             var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ApplicationName = typeof(Program).Assembly.GetName().Name, EnvironmentName = "Development" });
@@ -268,13 +426,16 @@ public sealed class SourceAssetsTests
             builder.Services.RemoveAll<IFileUploadsBroker>();
             builder.Services.RemoveAll<IFileStoreBroker>();
             builder.Services.AddSingleton<IPageFetcher>(fetcher).AddSingleton<IFileUploadsBroker>(files).AddSingleton<IFileStoreBroker>(files);
+            // Added after the host's own adapters, so the last one that serves a source is the fixture's.
+            foreach (var adapter in adapters) builder.Services.AddSingleton(adapter);
             var host = builder.Build();
             await host.ConfigureAsync();
             await host.StartAsync();
             return new Fixture(host, database, fetcher, files);
         }
 
-        public SourceAssetWorker Worker() => new(Host.Services.GetRequiredService<SourceAssetStore>(), Fetcher, Files, TimeProvider.System, NullLogger<SourceAssetWorker>.Instance);
+        public SourceAssetWorker Worker() => new(Host.Services.GetRequiredService<SourceAssetStore>(), Host.Services.GetRequiredService<SourceMediaRules>(),
+            Fetcher, Files, TimeProvider.System, NullLogger<SourceAssetWorker>.Instance);
 
         public async Task<Lane> SourceAsync(string family, string handle, string posture)
         {
@@ -339,6 +500,24 @@ public sealed class SourceAssetsTests
         }
 
         public async ValueTask DisposeAsync() { Client.Dispose(); await Host.DisposeAsync(); }
+    }
+
+    /// <summary>Serves one source handle and declares the media hosts its images may be copied from.</summary>
+    private sealed class MediaAdapter(string handle, SourceMediaHosts? media) : ISourceAdapter
+    {
+        public string Key { get; } = "media-fixture-" + Guid.NewGuid().ToString("N");
+        public SourceFamily Family => SourceFamily.Site;
+        public bool Serves(SourceModel source) => source.Family == Family && source.Handle == handle;
+        public AdapterDescriptor Describe(SourceModel source) => new()
+        {
+            Media = media, Steps = [], Plans = new Dictionary<WorkKind, IReadOnlyList<string>>(),
+        };
+    }
+
+    private sealed class ManualClock(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+        public void Advance(TimeSpan by) => now += by;
     }
 
     private sealed class FixtureFetcher : IPageFetcher
