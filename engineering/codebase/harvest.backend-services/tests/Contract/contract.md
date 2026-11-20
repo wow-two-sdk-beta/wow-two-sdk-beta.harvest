@@ -26,6 +26,9 @@ Golden pages of SCFD's pull wire. `wow2.event.v1/` holds `GET api/subscriptions/
   answered by the scripted caller: `post.new` without `starts`, the tags' revision with a `relevant` classification
   (kind `event`), the `extract-event` revision with `starts.certainty=estimated` at month precision (kind `runway`), and
   a later capture stating the day as `starts.certainty=stated`. Every `starts` and `ends` carries `certainty` since S17.
+- `13-image-copied` is a `post.new` whose post carries two images, the first already copied into Files: `media[0].fileRef` is
+  the copy's file id and `media[1].fileRef` stays `null`; each `url` stays the source link. Every other page's media shows
+  `fileRef: null`, since no copy exists for it.
 - The host runs with the shared AI module on and Ocharo's wanted pair, tagging off; only case 11 runs the passes, for
   its one post, so no other case carries an answer.
 - Events copies `wow2.event.v1/` unchanged and records the tag and commit it copied from.

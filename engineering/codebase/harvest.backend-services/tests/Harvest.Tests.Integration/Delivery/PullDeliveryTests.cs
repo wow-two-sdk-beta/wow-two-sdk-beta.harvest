@@ -5,6 +5,7 @@ using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Containers;
 using WoW.Two.Sdk.Beta.Be.Harvest.Delivery;
 using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
+using WoW.Two.Sdk.Beta.Be.Harvest.Readers;
 using WoW.Two.Sdk.Beta.Be.Harvest.Tenants;
 
 namespace Harvest.Tests.Integration.Delivery;
@@ -215,6 +216,70 @@ public sealed class PullDeliveryTests
         evidence.GetProperty("captureId").GetString().Should().NotBeNullOrEmpty();
         evidence.GetProperty("capturedAtUtc").GetString().Should().NotBeNullOrEmpty();
         evidence.GetProperty("url").GetString().Should().Be(capture.Url);
+    }
+
+    [Fact]
+    public async Task Pull_ShouldNameTheCopiedFile_WhenAnImageHasAStoredCopy()
+    {
+        await using var host = await PostHost.StartAsync();
+        var subscription = PostHost.Value(await host.Delivery.SubscribeAsync(Declaration(host) with { Schema = PostEnvelopeConstants.EventSchema }));
+        var capture = PostStoreTests.Capture(host, "event-with-images", "Fashion week, 17 November");
+        var copied = new PostMedia { Kind = MediaKind.Image, Url = "https://mstar.uz/media/poster.jpg" };
+        var waiting = new PostMedia { Kind = MediaKind.Image, Url = "https://mstar.uz/media/second.jpg" };
+        var video = new PostMedia { Kind = MediaKind.Video, Url = "https://mstar.uz/media/clip.mp4" };
+        var envelope = PostStoreTests.Envelope("Fashion week", capture.ContentProjection) with
+        {
+            Kind = PostKind.Event, Text = null, Media = [copied, waiting, video],
+        };
+        PostHost.Value(await host.Posts.SaveCaptureAsync(host.ContainerId, host.SourceId, null, capture, envelope));
+        var file = Guid.NewGuid();
+        await InsertAssetAsync(host, host.SourceId, "image", copied.Url, file);
+        await InsertAssetAsync(host, host.SourceId, "image", waiting.Url, null);
+        await InsertAssetAsync(host, host.SourceId, "image", video.Url, Guid.NewGuid());
+
+        var page = await host.PullUntilAsync(subscription.Id, page => page.Data.Count == 1);
+
+        var media = page.Data.Single().Data!.Value.GetProperty("media").EnumerateArray().ToArray();
+        media.Select(item => item.GetProperty("url").GetString()).Should().Equal(copied.Url, waiting.Url, video.Url);
+        media[0].GetProperty("fileRef").GetString().Should().Be(file.ToString("D"));
+        media[1].GetProperty("fileRef").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null, "its copy is not made yet");
+        media[2].GetProperty("fileRef").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null, "only an image carries a copy");
+    }
+
+    [Fact]
+    public async Task Pull_ShouldKeepFileRefNull_WhenNoSourceOfThePostHoldsACopy()
+    {
+        await using var host = await PostHost.StartAsync();
+        var subscription = PostHost.Value(await host.Delivery.SubscribeAsync(Declaration(host) with { Schema = PostEnvelopeConstants.EventSchema }));
+        var capture = PostStoreTests.Capture(host, "event-without-copy", "Fashion week, 17 November");
+        var poster = new PostMedia { Kind = MediaKind.Image, Url = "https://mstar.uz/media/poster.jpg" };
+        var envelope = PostStoreTests.Envelope("Fashion week", capture.ContentProjection) with
+        {
+            Kind = PostKind.Event, Text = null, Media = [poster],
+        };
+        PostHost.Value(await host.Posts.SaveCaptureAsync(host.ContainerId, host.SourceId, null, capture, envelope));
+        var other = await host.SourceAsync("other.example");
+        await InsertAssetAsync(host, other, "image", poster.Url, Guid.NewGuid());
+
+        var page = await host.PullUntilAsync(subscription.Id, page => page.Data.Count == 1);
+
+        var media = page.Data.Single().Data!.Value.GetProperty("media").EnumerateArray().Single();
+        media.GetProperty("url").GetString().Should().Be(poster.Url);
+        media.GetProperty("fileRef").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null, "a copy another source made is not this post's");
+    }
+
+    private static async Task InsertAssetAsync(PostHost host, Guid sourceId, string kind, string url, Guid? file)
+    {
+        await using var connection = new NpgsqlConnection(host.ConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            "INSERT INTO harvest_source_assets(id,source_id,kind,origin_url,file_id) VALUES(@id,@source,@kind,@url,@file)", connection);
+        command.Parameters.AddWithValue("id", Guid.NewGuid());
+        command.Parameters.AddWithValue("source", sourceId);
+        command.Parameters.AddWithValue("kind", kind);
+        command.Parameters.AddWithValue("url", url);
+        command.Parameters.AddWithValue("file", NpgsqlTypes.NpgsqlDbType.Uuid, (object?)file ?? DBNull.Value);
+        await command.ExecuteNonQueryAsync();
     }
 
     private static SubscriptionDeclaration Declaration(PostHost host) => new()

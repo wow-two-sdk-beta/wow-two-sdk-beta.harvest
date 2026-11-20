@@ -315,6 +315,18 @@ public sealed class EventContractPagesTests
         files.Add(new("12-english-title.json", ["post.new:untitled", "post.changed:english-title", "post.changed:english-title-kept"],
             normalizer.Normalize(titledBytes)));
 
+        // 13: a post with two images, the first already copied into Files. `media[].fileRef` names the copy's file id and `url`
+        // stays the source link; the image with no copy keeps a null `fileRef`.
+        await SaveAsync(Posters(Tick()));
+        var copiedFile = Guid.NewGuid();
+        await CopyImageAsync(database, source, PosterUrl(1), copiedFile);
+        var (copiedBytes, copiedPage) = await PullAsync(Next(titledPage), 1);
+        var posters = Events(copiedPage).Single().GetProperty("data").GetProperty("media").EnumerateArray().ToArray();
+        posters.Select(item => item.GetProperty("url").GetString()).Should().Equal(PosterUrl(1), PosterUrl(2));
+        posters[0].GetProperty("fileRef").GetString().Should().Be(copiedFile.ToString("D"));
+        posters[1].GetProperty("fileRef").ValueKind.Should().Be(JsonValueKind.Null, "its copy is not made");
+        files.Add(new("13-image-copied.json", ["post.new:image-copied"], normalizer.Normalize(copiedBytes)));
+
         delivered.Should().NotContain(rejected.Id, "a post the subscription's filter rejects is never delivered");
         files.Add(new("manifest.json", [], Manifest(files)));
         ContractFolder.WriteOrVerify(files, Environment.GetEnvironmentVariable(WriteSwitch) == "1");
@@ -325,6 +337,15 @@ public sealed class EventContractPagesTests
     private static Capture Rich(DateTimeOffset at, string price) => EventCapture(at, RichSlug, """
         {"@context":"https://schema.org","@type":"Event","name":"Показ коллекций молодых дизайнеров","description":"Дизайнеры показывают одежду из атласа и адраса. Справки: +998 71 000 00 00.","startDate":"2026-12-05T19:00:00+05:00","endDate":"2026-12-06","inLanguage":"ru","location":{"@type":"Place","name":"Дворец Истиклол","address":{"@type":"PostalAddress","addressLocality":"Ташкент","streetAddress":"ул. Амира Темура, 107"},"geo":{"@type":"GeoCoordinates","latitude":41.3139,"longitude":69.2803}},"organizer":{"@type":"Organization","name":"Tashkent Designers Club","url":"https://designers.example.test/"},"offers":{"@type":"Offer","price":"PRICE","priceCurrency":"UZS","url":"https://HOST/events/SLUG/tickets"},"image":"https://HOST/media/SLUG.jpg"}
         """.Replace("PRICE", price).Replace("HOST", SourceHost).Replace("SLUG", RichSlug), published: Start.AddDays(-2), links: [new() { Url = $"https://{SourceHost}/venues/istiqlol", Text = "Дворец Истиклол" }]);
+
+    private const string PosterSlug = "autumn-collection";
+
+    private static string PosterUrl(int number) => $"https://{SourceHost}/media/{PosterSlug}-{number}.jpg";
+
+    /// <summary>A show with two images, for the case where SCFD copied the first.</summary>
+    private static Capture Posters(DateTimeOffset at) => EventCapture(at, PosterSlug, """
+        {"@context":"https://schema.org","@type":"Event","name":"Показ мод: осенняя коллекция дизайнеров","description":"Дизайнеры показывают осеннюю коллекцию. Вход по регистрации.","startDate":"2026-12-20","location":{"@type":"Place","name":"Ташкент"},"image":["URL1","URL2"]}
+        """.Replace("URL1", PosterUrl(1)).Replace("URL2", PosterUrl(2)));
 
     private static Capture Mirror(DateTimeOffset at) => EventCapture(at, RichSlug + "-copy", """
         {"@context":"https://schema.org","@type":"Event","name":"Показ коллекций молодых дизайнеров (копия анонса)","description":"Повтор анонса на другой странице.","startDate":"2026-12-05T19:00:00+05:00","location":{"@type":"Place","name":"Дворец Истиклол"}}
@@ -429,6 +450,19 @@ public sealed class EventContractPagesTests
         command.Parameters.AddWithValue("key", post.ToString("N"));
         command.Parameters.AddWithValue("revision", revision);
         command.Parameters.AddWithValue("at", at);
+        (await command.ExecuteNonQueryAsync()).Should().Be(1);
+    }
+
+    private static async Task CopyImageAsync(string database, Guid source, string url, Guid file)
+    {
+        await using var connection = new NpgsqlConnection(database);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "INSERT INTO harvest_source_assets(id,source_id,kind,origin_url,file_id) VALUES(@id,@source,'image',@url,@file)";
+        command.Parameters.AddWithValue("id", Guid.NewGuid());
+        command.Parameters.AddWithValue("source", source);
+        command.Parameters.AddWithValue("url", url);
+        command.Parameters.AddWithValue("file", file);
         (await command.ExecuteNonQueryAsync()).Should().Be(1);
     }
 

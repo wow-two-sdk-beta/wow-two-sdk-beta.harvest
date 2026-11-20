@@ -143,6 +143,11 @@ internal sealed class ModuleDeliveryBroker(
             }
         var hasMore = rows.Count > limit;
         if (hasMore) rows.RemoveAt(rows.Count - 1);
+        if (subscription.Schema == PostEnvelopeConstants.EventSchema
+            && await DeliveryMediaFiles.ReadAsync(connection, subscriptionId, rows.Select(row => row.Event), cancellationToken) is { Count: > 0 } copies)
+            for (var index = 0; index < rows.Count; index++)
+                if (rows[index].Event is { PostId: { } postId, Data: { } payload } delivered && DeliveryMediaFiles.Apply(payload, postId, copies) is { } filled)
+                    rows[index] = (rows[index].TransactionId, rows[index].Id, delivered with { Data = filled });
         var next = rows.Count == 0 ? cursor ?? EncodeCursor(subscriptionId, transactionId, rowId)
             : EncodeCursor(subscriptionId, rows[^1].TransactionId, rows[^1].Id);
         return Result<CursorPage<DeliveryEvent>>.Ok(new CursorPage<DeliveryEvent> { Data = rows.Select(row => row.Event).ToArray(), Next = next, HasMore = hasMore });

@@ -20,7 +20,8 @@ implementation. Source groups and display names are the registry's (`Registratio
 - `newPostsDaily` counts the source's links by `first_seen_at` over 14 UTC days, oldest first, today last.
 - A post belongs to the section whose run made its earliest capture from the source; merged posts are left out.
 - `imageUrl` is the source `url` of the first `image` in the post's `base.media`, omitted when there is none; a stored
-  copy (`fileRef`) is never used, since no step writes one and no route serves it.
+  copy (`fileRef`) is never used, since no step writes one onto the post; the `wow2.event.v1` pull fills it on the wire
+  from the source-asset copy (`../Delivery/delivery.md`).
 - Health: the planner resolves the host from adapter `SourceUrl`/`HostKey`, falling back to the source handle;
   publisher identities on one provider share that host. The pace is `harvest_host_state.min_delay_ms`
   (2000 ms with no row); a pause shows only while it lasts, the later of the host's and its lanes'; `lastRefusal` is the

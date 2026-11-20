@@ -572,6 +572,10 @@ operator setup (`HarvestSources:Audience` `internal` only):
   selector subscription `ocharo-events` from the shipped selector file over the container's groups: created when absent,
   kept as is when present (a client's edits survive), reset to the file only with `--selector-reset`; the response adds
   `selectorSubscriptionId` and `selectorVersion`. § Subscription selectors.
+- `media` `[{ kind, url, fileRef, hash, width, height, role }]` lists the post's media with the source `url`, the credit link
+  every consumer shows. `fileRef` is the Files file id (GUID, `D` form) of SCFD's copy of an `image`, filled when a page is
+  pulled from the source-asset copy, and `null` for an image not copied yet and for any other kind (additive; golden
+  `13-image-copied.json`). A copy made after an event was pulled arrives with the post's next event.
 - The event payload keeps canonical source provenance in `links` and registration/ticket/other URLs in
   `contentLinks`. Dates keep their precision and evidence. `starts` and `ends` are `{ value, precision, certainty }`;
   `certainty` is `stated` for a date the post states and `estimated` for one the extraction pass estimated from an

@@ -11,7 +11,9 @@ public sealed record PostMedia
     /// <summary>Gets the source URL.</summary>
     public required string Url { get; init; }
 
-    /// <summary>Gets the stored file's reference, once fetched into file storage.</summary>
+    /// <summary>Gets the stored copy's file id (a GUID in <c>D</c> form), once SCFD copied the image into file storage. A post's
+    /// own envelope leaves it null; the <c>wow2.event.v1</c> pull fills it on the wire from the copy the source-asset worker
+    /// made, beside the source <see cref="Url"/>, which stays the credit link.</summary>
     public string? FileRef { get; init; }
 
     /// <summary>Gets the content hash of the stored file.</summary>

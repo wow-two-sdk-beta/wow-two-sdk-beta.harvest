@@ -28,6 +28,10 @@
 - `wow2.event.v1` subscriptions project the stored event mapping with post identity, revision, state, links, field
   provenance and `capture` (the newest captured link's id, time and URL); a subscription without that schema reads the
   complete post snapshot
+- `media[].fileRef` of a `wow2.event.v1` payload is the Files file id (GUID, `D` form) of the copy SCFD holds for that image,
+  filled when a page is pulled (`DeliveryMediaFiles`) from `harvest_source_assets` through the sources the post is linked
+  from; the source `url` stays beside it as the credit link, and an image with no copy yet keeps `null`. A copy made after
+  an event was pulled reaches the subscriber with the post's next event
 - every pulled event names its subscription's `pipelineId`; tag, keyword and selector subscriptions leave it null
 - a stored event projection that carries the `mapping` stamp renders again through the current `EventSchemaMapper`, so
   every revision reads with camelCase string enums; a reader's own projection, without the stamp, is sent as stored
