@@ -31,9 +31,14 @@ public sealed class JoymeeSourceAdapter : ISourceAdapter, ISourceConfigurationPr
     };
 
     /// <inheritdoc />
+    /// <remarks>The rental search implies <c>listing</c> and <c>real-estate/apartments</c>, as OLX's apartments section does, so a
+    /// post it supplies is tagged in code, not by a model.</remarks>
     public IReadOnlyList<SourceSectionDefinition> Sections(SourceModel source) =>
         [new("Tashkent apartment rentals", RentCatalog, "und")
-            { Key = "apartments-rent", RestrictToPath = false, RegisterPassivePipeline = false }];
+            {
+                Key = "apartments-rent", RestrictToPath = false, RegisterPassivePipeline = false,
+                ImpliedTags = new SectionImpliedTags("listing", "real-estate/apartments"),
+            }];
 
     /// <inheritdoc />
     public AdapterDescriptor Describe(SourceModel source)

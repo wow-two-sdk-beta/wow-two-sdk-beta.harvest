@@ -37,7 +37,8 @@ Extraction needs the shared AI module (`Harvest:Processing:Ai:Enabled`, internal
   type, in the same transaction, when a wanted pair matches and that content has no done answer.
 - Section-implied (the listing route): when every source supplying the post's title and text comes from a section that
   declares implied tags (`SourceSectionDefinition.ImpliedTags`: OLX apartments, houses and daily rent declare `listing`
-  with `real-estate/apartments`, `real-estate/houses` and `real-estate/real-estate-renting-and-leasing`), the post write
+  with `real-estate/apartments`, `real-estate/houses` and `real-estate/real-estate-renting-and-leasing`, and the Joymee and
+  BirBir apartment rentals declare `listing` with `real-estate/apartments`), the post write
   stores those tags itself (tier `Rules`, version `Rule`, classifier `rule:section-implied@1`, no `titleEn`) and queues
   no `post-tags` call (`post-tags.md` § Which posts skip it). It then queues the use case of the entity type, in the same
   transaction, when a wanted pair matches (`Wanted:1` is Haven's `listing` + `real-estate`) and the source mode allows it:

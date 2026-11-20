@@ -35,9 +35,14 @@ public sealed class BirBirSourceAdapter : ISourceAdapter, ISourceConfigurationPr
     };
 
     /// <inheritdoc />
+    /// <remarks>The rental category implies <c>listing</c> and <c>real-estate/apartments</c>, as OLX's apartments section does, so a
+    /// post it supplies is tagged in code, not by a model.</remarks>
     public IReadOnlyList<SourceSectionDefinition> Sections(SourceModel source) => source.Family == Family
         ? [new("Tashkent apartment rentals", RentalCatalog, "ru")
-            { Key = "apartments-rent", RestrictToPath = false, RegisterPassivePipeline = false }]
+            {
+                Key = "apartments-rent", RestrictToPath = false, RegisterPassivePipeline = false,
+                ImpliedTags = new SectionImpliedTags("listing", "real-estate/apartments"),
+            }]
         : [];
 
     /// <inheritdoc />

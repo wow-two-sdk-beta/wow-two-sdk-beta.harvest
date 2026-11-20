@@ -191,7 +191,7 @@ the step contract. Every type references the BCL and the kernel only.
   in `harvest_post_extractions` with verbatim evidence for every date, price and rental term, and is not part of the
   post or its delivery events until the entity layer reads it, except that a done `extract-listing` answer reaches the
   subscriptions that hold the post as `post.extracted` (§ Listing delivery); `development/extraction.md`
-- a post whose title and text come only from source sections that declare the tags they imply (OLX's rental catalogs)
+- a post whose title and text come only from source sections that declare the tags they imply (OLX's rental catalogs, Joymee's and BirBir's apartment rentals)
   is tagged in code with the write, tier `Rules`, and queues no `post-tags` call: `development/post-tags.md`
 - a done extraction answer queues the post's entity resolution in the same transaction when `Harvest:Entities:Enabled`
   is set; resolution binds the post with a role (`announcement`, `update`, `report`, `mention`) to one event or listing

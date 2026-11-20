@@ -1,12 +1,14 @@
 using AwesomeAssertions;
 using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Afisha;
+using WoW.Two.Sdk.Beta.Be.HarvestAdapters.BirBir;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Joymee;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Olx;
 
 namespace HarvestAdapters.Tests.Unit.Sources.Olx;
 
-/// <summary>Pins which sections declare the tags their posts already carry: OLX's three rental catalogs, and no other reader's.</summary>
+/// <summary>Pins which sections declare the tags their posts already carry: OLX's three rental catalogs and the Joymee and BirBir
+/// apartment rentals, and no other reader's.</summary>
 public sealed class OlxSectionImpliedTagsTests
 {
     [Fact]
@@ -22,10 +24,21 @@ public sealed class OlxSectionImpliedTagsTests
     }
 
     [Fact]
+    public void Sections_OfJoymeeAndBirBir_ShouldImplyTheSameListingAndApartmentsNodeAsOlxApartments()
+    {
+        var joymee = new JoymeeSourceAdapter().Sections(Source("api.joymee.uz")).Should().ContainSingle().Subject;
+        var birbir = new BirBirSourceAdapter().Sections(Source("birbir.uz")).Should().ContainSingle().Subject;
+
+        joymee.Key.Should().Be("apartments-rent");
+        joymee.ImpliedTags.Should().Be(new SectionImpliedTags("listing", "real-estate/apartments"));
+        birbir.Key.Should().Be("apartments-rent");
+        birbir.ImpliedTags.Should().Be(new SectionImpliedTags("listing", "real-estate/apartments"));
+    }
+
+    [Fact]
     public void Sections_OfOtherReaders_ShouldImplyNothing_SoTheirPostsKeepTheModelPath()
     {
         new AfishaSourceAdapter().Sections(Source("afisha.uz")).Should().OnlyContain(section => section.ImpliedTags == null);
-        new JoymeeSourceAdapter().Sections(Source("api.joymee.uz")).Should().OnlyContain(section => section.ImpliedTags == null);
     }
 
     private static SourceModel Source(string handle) => new()

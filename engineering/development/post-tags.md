@@ -29,7 +29,8 @@ Tagging needs the shared AI module (`Harvest:Processing:Ai:Enabled`, internal au
 
 A source section may declare the tags every ad in it already carries (`SourceSectionDefinition.ImpliedTags`: an entity
 type and one taxonomy node). OLX apartments, houses and daily rent declare `listing` with `real-estate/apartments`,
-`real-estate/houses` and `real-estate/real-estate-renting-and-leasing`; no other reader declares any.
+`real-estate/houses` and `real-estate/real-estate-renting-and-leasing`; the Joymee and BirBir apartment rentals declare
+`listing` with `real-estate/apartments`; no other reader declares any.
 
 - The rule: every source supplying the post's title and text comes from such a section, all of them name the same entity
   type, and each node exists and is active in the taxonomy. A post that fails any part, a post of any other section and a

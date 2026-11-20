@@ -224,9 +224,10 @@ A profile is data (`sources/Module/Marketplace/MarketplaceProfiles.cs`); another
   Ocharo's, `Harvest__Processing__Extraction__Wanted__1__EntityType` `listing` and `Harvest__Processing__Extraction__Wanted__1__Domain`
   `real-estate` (`deploy.yml` declares `:1`; `:0` is Ocharo's `event` + `style-fashion`), register the listing prompt with
   `extract prompt --use-case listing --file …`, then run `marketplace setup --profile haven --model-processing auto`. The three
-  OLX searches skip `post-tags`: their sections imply `listing` and `real-estate/apartments`, `real-estate/houses` and
-  `real-estate/real-estate-renting-and-leasing`, which the write stores in code (tier `Rules`), and `extract-listing` queues on
-  the write, on Haiku by the default `Extraction:Models:0`. Joymee and BirBir still pass through `post-tags` first. Each done
+  OLX searches, Joymee's and BirBir's collection skip `post-tags`: OLX's sections imply `listing` and `real-estate/apartments`,
+  `real-estate/houses` and `real-estate/real-estate-renting-and-leasing`, Joymee's and BirBir's apartment sections `listing` and
+  `real-estate/apartments`, which the write stores in code (tier `Rules`), and `extract-listing` queues on
+  the write, on Haiku by the default `Extraction:Models:0`. Each done
   answer reaches the search's subscription as `post.extracted` with `base.extras.listingAi`; a failed one reaches nothing. Haven's
   key keeps `events:read`. An OLX ad stored before this takes its section tags on its next write (a changed capture, a
   state change) or when `post-tags backfill` queues it, which tags it in code, not with a model call; that raises the post's
