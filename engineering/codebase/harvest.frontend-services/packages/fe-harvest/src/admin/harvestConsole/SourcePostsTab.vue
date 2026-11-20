@@ -395,10 +395,14 @@ function sectionOf(post: SourcePostModel) {
           v-bind="{ 'data-post-index': window.start + index }"
           class="group/post-card relative isolate flex aspect-[4/5] min-w-0 flex-col justify-end overflow-hidden rounded-2xl border border-border bg-muted hover:border-primary/40 has-[a[data-post-link]:focus-visible]:outline-2 has-[a[data-post-link]:focus-visible]:outline-offset-2 has-[a[data-post-link]:focus-visible]:outline-ring"
         >
-          <div class="z-10 flex min-w-0 flex-col gap-2 p-4 text-white">
+          <div class="relative isolate z-10 flex min-w-0 flex-col gap-2 px-4 pb-4 text-white">
+            <div
+              class="pointer-events-none absolute inset-x-0 -top-8 bottom-0 -z-10 bg-gradient-to-t from-black/80 via-black/45 to-transparent backdrop-blur-xl [-webkit-mask-image:linear-gradient(to_top,black_calc(100%_-_2rem),transparent)] [mask-image:linear-gradient(to_top,black_calc(100%_-_2rem),transparent)]"
+              aria-hidden="true"
+            ></div>
             <ConsoleLink
               :to="placeOf(post)"
-              class="line-clamp-2 text-start text-[15px] leading-snug font-semibold outline-none after:absolute after:inset-0 after:content-['']"
+              class="line-clamp-2 text-start text-[15px] leading-snug font-semibold outline-none after:absolute after:inset-x-0 after:-top-[100rem] after:bottom-0 after:content-['']"
               v-bind="{ 'data-post-link': '' }"
             >
               {{ post.title ?? 'Untitled post' }}
@@ -553,10 +557,6 @@ function sectionOf(post: SourcePostModel) {
               </svg>
             </span>
           </Tooltip>
-          <div
-            class="pointer-events-none absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-black/80 via-black/45 to-transparent backdrop-blur-xl [-webkit-mask-image:linear-gradient(to_top,black_50%,transparent)] [mask-image:linear-gradient(to_top,black_50%,transparent)]"
-            aria-hidden="true"
-          ></div>
         </li>
       </ul>
       <div

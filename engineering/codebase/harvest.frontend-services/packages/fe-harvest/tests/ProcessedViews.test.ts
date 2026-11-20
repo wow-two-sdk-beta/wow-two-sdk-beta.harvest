@@ -430,6 +430,26 @@ describe('processed card', () => {
     expect(wrapper.find('[data-read-method]').exists()).toBe(false);
   });
 
+  it('anchors the blur to the title block: a child of it, feathered 2rem above its top edge, no share of the header', () => {
+    const wrapper = card(runway);
+    const header = wrapper.get('header');
+    const content = header.get('a[data-to]').element.parentElement!;
+    const blur = header.get('[class*="backdrop-blur-xl"]');
+    expect(blur.element.parentElement).toBe(content);
+    expect(content.classList.contains('relative') && content.classList.contains('isolate')).toBe(true);
+    expect(blur.classes()).toContain('-top-8');
+    expect(blur.classes()).toContain('-inset-x-4');
+    expect(blur.classes()).toContain('-bottom-4');
+    for (const property of ['mask-image', '-webkit-mask-image']) {
+      expect(blur.classes()).toContain(`[${property}:linear-gradient(to_top,black_calc(100%_-_2rem),transparent)]`);
+    }
+    expect(blur.classes()).toEqual(expect.arrayContaining(['from-black/80', 'via-black/45']));
+    expect(wrapper.html()).not.toContain('h-3/5');
+    const bare = card(essay);
+    expect(bare.find('[class*="backdrop-blur-xl"]').exists()).toBe(false);
+    expect(bare.html()).not.toContain('h-3/5');
+  });
+
   it('falls back to a source-icon tile with quiet pills for a post without an image, or one whose image fails', async () => {
     const wrapper = card(essay);
     const header = wrapper.get('header');

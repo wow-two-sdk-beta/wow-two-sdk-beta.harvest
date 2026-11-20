@@ -349,6 +349,37 @@ describe('post list review refinements', () => {
     expect(wrapper.find('[title]').exists()).toBe(false);
   });
 
+  it('anchors the card blur to the content block at the foot: a child of it, feathered 2rem above its top edge', async () => {
+    query().mockResolvedValue(
+      ok(
+        page([
+          post('one', { imageUrl: 'https://afisha.uz/media/one.jpg' }),
+          post('two', { title: 'Concert two ' + 'long '.repeat(20) }),
+        ]),
+      ),
+    );
+    const wrapper = mount(SourcePostsTab, { props: { source: source(), view: 'cards' }, attachTo: document.body });
+    wrappers.push(wrapper);
+    await flushPromises();
+    const cards = wrapper.findAll('ul[aria-label="Posts"] > li');
+    expect(cards).toHaveLength(2);
+    for (const card of cards) {
+      const content = card.get('a[data-post-link]').element.parentElement!;
+      const blurs = card.findAll('[class*="backdrop-blur-xl"]').filter((layer) => layer.classes().includes('-top-8'));
+      expect(blurs).toHaveLength(1);
+      const blur = blurs[0]!;
+      expect(blur.element.parentElement).toBe(content);
+      expect(content.classList.contains('relative') && content.classList.contains('isolate')).toBe(true);
+      expect(blur.classes()).toEqual(
+        expect.arrayContaining(['inset-x-0', 'bottom-0', '-top-8', 'from-black/80', 'via-black/45']),
+      );
+      for (const property of ['mask-image', '-webkit-mask-image']) {
+        expect(blur.classes()).toContain(`[${property}:linear-gradient(to_top,black_calc(100%_-_2rem),transparent)]`);
+      }
+      expect(card.html()).not.toContain('h-3/5');
+    }
+  });
+
   it('keeps the title first when a mixed-language card has a keyboard tooltip', async () => {
     const result = page([post('ru'), post('uz', { language: 'uz' })]);
     query().mockResolvedValue(

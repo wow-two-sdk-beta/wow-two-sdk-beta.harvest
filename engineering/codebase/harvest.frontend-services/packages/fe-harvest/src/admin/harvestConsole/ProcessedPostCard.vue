@@ -165,7 +165,12 @@ const LineGlyphs: Record<string, GlyphName | 'place'> = {
           </HarvestPill>
         </li>
       </ul>
-      <div class="z-10 grid min-w-0 gap-0.5">
+      <div class="relative isolate grid min-w-0 gap-0.5">
+        <div
+          v-if="image"
+          class="pointer-events-none absolute -inset-x-4 -top-8 -bottom-4 -z-10 bg-gradient-to-t from-black/80 via-black/45 to-transparent backdrop-blur-xl [-webkit-mask-image:linear-gradient(to_top,black_calc(100%_-_2rem),transparent)] [mask-image:linear-gradient(to_top,black_calc(100%_-_2rem),transparent)]"
+          aria-hidden="true"
+        ></div>
         <ConsoleLink :to="place" class="line-clamp-2 text-start text-[15px] leading-snug font-semibold hover:underline">
           {{ props.post.title }}
         </ConsoleLink>
@@ -181,11 +186,6 @@ const LineGlyphs: Record<string, GlyphName | 'place'> = {
           :on-image="!!image"
         />
       </div>
-      <div
-        v-if="image"
-        class="pointer-events-none absolute inset-x-0 bottom-0 -z-10 h-3/5 bg-gradient-to-t from-black/80 via-black/45 to-transparent backdrop-blur-xl [-webkit-mask-image:linear-gradient(to_top,black_50%,transparent)] [mask-image:linear-gradient(to_top,black_50%,transparent)]"
-        aria-hidden="true"
-      ></div>
     </header>
 
     <div class="grid gap-3 p-4">
