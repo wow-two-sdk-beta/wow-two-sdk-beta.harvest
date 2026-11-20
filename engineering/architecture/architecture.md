@@ -9,7 +9,7 @@ lanes inside the module.
 product Domain / Application ──► Abstractions (contract: registry broker, step and capability seams, envelope)
 product composition root ──► Module (Form 1)  or  Client (Forms 2/3)
 service/HarvestSources.Api ──► Hosting ──► Module ──► PostgreSQL (harvest_ tables, migration set harvest)
-                           ──► sources/Module ──► Ocharo: Afisha, Anons, Caex, Craftfair, Uzexpocentre
+                           ──► sources/Module ──► Ocharo: Afisha, Anons, Caex, Craftfair, Uzexpocentre, Telegram
                                               ──► Marketplace: Olx
                            ──► sources/Instagram (opt-in) · sources/Integrations (opt-in: leased routes, supplied sessions, solver client)
 Client ──HTTP + token or X-Api-Key──► service/HarvestSources.Api
@@ -28,7 +28,7 @@ Client ──HTTP + token or X-Api-Key──► service/HarvestSources.Api
 | `packages/Client` | Forms 2/3 over the service's HTTP API, authenticated by a service token or an API key |
 | `packages/Hosting` | shared ASP.NET startup, access policies and HTTP controllers both hosts compose |
 | `packages/Testing` | registry, run, post, delivery and entity-read fakes and their shared conformance suites |
-| `sources/{Afisha,Anons,Caex,Craftfair,Olx,Uzexpocentre}` | one adapter and capture reader per named source over `Abstractions` and AngleSharp; no network I/O |
+| `sources/{Afisha,Anons,Caex,Craftfair,Olx,Telegram,Uzexpocentre}` | one adapter and capture reader per named source over `Abstractions` and AngleSharp; no network I/O |
 | `sources/Instagram` · `sources/Integrations` | opt-in Business Discovery client; proxy/IP lease, supplied-session and 2Captcha clients; disabled by default |
 | `sources/Module` | composition over `packages/Module`: the Ocharo registry, provisioner and `ocharo-fashion-v1` and `ocharo-relevance-v1` filters; the marketplace (OLX) |
 | `service/HarvestSources.Api` | the one host, deployed and booted by the E2E and Conformance tiers: Hosting, the source composition, the Ocharo routes and the `ocharo` host verb |

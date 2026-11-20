@@ -5,6 +5,7 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Caex;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Instagram;
+using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Telegram;
 
 namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Ocharo;
 
@@ -26,6 +27,7 @@ public sealed partial record OcharoSourceRegistry
         new("generic-structured", "Generic structured page", 60, SourceFamily.Structured, "web-direct"),
         new("generic-site", "Generic site", 60, SourceFamily.Site, "web-direct"),
         new(InstagramSourceAdapter.AdapterKey, "Instagram", 80, SourceFamily.Instagram, "none"),
+        new(TelegramSourceAdapter.AdapterKey, "Telegram", 80, SourceFamily.Telegram, "none", MaxPages: TelegramSourceAdapter.MaxPagesPerRun),
     ];
 
     /// <summary>The registry format version.</summary>
@@ -110,12 +112,40 @@ public sealed partial record OcharoSourceRegistry
                         || (channel.Mode == "provider") != (profile.Family == SourceFamily.Instagram)
                         || (profile.Family == SourceFamily.Instagram && (string.IsNullOrWhiteSpace(channel.DisplayName)
                             || !InstagramPublishers.TryReadProfile(channel.PipelineUrl, out _, out _)))
+                        || (profile.Family == SourceFamily.Telegram && !TelegramChannels.TryReadSeed(channel.PipelineUrl, out _))
                         || channel.Setup is not ("default" or "selected")
                         || !PublicUrl(channel.PipelineUrl, requireHttps: true)
                         || !seeds.Add(new Uri(channel.PipelineUrl).AbsoluteUri)))
                     || (!supported && (channel.AdapterKey is not null || channel.Seed is not null || channel.Setup is not null)))
                     throw new InvalidOperationException($"Channel '{group.Id}/{channel.Id}' is invalid.");
             }
+        }
+    }
+
+    /// <summary>Names the handle the source of a channel's seed carries: a site's host, an Instagram account's username, or a
+    /// Telegram channel's <c>tg:{username}</c>.</summary>
+    /// <param name="family">The channel profile's source family.</param>
+    /// <param name="seed">The channel's pipeline URL.</param>
+    /// <param name="handle">The handle when the seed is a valid address for the family.</param>
+    internal static bool TryReadHandle(SourceFamily family, string seed, out string handle)
+    {
+        handle = string.Empty;
+        string username;
+        switch (family)
+        {
+            case SourceFamily.Instagram:
+                if (!InstagramPublishers.TryReadProfile(seed, out username, out _))
+                    return false;
+                handle = username;
+                return true;
+            case SourceFamily.Telegram:
+                if (!TelegramChannels.TryReadSeed(seed, out username))
+                    return false;
+                handle = TelegramChannels.Handle(username);
+                return true;
+            default:
+                handle = new Uri(seed).IdnHost;
+                return true;
         }
     }
 

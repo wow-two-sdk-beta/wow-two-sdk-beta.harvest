@@ -52,7 +52,7 @@
 | `packages/Client` | Forms 2/3: the broker over the service's HTTP API, `AddHarvestClient()` |
 | `packages/Testing` | the fakes (`FakeRegistrationBroker`, `FakeEntitiesBroker`, …) and the conformance suites |
 | `packages/Hosting` | shared startup, access policies and HTTP controllers both hosts compose |
-| `sources/{Afisha,Anons,Caex,Craftfair,Domtut,Olx,Uzexpocentre}` | named source readers: adapter, capture reader, no network I/O |
+| `sources/{Afisha,Anons,Caex,Craftfair,Domtut,Olx,Telegram,Uzexpocentre}` | named source readers: adapter, capture reader, no network I/O |
 | `sources/Instagram` | opt-in Business Discovery client and source broker, disabled by default |
 | `sources/Integrations` | opt-in proxy/IP lease, supplied-session and CAPTCHA clients, disabled by default |
 | `sources/Module` | source composition: the Ocharo registry, preset, provisioner and `ocharo-fashion-v1` and `ocharo-relevance-v1` filters; the marketplace (OLX, Domtut), its profiles and provisioner |

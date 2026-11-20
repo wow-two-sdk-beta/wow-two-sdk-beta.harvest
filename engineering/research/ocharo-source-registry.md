@@ -20,13 +20,13 @@ event index. A publisher can have several channels; shared social or government 
 | [Idem](https://idem.uz/c/exhibition/) and ticket sellers | Idem supplies dated discovery and references to independent upstreams. Ticket pages can supply visitor admission and price; add a reader only if it adds distinct coverage. | Aggregation never transfers authority or schedules. Seller access needs the organizer. |
 
 A `harvest` channel reaches its collector through its `adapterKey`, one of the profiles the host routes to: the five
-named readers above, Instagram's opt-in provider route and three generic routes over the generic readers
-(`packages/Module/Readers/readers.md`), each at authority 60: `generic-feed` (RSS, Atom, ICS; no deletion check),
-`generic-structured` (pages with JSON-LD `Event` data) and `generic-site` (a sitemap), the last two with the daily
-`web-direct` check. A generic channel needs no new reader but follows the same rules: an owned channel, a unique
-HTTPS seed and `setup` `default` or `selected`; Wave 1 (below) switched 25 channels to them. A source reaches its reader
-by its family, so a generic route on a host a named reader serves runs that named reader. Every profile captures on the
-cron `0 1,7,13,19 * * *` in `Asia/Tashkent`.
+named readers above, Instagram's opt-in provider route, the Telegram preview route (Wave 2, below) and three generic
+routes over the generic readers (`packages/Module/Readers/readers.md`), each at authority 60: `generic-feed` (RSS, Atom,
+ICS; no deletion check), `generic-structured` (pages with JSON-LD `Event` data) and `generic-site` (a sitemap), the last
+two with the daily `web-direct` check. A generic channel needs no new reader but follows the same rules: an owned
+channel, a unique HTTPS seed and `setup` `default` or `selected`; Wave 1 (below) switched 25 channels to them. A source
+reaches its reader by its family, so a generic route on a host a named reader serves runs that named reader. Every
+profile captures on the cron `0 1,7,13,19 * * *` in `Asia/Tashkent`.
 
 ### Wave 1: generic routes (2026-11-21)
 
@@ -82,6 +82,38 @@ with dated items (6 RSS, 1 iCalendar). A fixture parse and a feed read are no li
   (Afisha's reader owns that host), and the newsrooms `uzdaily`, `kabar`, `yuz`, `dunyo`, `namangan-today` and
   `tashkent-city` (whole sites; sections only, none confirmed).
 
+### Wave 2: Telegram channels (2026-11-21)
+
+10 channels take the `telegram-preview` route (`sources/Telegram/telegram.md`) with `mode` `harvest` and `setup`
+`default`. The probe ledger of 2026-11-21 routed 14 channels to it; every one answered its `t.me/s/{username}` preview
+with dated messages, and only an `owned` channel passes the registry check. One source per channel (handle
+`tg:{username}`, authority 80), every channel on the shared host key `t.me`, so they queue through one lane: 10 seconds
+between requests, `MaxPages` 3 a run, the newest page first.
+
+| Channel | Pipeline seed |
+|---|---|
+| `uz-tourism/committee-telegram` | `https://t.me/s/uzbektourismofficial` |
+| `iteca-uz/organizer-telegram` | `https://t.me/s/iteca` |
+| `arts-academy/academy-telegram` | `https://t.me/s/artacademyuz` |
+| `qashqadaryo-region/primary` | `https://t.me/s/kashkadaryo_travel` |
+| `navoi-tourism/primary` | `https://t.me/s/navoitourism` |
+| `tashkent-city/primary` | `https://t.me/s/visittashkent` |
+| `goethe-uz/primary` | `https://t.me/s/goetheinstituttaschkent` |
+| `twig/primary` | `https://t.me/s/twig2018` |
+| `biexpo/organizer-telegram` | `https://t.me/s/biexpo4you` |
+| `glamour-avenue/official-telegram` | `https://t.me/s/glamour_avenue` |
+
+- Left as they were, because only an `owned` channel harvests and these four are `related`:
+  `fergana-region/regional-tourism-updates`, `khorezm-region/regional-tourism-updates`,
+  `bukhara-region/regional-tourism-updates`, `namangan-region/regional-tourism-updates`; they stay `manual`.
+- Left as they were, the ledger having routed them `manual`: `hunarmand/telegram-announcements` (the preview redirects to
+  the channel page, with no dated message widgets) and `caex/venue-telegram` and `human-house/gallery-telegram` (the body
+  timed out).
+- `glamour-avenue/official-telegram` cites the channel page; its seed is the preview page. `twig/primary` (latest dated
+  message 2023-09-20) and `biexpo/organizer-telegram` (2026-11-10) are dated but quiet, so they may add little.
+- Posts are classified like every other source's: the publication time is the post's, never an event date. No live
+  capture ran, and `t.me/robots.txt` answered 404 on 2026-11-21, which means no rules.
+
 Other channels have a proposed method and a verification note in the registry. A new reader needs a readable public route,
 stable IDs, date/eligibility evidence, scoped destinations and tests before its mode moves to `harvest`. Reference pages,
 archived editions, application forms, and unverified social feeds never become fetch seeds by being linked.
@@ -89,8 +121,8 @@ archived editions, application forms, and unverified social feeds never become f
 `GET /api/ocharo/sources/registry` returns the complete inventory to a Harvest operator.
 `POST /api/ocharo/sources/setup` with `{"groupIds":["caex"],"enableSchedules":false}` returns the stable source,
 pipeline and subscription IDs. Setup makes no external fetch. Run the returned pipeline through Harvest and pull its
-`wow2.event.v1` deliveries for review. The default setup provisions the five named website scopes and the 25 Wave 1
-channels (30 pipelines); CAEx requires explicit selection. Teplo's two provider channels require `groupIds: ["teplo"]` and `includeInstagram: true`; the
+`wow2.event.v1` deliveries for review. The default setup provisions the five named website scopes, the 25 Wave 1
+channels and the 10 Wave 2 Telegram channels (40 pipelines); CAEx requires explicit selection. Teplo's two provider channels require `groupIds: ["teplo"]` and `includeInstagram: true`; the
 provider still needs configuration and publisher access, and setup keeps its schedules disabled.
 
 The registry describes collection. Harvest retains source observations and review candidates. Cross-publisher edition

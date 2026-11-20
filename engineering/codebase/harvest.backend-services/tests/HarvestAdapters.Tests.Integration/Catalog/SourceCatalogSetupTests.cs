@@ -36,7 +36,7 @@ public sealed class SourceCatalogSetupTests
         (await host.ScalarAsync<string>("SELECT catalog_key FROM harvest_sources WHERE handle='www.afisha.uz'")).Should().Be("ocharo.afisha");
         (await host.ScalarAsync<long>("SELECT count(*) FROM harvest_catalog_sources WHERE turned_on AND changed_by='setup'"))
             .Should().Be(setup.Sources.Select(row => row.GroupId).Distinct().Count(), "one on record per entry setup set up");
-        (await host.ScalarAsync<long>("SELECT count(*) FROM harvest_catalog_sources")).Should().BeLessThan(27, "an entry nothing of which setup ran has no record");
+        (await host.ScalarAsync<long>("SELECT count(*) FROM harvest_catalog_sources")).Should().BeLessThan(36, "an entry nothing of which setup ran has no record");
         var records = await host.ScalarAsync<string>("SELECT string_agg(key || changed_at::text, ',' ORDER BY key) FROM harvest_catalog_sources");
 
         Value(await host.Scoped<OcharoSourceProvisioner>().EnsureAsync());
@@ -103,7 +103,7 @@ public sealed class SourceCatalogSetupTests
     {
         await using var host = await StartAsync();
         var broker = host.Scoped<SourceCatalogBroker>();
-        (await broker.ListAsync()).Should().HaveCount(27 + 4).And.OnlyContain(entry => entry.State == CatalogState.New, "a fresh instance starts with every entry new");
+        (await broker.ListAsync()).Should().HaveCount(36 + 4).And.OnlyContain(entry => entry.State == CatalogState.New, "a fresh instance starts with every entry new");
 
         var on = Value(await broker.SwitchAsync("ocharo.afisha", true, "subject-1"));
 

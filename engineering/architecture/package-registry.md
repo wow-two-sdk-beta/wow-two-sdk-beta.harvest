@@ -29,6 +29,7 @@ Not packable (`Directory.Build.props` by path: XML docs and warnings as errors, 
 | `HarvestAdapters.Olx` | saved-filter catalogs, stable ad identities, listing fields and availability evidence | Abstractions, AngleSharp |
 | `HarvestAdapters.BirBir` | apartment rental discovery, stable ad identity and typed listing fields | Abstractions, AngleSharp |
 | `HarvestAdapters.Joymee` | rental catalog discovery, JSON detail captures and typed listing fields | Abstractions |
+| `HarvestAdapters.Telegram` | public channel preview pages, one capture per message with its permalink and publication time | Abstractions, AngleSharp |
 | `HarvestAdapters.Instagram` | persisted publisher validation, capture broker and pipeline mapping over the reusable core Instagram client | Abstractions, core |
 | `HarvestAdapters.Integrations` | proxy/IP lease, supplied sessions, 2Captcha client | Abstractions, core |
 | `HarvestAdapters.Module` | Ocharo registry, source composition, filtering and explicit setup; the marketplace | the source projects, Module, core |

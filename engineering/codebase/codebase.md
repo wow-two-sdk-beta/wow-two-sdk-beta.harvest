@@ -20,7 +20,7 @@ The code lives in `harvest.backend-services/` (.NET) and `harvest.frontend-servi
   passes, their status and eval sets from stored posts), `Budget/` (the AI spend guard over the inference log), each with
   its lead doc. `Client/Entities/`,
   `Hosting/Entities/` and `Testing/Entities/` hold the entity reads' HTTP form, routes, fake and conformance suite.
-- `sources/` holds the named source readers `Afisha`, `Anons`, `Caex`, `Craftfair`, `Olx`, `Uzexpocentre`, the opt-in
+- `sources/` holds the named source readers `Afisha`, `Anons`, `Caex`, `Craftfair`, `Olx`, `Telegram`, `Uzexpocentre`, the opt-in
   `Instagram` and `Integrations` clients, and `Module` (the Ocharo registry `Ocharo/ocharo-event-sources.json`,
   provisioner and filter; `Marketplace/` for OLX). Not packable: `Directory.Build.props` gives them XML docs and
   warnings as errors, and they ship only inside the image. Each folder's lead doc holds the source's reading rules.

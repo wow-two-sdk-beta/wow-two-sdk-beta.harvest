@@ -142,7 +142,7 @@ runs on the target's own settings through Wheelhouse Run, with no listener and n
   pipelines (capture on the cron `0 1,7,13,19 * * *` in `Asia/Tashkent`, four windows a day, plus a 24 h check where
   the source's check policy is `web-direct`; Instagram capture stays off), keeping the rows a pipeline holds, such as
   a tuned interval or the old fixed 6 h capture, and adding the ones it lacks. Every profile takes that capture
-  cadence, the generic routes (`generic-feed`, `generic-structured`, `generic-site`) included.
+  cadence, the generic routes (`generic-feed`, `generic-structured`, `generic-site`) and `telegram-preview` included.
 - `--model-processing off|manual|auto` sets that model-processing mode (`engineering/development/ai-operations.md`) on
   every selected source: a new source registers with it, an existing one is updated. Without the option a new source
   registers `off` and an existing one keeps whatever mode it has, so setup never refuses a source an operator opened

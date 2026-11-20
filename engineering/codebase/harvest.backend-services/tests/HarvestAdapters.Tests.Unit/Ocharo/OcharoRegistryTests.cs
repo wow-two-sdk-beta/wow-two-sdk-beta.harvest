@@ -9,6 +9,7 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Testing.Delivery;
 using WoW.Two.Sdk.Beta.Be.Harvest.Testing.Posts;
 using WoW.Two.Sdk.Beta.Be.Harvest.Testing.Registration;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Ocharo;
+using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Telegram;
 
 namespace HarvestAdapters.Tests.Unit.Ocharo;
 
@@ -46,7 +47,7 @@ public sealed class OcharoRegistryTests
 
         registry.Groups.Should().HaveCount(100);
         registry.Groups.SelectMany(group => group.Channels).Count(channel => channel.Mode == "harvest")
-            .Should().Be(31, "the 6 named readers' channels and the 25 Wave 1 generic channels");
+            .Should().Be(41, "the 6 named readers' channels, the 25 Wave 1 generic channels and the 10 Wave 2 Telegram channels");
     }
 
     [Theory]
@@ -83,7 +84,7 @@ public sealed class OcharoRegistryTests
 
         routes.Select(route => route.Profile.Key).Distinct().Should().BeEquivalentTo(
             "afisha-uz", "anons-uz", "craftfair-uz", "uzexpocentre-uz", "caex-uz", "generic-feed", "generic-structured",
-            "generic-site", "instagram-business-discovery");
+            "generic-site", "instagram-business-discovery", "telegram-preview");
         routes.Should().OnlyContain(route => route.Profile.Cadence == OcharoSourceRegistry.CaptureCadence.Default);
         var cadence = OcharoSourceRegistry.CaptureCadence.Default;
         (cadence.Mode, cadence.Cron, cadence.Every, cadence.TimeZone).Should().Be((ScheduleMode.Cron, "0 1,7,13,19 * * *", (TimeSpan?)null, "Asia/Tashkent"));
@@ -127,7 +128,7 @@ public sealed class OcharoRegistryTests
     }
 
     [Theory]
-    [InlineData("iteca-uz")]
+    [InlineData("ticketon")]
     [InlineData("teplo")]
     [InlineData("unknown")]
     public async Task Invalid_or_unsupported_selection_fails_before_writing(string groupId)
@@ -344,7 +345,9 @@ public sealed class OcharoRegistryTests
             || related.Contains($"{row.Group}/{row.Channel.Id}") || row.Group == "glamour-avenue" && row.Channel.Id == "primary").ToArray();
 
         leftOut.Should().HaveCountGreaterThan(related.Length + newsrooms.Length);
-        leftOut.Should().OnlyContain(row => row.Channel.Mode != "harvest" && row.Channel.AdapterKey == null && row.Channel.Setup == null);
+        // Wave 2 takes the one Telegram channel of the tashkent-city newsroom group; the rest of the group stays out.
+        leftOut.Where(row => row.Channel.AdapterKey != TelegramSourceAdapter.AdapterKey).Should()
+            .OnlyContain(row => row.Channel.Mode != "harvest" && row.Channel.AdapterKey == null && row.Channel.Setup == null);
         channels.Where(row => related.Contains($"{row.Group}/{row.Channel.Id}")).Should()
             .HaveCount(related.Length).And.OnlyContain(row => row.Channel.Relationship == "related");
     }
@@ -369,6 +372,129 @@ public sealed class OcharoRegistryTests
                 .Should().Be((ScheduleMode.Cron, "0 1,7,13,19 * * *", "Asia/Tashkent", true));
             pipeline.Schedules.Count(row => row.Kind == WorkKind.Check).Should().Be(route.SourceKey == "generic-feed" ? 0 : 1);
         }
+    }
+
+    /// <summary>Wave 2: each owned registry channel the 2026-11-21 probes routed to the Telegram preview reader, and its username.
+    /// A seed is the preview page of the same channel, whatever page the registry cites.</summary>
+    private static readonly (string Channel, string Username)[] Wave2 =
+    [
+        ("uz-tourism/committee-telegram", "uzbektourismofficial"),
+        ("iteca-uz/organizer-telegram", "iteca"),
+        ("arts-academy/academy-telegram", "artacademyuz"),
+        ("qashqadaryo-region/primary", "kashkadaryo_travel"),
+        ("navoi-tourism/primary", "navoitourism"),
+        ("tashkent-city/primary", "visittashkent"),
+        ("goethe-uz/primary", "goetheinstituttaschkent"),
+        ("twig/primary", "twig2018"),
+        ("biexpo/organizer-telegram", "biexpo4you"),
+        ("glamour-avenue/official-telegram", "glamour_avenue"),
+    ];
+
+    /// <summary>The probes' other four Telegram routes: channels a publisher does not own, which the registry check keeps out of harvest.</summary>
+    private static readonly string[] Wave2Related =
+    [
+        "fergana-region/regional-tourism-updates", "khorezm-region/regional-tourism-updates",
+        "bukhara-region/regional-tourism-updates", "namangan-region/regional-tourism-updates",
+    ];
+
+    private static IEnumerable<OcharoSourceRegistry.CollectionRoute> TelegramRoutes() => OcharoSourceRegistry.Current
+        .Routes(includeInstagram: false).Where(route => route.Profile.Key == TelegramSourceAdapter.AdapterKey);
+
+    [Fact]
+    public void Wave_2_routes_each_owned_telegram_channel_to_the_preview_reader_on_its_public_preview_page()
+    {
+        var routes = TelegramRoutes().ToArray();
+
+        routes.Select(route => $"{route.Group.Id}/{route.Channel.Id} {route.Channel.PipelineUrl}").Should()
+            .BeEquivalentTo(Wave2.Select(row => $"{row.Channel} https://t.me/s/{row.Username}"));
+        routes.Should().OnlyContain(route => route.Channel.Mode == "harvest" && route.Channel.Method == "harvest"
+            && route.Channel.Setup == "default" && route.Channel.Relationship == "owned"
+            && (route.Channel.Note ?? string.Empty).Contains("Wave 2, reviewed 2026-11-21: telegram-preview")
+            && route.Profile.Family == SourceFamily.Telegram && route.Profile.Authority == 80 && route.Profile.CheckPolicy == "none"
+            && route.Profile.MaxPages == 3 && route.Profile.Cadence == OcharoSourceRegistry.CaptureCadence.Default);
+        routes.Select(route => route.Channel.PipelineUrl).Should().OnlyHaveUniqueItems();
+        foreach (var route in routes)
+        {
+            TelegramChannels.TryReadSeed(route.Channel.PipelineUrl, out string username).Should().BeTrue();
+            OcharoSourceRegistry.TryReadHandle(SourceFamily.Telegram, route.Channel.PipelineUrl, out string handle).Should().BeTrue();
+            handle.Should().Be("tg:" + username);
+        }
+    }
+
+    [Fact]
+    public void Wave_2_leaves_the_related_channels_and_the_ones_the_probes_could_not_read_as_they_were()
+    {
+        var channels = OcharoSourceRegistry.Current.Groups
+            .SelectMany(group => group.Channels.Select(channel => (Key: $"{group.Id}/{channel.Id}", Channel: channel)))
+            .ToDictionary(row => row.Key, row => row.Channel);
+        // The preview of the first redirects to its channel page; the body of the other two timed out.
+        string[] unreadable = ["hunarmand/telegram-announcements", "caex/venue-telegram", "human-house/gallery-telegram"];
+
+        foreach (string key in Wave2Related.Concat(unreadable))
+            (channels[key].Mode, channels[key].Method, channels[key].AdapterKey, channels[key].Setup, channels[key].Seed)
+                .Should().Be(("manual", "manual-social", (string?)null, (string?)null, (string?)null), key);
+        foreach (string key in Wave2Related)
+            channels[key].Relationship.Should().Be("related", "only an owned channel harvests");
+        Wave2.Should().HaveCount(10);
+        (Wave2.Length + Wave2Related.Length).Should().Be(14, "the probe ledger routed 14 channels to telegram-preview");
+    }
+
+    [Fact]
+    public void A_related_or_misspelled_telegram_channel_fails_the_registry_check()
+    {
+        var invalid = new Dictionary<string, Func<OcharoSourceRegistry>>
+        {
+            ["not owned"] = () => Registry(Channel("news", "telegram-preview", "https://t.me/s/demo_channel", relationship: "related")),
+            ["not a preview page"] = () => Registry(Channel("news", "telegram-preview", "https://t.me/demo_channel")),
+            ["a message page"] = () => Registry(Channel("news", "telegram-preview", "https://t.me/s/demo_channel/101")),
+            ["a page cursor"] = () => Registry(Channel("news", "telegram-preview", "https://t.me/s/demo_channel?before=101")),
+            ["another host"] = () => Registry(Channel("news", "telegram-preview", "https://telegram.example.test/s/demo_channel")),
+            ["repeated seed"] = () => Registry(Channel("a", "telegram-preview", "https://t.me/s/demo_channel"),
+                Channel("b", "telegram-preview", "https://t.me/s/demo_channel")),
+        };
+
+        Registry(Channel("news", "telegram-preview", "https://t.me/s/demo_channel")).Invoking(registry => registry.Validate()).Should().NotThrow();
+        foreach (var (reason, build) in invalid)
+            build().Invoking(registry => registry.Validate()).Should().Throw<InvalidOperationException>(reason);
+    }
+
+    [Fact]
+    public async Task Default_setup_provisions_each_Wave_2_channel_as_its_own_telegram_source_on_the_shared_lane()
+    {
+        var registry = new FakeRegistrationBroker();
+        var provisioner = new OcharoSourceProvisioner(registry, Delivery(registry));
+
+        var setup = Value(await provisioner.EnsureAsync(enableSchedules: true));
+        var repeat = Value(await provisioner.EnsureAsync(enableSchedules: true));
+
+        repeat.Should().BeEquivalentTo(setup);
+        var wave = setup.Sources.Where(route => route.SourceKey == TelegramSourceAdapter.AdapterKey).ToArray();
+        wave.Select(route => $"{route.GroupId}/{route.ChannelId} {route.Seed}")
+            .Should().BeEquivalentTo(Wave2.Select(row => $"{row.Channel} https://t.me/s/{row.Username}"));
+        wave.Select(route => route.SourceId).Should().OnlyHaveUniqueItems();
+        var sources = Value(await registry.ListSourcesAsync(setup.ContainerId)).Where(source => source.Family == SourceFamily.Telegram).ToArray();
+        sources.Select(source => source.Handle).Should().BeEquivalentTo(Wave2.Select(row => "tg:" + row.Username));
+        sources.Should().OnlyContain(source => source.ExternalRef == null && source.Posture == SourcePosture.OwnFetch
+            && source.Completeness == SourceCompleteness.Window && source.Coverage == SourceCoverage.Filtered
+            && source.RobotsPolicy == RobotsPolicy.Obey && !source.PoolShareable && source.Authority == 80 && source.CheckPolicy == "none");
+        sources.Select(source => source.Name).Should().BeEquivalentTo(Wave2.Select(row => "@" + row.Username));
+        var adapter = new TelegramSourceAdapter();
+        sources.Should().OnlyContain(source => adapter.Serves(source));
+        foreach (var route in wave)
+        {
+            var pipeline = Value(await registry.GetPipelineAsync(route.PipelineId));
+            pipeline.Scope.Url.Should().Be(route.Seed);
+            pipeline.Limits.MaxPages.Should().Be(3);
+            pipeline.Name.Should().StartWith("Telegram · @").And.EndWith(" · Ocharo");
+            var capture = pipeline.Schedules.Should().ContainSingle("a preview has no deletion check").Subject;
+            (capture.Kind, capture.Mode, capture.Cron, capture.TimeZone, capture.Enabled)
+                .Should().Be((WorkKind.Capture, ScheduleMode.Cron, "0 1,7,13,19 * * *", "Asia/Tashkent", true));
+            adapter.ValidatePipeline(sources.Single(source => source.Id == route.SourceId), pipeline.Scope, pipeline.Limits)
+                .IsSuccess.Should().BeTrue("the saved pipeline passes the reader's own check");
+        }
+        var status = Value(await provisioner.ReadAsync());
+        status.Channels.Where(channel => wave.Any(route => route.ChannelId == channel.ChannelId && route.GroupId == channel.GroupId))
+            .Should().HaveCount(10).And.OnlyContain(channel => channel.Pipeline != null);
     }
 
     private static OcharoSourceChannel Channel(string id, string adapterKey, string url, string relationship = "owned",

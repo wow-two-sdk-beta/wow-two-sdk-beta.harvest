@@ -18,6 +18,7 @@
     <ProjectReference Include="..\BirBir\WoW.Two.Sdk.Beta.Be.HarvestAdapters.BirBir.csproj" />
     <ProjectReference Include="..\Caex\WoW.Two.Sdk.Beta.Be.HarvestAdapters.Caex.csproj" />
     <ProjectReference Include="..\Craftfair\WoW.Two.Sdk.Beta.Be.HarvestAdapters.Craftfair.csproj" />
+    <ProjectReference Include="..\Telegram\WoW.Two.Sdk.Beta.Be.HarvestAdapters.Telegram.csproj" />
     <ProjectReference Include="..\Uzexpocentre\WoW.Two.Sdk.Beta.Be.HarvestAdapters.Uzexpocentre.csproj" />
     <ProjectReference Include="..\Integrations\WoW.Two.Sdk.Beta.Be.HarvestAdapters.Integrations.csproj" />
     <ProjectReference Include="..\Instagram\WoW.Two.Sdk.Beta.Be.HarvestAdapters.Instagram.csproj" />

@@ -2,14 +2,13 @@ using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
 using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
-using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Instagram;
 
 namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Ocharo;
 
 /// <summary>Offers the Ocharo registry's publishers to the instance's source catalog: one entry per publisher group with at least one
 /// channel in <c>harvest</c> or <c>provider</c> mode, keyed <c>ocharo.{groupId}</c>.</summary>
 /// <remarks>A group with no collectible channel is no entry, since nothing of it could run. An entry's sources land in the owning
-/// tenant's <c>ocharo-events</c> container, as <c>ocharo setup</c> puts them, one per host (an Instagram channel's host is its username).
+/// tenant's <c>ocharo-events</c> container, as <c>ocharo setup</c> puts them, one per host (an Instagram channel's host is its username, a Telegram channel's its <c>tg:{username}</c>).
 /// Listing the entries performs no I/O.</remarks>
 /// <param name="registry">The registry the entry's sources are found in.</param>
 /// <param name="provisioner">The setup a turned-on <c>new</c> entry runs.</param>
@@ -83,7 +82,8 @@ public sealed class OcharoSourceCatalog(IRegistrationBroker registry, OcharoSour
         return entries;
     }
 
-    /// <summary>Names the host a channel's source carries: the seed's host, or an Instagram account's username.</summary>
+    /// <summary>Names the host a channel's source carries: the seed's host, an Instagram account's username, or a Telegram
+    /// channel's <c>tg:{username}</c>.</summary>
     private static string HandleOf(SourceFamily family, string seed) =>
-        family == SourceFamily.Instagram && InstagramPublishers.TryReadProfile(seed, out string username, out _) ? username : new Uri(seed).IdnHost;
+        OcharoSourceRegistry.TryReadHandle(family, seed, out string handle) ? handle : new Uri(seed).IdnHost;
 }

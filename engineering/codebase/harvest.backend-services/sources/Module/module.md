@@ -1,6 +1,7 @@
 # HarvestAdapters.Module
 
-Source composition over Harvest.Module: Afisha, ANONS, CAEx, Craftfair/Hunarmand, Uzexpocentre, the registry's three
+Source composition over Harvest.Module: Afisha, ANONS, CAEx, Craftfair/Hunarmand, Uzexpocentre, the Telegram preview
+reader (`telegram-preview`, one source per channel, handle `tg:{username}`), the registry's three
 generic routes (`generic-feed`, `generic-structured`, `generic-site`, over the generic readers), a capture cadence per
 profile (cron `0 1,7,13,19 * * *` in `Asia/Tashkent` unless a profile names its own), the
 `ocharo-fashion-v1` delivery filter (rules), the `ocharo-relevance-v1` filter (rules plus a `relevant` tag verdict at 0.5

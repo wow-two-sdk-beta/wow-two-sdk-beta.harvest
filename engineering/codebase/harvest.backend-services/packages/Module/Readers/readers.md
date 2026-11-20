@@ -23,6 +23,9 @@ unpaced `HttpClient`.
 - every fetch outcome reaches the engine; only direct 404/410 responses emit strong negative evidence
 - cached 304 bodies are reparsed, so a crash after the HTTP validator was saved cannot lose a capture
 - an empty JavaScript shell returns `renderRequired`; rendering remains an optional, unbound capability
+- a named reader composes through the same web broker ahead of these generic ones: `telegram-preview`
+  (`sources/Telegram/telegram.md`) reads a channel's `t.me/s/{username}` preview, one capture per message, and no generic
+  reader ever sees a `t.me` answer
 
 ## Format boundaries
 

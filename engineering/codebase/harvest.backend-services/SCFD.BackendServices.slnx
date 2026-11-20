@@ -18,6 +18,7 @@
     <Project Path="sources/Integrations/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Integrations.csproj" />
     <Project Path="sources/Module/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Module.csproj" />
     <Project Path="sources/Olx/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Olx.csproj" />
+    <Project Path="sources/Telegram/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Telegram.csproj" />
     <Project Path="sources/Uzexpocentre/WoW.Two.Sdk.Beta.Be.HarvestAdapters.Uzexpocentre.csproj" />
   </Folder>
   <Folder Name="/Services/">

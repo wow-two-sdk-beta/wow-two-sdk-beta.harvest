@@ -7,7 +7,6 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
 using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 using WoW.Two.Sdk.Beta.Be.Harvest.Tenants;
-using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Instagram;
 
 namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Ocharo;
 
@@ -103,18 +102,16 @@ public sealed class OcharoSourceProvisioner(IRegistrationBroker registry, IDeliv
                 string seed = channel.PipelineUrl;
                 var uri = new Uri(seed);
                 bool instagram = profile.Family == SourceFamily.Instagram;
-                string handle = uri.IdnHost;
-                if (instagram)
-                {
-                    if (!InstagramPublishers.TryReadProfile(seed, out handle, out _))
-                        return Invalid("An Instagram registry channel needs a public publisher profile URL.");
-                }
+                bool telegram = profile.Family == SourceFamily.Telegram;
+                if (!OcharoSourceRegistry.TryReadHandle(profile.Family, seed, out string handle))
+                    return Invalid(instagram ? "An Instagram registry channel needs a public publisher profile URL."
+                        : "A Telegram registry channel needs the public preview URL of one channel, https://t.me/s/{username}.");
                 SourceModel? source = sources.SingleOrDefault(item => item.Family == profile.Family && item.Handle == handle);
                 if (source is null)
                 {
                     source = Value(await registry.RegisterSourceAsync(new()
                     {
-                        ContainerId = container.Id, Family = profile.Family, Handle = handle, ExternalRef = instagram ? null : profile.Key,
+                        ContainerId = container.Id, Family = profile.Family, Handle = handle, ExternalRef = instagram || telegram ? null : profile.Key,
                         Coverage = SourceCoverage.Filtered, Completeness = SourceCompleteness.Window,
                         Posture = instagram ? SourcePosture.Official : SourcePosture.OwnFetch,
                         ModelProcessing = modelProcessing ?? ModelProcessingMode.Off, PoolShareable = false,
@@ -169,7 +166,8 @@ public sealed class OcharoSourceProvisioner(IRegistrationBroker registry, IDeliv
                     pipeline = Value(await registry.DeclarePipelineAsync(new()
                     {
                         ContainerId = container.Id, SourceId = source.Id, Scope = new() { Url = seed },
-                        Name = profile.Name + (instagram ? " · @" + uri.AbsolutePath.Trim('/') : "") + " · Ocharo",
+                        Name = profile.Name + (instagram ? " · @" + uri.AbsolutePath.Trim('/')
+                            : telegram ? " · @" + handle[SourceConstants.TelegramHandlePrefix.Length..] : "") + " · Ocharo",
                         Ai = AiMode.Off, Pinned = false, Schedules = schedules,
                         Limits = new() { MaxPages = profile.MaxPages, MaxItems = 150, MaxRequests = 180, MaxBytes = 30_000_000, MaxDuration = TimeSpan.FromMinutes(10), MaxProbes = 100 },
                     }, cancellationToken));
@@ -267,8 +265,8 @@ public sealed class OcharoSourceProvisioner(IRegistrationBroker registry, IDeliv
                 .Select(route =>
                 {
                     string seed = route.Channel.PipelineUrl;
-                    string handle = route.Profile.Family == SourceFamily.Instagram
-                        && InstagramPublishers.TryReadProfile(seed, out string username, out _) ? username : new Uri(seed).IdnHost;
+                    string handle = OcharoSourceRegistry.TryReadHandle(route.Profile.Family, seed, out string named)
+                        ? named : new Uri(seed).IdnHost;
                     SourceModel? source = sources.SingleOrDefault(item => item.Family == route.Profile.Family && item.Handle == handle);
                     return (route.Channel.Setup, Status: new OcharoChannelStatus(route.Group.Id, route.Channel.Id,
                         pipelines.FirstOrDefault(pipeline => pipeline.SourceId == source?.Id && pipeline.Scope.Url == seed)));
@@ -281,11 +279,13 @@ public sealed class OcharoSourceProvisioner(IRegistrationBroker registry, IDeliv
         catch (ProvisioningFailure failure) { return Result<OcharoStatus>.Fail(failure.Error); }
     }
 
-    /// <summary>Names a source as the console shows it: a site by its host without <c>www.</c>, any other family by its
-    /// handle.</summary>
+    /// <summary>Names a source as the console shows it: a site by its host without <c>www.</c>, a Telegram channel by its
+    /// <c>@username</c>, any other family by its handle.</summary>
     private static string DisplayName(SourceModel source) =>
         source.Family == SourceFamily.Site && source.Handle.StartsWith("www.", StringComparison.OrdinalIgnoreCase)
-            ? source.Handle[4..] : source.Handle;
+            ? source.Handle[4..]
+            : source.Family == SourceFamily.Telegram && source.Handle.StartsWith(SourceConstants.TelegramHandlePrefix, StringComparison.Ordinal)
+                ? "@" + source.Handle[SourceConstants.TelegramHandlePrefix.Length..] : source.Handle;
 
     private static T Value<T>(Result<T> result) where T : notnull => result switch
     {

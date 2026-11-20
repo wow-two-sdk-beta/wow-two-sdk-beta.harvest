@@ -61,8 +61,8 @@ public sealed class OcharoSourcesTests
         OcharoSetup first = Value(await provisioner.EnsureAsync());
         OcharoSetup second = Value(await provisioner.EnsureAsync());
         second.Should().BeEquivalentTo(first);
-        first.Sources.Should().HaveCount(30, "the five default named channels and the 25 Wave 1 generic channels");
-        first.Sources.Select(item => item.SourceId).Distinct().Should().HaveCount(29, "Afisha's two channels share a source");
+        first.Sources.Should().HaveCount(40, "the five default named channels, the 25 Wave 1 generic channels and the 10 Wave 2 Telegram channels");
+        first.Sources.Select(item => item.SourceId).Distinct().Should().HaveCount(39, "Afisha's two channels share a source");
         first.Sources[0].SourceKey.Should().Be("afisha-uz");
         var sources = Value(await registry.ListSourcesAsync(first.ContainerId));
         sources.Should().OnlyContain(source => !source.AiAllowed && !source.PoolShareable
@@ -71,7 +71,7 @@ public sealed class OcharoSourcesTests
         var pipelines = Value(await registry.ListPipelinesAsync(first.ContainerId));
         pipelines.Should().OnlyContain(pipeline => pipeline.Ai == AiMode.Off && pipeline.Schedules.All(schedule => !schedule.Enabled));
         var subscriptions = Value(await delivery.ListSubscriptionsAsync(first.TenantId));
-        subscriptions.Should().HaveCount(30).And.OnlyContain(item => item.FilterKey == OcharoFashionFilter.FilterKey
+        subscriptions.Should().HaveCount(40).And.OnlyContain(item => item.FilterKey == OcharoFashionFilter.FilterKey
             && !item.Context.ContainsKey("review"));
         registry.IssuedSecrets.Should().BeEmpty();
     }

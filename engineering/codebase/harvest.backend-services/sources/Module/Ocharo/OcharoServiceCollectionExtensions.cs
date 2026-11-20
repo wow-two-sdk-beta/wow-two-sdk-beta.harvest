@@ -7,6 +7,7 @@ using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Afisha;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Anons;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Caex;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Craftfair;
+using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Telegram;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Uzexpocentre;
 
 namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Ocharo;
@@ -24,6 +25,7 @@ public static class OcharoServiceCollectionExtensions
         services.AddHarvestWebBroker<CraftfairSourceAdapter, CraftfairCaptureReader>();
         services.AddHarvestWebBroker<CaexSourceAdapter, CaexCaptureReader>();
         services.AddHarvestWebBroker<UzexpocentreSourceAdapter, UzexpocentreCaptureReader>();
+        services.AddHarvestWebBroker<TelegramSourceAdapter, TelegramPreviewCaptureReader>();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IDeliveryPostFilter, OcharoFashionFilter>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IDeliveryPostFilter, OcharoRelevanceFilter>());
         services.TryAddScoped<OcharoSourceProvisioner>();

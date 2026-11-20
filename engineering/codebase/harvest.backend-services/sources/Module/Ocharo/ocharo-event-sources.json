@@ -246,10 +246,13 @@
           "role": "committee Telegram",
           "relationship": "owned",
           "primary": false,
-          "mode": "manual",
-          "method": "manual-social",
+          "mode": "harvest",
+          "method": "harvest",
           "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
-          "note": "Original notices and dated festival updates."
+          "note": "Original notices and dated festival updates. Wave 2, reviewed 2026-11-21: telegram-preview; seed is the channel's public web preview.",
+          "adapterKey": "telegram-preview",
+          "setup": "default",
+          "seed": "https://t.me/s/uzbektourismofficial"
         },
         {
           "id": "national-pr-centre-announcements",
@@ -501,10 +504,13 @@
           "role": "organizer Telegram",
           "relationship": "owned",
           "primary": false,
-          "mode": "manual",
-          "method": "manual-social",
+          "mode": "harvest",
+          "method": "harvest",
           "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
-          "note": "Cross-show confirmations and date changes."
+          "note": "Cross-show confirmations and date changes. Wave 2, reviewed 2026-11-21: telegram-preview; seed is the channel's public web preview.",
+          "adapterKey": "telegram-preview",
+          "setup": "default",
+          "seed": "https://t.me/s/iteca"
         },
         {
           "id": "organizer-enquiry-account",
@@ -1120,11 +1126,14 @@
           "role": "academy Telegram",
           "relationship": "owned",
           "primary": false,
-          "mode": "manual",
-          "method": "manual-social",
+          "mode": "harvest",
+          "method": "harvest",
           "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
           "checkState": "readable",
-          "note": "Calls and exhibition programmes."
+          "note": "Calls and exhibition programmes. Wave 2, reviewed 2026-11-21: telegram-preview; seed is the channel's public web preview.",
+          "adapterKey": "telegram-preview",
+          "setup": "default",
+          "seed": "https://t.me/s/artacademyuz"
         },
         {
           "id": "art-vernissage-platform",
@@ -1603,10 +1612,14 @@
           "role": "primary",
           "relationship": "owned",
           "primary": true,
-          "mode": "manual",
-          "method": "manual-social",
+          "mode": "harvest",
+          "method": "harvest",
           "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
-          "checkState": "readable"
+          "checkState": "readable",
+          "note": "Wave 2, reviewed 2026-11-21: telegram-preview; seed is the channel's public web preview.",
+          "adapterKey": "telegram-preview",
+          "setup": "default",
+          "seed": "https://t.me/s/kashkadaryo_travel"
         }
       ]
     },
@@ -1675,10 +1688,14 @@
           "role": "primary",
           "relationship": "owned",
           "primary": true,
-          "mode": "manual",
-          "method": "manual-social",
+          "mode": "harvest",
+          "method": "harvest",
           "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
-          "checkState": "readable"
+          "checkState": "readable",
+          "note": "Wave 2, reviewed 2026-11-21: telegram-preview; seed is the channel's public web preview.",
+          "adapterKey": "telegram-preview",
+          "setup": "default",
+          "seed": "https://t.me/s/navoitourism"
         }
       ]
     },
@@ -1723,10 +1740,14 @@
           "role": "primary",
           "relationship": "owned",
           "primary": true,
-          "mode": "manual",
-          "method": "manual-social",
+          "mode": "harvest",
+          "method": "harvest",
           "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
-          "checkState": "readable"
+          "checkState": "readable",
+          "note": "Wave 2, reviewed 2026-11-21: telegram-preview; seed is the channel's public web preview.",
+          "adapterKey": "telegram-preview",
+          "setup": "default",
+          "seed": "https://t.me/s/visittashkent"
         },
         {
           "id": "city-administration-news",
@@ -2073,10 +2094,14 @@
           "role": "primary",
           "relationship": "owned",
           "primary": true,
-          "mode": "manual",
-          "method": "manual-social",
+          "mode": "harvest",
+          "method": "harvest",
           "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
-          "checkState": "readable"
+          "checkState": "readable",
+          "note": "Wave 2, reviewed 2026-11-21: telegram-preview; seed is the channel's public web preview.",
+          "adapterKey": "telegram-preview",
+          "setup": "default",
+          "seed": "https://t.me/s/goetheinstituttaschkent"
         },
         {
           "id": "event-evidence",
@@ -2364,10 +2389,14 @@
           "role": "primary",
           "relationship": "owned",
           "primary": true,
-          "mode": "manual",
-          "method": "manual-social",
+          "mode": "harvest",
+          "method": "harvest",
           "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
-          "checkState": "readable"
+          "checkState": "readable",
+          "note": "Wave 2, reviewed 2026-11-21: telegram-preview; seed is the channel's public web preview.",
+          "adapterKey": "telegram-preview",
+          "setup": "default",
+          "seed": "https://t.me/s/twig2018"
         },
         {
           "id": "official-website",
@@ -2518,11 +2547,14 @@
           "role": "organizer Telegram",
           "relationship": "owned",
           "primary": false,
-          "mode": "manual",
-          "method": "manual-social",
+          "mode": "harvest",
+          "method": "harvest",
           "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
-          "note": "Organizer channel for venue or date changes.",
-          "eventFamily": "bishkek-fashion-textile"
+          "note": "Organizer channel for venue or date changes. Wave 2, reviewed 2026-11-21: telegram-preview; seed is the channel's public web preview.",
+          "eventFamily": "bishkek-fashion-textile",
+          "adapterKey": "telegram-preview",
+          "setup": "default",
+          "seed": "https://t.me/s/biexpo4you"
         }
       ]
     },
@@ -3078,11 +3110,14 @@
           "role": "official Telegram",
           "relationship": "owned",
           "primary": false,
-          "mode": "manual",
-          "method": "manual-social",
+          "mode": "harvest",
+          "method": "harvest",
           "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
-          "note": "Fashion presentation and retailer news.",
-          "eventFamily": "glamour-avenue-shows"
+          "note": "Fashion presentation and retailer news. Wave 2, reviewed 2026-11-21: telegram-preview; seed is the channel's public web preview. The cited URL is the channel page, not its preview.",
+          "eventFamily": "glamour-avenue-shows",
+          "adapterKey": "telegram-preview",
+          "setup": "default",
+          "seed": "https://t.me/s/glamour_avenue"
         },
         {
           "id": "official-instagram",

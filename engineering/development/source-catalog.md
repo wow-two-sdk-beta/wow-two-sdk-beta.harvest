@@ -17,7 +17,7 @@ will be ever turned on - saved in db"; "we can remove afisha etc from this one -
 
 | Catalog | Entry | Key | 2026-11-21 |
 |---|---|---|---|
-| Ocharo registry (`ocharo-event-sources.json`) | a publisher group with at least one channel in `mode` `harvest` or `provider` | `ocharo.{groupId}`, e.g. `ocharo.afisha` | 27 entries |
+| Ocharo registry (`ocharo-event-sources.json`) | a publisher group with at least one channel in `mode` `harvest` or `provider` | `ocharo.{groupId}`, e.g. `ocharo.afisha` | 36 entries |
 | Marketplace (`MarketplaceProfile` sites) | a site | `marketplace.{siteKey}`, e.g. `marketplace.olx-uz` | 4 entries (BirBir's import and collection sites share `birbir-uz`) |
 
 - An entry is the unit the console and the developer name: a publisher (Afisha, ANONS) or a site (OLX, BirBir). Its
@@ -133,6 +133,6 @@ it, and every gate reads it when it acts, not when the work was queued.
 ## Limits
 
 - Two groups claiming one host would share one source row and the first group's key; the registry has none
-  (each Instagram account is its own source).
+  (each Instagram account and each Telegram channel is its own source).
 - A source's favicon copy still fetches while it is off: one request per host, outside the posts.
 - The catalog has no `packages/Client` broker: the console reads it over HTTP, and no product embeds it yet.
