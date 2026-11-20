@@ -10,6 +10,8 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Extraction;
 /// <summary>Extracts source fields and text rules into the base envelope without a model or an external integration.</summary>
 public sealed class RulesPostExtractor : IPostExtractor
 {
+    private const int MaxAttributeDepth = 4;
+
     /// <inheritdoc />
     public Task<Result<PostEnvelope>> ExtractAsync(Capture capture, ExtractionRequest request, CancellationToken cancellationToken = default)
     {
@@ -129,8 +131,10 @@ public sealed class RulesPostExtractor : IPostExtractor
         var contactText = allText;
         if (hasMetadata && metadata.TryGetProperty("contacts", out var contactNodes) && contactNodes.ValueKind == JsonValueKind.Array)
             contactText += " " + string.Join(" ", contactNodes.EnumerateArray().Select(ReaderSupport.Scalar));
+        // A seller publishes a phone in the display name or the listing attributes as often as in the text; each value goes in on its own line.
+        contactText += string.Concat(PublishedValues(author?.Name, hasMetadata ? metadata : default).Select(value => "\n" + value));
         var contacts = ExtractionRules.Contacts(contactText, uzbek);
-        if (contacts.Count > 0) fieldSources["contacts"] = Rules("e164-and-email@2");
+        if (contacts.Count > 0) fieldSources["contacts"] = Rules("e164-and-email@3");
         var postedAt = capture.PublishedAtUtc is { } published
             ? new PostTimestamp { Value = published.ToString("O"), Precision = DatePrecision.Second, TimeZone = "UTC" } : null;
         if (postedAt is not null) fieldSources["postedAt"] = Deterministic(parser);
@@ -158,6 +162,37 @@ public sealed class RulesPostExtractor : IPostExtractor
             ? string.Join('\n', value.Split('\n').Select(ReaderSupport.HtmlText).Where(line => line.Length > 0))
             : ReaderSupport.HtmlText(value);
         return text.Length == 0 ? null : text;
+    }
+
+    /// <summary>The values a seller published beside the text that the contact rule reads: the author name, then every string in the
+    /// reader's listing attributes (<c>sourceFields.fields.attributes</c> of the reader's metadata node; objects and arrays are walked,
+    /// anything that is not a string is ignored, and a node that is missing or shaped otherwise yields none).</summary>
+    private static IEnumerable<string> PublishedValues(string? authorName, JsonElement metadata)
+    {
+        if (!string.IsNullOrWhiteSpace(authorName)) yield return authorName;
+        if (metadata.ValueKind == JsonValueKind.Object
+            && metadata.TryGetProperty("sourceFields", out JsonElement source) && source.ValueKind == JsonValueKind.Object
+            && source.TryGetProperty("fields", out JsonElement fields) && fields.ValueKind == JsonValueKind.Object
+            && fields.TryGetProperty("attributes", out JsonElement attributes))
+            foreach (var value in Strings(attributes, 0)) yield return value;
+    }
+
+    private static IEnumerable<string> Strings(JsonElement node, int depth)
+    {
+        if (node.ValueKind == JsonValueKind.String)
+        {
+            if (node.GetString() is { } text && !string.IsNullOrWhiteSpace(text)) yield return text;
+        }
+        else if (depth < MaxAttributeDepth && node.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in node.EnumerateObject())
+                foreach (var value in Strings(property.Value, depth + 1)) yield return value;
+        }
+        else if (depth < MaxAttributeDepth && node.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in node.EnumerateArray())
+                foreach (var value in Strings(item, depth + 1)) yield return value;
+        }
     }
 
     private static FieldSource Deterministic(string? parser) => new() { Tier = ExtractionTier.Deterministic, Rule = parser };

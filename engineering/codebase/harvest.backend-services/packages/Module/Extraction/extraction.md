@@ -37,6 +37,12 @@ prices and contacts. Every filled field records its parser or rule in `FieldSour
 - prices retain stated currency and amount, range or free status; absence never becomes zero
 - local Uzbek numbers gain `+998` only for an Uzbek source and a recognized local prefix; international numbers
   require a country code. Contacts remain normalized plain text
+- the contact rule (`e164-and-email@3`; `rules@5` is unchanged, the golden pages carry it) reads the title, the text, the
+  reader's `contacts` metadata (`tel:` and `mailto:` links), the resolved author name (schema.org seller, metadata
+  `author` or publisher) and every string value of the reader's listing attributes (`sourceFields.fields.attributes`;
+  objects and arrays are walked, other values ignored); the author name and each attribute value go in on their own
+  line, so two of them never join into one number. `Author`, `Title` and `Text` keep what they hold. The listing prompt never renders the author name or the
+  contacts, and `PhoneScrub` still scrubs the title and text it renders
 - language rules use explicit page/feed locale first, then script and small Uzbek/English lexicons; uncertain text stays `und`
 - requesting an AI tier reports `ai_skipped:capability_unavailable`; no model service is called
 

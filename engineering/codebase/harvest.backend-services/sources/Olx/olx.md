@@ -12,6 +12,10 @@ Unknown layouts, login/challenge pages and unrelated redirects do not establish 
 markers and direct 404/410 responses feed the engine's existing disappearance policy. Incomplete search results
 never establish that an ad was removed. No account, contact-reveal endpoint or phone API is used.
 
+The only phones an OLX post carries are those the seller published: in the seller's display name, the title, the text, the
+listing attributes or a `tel:` link. The extraction rule (`e164-and-email@3`, `packages/Module/Extraction/extraction.md`)
+normalises them to E.164 into the post's `contacts` as plain text; the reader adds nothing for it and reveals nothing.
+
 Its photos are served from `*.olxcdn.com`, so the adapter declares that domain (`AdapterDescriptor.Media`) and the host's
 Files worker copies the first six photos of each ad into private storage, paced two seconds apart per image host and
 inside `robots.txt`; the reader itself fetches no image (`engineering/deployment/deployment.md` § Private source media).
