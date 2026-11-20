@@ -22,7 +22,10 @@ Shape: wow-two-ws/conventions/planning/version-track/version-track.md
 | Browsing state in the URL | feature | search, filters, collapse and scroll live in the console session only, so a link or reload loses them |
 | Custom source-group glyph | feature | the shared Group glyph is provisional |
 | Pipelines in the sidebar or the operator menu | decision | the console lists Pipelines in the sidebar; console decision #42 puts it in the operator menu · needs the developer |
-| Map pins for processed places | feature | a processed event's or listing's place opens as a Yandex Maps pin and a Google Maps pin; a place neither search resolves is flagged on the card and queued for the custom locations list; resolution comes from the shared WoW2 Locations domain (wow-two-ws `docs/platform-apps.md` #18), never a console-only geocoder |
+| Map pins for processed places | feature | a processed event's or listing's place opens as a Yandex Maps pin and a Google Maps pin; a place neither search resolves is flagged on the card and queued for the custom locations list; resolution comes from the shared WoW2 Locations domain (wow-two-ws `docs/platform-apps.md` #18), never a console-only geocoder · the links shipped 2026-11-20 as the fe sdk `domain/maps` `MapLinks` (a search on the place text, no geocoding); the unresolved flag and the custom list wait for Locations |
+| Evidence for every extracted field | feature | the processed post page quotes evidence only for dates, prices, registration and a listing's price and terms; the extraction answer stores none for name, place, format, access and status, so their rows show no quote. Add evidence spans to those fields in both extraction prompts, then the page shows them |
+| Console cards in light theme and at phone width | engineering | the 2026-11-20 card round (content-anchored blur, md pills, ↗ on Processed cards, the provider pill, the processed post page) was checked in dark theme at desktop width, and the page also at 390 px over the demo client; light theme and the dev host remain |
+| Yandex Maps mark for commercial pages | decision | the fe sdk `domain/maps` vendors Yandex's own favicon (Wikimedia Commons `PD-textlogo`, trademarked); Yandex's logo rules need written permission for commercial use. Fine in this internal console; decide before an Ocharo page shows it (keep, ask Yandex, or a text link) · needs the developer |
 
 ## Events integration
 
@@ -85,6 +88,7 @@ ChatGPT builds these in the pull order of wow-two-ws `system/sessions/events-int
 
 | Item | Type | Notes |
 |---|---|---|
+| ANONS JavaScript challenge | engineering | 2026-11-20 08:28 UTC, at 6 pages and a 30 s pace, 1 of 6 requests read as `javascript_interstitial` (`fetch_outcome` challenge); the lane paused 15 min as designed and 2 new posts were captured. First check whether it is a real challenge or the detector's false positive (as with Craftfair's complete 200 listing), then measure a week's rate and lower pages or pace if it repeats; never solve or bypass a challenge |
 | Instagram Phase 1 target acceptance | product | the collector ships in v0.2.12 and local capture/deduplication passed. After the shared Ocharo AI/delivery work closes, configure the test connection on `harvest-dev`, register approved publisher profiles, enable chosen table-managed schedules and verify scheduled capture through filtered delivery to Events/Desk. Production requires a separate account and grant. See [Instagram operation and readiness](../deployment/instagram.md#integration-boundary-and-phase-1-acceptance). |
 | Ocharo Identity on the source host | feature | operator email sign-in passes on the local console; the phone/code round trip, role review, sign-out and restart checks remain |
 | Configured providers | feature | supply approved credentials and origins, then verify one real source protocol; a dedicated outgoing server per source is allowed, rotating proxy pools are not built (events-integration #50) |
