@@ -38,7 +38,7 @@ requires durable data-protection keys. The console is not served on dev yet (the
 - 2026-10-27 — retain bounded capture bodies in PostgreSQL while Files integration is unbound.
 - 2026-10-27 — compose the console from `fe-harvest/admin` in the shared platform chalk/forest style.
 - 2026-10-27 — Events reuses Harvest pipelines and delivery; consumer prompts and schema selection remain its own.
-- 2026-11-10 — sourcing is for internal use only; nothing sourced is republished (events-integration #50). No person
+- 2026-11-10 — sourcing is for internal use only, each item credited by its external link (events-integration #50). No person
   accepts sourced events; Events classifies them (#53), so subscriptions carry no `review` context.
 - 2026-11-12 — merged `wow-two-sdk-beta.harvest-adapters` into this repository (events-integration #63): SCFD serves
   internal use only and authenticates every caller, so the source readers need no private repo. One solution, one

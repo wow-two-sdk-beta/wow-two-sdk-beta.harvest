@@ -25,7 +25,6 @@ Shape: wow-two-ws/conventions/planning/version-track/version-track.md
 | Map pins for processed places | feature | a processed event's or listing's place opens as a Yandex Maps pin and a Google Maps pin; a place neither search resolves is flagged on the card and queued for the custom locations list; resolution comes from the shared WoW2 Locations domain (wow-two-ws `docs/platform-apps.md` #18), never a console-only geocoder · the links shipped 2026-11-20 as the fe sdk `domain/maps` `MapLinks` (a search on the place text, no geocoding); the unresolved flag and the custom list wait for Locations |
 | Evidence for every extracted field | feature | the processed post page quotes evidence only for dates, prices, registration and a listing's price and terms; the extraction answer stores none for name, place, format, access and status, so their rows show no quote. Add evidence spans to those fields in both extraction prompts, then the page shows them |
 | Console cards in light theme and at phone width | engineering | the 2026-11-20 card round (content-anchored blur, md pills, ↗ on Processed cards, the provider pill, the processed post page) was checked in dark theme at desktop width, and the page also at 390 px over the demo client; light theme and the dev host remain |
-| Yandex Maps mark for commercial pages | decision | the fe sdk `domain/maps` vendors Yandex's own favicon (Wikimedia Commons `PD-textlogo`, trademarked); Yandex's logo rules need written permission for commercial use. Fine in this internal console; decide before an Ocharo page shows it (keep, ask Yandex, or a text link) · needs the developer |
 
 ## Events integration
 
@@ -33,14 +32,15 @@ Picks for `system/sessions/events-integration` in wow-two-ws (P1 = this goal, P2
 
 | Item | Type | Notes |
 |---|---|---|
-| Remaining `wow2.event.v1` fields | feature | events-integration #18, P2: certainty, time zone, occurrences, participation, contact ownership, structured place and country, offer kinds, image `FileRef`, series; `kind` rides on `classification` |
+| Deliver a late image copy's file id | feature | the source-asset worker copies a post's images after the post is stored, and `wow2.event.v1` fills `media[].fileRef` only when a page is pulled, so an event pulled before its copy carries `fileRef: null` until the post's next event; emit a delivery update when a copy completes, so subscribers get the id without waiting |
+| Remaining `wow2.event.v1` fields | feature | events-integration #18, P2: certainty, time zone, occurrences, participation, contact ownership, structured place and country, offer kinds, series; `kind` rides on `classification` |
 | Issuer per environment | docs | events-integration #17, P1: dev trusts Ocharo's Identity (#4); a separate SCFD issuer comes later |
 | Operating controls past v0.1 | feature | events-integration #33, P2: request allowance reserved in transport, retention purge that emits the reserved `post.purged`, freshness and consumer-lag readout, resync control, backup/restore test |
 | Console iteration 2 | feature | events-integration #32, #33, #37, #45: the client's sign-in with Sources and Following; Home's questions (a page-limit partial counts as failed today); the Subscribers page's design; a source's AI card and outgoing-server line once they exist |
 | Account name in the bar | engineering | fe sdk `AppFrame` 0.0.45: `AccountMenu`'s trigger shows initials only, with no prop for the name beside them; the fe sdk lane owns it |
 | Capture view and branch sources | feature | a post's "See the capture" needs a route that shows a stored capture; a store's branch needs a `branch` source family, which the console's icon map already names |
 | First NuGet and npm publish | engineering | events-integration #15, P2: Events keeps its own wire reader (#43), so no consumer waits; needs `PUBLISH_PACKAGES` and the nuget.org trusted-publishing policy |
-| Afisha intake and terms | policy | events-integration #32, #50: public category and article pages inside `robots.txt`; captures stay internal review evidence; nothing is republished; facts plus an attributed link inside Ocharo |
+| Afisha intake | policy | events-integration #32, #50: public category and article pages inside `robots.txt`, paced; internal use only; each item credits Afisha by its external link |
 | Afisha participation readings | feature | events-integration #18, P2: participation routes instead of `schemaOrg.afisha` evidence |
 
 ## Features

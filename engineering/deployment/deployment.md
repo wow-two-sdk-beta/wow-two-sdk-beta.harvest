@@ -121,12 +121,11 @@ database, API audience and operator credentials.
 - `public`: the generic engine and API only — no named source, provider setting or Ocharo route.
 - A shared pool: operators register approved publishers and set section, cadence and run budgets; one collection
   pipeline per section serves any number of subscribing tenants, each with its own tenant holding
-  `subscriptions:manage` and `events:read`; `filterKey: "tag:<tag>"` filters a subscription. Confirm allowed use and
-  bounded runs before enabling a pool's schedules.
-- Nothing sourced is republished (events-integration #50). Afisha stays in Ocharo's private container with pool
-  sharing off, and a `public` target denies `afisha.uz` and `www.afisha.uz` in its host policy. Afisha's terms ask
-  written permission to reuse its materials; the private `ocharo-fashion` catalog reuses none
-  ([terms](https://www.afisha.uz/ru/terms)).
+  `subscriptions:manage` and `events:read`; `filterKey: "tag:<tag>"` filters a subscription. Confirm bounded
+  runs before enabling a pool's schedules.
+- Sourcing is for internal use only, and every item credits its source by the external link (events-integration #50).
+  Afisha stays in Ocharo's private container with pool sharing off, and a `public` target denies `afisha.uz` and
+  `www.afisha.uz` in its host policy.
 
 ## Provisioning Ocharo on a target
 

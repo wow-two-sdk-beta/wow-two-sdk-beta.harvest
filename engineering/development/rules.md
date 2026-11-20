@@ -4,8 +4,8 @@
 
 > Working rules for agents in this repo — repo-specific deltas only. Shared rules: wow-two-ws/conventions/.
 
-- Sourcing serves internal tracking only; nothing collected is republished, and anything shown carries facts plus an
-  attributed link (events-integration #50). A change that would expose source text, photos or a feed breaks it.
+- Sourcing serves internal use only, and every item credits its source by the external link (events-integration #50).
+  A change that exposes collected items outside the subscribing products, or shows one without its link, breaks it.
 - Sources are read directly, identified, inside `robots.txt` and paced; a challenge, block or rate limit pauses the
   source. Never add an automatic route change, a challenge submission or a rotating proxy pool.
 - Optional capabilities are not dead code: Instagram, proxy/IP leases, supplied sessions and the CAPTCHA client are

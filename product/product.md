@@ -48,11 +48,10 @@ state; refusals never count as deletion evidence. Reviewed merges can be undone 
 
 ## Use
 
-- Collected records and captures serve the subscribing products' internal tracking only: Ocharo tracks events for
+- Collected records and captures serve the subscribing products' internal use only: Ocharo tracks events for
   itself (events-integration #50).
-- Nothing sourced is republished, whether on a public site, in a feed or through another product. Anything shown
-  inside Ocharo carries facts (title, dates, place) and an attributed link to the original, never the source's text
-  or photos.
+- Every item carries the external link to its source as credit, wherever a product shows it. Page fetches stay paced
+  and inside `robots.txt`.
 - Events pulls the Ocharo subscriptions into Ocharo's private catalog; its classification accepts or holds each record,
   no person reviews it (events-integration #53), and nothing reaches a public surface.
 - Each named source's reading rules (discovery scope, identity, evidence limits) live in its folder's lead doc under

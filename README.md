@@ -5,8 +5,8 @@ for deletions and delivers updates to subscribing products. Afisha, ANONS, CAEx,
 Uzexpocentre supply event candidates for Ocharo; OLX supplies listings; Instagram is an opt-in source.
 [Brand and integration names](product/brand/brand.md)
 
-Sourcing serves the subscribing products' internal tracking only: nothing collected is republished, and anything shown
-carries facts plus an attributed link to the original (events-integration #50).
+Sourcing serves the subscribing products' internal use only, and every item credits its source by the external link to
+the original (events-integration #50).
 
 ## Artifacts
 

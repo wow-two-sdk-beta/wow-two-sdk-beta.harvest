@@ -1,8 +1,8 @@
 # wow-two-sdk-beta.harvest
 
 WoW2 SCFD (Source Collection and Feed Delivery) reads its named sources and generic web feeds, deduplicates posts,
-checks for deletions and delivers updates to subscribing products. Sourcing serves internal tracking only; nothing
-collected is republished (events-integration #50).
+checks for deletions and delivers updates to subscribing products. Sourcing serves internal use only, and every item
+credits its source by the external link (events-integration #50).
 
 ## Lazy loading
 
