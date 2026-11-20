@@ -35,6 +35,16 @@
 - every pulled event names its subscription's `pipelineId`; tag, keyword and selector subscriptions leave it null
 - a stored event projection that carries the `mapping` stamp renders again through the current `EventSchemaMapper`, so
   every revision reads with camelCase string enums; a reader's own projection, without the stamp, is sent as stored
+- a filter whose `IDeliveryPostFilter.IgnoresTagOnlyChange` is true (`marketplace-listing-v1`) goes without the `post.changed` of a
+  revision that differs from the subscription's newest received snapshot only in `tags`, `classification`, `extras.postTags`
+  and `extras.listingAi` (`TagOnlyChange`): whatever wrote the tags, the post's revision rises and nothing is delivered. A
+  changed title, text, price, date, media or state still is; selector subscriptions and other filters are untouched
+- a done `extract-listing` answer is delivered as `post.extracted` (`DeliveryEventWriter.AppendExtractedAsync`), written by the
+  Posts lane in the answer's transaction: to each active channel subscription that already holds the post (an earlier
+  `post.new`, `post.changed` or `post.extracted`), inside its section and passing its filter, and to a selector subscription
+  that follows it, with `extras.listingAi` on the delivered post (`contract.md` § Listing delivery). The item id adds
+  `:ai{promptVersion}:{model}`, so a replay of the same answer is a no-op and another prompt version or model is its own
+  event; the reason is `ingest`. The stored post never holds the extras, and no revision is raised
 - `ApiDeliveryBroker` and `ApiPostBroker` share `AddHarvestDataClient()`; `PostDeliveryBrokerConformance` runs the same
   contract cases against the module, HTTP client and in-memory consumer fakes
 

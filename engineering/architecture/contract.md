@@ -1,6 +1,6 @@
 # wow-two-sdk-beta.harvest — Contract
 
-*Last updated: 2026-11-20*
+*Last updated: 2026-11-21*
 
 > Everything in `packages/Abstractions`: the registry broker every form implements, and the seams the engine lanes and
 > source readers build against. Interfaces and models only — no DI, options or I/O. Rules:
@@ -189,7 +189,10 @@ the step contract. Every type references the BCL and the kernel only.
 - a done `post-tags` answer about the post's current title and text queues Layer 2 extraction in the same transaction
   when `IPostExtractionDemand` wants its (entity type, domain) pair; the answer is stored per post, content and use case
   in `harvest_post_extractions` with verbatim evidence for every date, price and rental term, and is not part of the
-  post or its delivery events until the entity layer reads it; `development/extraction.md`
+  post or its delivery events until the entity layer reads it, except that a done `extract-listing` answer reaches the
+  subscriptions that hold the post as `post.extracted` (§ Listing delivery); `development/extraction.md`
+- a post whose title and text come only from source sections that declare the tags they imply (OLX's rental catalogs)
+  is tagged in code with the write, tier `Rules`, and queues no `post-tags` call: `development/post-tags.md`
 - a done extraction answer queues the post's entity resolution in the same transaction when `Harvest:Entities:Enabled`
   is set; resolution binds the post with a role (`announcement`, `update`, `report`, `mention`) to one event or listing
   in `harvest_entity_relations`, keeps edition history in `harvest_entity_occurrences`, flags a weak or ambiguous match
@@ -223,8 +226,9 @@ call that one matcher, so a selector means the same everywhere.
   sources`; each domain include carries an `except` list. It expresses AND, OR and NOT without a free expression tree.
 - A selector subscription needs a `name` (`^[a-z0-9][a-z0-9-]{0,63}$`, unique per tenant among non-archived
   subscriptions); it refuses `filterKey` and `pipelineId`. Events binds an intake source to it as `selector:{name}`.
-- Matching reads the delivered revision's own envelope: `Base.Tags` of tier `SmallModel` (`type:`, `domain:`, `topic:`,
-  `timeframe:`), never `harvest_post_tags`, so the verdict judges exactly what the event carries.
+- Matching reads the delivered revision's own envelope: `Base.Tags` of tier `SmallModel` or `Rules` (`type:`, `domain:`,
+  `topic:`, `timeframe:`), never `harvest_post_tags`, so the verdict judges exactly what the event carries. A `Rules` tag is
+  a source section's implied tag (`section-implied@1`), so an OLX rental ad is judged by `entityTypes: [listing]` at once.
 - A selector subscription's first event for a post is `post.new`, whatever content write came first; lifecycle events
   of a post it has never seen are withheld.
 - `archived` is terminal; `active` and `suspended` swap. Channel subscriptions are untouched: no data migration.
@@ -288,7 +292,7 @@ input: selector, post facts (envelope, links [linkId, sourceId, groupId, url], p
    context = subscription context, then contexts of include refs matching the context link,
              group refs, then source refs, then section refs, each in list order; later keys win
 4  no tag clause (entityTypes, domains, topics, excludeDomains, excludeTopics, excludeTimeframes all empty) → match [sources]
-5  small = envelope.Tags where Tier == SmallModel; small empty   → pending [untagged]
+5  small = envelope.Tags where Tier ∈ {SmallModel, Rules}; small empty → pending [untagged]
 6  type = value of the "type:" tag or null
    entityTypes set: type null → pending [unsure-type]; type ∉ entityTypes → noMatch [no-type:{type}]
 7  nodes = MostSpecific(values of "domain:" tags); topics = values of "topic:" tags
@@ -311,7 +315,7 @@ MostSpecific(set): drop n when another m in set has m starting with n + "/"
   sits on each beauty post and `except` must see the leaf.
 - Topic terms match whole hyphen tokens: `clothing` matches `designer-clothing`; `textile` does not match `textiles`.
   Plurals stay explicit.
-- A post with no `SmallModel` tag, or no `type:` tag while `entityTypes` is set, is **pending**: no event, no
+- A post with no `SmallModel` or `Rules` tag, or no `type:` tag while `entityTypes` is set, is **pending**: no event, no
   `post.unmatched`. The tags' own `post.changed` re-judges it.
 - A `wow2.event.v1` selector needs `Base.Kind == Event`, else `noMatch` (`no-schema`).
 - `excludeTimeframes` reads a `timeframe:` tag on the envelope; a post without one is never vetoed and never pending.
@@ -352,7 +356,8 @@ other type is a lifecycle write (`link.state`, `post.merged`, `post.unmerged`, `
 - `DeliveryEvent.context` stays the subscription's own context.
 - Item id: ingest and subscribe-backfill keep `sha256("{postId:N}:{revision}:{type}")`; a selector change and `adopt` use
   `sha256("{postId:N}:{revision}:{type}:s{selectorVersion}")`, so a second unmatch or re-match at the same revision is
-  not swallowed by the item's unique index.
+  not swallowed by the item's unique index; a listing answer's `post.extracted` uses
+  `sha256("{postId:N}:{revision}:post.extracted:ai{promptVersion}:{model}")` (§ Listing delivery).
 - Reasons: `ingest` (writes), `backfill` (new matches from subscribe, a change or an adopt), `resync` (an unmatch or
   re-match from a change or an adopt).
 
@@ -382,7 +387,7 @@ other type is a lifecycle write (`link.state`, `post.merged`, `post.unmerged`, `
 changed since `sinceUtc` (default 30 days, at most 365; at most 5,000 posts, `truncated` past it) and writes nothing.
 Access is as for subscribing: an active tenant, and the pool or the tenant's own container, else `NotFound`.
 
-- Counts by verdict (`matched`, `noMatch`, `pending`), `tagged` (posts with any `SmallModel` tag) and a row per source of
+- Counts by verdict (`matched`, `noMatch`, `pending`), `tagged` (posts with any `SmallModel` or `Rules` tag) and a row per source of
   each post's context link.
 - Per clause: for each subject term (`domain:{key}`, `topic:{term}`) `adds` counts matched posts that stop matching when
   that term alone is removed; for each exclusion (`except:{key}`, `exclude-domain:{key}`, `exclude-topic:{term}`,
@@ -624,7 +629,10 @@ each mirrored by a `processing` verb, and mounts the AI module's own API
 ### Marketplace sources
 
 - `AddHarvestListingSources` composes the OLX, Domtut new-build and Joymee readers, the `marketplace-listing-v1` delivery filter
-  and marketplace setup and imports. Listing posts skip the fashion-event filter.
+  and marketplace setup and imports. Listing posts skip the fashion-event filter. The filter passes a listing and asks to go
+  without tag-only revisions: a `post.changed` whose revision differs from the one the subscription last received only in
+  `tags`, `classification`, `extras.postTags` and `extras.listingAi` is not delivered (a model's tags, a backfill's rule tags);
+  a changed title, text, price, date, media or state still is (`IDeliveryPostFilter.IgnoresTagOnlyChange`).
 - A marketplace profile (`MarketplaceProfiles`) names a consumer's tenant, private container, saved searches, cadence,
   run budget and key name. Setup applies it idempotently, like Ocharo's, through the `marketplace setup|status` verb
   and operator routes (`internal` only):
@@ -636,8 +644,12 @@ each mirrored by a `processing` verb, and mounts the AI module's own API
 | GET | `/api/marketplace/{profile}/status` | operator `tenants:manage` | each search's pipeline with its schedules, its subscription and the active key count |
 | POST | `/api/marketplace/{profile}/searches/{search}/listings` | operator `tenants:manage` | imports one authorized rental into its tenant's subscription |
 
-- Setup takes `{ enableSchedules: false, issueKey: false, rotateKey: false, allowAi: false }`; `allowAi` opens the
-  collected sources to model processors such as `rental-terms@1`, and a later setup without it keeps them open. One
+- Setup takes `{ enableSchedules: false, issueKey: false, rotateKey: false, allowAi: false, modelProcessing: null }`;
+  `modelProcessing` `off` · `manual` · `auto` sets that mode on every collected source of the profile (new sources register
+  with it, existing ones are updated, import-only sources stay `off`), as `ocharo setup` does, and without it a source keeps
+  its mode, a new one registering `off`. `allowAi` alone is the older form: it opens a closed collected source to `auto` and
+  never changes a `manual` or `auto` one; with `modelProcessing` it is refused unless that is `auto`. The mode decides what
+  the AI passes do with Haven's ads (§ Listing delivery). One
   pipeline and one `wow2.post.v1` subscription per search, context `catalog` and `search`. The consumer's tenant key holds `events:read` only;
   `consumerKey.secret` is present only in the response that issued it. Haven's profile and target steps:
   `engineering/deployment/deployment.md` § Provisioning Haven on a target.
@@ -659,6 +671,97 @@ each mirrored by a `processing` verb, and mounts the AI module's own API
 - `joymee-apartments-rent` reads the public Joymee JSON catalog and confirms the listing is an active Tashkent
   apartment for long-term rent on each detail response. Delivery carries the public website URL in `joymee.ad.v1`.
   Joymee captures run on an interval when enabled. Link availability checks are disabled for this reader.
+
+### Listing delivery
+
+A done `extract-listing` answer reaches a product inside the subscriptions it already reads, as `post.extracted` with the
+answer in `base.extras.listingAi`. Haven's key keeps `events:read`: the answer needs no new route, scope or key. Only a done
+listing answer delivers: a failed or unavailable one, an `extract-event` one, and one about a title and text the post has
+since changed raise nothing.
+
+- **The event.** `type` `post.extracted`, `postId`, `reason` `ingest`, `revision` the post's own at the time (an answer adds no
+  revision), and `data` the post's snapshot as `post.new` carries it (`wow2.post.v1`: `base`, `links` with `captureId`,
+  `externalKey` and `sourceFields`) with `base.extras.listingAi` added. The stored post and its `post.new` and
+  `post.changed` snapshots never hold the answer.
+- **Who gets it.** A channel subscription, a marketplace search's `marketplace-listing-v1` one included, that already holds
+  the post (an earlier `post.new`, `post.changed` or `post.extracted` of it) and whose section and filter the post still passes.
+  A failing or absent filter sends nothing, so an answer never raises `post.unmatched`. A selector subscription judges the
+  snapshot as any content write (§ Deliverability). A sibling search, or a subscription that never held the post, gets
+  nothing: an apartment's answer does not reach the houses search. A subscription with no filter receives `post.extracted`
+  like every other event type, as long as it already holds the post.
+- **`extras.listingAi`.** Seven keys, none about contacts: the prompt never saw a phone, the answer has no field for a name or
+  contact, and a contact the model invents is removed with a flag.
+
+| Key | Holds |
+|---|---|
+| `schema` | `extract-listing@2`, the answer's code schema (`development/extraction.md` § Answers); a later shape changes the number |
+| `promptVersion` | the prompt version that answered |
+| `model` | `{provider}/{model}` that answered |
+| `costMicroUsd` | the answering run's cost in millionths of a dollar, `0` for an answer from the cache; the AI inference log is the record |
+| `revision` | the post revision the answer read: the captured revision it answered |
+| `answer` | the checked `extract-listing@2` answer: offer, price with period, unit, location, author kind, `rentalTerms` with their quotes, and the rest of the schema |
+| `flags` | `[{ field, reason, proposed }]`: the model's and the checks', so a quote that failed or an `unsure` pick shows |
+
+```json
+{
+  "eventId": "01934c7e-0000-7000-8000-000000000001",
+  "itemId": "9f2c…",
+  "subscriptionId": "01934c7d-0000-7000-8000-0000000000a1",
+  "type": "post.extracted",
+  "postId": "01934c7d-0000-7000-8000-0000000000b1",
+  "revision": 1,
+  "reason": "ingest",
+  "context": { "catalog": "haven-rent-res", "search": "apartments-rent" },
+  "data": {
+    "id": "01934c7d-0000-7000-8000-0000000000b1",
+    "revision": 1,
+    "base": {
+      "kind": "listing",
+      "title": "2 xonali kvartira",
+      "tags": [
+        { "tag": "type:listing", "tier": "rules", "version": "section-implied@1" },
+        { "tag": "domain:real-estate/apartments", "tier": "rules", "version": "section-implied@1" },
+        { "tag": "domain:real-estate", "tier": "rules", "version": "section-implied@1" }
+      ],
+      "extras": {
+        "listing": { "…": "the deterministic housing-listing@1 projection, as on post.new" },
+        "listingAi": {
+          "schema": "extract-listing@2",
+          "promptVersion": 3,
+          "model": "anthropic/claude-haiku-5-5",
+          "costMicroUsd": 1180,
+          "revision": 1,
+          "answer": {
+            "propertyKind": "apartment", "offerType": "rent",
+            "price": { "amount": 500, "currency": "usd", "period": "month", "negotiable": false, "evidence": "Narxi 500 USD oyiga" },
+            "item": { "rooms": 2, "…": "…" },
+            "rentalTerms": { "deposit": { "status": "present", "claims": [{ "evidence": "Depozit: 500 USD", "value": { "amount": 500, "currency": "usd" } }] }, "…": "…" },
+            "author": { "kind": "owner" },
+            "flags": []
+          },
+          "flags": []
+        }
+      }
+    },
+    "links": [{ "captureId": "…", "externalKey": "ID…", "sourceFields": { "schema": "olx.ad.v1", "…": "…" } }]
+  }
+}
+```
+
+- **Ordering.** A subscription's log orders by commit. `post.new` is written with the capture, so it always precedes the
+  answer, which a worker stores later. Section-implied tags are part of that same write: an OLX ad's `post.new` already
+  carries them, and no tag-only `post.changed` follows. A `post.changed` for a new title or text can come before or after the
+  answer about the older text: the answer describes the text of its own `listingAi.revision`, and when the new text is
+  extracted a further `post.extracted` follows with the higher `revision`. A revision that only moved the tags raises no
+  `post.changed` for a `marketplace-listing-v1` subscription, whatever wrote them: a model-tagged source of the profile, or a
+  `post-tags backfill` giving an OLX ad stored earlier its rule tags, raises the post's revision but nothing is delivered to Haven.
+- **Idempotency.** Delivery is at least once. The item id of an answer is
+  `sha256("{postId:N}:{revision}:post.extracted:ai{promptVersion}:{model}")`: one event per post revision, prompt version and
+  model, so a replay of the same answer writes nothing, and a re-run by another prompt version or model (a stronger model
+  re-running a flagged answer) arrives as a second `post.extracted` at the same revision. A consumer dedupes by `itemId` and
+  applies an answer by `(postId, listingAi.revision)`, the newest event winning; applying one twice changes nothing.
+- **When it runs.** Per source mode (`development/extraction.md` § When it runs): `auto` queues extraction on the write,
+  `manual` only a named run, `off` never. The demand must want the pair: Haven's `listing` + `real-estate`.
 
 ---
 

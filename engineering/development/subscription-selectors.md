@@ -10,8 +10,9 @@ operations, extraction demand), `service/HarvestSources.Api/Subscriptions/Subscr
 
 ## What the selector needs
 
-A selector judges the Layer 1 tags a post revision carries (`type:`, `domain:`, `topic:`, `timeframe:`), so a post is
-**pending**, delivered nowhere, until those tags exist:
+A selector judges the Layer 1 tags a post revision carries (`type:`, `domain:`, `topic:`, `timeframe:`; the model's, tier
+`SmallModel`, and the rule tags a source section implies, tier `Rules`, such as an OLX rental ad's `listing` and its
+`real-estate` node), so a post is **pending**, delivered nowhere, until those tags exist:
 
 - `Harvest__Processing__Ai__Enabled` and `Harvest__Processing__Tags__Enabled` are on (`post-tags.md` § Host settings).
 - The sources it follows are Model processing `auto` (`ai-operations.md`): `sources processing --list --tenant <slug>`

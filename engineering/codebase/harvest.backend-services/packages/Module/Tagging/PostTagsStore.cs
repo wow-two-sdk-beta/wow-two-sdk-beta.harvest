@@ -174,22 +174,26 @@ internal static class PostTagsStore
             """, ct, ("kind", PostTagsConstants.WorkKind), ("now", now), ("since", since), ("source", sourceId), ("limit", limit));
     }
 
-    /// <summary>Counts answers since a time: by status, entity type and primary domain, and flags by field and proposed
-    /// value; never post text.</summary>
+    /// <summary>The condition, over a <c>harvest_post_tags</c> row, that a model gave the answer: tags a source section implies
+    /// (<see cref="PostTagsConstants.RuleHashPrefix"/>) are no answer to count against attempts and cost.</summary>
+    private const string ModelAnswer = "COALESCE(prompt_hash,'') NOT LIKE 'rule:%'";
+
+    /// <summary>Counts model answers since a time: by status, entity type and primary domain, and flags by field and proposed
+    /// value; never post text. Tags a rule wrote are left out.</summary>
     internal static async Task<PostTagsReportModel> CountAsync(NpgsqlDataSource dataSource, DateTimeOffset since, CancellationToken ct)
     {
         await using var connection = await dataSource.OpenConnectionAsync(ct);
-        var statuses = await CountByAsync(connection, "SELECT status,count(*) FROM harvest_post_tags WHERE created_at>=@since GROUP BY 1", since, ct);
+        var statuses = await CountByAsync(connection, $"SELECT status,count(*) FROM harvest_post_tags WHERE created_at>=@since AND {ModelAnswer} GROUP BY 1", since, ct);
         var types = await CountByAsync(connection,
-            "SELECT entity_type,count(*) FROM harvest_post_tags WHERE status='done' AND created_at>=@since GROUP BY 1", since, ct);
+            $"SELECT entity_type,count(*) FROM harvest_post_tags WHERE status='done' AND created_at>=@since AND {ModelAnswer} GROUP BY 1", since, ct);
         var domains = await CountByAsync(connection, """
             SELECT split_part(d->>'node','/',1),count(*) FROM harvest_post_tags t,jsonb_array_elements(t.domains) d
-            WHERE t.status='done' AND t.created_at>=@since AND (d->>'primary')::boolean GROUP BY 1
+            WHERE t.status='done' AND t.created_at>=@since AND (d->>'primary')::boolean AND COALESCE(t.prompt_hash,'') NOT LIKE 'rule:%' GROUP BY 1
             """, since, ct);
         var flags = new List<PostTagsFlagCount>();
         await using (var command = PostSql.Command(connection, null, """
                          SELECT f->>'field',f->>'proposed',count(*) FROM harvest_post_tags t,jsonb_array_elements(t.flags) f
-                         WHERE t.status='done' AND t.created_at>=@since GROUP BY 1,2 ORDER BY 3 DESC,1,2 LIMIT 50
+                         WHERE t.status='done' AND t.created_at>=@since AND COALESCE(t.prompt_hash,'') NOT LIKE 'rule:%' GROUP BY 1,2 ORDER BY 3 DESC,1,2 LIMIT 50
                          """, ("since", since)))
         await using (var reader = await command.ExecuteReaderAsync(ct))
             while (await reader.ReadAsync(ct))

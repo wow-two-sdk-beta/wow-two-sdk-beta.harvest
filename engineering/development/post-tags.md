@@ -25,6 +25,32 @@ Tagging needs the shared AI module (`Harvest:Processing:Ai:Enabled`, internal au
   sends nothing. The worker reads the mode again when it claims a row.
 - `Harvest:Worker:Enabled=false` stops this worker with the engine's.
 
+## Which posts skip it
+
+A source section may declare the tags every ad in it already carries (`SourceSectionDefinition.ImpliedTags`: an entity
+type and one taxonomy node). OLX apartments, houses and daily rent declare `listing` with `real-estate/apartments`,
+`real-estate/houses` and `real-estate/real-estate-renting-and-leasing`; no other reader declares any.
+
+- The rule: every source supplying the post's title and text comes from such a section, all of them name the same entity
+  type, and each node exists and is active in the taxonomy. A post that fails any part, a post of any other section and a
+  post with one plain source among its suppliers keep the model path above, untouched.
+- What the post write does instead: it stores those tags in the same write (tier `Rules`, version `Rule`, no `titleEn`,
+  `timeframe` `evergreen`, classifier `rule:section-implied@1`, no model, no inference row) and queues no `post-tags` call.
+  There is no extra revision and no `post.changed`: `post.new` already carries the tags and the verdict. A later
+  content change writes them again for the new text.
+- It needs `Tags:Enabled`; with tagging off nothing is written. The source's mode does not gate the tags, only the
+  extraction that follows (`extraction.md` § When it runs).
+- A `post-tags backfill`, or a re-run no operator named a post or source for, may still queue such a post; the worker
+  writes the rule tags when it claims the row and drops it without a model call, raising one revision with `post.changed`
+  when the stored post gained them; a `marketplace-listing-v1` subscription is sent no `post.changed` for it, as for any
+  revision that only moved the tags (`../architecture/contract.md` § Marketplace sources). An operator naming the post
+  (`run --post`) still gets the model's answer, which replaces the rule row.
+- `report` counts model answers only; rule rows are in `harvest_post_tags` (marker `prompt_hash` `rule:section-implied@1`)
+  but not in its answers, entity types or domains.
+- A selector subscription's tag clauses read `SmallModel` and `Rules` tags alike (`SelectorRules.IsAnswerTag`;
+  `subscription-selectors.md`), so a rule-tagged ad is judged, not pending: `entityTypes: [listing]` matches it. The
+  wanted-pair classification and the post's `tags` on `wow2.post.v1` carry them too.
+
 ## Register the prompt
 
 Prompt text lives in the shared AI database; keep drafts outside the repository. The draft is a JSON `PromptDraft` with
@@ -95,7 +121,8 @@ from stored posts: the `processing` verb and `api/processing` routes (`ai-operat
   beside the source title: `../architecture/contract.md` § Source host.
 - Unsure values and unknown nodes gather as flags; `report` counts them by proposed value for the prompt or taxonomy fix
   (scfd-entity-model #9).
-- A re-run's done answer replaces the done one for the same content in place; the inference log keeps both.
+- A re-run's done answer replaces the done one for the same content in place; the inference log keeps both. That includes
+  a rule row (`## Which posts skip it`): the model's answer replaces it.
 - Eval subjects: `harvest:post:{id}@{revision}` resolves to the same variables for the AI eval bench, for `post-tags` and
   both extraction use cases (`ai-operations.md` § Evals from stored posts).
 

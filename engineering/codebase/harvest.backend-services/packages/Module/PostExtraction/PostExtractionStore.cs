@@ -10,7 +10,9 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
 internal sealed record PostExtractionClaim(Guid PostId, string UseCase, Guid ContainerId, byte[] ContentHash, int Attempts,
     Guid? RunId = null, bool Explicit = false);
 
-/// <summary>Represents one extraction answer to store: a done answer carries the validated answer, role and flags.</summary>
+/// <summary>Represents one extraction answer to store: a done answer carries the validated answer, role and flags. The cost of
+/// the run that gave it, in millionths of a dollar, is not stored here (the inference log keeps it); a delivered listing answer
+/// carries it.</summary>
 internal sealed record PostExtractionRecord(
     Guid ContainerId,
     Guid PostId,
@@ -26,7 +28,8 @@ internal sealed record PostExtractionRecord(
     ValidatedExtraction? Answer,
     int Attempts,
     DateTimeOffset? RetryAtUtc,
-    Guid? RunId = null);
+    Guid? RunId = null,
+    long CostMicroUsd = 0);
 
 /// <summary>Holds the extraction's SQL over <c>harvest_post_extractions</c>, its <c>harvest_post_work</c> kinds and the
 /// done <c>harvest_post_tags</c> answers it reads.</summary>

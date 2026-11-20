@@ -21,7 +21,8 @@ internal sealed partial class ModulePostBroker(
     TimeProvider time,
     IEnumerable<IDeliveryPostFilter> filters,
     PostTagsGate tagging,
-    PostExtractionGate extraction) : IPostBroker
+    PostExtractionGate extraction,
+    ImpliedTagResolver implied) : IPostBroker
 {
     private readonly DeliveryPostFilters postFilters = new(filters);
 

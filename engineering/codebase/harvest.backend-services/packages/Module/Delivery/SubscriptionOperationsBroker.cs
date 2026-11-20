@@ -259,7 +259,7 @@ internal sealed class SubscriptionOperationsBroker(
     /// <summary>Reads what the envelope's Layer 1 tags say: the entity type, the most specific domain nodes, the topics and the timeframe.</summary>
     private static (string? EntityType, IReadOnlyList<string> Domains, IReadOnlyList<string> Topics, string? Timeframe) Describe(PostEnvelope envelope)
     {
-        var small = envelope.Tags.Where(tag => tag.Tier == ExtractionTier.SmallModel).Select(tag => tag.Tag).ToList();
+        var small = envelope.Tags.Where(SelectorRules.IsAnswerTag).Select(tag => tag.Tag).ToList();
         return (Values(small, PostTagsConstants.TypeTagPrefix).FirstOrDefault(), SelectorRules.MostSpecific(Values(small, PostTagsConstants.DomainTagPrefix)),
             [.. Values(small, PostTagsConstants.TopicTagPrefix).Distinct(StringComparer.Ordinal)], Values(small, PostTagsConstants.TimeframeTagPrefix).FirstOrDefault());
     }

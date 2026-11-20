@@ -20,19 +20,29 @@ public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDelive
     /// <summary>Creates what the profile names and is missing. Schedules start disabled unless requested; a request also
     /// switches on the profile's cadences of pipelines that already exist, keeping an operator-tuned interval.</summary>
     /// <remarks>Repeat calls reuse identities and issue no key unless <paramref name="keys"/> asks. Call setup through one
-    /// operator host at a time; the registry rejects conflicting creates. Collected sources start closed to models;
-    /// <paramref name="allowAi"/> opens them so a Process stage can run a model processor such as <c>rental-terms@1</c>,
-    /// and setup never closes them again. Import-only sources keep their submitter-consent posture.</remarks>
+    /// operator host at a time; the registry rejects conflicting creates. Collected sources start closed to models
+    /// (<see cref="ModelProcessingMode.Off"/>); <paramref name="modelProcessing"/> sets the mode of every collected source, new or
+    /// existing, as <c>ocharo setup --model-processing</c> does, and without it an existing source keeps the mode it has.
+    /// <paramref name="allowAi"/> alone is the older switch: it opens a closed collected source to
+    /// <see cref="ModelProcessingMode.Auto"/> and never changes a <c>manual</c> or <c>auto</c> one. Import-only sources keep their
+    /// submitter-consent posture and their mode.</remarks>
     /// <param name="profile">The profile to apply.</param>
     /// <param name="enableSchedules">Whether the capture and check cadences run.</param>
     /// <param name="keys">Whether to issue or rotate the consumer's key.</param>
-    /// <param name="allowAi">Whether the profile's collected sources may reach a model processor.</param>
+    /// <param name="allowAi">The older switch that opens closed collected sources to <see cref="ModelProcessingMode.Auto"/>; with
+    /// <paramref name="modelProcessing"/> it is refused unless that is <see cref="ModelProcessingMode.Auto"/>.</param>
+    /// <param name="modelProcessing">The model-processing mode to set on the profile's collected sources, or none to keep each as it is.</param>
     /// <param name="cancellationToken">The token that cancels setup.</param>
     /// <returns>The IDs, and a key secret only when this call issued one.</returns>
     public async Task<Result<MarketplaceSetup>> EnsureAsync(MarketplaceProfile profile, bool enableSchedules = false,
-        MarketplaceKeyAction keys = MarketplaceKeyAction.None, bool allowAi = false, CancellationToken cancellationToken = default)
+        MarketplaceKeyAction keys = MarketplaceKeyAction.None, bool allowAi = false, ModelProcessingMode? modelProcessing = null,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(profile);
+        if (allowAi && modelProcessing is { } other && other != ModelProcessingMode.Auto)
+            return Invalid("allowAi means model processing auto; ask for one or the other.");
+        bool opensOnly = allowAi && modelProcessing is null;
+        modelProcessing ??= allowAi ? ModelProcessingMode.Auto : null;
         if (profile.Searches.Count == 0 || profile.Searches.Select(search => search.Key).Distinct(StringComparer.Ordinal).Count() != profile.Searches.Count)
             return Invalid("A marketplace profile needs one or more searches with distinct keys.");
         if (profile.Searches.FirstOrDefault(search => !Uri.TryCreate(search.Url, UriKind.Absolute, out Uri? url)
@@ -61,7 +71,7 @@ public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDelive
             foreach (MarketplaceSearch search in profile.Searches)
             {
                 if (!sources.TryGetValue(search.Site, out var source))
-                    sources[search.Site] = source = await EnsureSourceAsync(container.Id, search.Site, allowAi, cancellationToken);
+                    sources[search.Site] = source = await EnsureSourceAsync(container.Id, search.Site, modelProcessing, opensOnly, cancellationToken);
                 bool canCapture = !search.Site.ImportOnly && source.State == SourceState.Active
                     && source.Permission is SourcePermission.Open or SourcePermission.Granted;
                 var schedules = Cadence(profile, search.Site, enableSchedules && canCapture);
@@ -149,15 +159,15 @@ public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDelive
     }
 
     /// <summary>Creates or reuses the container's source for a marketplace site, named and grouped for the console; an
-    /// operator's name or group is kept, and a collected source opens to models when asked.</summary>
-    private async Task<SourceModel> EnsureSourceAsync(Guid containerId, MarketplaceSite site, bool allowAi,
-        CancellationToken cancellationToken)
+    /// operator's name or group is kept, and a collected source takes the requested model-processing mode.</summary>
+    private async Task<SourceModel> EnsureSourceAsync(Guid containerId, MarketplaceSite site, ModelProcessingMode? modelProcessing,
+        bool opensOnly, CancellationToken cancellationToken)
     {
         var sources = Value(await registry.ListSourcesAsync(containerId, cancellationToken));
         var family = Family(site);
         var source = sources.SingleOrDefault(item => item.Family == family && item.Handle == site.Handle);
 
-        bool opensToAi = allowAi && !site.ImportOnly;
+        ModelProcessingMode? requested = site.ImportOnly ? null : modelProcessing;
 
         source ??= Value(await registry.RegisterSourceAsync(new()
             {
@@ -166,15 +176,17 @@ public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDelive
                 Posture = site.ImportOnly ? SourcePosture.ConsentedIntake : SourcePosture.OwnFetch,
                 Permission = site.ImportOnly ? SourcePermission.Restricted : SourcePermission.Open,
                 ConsentBasis = site.ImportOnly ? ConsentBasis.Submitter : ConsentBasis.None,
-                AiAllowed = opensToAi, PoolShareable = false, RobotsPolicy = RobotsPolicy.Obey, CheckPolicy = site.CheckPolicy,
+                ModelProcessing = requested ?? ModelProcessingMode.Off, PoolShareable = false, RobotsPolicy = RobotsPolicy.Obey,
+                CheckPolicy = site.CheckPolicy,
             }, cancellationToken));
         if (source.PoolShareable || source.RobotsPolicy != RobotsPolicy.Obey || (site.ImportOnly && source.AiAllowed))
             throw new ProvisioningFailure(AppErrorFactory.Conflict(
                 $"The existing {site.Name} source has a different AI, sharing or robots posture. Review it before applying this profile."));
         if (site.ImportOnly && (source.Posture != SourcePosture.ConsentedIntake || source.Permission != SourcePermission.Restricted))
             throw new ProvisioningFailure(AppErrorFactory.Conflict($"The existing {site.Name} source is not restricted to imports."));
-        bool opens = opensToAi && !source.AiAllowed;
-        if (source.GroupId is not null && source.Name is not null && !opens)
+        bool setsMode = requested is { } mode && source.ModelProcessing != mode
+            && (!opensOnly || source.ModelProcessing == ModelProcessingMode.Off);
+        if (source.GroupId is not null && source.Name is not null && !setsMode)
             return source;
 
         Guid? groupId = null;
@@ -188,7 +200,7 @@ public sealed class MarketplaceProvisioner(IRegistrationBroker registry, IDelive
         {
             Name = source.Name is null ? site.Name : null,
             GroupId = groupId,
-            AiAllowed = opens ? true : null,
+            ModelProcessing = setsMode ? requested : null,
         }, cancellationToken));
     }
 

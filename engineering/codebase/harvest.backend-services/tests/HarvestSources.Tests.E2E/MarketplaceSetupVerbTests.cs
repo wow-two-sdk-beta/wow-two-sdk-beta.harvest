@@ -6,6 +6,12 @@ using HarvestSources.Api.Marketplace;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using WoW.Two.Sdk.Beta.Be.Foundation.Results;
+using WoW.Two.Sdk.Beta.Be.Harvest.Containers;
+using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
+using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
+using WoW.Two.Sdk.Beta.Be.Harvest.Tenants;
 using WoW.Two.Sdk.Beta.Be.Meta;
 
 namespace HarvestSources.Tests.E2E;
@@ -88,11 +94,63 @@ public sealed class MarketplaceSetupVerbTests
         again.Output.Should().Be(status.Output, "status reads and never queues or writes");
     }
 
+    [Fact]
+    public async Task Setup_with_model_processing_sets_the_collected_sources_and_without_it_keeps_their_mode()
+    {
+        await using var host = await StartAsync();
+
+        var created = await Run(host.Services, ["setup", "--profile", "haven", "--model-processing", "manual"]);
+        var afterCreate = await ModesAsync(host);
+        var opened = await Run(host.Services, ["setup", "--profile", "haven", "--model-processing", "AUTO"]);
+        var afterOpen = await ModesAsync(host);
+        var kept = await Run(host.Services, ["setup", "--profile", "haven", "--schedules"]);
+        var afterKeep = await ModesAsync(host);
+        var closed = await Run(host.Services, ["setup", "--profile", "haven", "--model-processing", "off"]);
+        var afterClose = await ModesAsync(host);
+
+        created.Exit.Should().Be(0, created.Error);
+        afterCreate.Collected.Should().HaveCount(3).And.OnlyContain(mode => mode == ModelProcessingMode.Manual, "OLX, Joymee and BirBir's collector");
+        afterCreate.Imports.Should().HaveCount(2).And.OnlyContain(mode => mode == ModelProcessingMode.Off, "imports keep their consent posture");
+        opened.Exit.Should().Be(0, opened.Error);
+        afterOpen.Collected.Should().OnlyContain(mode => mode == ModelProcessingMode.Auto);
+        afterOpen.Imports.Should().OnlyContain(mode => mode == ModelProcessingMode.Off);
+        kept.Exit.Should().Be(0, kept.Error);
+        afterKeep.Collected.Should().OnlyContain(mode => mode == ModelProcessingMode.Auto, "no option leaves a source as it is");
+        closed.Exit.Should().Be(0, closed.Error);
+        afterClose.Collected.Should().OnlyContain(mode => mode == ModelProcessingMode.Off);
+        afterClose.Imports.Should().OnlyContain(mode => mode == ModelProcessingMode.Off);
+    }
+
+    [Fact]
+    public async Task Setup_without_the_option_registers_closed_and_allow_ai_opens_only_closed_sources_to_auto()
+    {
+        await using var host = await StartAsync();
+
+        (await Run(host.Services, ["setup", "--profile", "haven"])).Exit.Should().Be(0);
+        var registered = await ModesAsync(host);
+        (await Run(host.Services, ["setup", "--profile", "haven", "--allow-ai"])).Exit.Should().Be(0);
+        var opened = await ModesAsync(host);
+        (await Run(host.Services, ["setup", "--profile", "haven", "--model-processing", "manual"])).Exit.Should().Be(0);
+        (await Run(host.Services, ["setup", "--profile", "haven", "--allow-ai"])).Exit.Should().Be(0);
+        var stillManual = await ModesAsync(host);
+
+        registered.Collected.Should().HaveCount(3).And.OnlyContain(mode => mode == ModelProcessingMode.Off);
+        opened.Collected.Should().OnlyContain(mode => mode == ModelProcessingMode.Auto, "--allow-ai works as model processing auto");
+        opened.Imports.Should().OnlyContain(mode => mode == ModelProcessingMode.Off);
+        stillManual.Collected.Should().OnlyContain(mode => mode == ModelProcessingMode.Manual, "the older switch never changes a source that is not closed");
+    }
+
     [Theory]
     [InlineData("marketplace")]
     [InlineData("marketplace setup")]
     [InlineData("marketplace setup --profile")]
     [InlineData("marketplace setup --profile nowhere")]
+    [InlineData("marketplace setup --profile haven --model-processing")]
+    [InlineData("marketplace setup --profile haven --model-processing loud")]
+    [InlineData("marketplace setup --profile haven --model-processing auto --model-processing off")]
+    [InlineData("marketplace setup --profile haven --allow-ai --model-processing auto")]
+    [InlineData("marketplace setup --profile haven --model-processing auto --allow-ai")]
+    [InlineData("marketplace status --profile haven --model-processing auto")]
     [InlineData("marketplace setup --profile haven --issue-key --rotate-key")]
     [InlineData("marketplace status --profile haven --run")]
     [InlineData("marketplace status --profile haven --allow-ai")]
@@ -118,6 +176,18 @@ public sealed class MarketplaceSetupVerbTests
         exit.Should().Be(2, error.ToString());
         error.ToString().Should().Contain("Usage: marketplace setup").And.Contain("Profiles: haven");
         output.ToString().Should().BeEmpty();
+    }
+
+    /// <summary>Reads the model-processing mode of the haven container's sources: the collected ones, and the import-only ones.</summary>
+    private static async Task<(IReadOnlyList<ModelProcessingMode> Collected, IReadOnlyList<ModelProcessingMode> Imports)> ModesAsync(WebApplication host)
+    {
+        using var scope = host.Services.CreateScope();
+        var registry = scope.ServiceProvider.GetRequiredService<IRegistrationBroker>();
+        var tenant = Assert.IsType<Result<IReadOnlyList<TenantModel>>.Success>(await registry.ListTenantsAsync()).Value.Single(item => item.Slug == "haven");
+        var container = Assert.IsType<Result<IReadOnlyList<ContainerModel>>.Success>(await registry.ListContainersAsync(tenant.Id)).Value.Single();
+        var sources = Assert.IsType<Result<IReadOnlyList<SourceModel>>.Success>(await registry.ListSourcesAsync(container.Id)).Value;
+        return ([.. sources.Where(source => source.Family != SourceFamily.Manual).Select(source => source.ModelProcessing)],
+            [.. sources.Where(source => source.Family == SourceFamily.Manual).Select(source => source.ModelProcessing)]);
     }
 
     private static JsonElement Last(string output) => JsonDocument.Parse(output.TrimEnd().Split('\n')[^1]).RootElement.Clone();

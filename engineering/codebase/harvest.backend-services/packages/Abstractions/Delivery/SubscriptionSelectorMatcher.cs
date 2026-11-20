@@ -45,7 +45,7 @@ public static class SubscriptionSelectorMatcher
         if (!SelectorRules.HasTagClause(selector))
             return new(SelectorVerdict.Match, ["sources"], context);
 
-        var small = post.Envelope.Tags.Where(tag => tag.Tier == ExtractionTier.SmallModel).Select(tag => tag.Tag).ToList();
+        var small = post.Envelope.Tags.Where(SelectorRules.IsAnswerTag).Select(tag => tag.Tag).ToList();
         if (small.Count == 0)
             return new(SelectorVerdict.Pending, ["untagged"], context);
 

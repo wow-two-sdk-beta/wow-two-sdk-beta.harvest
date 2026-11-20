@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Delivery;
 
@@ -181,6 +182,11 @@ public static partial class SelectorRules
     public static bool HasTagClause(SubscriptionSelector selector) =>
         selector.EntityTypes.Count > 0 || selector.Domains.Count > 0 || selector.Topics.Count > 0
         || selector.ExcludeDomains.Count > 0 || selector.ExcludeTopics.Count > 0 || selector.ExcludeTimeframes.Count > 0;
+
+    /// <summary>Tells whether a tag is a Layer 1 answer a selector judges: tier <see cref="ExtractionTier.SmallModel"/> for the
+    /// model's, and tier <see cref="ExtractionTier.Rules"/> for the tags a source section implies (<c>section-implied@1</c>).</summary>
+    /// <param name="tag">The envelope's tag.</param>
+    public static bool IsAnswerTag(PostTag tag) => tag.Tier is ExtractionTier.SmallModel or ExtractionTier.Rules;
 
     private static string? ValidateRefs(IReadOnlyList<SelectorSourceRef> refs, string list, bool exclude)
     {

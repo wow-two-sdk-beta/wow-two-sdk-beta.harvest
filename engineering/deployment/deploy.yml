@@ -77,8 +77,11 @@ services:
         Harvest:Processing:Tags:Enabled: { type: boolean, default: false }
         Harvest:Processing:Tags:Models:0: {}
         Harvest:Processing:Tags:Models:1: {}
+        # Wanted pairs: :0 is Ocharo's (event + style-fashion), :1 Haven's (listing + real-estate).
         Harvest:Processing:Extraction:Wanted:0:EntityType: {}
         Harvest:Processing:Extraction:Wanted:0:Domain: {}
+        Harvest:Processing:Extraction:Wanted:1:EntityType: {}
+        Harvest:Processing:Extraction:Wanted:1:Domain: {}
         Harvest:Processing:Extraction:Models:0: {}
         Harvest:Entities:Enabled: { type: boolean, default: false }
         # Console sign-in through the environment's Identity issuer (deployment.md § Browser sign-in), off until the

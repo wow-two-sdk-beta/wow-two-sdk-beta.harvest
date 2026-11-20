@@ -110,6 +110,12 @@ internal sealed class PostTagsBroker(
                     await PostTagsStore.DropAsync(dataSource, claim.PostId, cancellationToken);
                     continue;
                 }
+                // A post whose source sections imply its tags gets them in code, not from a model, unless an operator named it.
+                if (!claim.Explicit && await posts.ApplyImpliedTagsAsync(claim.ContainerId, claim.PostId, cancellationToken))
+                {
+                    await PostTagsStore.DropAsync(dataSource, claim.PostId, cancellationToken);
+                    continue;
+                }
                 await TagAsync(subject, claim.Attempts, dryRun: false, claim.RunId, claim.Explicit, cancellationToken);
             }
             catch (Exception error) when (error is not OperationCanceledException)

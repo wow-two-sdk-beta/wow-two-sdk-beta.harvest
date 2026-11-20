@@ -103,7 +103,7 @@ internal sealed partial class ModulePostBroker
     {
         await using var command = PostSql.Command(connection, transaction, """
             SELECT t.entity_type,t.domains::text,t.topics,t.title_en,t.confidence,t.prompt_version,t.model,
-                e.post_id IS NOT NULL,e.answer->>'format',(e.answer->'occurrences'->0)::text,t.timeframe
+                e.post_id IS NOT NULL,e.answer->>'format',(e.answer->'occurrences'->0)::text,t.timeframe,t.prompt_hash
             FROM harvest_post_tags t
             LEFT JOIN harvest_post_extractions e ON e.post_id=t.post_id AND e.content_hash=t.content_hash
                 AND e.use_case=@useCase AND e.status='done' AND t.entity_type='event'
@@ -115,7 +115,9 @@ internal sealed partial class ModulePostBroker
         var tags = new StoredPostTags(reader.GetString(0), PostTagsStore.Read(reader.GetString(1), new List<PostTagsDomain>()),
             reader.GetFieldValue<string[]>(2), reader.IsDBNull(3) ? null : reader.GetString(3),
             reader.IsDBNull(4) ? null : reader.GetDecimal(4), reader.IsDBNull(5) ? null : reader.GetInt32(5),
-            reader.IsDBNull(6) ? null : reader.GetString(6), reader.IsDBNull(10) ? null : reader.GetString(10));
+            reader.IsDBNull(6) ? null : reader.GetString(6), reader.IsDBNull(10) ? null : reader.GetString(10),
+            reader.IsDBNull(11) || !reader.GetString(11).StartsWith(PostTagsConstants.RuleHashPrefix, StringComparison.Ordinal)
+                ? null : reader.GetString(11)[PostTagsConstants.RuleHashPrefix.Length..]);
         return (tags, StoredEventExtraction.Read(reader.GetBoolean(7), reader.IsDBNull(8) ? null : reader.GetString(8),
             reader.IsDBNull(9) ? null : reader.GetString(9)));
     }
@@ -128,6 +130,75 @@ internal sealed partial class ModulePostBroker
             SELECT jsonb_build_array(entity_type,domains,about,timeframe,title_en)::text FROM harvest_post_tags
             WHERE post_id=@post AND content_hash=@hash AND status='done'
             """, ct, ("post", postId), ("hash", contentHash)) as string;
+
+    /// <summary>Writes the tags the post's source sections imply, in code, when its current title and text have no done answer:
+    /// a done <c>harvest_post_tags</c> row with no model, which the resolve then overlays as tier <c>Rules</c> tags in the same
+    /// write, so the post raises no extra revision and no event, and queues no tagging.</summary>
+    /// <remarks>
+    ///   - applies only when tagging is on, and only when every link supplying the title and text sits in a section that
+    ///     declares tags (<see cref="ImpliedTagResolver"/>); any other post is left to the model
+    ///   - a done answer for the content, a model's included, is never replaced; a failed or unavailable one is
+    ///   - the row's <c>prompt_hash</c> reads <c>rule:section-implied@1</c>, which tells it from a model answer
+    ///   - the row records the revision the write gives the post (<c>bump</c> more than its stored one); the result is the
+    ///     stored tags to overlay, or null when the post is not section-implied
+    /// </remarks>
+    private async Task<StoredPostTags?> WriteImpliedTagsAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid containerId,
+        Guid postId, WoW.Two.Sdk.Beta.Be.Harvest.Extraction.PostEnvelope resolved, IReadOnlyDictionary<string, Guid> provenance, byte[] contentHash,
+        int bump, DateTimeOffset now, CancellationToken ct)
+    {
+        if (!tagging.Enabled || !PostTagsContent.HasContent(resolved)
+            || await PostSql.ScalarAsync(connection, transaction,
+                "SELECT 1 FROM harvest_post_tags WHERE post_id=@post AND content_hash=@hash AND status='done'", ct,
+                ("post", postId), ("hash", contentHash)) is not null)
+            return null;
+        var links = new[] { "title", "text" }.Where(provenance.ContainsKey).Select(field => provenance[field]).Distinct().ToArray();
+        if (await implied.ResolveAsync(connection, transaction, containerId, links, ct) is not { } tags)
+            return null;
+        await PostSql.ExecuteAsync(connection, transaction, """
+            INSERT INTO harvest_post_tags(post_id,content_hash,container_id,revision,prompt_hash,entity_type,domains,topics,timeframe,flags,status,created_at)
+            SELECT p.id,@hash,p.container_id,p.revision+@bump,@rule,@entity,CAST(@domains AS jsonb),ARRAY[]::text[],@timeframe,'[]'::jsonb,'done',@now
+            FROM harvest_posts p WHERE p.container_id=@container AND p.id=@post
+            ON CONFLICT (post_id,content_hash) DO UPDATE SET revision=EXCLUDED.revision,prompt_version=NULL,prompt_hash=EXCLUDED.prompt_hash,
+                inference_id=NULL,model=NULL,entity_type=EXCLUDED.entity_type,domains=EXCLUDED.domains,topics=EXCLUDED.topics,about=NULL,
+                timeframe=EXCLUDED.timeframe,items=NULL,language=NULL,confidence=NULL,title_en=NULL,flags=EXCLUDED.flags,status='done',
+                error=NULL,created_at=EXCLUDED.created_at
+            WHERE harvest_post_tags.status<>'done'
+            """, ct, ("post", postId), ("hash", contentHash), ("container", containerId), ("bump", bump),
+            ("rule", PostTagsConstants.RuleHashPrefix + PostTagsConstants.SectionRule), ("entity", tags.EntityType),
+            ("domains", PostTagsStore.Json(tags.ToStored().Domains)), ("timeframe", tags.ToStored().Timeframe), ("now", now));
+        return tags.ToStored();
+    }
+
+    /// <summary>Gives a post whose source sections imply tags those tags now instead of a tagging call, for a worker that
+    /// claimed its queued <c>post-tags</c> row (<c>post-tags backfill</c>, or a re-run no operator named a post or source for):
+    /// the post resolves again, and a changed <c>base</c> raises its revision with <c>post.changed</c>, as any tag write does.</summary>
+    /// <returns>Whether the post's current title and text now have tags a rule wrote, so no model need tag them.</returns>
+    internal async Task<bool> ApplyImpliedTagsAsync(Guid containerId, Guid postId, CancellationToken ct)
+    {
+        if (!tagging.Enabled)
+            return false;
+        await using var connection = await dataSource.OpenConnectionAsync(ct);
+        await using var transaction = await connection.BeginTransactionAsync(ct);
+        await PostSql.LockAsync(connection, transaction, containerId, ct);
+        var post = await ReadPostAsync(connection, transaction, containerId, postId, ct);
+        var links = post is null ? [] : new[] { "title", "text" }.Where(post.FieldSources.ContainsKey).Select(field => post.FieldSources[field]).Distinct().ToArray();
+        if (post is not { MergedInto: null } || !PostTagsContent.HasContent(post.Base)
+            || await implied.ResolveAsync(connection, transaction, containerId, links, ct) is null)
+        {
+            await transaction.CommitAsync(ct);
+            return false;
+        }
+        var now = Now();
+        if (await ResolveAsync(connection, transaction, containerId, postId, now, true, ct, onlyIfChanged: true))
+            await DeliveryEventWriter.AppendAsync(connection, transaction,
+                (await ReadPostAsync(connection, transaction, containerId, postId, ct))!, "post.changed", null, null, now, postFilters, ct);
+        var current = (await ReadPostAsync(connection, transaction, containerId, postId, ct))!;
+        bool ruleTagged = await PostSql.ScalarAsync(connection, transaction, """
+            SELECT 1 FROM harvest_post_tags WHERE post_id=@post AND content_hash=@hash AND status='done' AND left(prompt_hash,5)=@rule
+            """, ct, ("post", postId), ("hash", PostTagsContent.Hash(current.Base)), ("rule", PostTagsConstants.RuleHashPrefix)) is not null;
+        await transaction.CommitAsync(ct);
+        return ruleTagged;
+    }
 
     /// <summary>Queues post-tags for a post whose title and text have no done answer, when tagging is on and every source
     /// supplying them processes automatically; a waiting row takes the newer content and starts its attempts over.</summary>

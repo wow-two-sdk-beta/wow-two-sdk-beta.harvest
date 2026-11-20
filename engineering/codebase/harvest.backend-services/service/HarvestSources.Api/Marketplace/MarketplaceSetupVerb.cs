@@ -3,18 +3,24 @@ using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Delivery;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Runs;
+using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Marketplace;
+using HarvestSources.Api.Sources;
 
 namespace HarvestSources.Api.Marketplace;
 
 /// <summary>Answers <c>marketplace setup|status</c>: the same idempotent setup as <c>POST api/marketplace/{profile}/setup</c>,
 /// run on the deployed host's services, so a platform job provisions a product's listing intake with no operator token.</summary>
 /// <remarks>
-///   - <c>marketplace setup --profile &lt;key&gt; [--schedules] [--run] [--allow-ai] [--issue-key | --rotate-key]</c>
+///   - <c>marketplace setup --profile &lt;key&gt; [--schedules] [--run] [--model-processing &lt;mode&gt; | --allow-ai] [--issue-key | --rotate-key]</c>
 ///   - <c>--schedules</c> enables the profile's capture and check cadences, on existing pipelines too, keeping a tuned
 ///     interval; <c>--run</c> queues one bounded capture run per search for the running worker
-///   - <c>--allow-ai</c> opens the profile's collected sources to model processors, so a Process stage can run
-///     <c>rental-terms@1</c>; import-only sources stay closed, and a later setup without it keeps them open
+///   - <c>--model-processing off|manual|auto</c> sets that mode on every collected source of the profile, as
+///     <c>ocharo setup --model-processing</c> does: new sources register with it and existing ones are updated; without it new
+///     sources register <c>off</c> and existing ones keep their mode. Import-only sources stay <c>off</c>
+///   - <c>--allow-ai</c> is the older switch: it opens the collected sources that are <c>off</c> to <c>auto</c>, so a Process
+///     stage or the extraction pass can use them, and leaves a <c>manual</c> or <c>auto</c> one alone; it cannot be combined
+///     with <c>--model-processing</c>
 ///   - <c>--issue-key</c> issues the consumer's <c>events:read</c> key when it holds no active one; <c>--rotate-key</c>
 ///     revokes its active keys and issues one. The secret goes only into the last stdout line, once; stderr never carries it
 ///   - stderr carries the report; the last stdout line is one JSON object with the tenant, container, searches (source,
@@ -29,7 +35,7 @@ public static class MarketplaceSetupVerb
     /// <summary>Holds the verb's name, the first process argument.</summary>
     public const string Name = "marketplace";
 
-    private static readonly string Usage = "Usage: marketplace setup --profile <key> [--schedules] [--run] [--allow-ai] [--issue-key | --rotate-key]\n"
+    private static readonly string Usage = "Usage: marketplace setup --profile <key> [--schedules] [--run] [--model-processing <off|manual|auto> | --allow-ai] [--issue-key | --rotate-key]\n"
         + "       marketplace status --profile <key>\n"
         + "Profiles: " + string.Join(", ", MarketplaceProfiles.All.Select(profile => profile.Key));
 
@@ -43,7 +49,7 @@ public static class MarketplaceSetupVerb
     public static async Task<int> RunAsync(IServiceProvider services, IReadOnlyList<string> arguments, TextWriter output,
         TextWriter error, CancellationToken ct)
     {
-        if (!TryParse(arguments, out var command, out var profile, out var schedules, out var run, out var allowAi, out var keys))
+        if (!TryParse(arguments, out var command, out var profile, out var schedules, out var run, out var allowAi, out var modelProcessing, out var keys))
         {
             await error.WriteLineAsync(Usage);
             return 2;
@@ -58,7 +64,7 @@ public static class MarketplaceSetupVerb
         if (command == "status")
             return await StatusAsync(scope.ServiceProvider, provisioner, profile, output, error, ct);
 
-        var setup = await provisioner.EnsureAsync(profile, schedules, keys, allowAi, ct);
+        var setup = await provisioner.EnsureAsync(profile, schedules, keys, allowAi, modelProcessing, ct);
         if (setup is not Result<MarketplaceSetup>.Success { Value: var value })
         {
             await error.WriteLineAsync("marketplace setup refused: " + ((Result<MarketplaceSetup>.Failure)setup).Error.Message);
@@ -181,13 +187,14 @@ public static class MarketplaceSetupVerb
     private static string Snake<TEnum>(TEnum value) where TEnum : struct, Enum => JsonNamingPolicy.SnakeCaseLower.ConvertName(value.ToString());
 
     private static bool TryParse(IReadOnlyList<string> arguments, out string command, out MarketplaceProfile profile, out bool schedules,
-        out bool run, out bool allowAi, out MarketplaceKeyAction keys)
+        out bool run, out bool allowAi, out ModelProcessingMode? modelProcessing, out MarketplaceKeyAction keys)
     {
         command = arguments.Count > 0 ? arguments[0] : "";
         profile = null!;
         schedules = false;
         run = false;
         allowAi = false;
+        modelProcessing = null;
         keys = MarketplaceKeyAction.None;
         if (command is not ("setup" or "status"))
             return false;
@@ -207,8 +214,13 @@ public static class MarketplaceSetupVerb
                 case "--run" when setup:
                     run = true;
                     break;
-                case "--allow-ai" when setup:
+                case "--allow-ai" when setup && modelProcessing is null:
                     allowAi = true;
+                    break;
+                case "--model-processing" when setup && modelProcessing is null && !allowAi && index + 1 < arguments.Count
+                    && SourcesVerb.TryParseMode(arguments[index + 1], out var mode):
+                    modelProcessing = mode;
+                    index++;
                     break;
                 case "--issue-key" when setup && keys != MarketplaceKeyAction.Rotate:
                     keys = MarketplaceKeyAction.Issue;

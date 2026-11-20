@@ -21,7 +21,8 @@ public sealed record SelectorSection(Guid PipelineId, Guid SourceId, PipelineSco
 public sealed record SelectorPostFacts
 {
     /// <summary>Gets the revision's resolved envelope, whose <see cref="PostEnvelope.Tags"/> of tier
-    /// <see cref="ExtractionTier.SmallModel"/> carry the Layer 1 answer.</summary>
+    /// <see cref="ExtractionTier.SmallModel"/> (the model's) or <see cref="ExtractionTier.Rules"/> (a source section's implied
+    /// tags) carry the Layer 1 answer.</summary>
     public required PostEnvelope Envelope { get; init; }
 
     /// <summary>Gets the post's links, in the post's order.</summary>

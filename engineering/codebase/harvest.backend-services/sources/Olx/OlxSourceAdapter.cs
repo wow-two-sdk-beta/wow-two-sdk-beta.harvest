@@ -29,15 +29,20 @@ public sealed class OlxSourceAdapter : ISourceAdapter, ISourceConfigurationProvi
     };
 
     /// <inheritdoc />
+    /// <remarks>Each section implies <c>listing</c> and its real-estate node, so a post these sections supply is tagged in code,
+    /// not by a model: apartments, houses, and the daily rentals, whose ads cover flats, houses and rooms alike, under rent.</remarks>
     public IReadOnlyList<SourceSectionDefinition> Sections(SourceModel source) =>
     [
-        Section("apartments-rent", "Tashkent long-term apartments", ApartmentRentCatalog),
-        Section("houses-rent", "Tashkent long-term houses", HouseRentCatalog),
-        Section("daily-rent", "Tashkent daily rentals", DailyRentCatalog),
+        Section("apartments-rent", "Tashkent long-term apartments", ApartmentRentCatalog, "real-estate/apartments"),
+        Section("houses-rent", "Tashkent long-term houses", HouseRentCatalog, "real-estate/houses"),
+        Section("daily-rent", "Tashkent daily rentals", DailyRentCatalog, "real-estate/real-estate-renting-and-leasing"),
     ];
 
-    private static SourceSectionDefinition Section(string key, string name, string url) =>
-        new(name, url, "und") { Key = key, RestrictToPath = false, RegisterPassivePipeline = false };
+    private static SourceSectionDefinition Section(string key, string name, string url, string domain) =>
+        new(name, url, "und")
+        {
+            Key = key, RestrictToPath = false, RegisterPassivePipeline = false, ImpliedTags = new SectionImpliedTags("listing", domain),
+        };
 
     /// <inheritdoc />
     public string Key => "olx-uz";

@@ -93,7 +93,7 @@ internal sealed class ModuleSubscriptionPreviewBroker(
             var postLinks = links.TryGetValue(post.Id, out var found) ? found : [];
             var facts = new SelectorPostFacts { Envelope = post.Envelope, Links = postLinks, PrimaryLinkId = post.PrimaryLinkId };
             var evaluation = SubscriptionSelectorMatcher.Evaluate(selector, facts, sections, request.Schema, NoContext);
-            if (post.Envelope.Tags.Any(tag => tag.Tier == ExtractionTier.SmallModel)) tagged++;
+            if (post.Envelope.Tags.Any(SelectorRules.IsAnswerTag)) tagged++;
             switch (evaluation.Verdict)
             {
                 case SelectorVerdict.Match: matched++; break;

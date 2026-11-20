@@ -157,7 +157,8 @@ internal sealed class PostExtractionBroker(
         var retry = call.Status == "done" ? (DateTimeOffset?)null
             : time.GetUtcNow() + TimeSpan.FromTicks(Math.Min(MaxRetryDelay.Ticks, options.Value.RetryDelay.Ticks * Math.Max(1, attempts)));
         var revised = await posts.WriteExtractionAsync(new PostExtractionRecord(post.ContainerId, post.Id, hash, useCase, post.Revision,
-            call.Status, call.Reason, model.PromptVersion, final?.PromptHash, model.InferenceId, model.Model, call.Answer, attempts, retry, runId),
+            call.Status, call.Reason, model.PromptVersion, final?.PromptHash, model.InferenceId, model.Model, call.Answer, attempts, retry, runId,
+            model.CostMicroUsd),
             queueEntities: services.GetService<EntityGate>()?.Enabled == true, ct);
         return model with { Stored = true, NewRevision = revised };
     }

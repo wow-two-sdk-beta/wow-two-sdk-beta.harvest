@@ -11,7 +11,8 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
 ///   - entity type <c>none</c>, or a known domain off every pair: <see cref="ClassificationVerdict.Irrelevant"/>
 ///   - an event or listing with no known domain (the model's pick was unsure or unknown, so validation kept no node):
 ///     <see cref="ClassificationVerdict.Uncertain"/>
-///   - the confidence is the tags answer's own; the classifier names the model and the prompt version
+///   - the confidence is the tags answer's own; the classifier names the model and the prompt version, or the rule for tags a
+///     source section implies (<c>rule:section-implied@1</c>, no confidence)
 /// </remarks>
 internal static class PostTagsClassification
 {
@@ -59,7 +60,8 @@ internal static class PostTagsClassification
             : stored.EntityType == "unsure" ? null : stored.EntityType;
         return new PostClassification
         {
-            Classifier = $"model:{stored.Model ?? "unknown"}@{PostTagsConstants.UseCase}:{stored.PromptVersion?.ToString() ?? "unknown"}",
+            Classifier = stored.Rule is { } rule ? $"rule:{rule}"
+                : $"model:{stored.Model ?? "unknown"}@{PostTagsConstants.UseCase}:{stored.PromptVersion?.ToString() ?? "unknown"}",
             Verdict = verdict.Verdict,
             Confidence = stored.Confidence is { } confidence ? (double)confidence : null,
             Reason = verdict.Reason,

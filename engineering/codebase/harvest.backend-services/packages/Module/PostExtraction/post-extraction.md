@@ -63,6 +63,12 @@ takes only an `extract-event` answer's format, as its classification's kind, and
   answer of the wrong shape: a wrong JSON type or a missing field) and `unavailable` (no runner, use case or prompt; a
   provider without key) store the status, no answer, and retry after `RetryDelay` × attempts, capped at a day. A failure
   never replaces a done answer.
+- Listing delivery: a done `extract-listing` answer about the current content also goes to the subscriptions that hold the
+  post as `post.extracted` with `extras.listingAi` (`ListingAiExtras`: schema, prompt version, model, cost, revision, answer,
+  flags), through the Posts lane's write; a failed or unavailable answer delivers nothing. The record carries the run's
+  `CostMicroUsd` for that (zero for a cached answer); the table does not store it.
+- Section-implied route: a post whose tags a section implied (`Tagging/tagging.md`) has its rule tags in the write, so the
+  Posts lane queues this lane's use case in the same transaction, in `auto` mode, without a `post-tags` answer.
 - Entities: a done answer queues the post's `entity-resolve` row in the same transaction while `Harvest:Entities:Enabled`
   is set; the Entities lane (`../Entities/entities.md`) reads the answer, never this lane.
 - Write-back: the answer is stored through the Posts lane (`ModulePostBroker.WriteExtractionAsync`), which resolves the

@@ -11,3 +11,7 @@ Locale and slug changes preserve the ad ID. Original fields use `olx.ad.v1`, ind
 Unknown layouts, login/challenge pages and unrelated redirects do not establish deletion. Explicit unavailable-ad
 markers and direct 404/410 responses feed the engine's existing disappearance policy. Incomplete search results
 never establish that an ad was removed. No account, contact-reveal endpoint or phone API is used.
+
+Its three rental sections (apartments, houses, daily rent) declare implied tags (`SourceSectionDefinition.ImpliedTags`):
+`listing` with `real-estate/apartments`, `real-estate/houses` and `real-estate/real-estate-renting-and-leasing`, so the engine
+tags their ads in code and sends them straight to `extract-listing` (`engineering/development/post-tags.md` § Which posts skip it).

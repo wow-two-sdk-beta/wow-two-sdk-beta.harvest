@@ -132,7 +132,8 @@ internal sealed partial class ModulePostBroker
     /// <remarks>The stored post-tags answer for the post overlays the resolved envelope on every resolve, with the
     /// classification it gives for the wanted pairs and, from a done <c>extract-event</c> answer about the same content,
     /// the verdict's kind and an estimated start when the readers state none. A title or text without a done answer
-    /// queues tagging (<see cref="QueueTagsAsync"/>), and one with done tags a subscriber wants queues extraction
+    /// whose every source section implies tags gets them in code (<see cref="WriteImpliedTagsAsync"/>); any other queues
+    /// tagging (<see cref="QueueTagsAsync"/>). One with done tags a subscriber wants queues extraction
     /// (<see cref="QueueExtractionAsync"/>). The dedup number signature stays the readers' own. With
     /// <paramref name="onlyIfChanged"/> an unchanged <c>base</c> writes nothing and returns false.</remarks>
     private async Task<bool> ResolveAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid containerId, Guid postId, DateTimeOffset now, bool increment, CancellationToken ct,
@@ -154,6 +155,9 @@ internal sealed partial class ModulePostBroker
         var contentHash = PostTagsContent.Hash(resolved);
         var signature = NumberSignature(resolved);
         var stored = await ReadStoredAnswersAsync(connection, transaction, postId, contentHash, ct);
+        if (await WriteImpliedTagsAsync(connection, transaction, containerId, postId, resolved, provenance, contentHash,
+                increment && !onlyIfChanged ? 1 : 0, now, ct) is { } impliedTags)
+            stored = (impliedTags, null);
         resolved = PostTagsOverlay.Apply(resolved, stored.Tags);
         if (stored.Tags is not null)
             resolved = PostTagsClassification.Apply(resolved, stored.Tags, await extraction.WantedAsync(ct), stored.Event?.Format);

@@ -17,6 +17,9 @@ container-scoped reads, merge and unmerge; `AddHarvestPosts()` registers the Pos
 - Emits, in the same transaction: `post.new`, `post.changed`, `link.state` rows through the Delivery lane's log; a
   resolve queues `post-tags` for a title and text with no done answer (`harvest_post_work`), and a done tags answer
   queues the `extract-event` or `extract-listing` its demand wants (`PostExtraction/`).
+- a post whose title and text come only from sections that imply tags gets them in its first write (`ImpliedTagResolver`,
+  `Tagging/tagging.md`) and queues `extract-listing` directly; a done `extract-listing` answer about the current content raises
+  `post.extracted` on the subscriptions that hold the post (`WriteExtractionAsync`), with no revision of its own
 - capture writes and subscription backfills share a container advisory transaction lock; a content projection's
   SHA-256 controls capture creation, so replaying a completed write appends neither a capture nor an event
 - local capture bodies use `harvest_captures.body_inline` while Files is unbound; the retention policy determines

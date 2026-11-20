@@ -21,6 +21,9 @@ await provisioner.EnsureAsync(enableSchedules: false);
 await provisioner.EnsureAsync(selector: true);
 ```
 
+`MarketplaceProvisioner.EnsureAsync` takes the collected sources' model-processing mode (`marketplace setup --model-processing
+off|manual|auto`; `allowAi` is the alias that opens `off` sources to `auto`); import-only sources stay `off`.
+
 `selector: true` creates `ocharo-events` once and keeps it as it is afterwards, so a client's edits survive;
 `selectorReset: true` puts the file's selector back as a selector change by `ocharo setup`, and a file equal to the stored
 selector keeps the version. The per-pipeline `ocharo-fashion-v1` subscriptions keep being created beside it until they retire.

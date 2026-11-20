@@ -30,7 +30,7 @@ public sealed class MarketplaceController(MarketplaceProvisioner provisioner, Ma
         if (request.IssueKey && request.RotateKey)
             return this.ToProblem(AppErrorFactory.Validation("Ask for issueKey or rotateKey, not both."));
         var keys = request.RotateKey ? MarketplaceKeyAction.Rotate : request.IssueKey ? MarketplaceKeyAction.Issue : MarketplaceKeyAction.None;
-        return (await provisioner.EnsureAsync(found, request.EnableSchedules, keys, request.AllowAi, cancellationToken)).Match<IActionResult>(
+        return (await provisioner.EnsureAsync(found, request.EnableSchedules, keys, request.AllowAi, request.ModelProcessing, cancellationToken)).Match<IActionResult>(
             value => Ok(ApiResponse<MarketplaceSetup>.Ok(value)), this.ToProblem);
     }
 

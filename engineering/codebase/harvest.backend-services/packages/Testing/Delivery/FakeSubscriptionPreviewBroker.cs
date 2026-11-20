@@ -94,7 +94,7 @@ public sealed class FakeSubscriptionPreviewBroker : ISubscriptionPreviewBroker
         {
             var facts = FakeDeliveryBroker.Facts(post, groups);
             var evaluation = SubscriptionSelectorMatcher.Evaluate(selector, facts, sections, request.Schema, NoContext);
-            if (post.Base.Tags.Any(tag => tag.Tier == ExtractionTier.SmallModel)) tagged++;
+            if (post.Base.Tags.Any(SelectorRules.IsAnswerTag)) tagged++;
             switch (evaluation.Verdict)
             {
                 case SelectorVerdict.Match: matched++; break;

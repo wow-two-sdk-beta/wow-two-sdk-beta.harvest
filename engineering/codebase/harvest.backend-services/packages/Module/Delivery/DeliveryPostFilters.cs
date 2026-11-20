@@ -21,6 +21,9 @@ internal sealed class DeliveryPostFilters(IEnumerable<IDeliveryPostFilter> filte
         catch (Exception) { return null; }
     }
 
+    /// <summary>Tells whether the filter withholds the <c>post.changed</c> of a revision that only moved the post's tags.</summary>
+    internal bool IgnoresTagOnlyChange(string? key) => key is not null && byKey.TryGetValue(key, out var filter) && filter.IgnoresTagOnlyChange;
+
     internal static bool IsLifecycle(string type) => type is DeliveryEventTypes.LinkState or DeliveryEventTypes.PostMerged
         or DeliveryEventTypes.PostUnmerged or DeliveryEventTypes.PostPurged or DeliveryEventTypes.PostRelisted
         or DeliveryEventTypes.PostUnmatched;

@@ -35,6 +35,15 @@ Extraction needs the shared AI module (`Harvest:Processing:Ai:Enabled`, internal
 
 - After tagging: a done `post-tags` answer about the post's current title and text queues the use case of its entity
   type, in the same transaction, when a wanted pair matches and that content has no done answer.
+- Section-implied (the listing route): when every source supplying the post's title and text comes from a section that
+  declares implied tags (`SourceSectionDefinition.ImpliedTags`: OLX apartments, houses and daily rent declare `listing`
+  with `real-estate/apartments`, `real-estate/houses` and `real-estate/real-estate-renting-and-leasing`), the post write
+  stores those tags itself (tier `Rules`, version `Rule`, classifier `rule:section-implied@1`, no `titleEn`) and queues
+  no `post-tags` call (`post-tags.md` § Which posts skip it). It then queues the use case of the entity type, in the same
+  transaction, when a wanted pair matches (`Wanted:1` is Haven's `listing` + `real-estate`) and the source mode allows it:
+  `auto` queues on write, `manual` only a named re-run or `run --post`, `off` nothing. The tags land in the write that
+  stores the post, so there is no extra revision. A stored tag naming a taxonomy node that is missing or inactive is
+  never written; the post then takes the model path. Posts of any other section keep the rule above, untouched.
 - On a content change: a new title or text queues tagging first; once its tags are done, extraction queues for the new
   content. The tag-only revision keeps its content hash and queues nothing.
 - On a new wanted pair: `extract backfill` queues stored posts whose current tags match.
@@ -200,6 +209,10 @@ Re-runs with `--prompt-before`, `--since` and `--dry-run`, and eval sets from st
   transaction: when the kind or an estimated date changes the post, that is a new revision with `post.changed`. A
   listing answer, or one that changes nothing, writes no revision. Step C reads the done rows for the current content
   hash.
+- A done `extract-listing` answer about the post's current content is delivered: `post.extracted` on every active
+  subscription that holds the post, with `extras.listingAi` (`contract.md` § Listing delivery). The stored post never
+  holds it, and a failed or unavailable answer delivers nothing. The run's `costMicroUsd` rides only on the event; a
+  cached answer reads zero.
 
 ## Estimated dates (S17)
 

@@ -91,11 +91,25 @@ public sealed class SubscriptionSelectorMatcherTests
     }
 
     [Fact]
-    public void Evaluate_ShouldReadOnlySmallModelTags()
+    public void Evaluate_ShouldReadOnlyTheAnswerTiers_ModelAndRule()
     {
-        var post = Post(PostKind.Event, [new PostTag { Tag = "type:event", Tier = ExtractionTier.Rules }, new PostTag { Tag = "domain:style-fashion", Tier = ExtractionTier.Deterministic }]);
+        var mapped = Post(PostKind.Event, [new PostTag { Tag = "type:event", Tier = ExtractionTier.Deterministic }, new PostTag { Tag = "domain:style-fashion", Tier = ExtractionTier.Deterministic }]);
 
-        Expect(Judge(Fashion(), post), SelectorVerdict.Pending, "untagged");
+        Expect(Judge(Fashion(), mapped), SelectorVerdict.Pending, "untagged");
+    }
+
+    [Fact]
+    public void Evaluate_ShouldReadTheTagsASectionImplies_AsItReadsTheModels()
+    {
+        var implied = Post(PostKind.Listing, [
+            new PostTag { Tag = "type:listing", Tier = ExtractionTier.Rules, Version = "section-implied@1" },
+            new PostTag { Tag = "domain:real-estate/apartments", Tier = ExtractionTier.Rules, Version = "section-implied@1" },
+            new PostTag { Tag = "domain:real-estate", Tier = ExtractionTier.Rules, Version = "section-implied@1" }]);
+
+        Expect(Judge(new SubscriptionSelector { EntityTypes = ["listing"] }, implied), SelectorVerdict.Match, "type:listing");
+        Expect(Judge(new SubscriptionSelector { EntityTypes = ["listing"], Domains = [new SelectorDomain { Key = "real-estate" }] }, implied),
+            SelectorVerdict.Match, "type:listing", "domain:real-estate");
+        Expect(Judge(Fashion(), implied), SelectorVerdict.NoMatch, "no-type:listing");
     }
 
     [Fact]

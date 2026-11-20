@@ -196,7 +196,7 @@ bytes through the source's authorized API and uses the source URL while an image
 
 ## Provisioning Haven on a target
 
-`dotnet HarvestSources.Api.dll marketplace setup --profile haven [--schedules] [--run] [--allow-ai] [--issue-key]` applies the
+`dotnet HarvestSources.Api.dll marketplace setup --profile haven [--schedules] [--run] [--model-processing off|manual|auto] [--issue-key]` applies the
 `haven` marketplace profile on the target's own settings through Wheelhouse Run, with no listener and no operator token.
 A profile is data (`sources/Module/Marketplace/MarketplaceProfiles.cs`); another product adds a profile, not a verb.
 
@@ -210,9 +210,26 @@ A profile is data (`sources/Module/Marketplace/MarketplaceProfiles.cs`); another
   the verb keeps every existing row.
 - `--schedules` enables capture every 2 h for OLX, Joymee and BirBir, plus OLX's daily link check, keeping tuned intervals.
   A run reads at most 60 ads. The 64-page budget applies to catalog pages.
-- `--allow-ai` opens the OLX, Joymee and BirBir collection sources to model processors (`modelProcessing` `auto`), so a
-  Process stage can run `rental-terms@1`; the import sources stay closed (`off`). Setup creates collected sources closed
-  and never closes an opened or `manual` one.
+- `--model-processing off|manual|auto` sets that mode on the OLX, Joymee and BirBir collection sources, as `ocharo setup`
+  does: new sources register with it and existing ones are updated; without it new sources register `off` and existing
+  ones keep their mode. The import sources stay `off`. `auto` lets the AI passes run on every write, `manual` only on a
+  named run (`extract run --post`, `processing`), `off` never (`ai-operations.md`). `--allow-ai` still works as the older
+  form: it opens a collected source that is `off` to `auto` and never touches a `manual` or `auto` one; it cannot be
+  combined with `--model-processing`. The HTTP form takes `allowAi` and `modelProcessing` the same way.
+- AI results for Haven (`development/extraction.md`, `architecture/contract.md` § Listing delivery): set the host's
+  `Harvest__Processing__Ai__Enabled`, the provider key, `Harvest__Processing__Tags__Enabled` and Haven's wanted pair beside
+  Ocharo's, `Harvest__Processing__Extraction__Wanted__1__EntityType` `listing` and `Harvest__Processing__Extraction__Wanted__1__Domain`
+  `real-estate` (`deploy.yml` declares `:1`; `:0` is Ocharo's `event` + `style-fashion`), register the listing prompt with
+  `extract prompt --use-case listing --file …`, then run `marketplace setup --profile haven --model-processing auto`. The three
+  OLX searches skip `post-tags`: their sections imply `listing` and `real-estate/apartments`, `real-estate/houses` and
+  `real-estate/real-estate-renting-and-leasing`, which the write stores in code (tier `Rules`), and `extract-listing` queues on
+  the write, on Haiku by the default `Extraction:Models:0`. Joymee and BirBir still pass through `post-tags` first. Each done
+  answer reaches the search's subscription as `post.extracted` with `base.extras.listingAi`; a failed one reaches nothing. Haven's
+  key keeps `events:read`. An OLX ad stored before this takes its section tags on its next write (a changed capture, a
+  state change) or when `post-tags backfill` queues it, which tags it in code, not with a model call; that raises the post's
+  revision, but Haven's subscription is sent no `post.changed` for a revision that only moved the tags (the
+  `marketplace-listing-v1` filter withholds it), while a changed title, text, price or state is; `extract backfill` then
+  queues what has tags and no answer.
 - `--run` queues one bounded capture per active collection pipeline. BirBir has separate direct collection and
   import sections. The BirBir and Domtut import subscriptions report `importOnly: true`.
 - Haven's credential is a tenant API key named `haven-supply` with `events:read` only, sent as `X-Api-Key`.
@@ -237,7 +254,7 @@ Through Wheelhouse Run, the job record never holds the issued secret: the runner
 line and keeps that line for the owner to read once, within 15 minutes, beside the job. Issue the key when Haven's
 target is ready to take it.
 
-The HTTP form, `POST /api/marketplace/haven/setup` with `{ enableSchedules, issueKey, rotateKey }`, and
+The HTTP form, `POST /api/marketplace/haven/setup` with `{ enableSchedules, issueKey, rotateKey, allowAi, modelProcessing }`, and
 `GET /api/marketplace/profiles` / `GET /api/marketplace/haven/status` take the operator key or token.
 
 Submit authorized BirBir or Domtut rentals to `POST /api/marketplace/haven/searches/{search}/listings` using the
@@ -323,7 +340,7 @@ Existing stage settings take precedence over the seed on restart.
 
 Process uses saved readings. Its `Processor` defaults to `saved-reading@1`, which takes no model. For rental terms,
 select `rental-terms@1`, set `Model` to a registered route and open the source to models (`marketplace setup
---allow-ai`, or `modelProcessing` on the source update; `manual` allows Process runs started by hand only). Configure `Harvest:Processing:OpenAi:Models` with model IDs and
+--model-processing auto`, or `modelProcessing` on the source update; `manual` allows Process runs started by hand only). Configure `Harvest:Processing:OpenAi:Models` with model IDs and
 provide `Harvest__Processing__OpenAi__ApiKey` through the environment or secret store. A model processor's results are
 stored under `{processor}:{model}`; a model without a model processor is refused.
 Stages can filter saved captures by title and publication time.

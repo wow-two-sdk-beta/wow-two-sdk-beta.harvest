@@ -20,6 +20,14 @@ tags subscriptions and later steps rely on — entity type, IAB domains, open En
 - Re-run cascade: a done answer for a row with a run compares what extraction reads (entity type, domains, about,
   timeframe, English title) before and after, and queues extraction forced, with the run, when it changed and the demand
   wants the pair, or when the run asked for the tagged type's use case (over sources, for a pair the demand wants) (`ModulePostBroker.QueueRerunExtractionAsync`).
+- Section-implied tags: when every source supplying the title and text comes from a section that declares
+  `SourceSectionDefinition.ImpliedTags` (OLX apartments, houses and daily rent), the post's resolve writes the rule tags in
+  the same write (`ModulePostBroker.WriteImpliedTagsAsync` over `ImpliedTagResolver`): a `harvest_post_tags` row with
+  `prompt_hash` `rule:section-implied@1`, no model and no inference, read back as tier `Rules`, version `Rule`, classifier
+  `rule:section-implied@1` (`StoredPostTags.Rule`), and queues no `post-tags` call. No extra revision. A worker that claims a
+  `post-tags` row for such a post (a backfill) writes them and drops the row (`ApplyImpliedTagsAsync`); an explicit row still
+  calls the model, whose done answer replaces the rule row. `CountAsync` (`report`) counts model rows only. A selector reads the
+  rule tags as it reads the model's (`SelectorRules.IsAnswerTag`: tier `SmallModel` or `Rules`).
 - Loop guard: `content_hash` is the SHA-256 of title and text only, so the tag-only revision the write-back creates
   keeps its hash, finds its own `done` answer and queues nothing.
 - Call: use case `post-tags`, versioned, `KeepOutputs` true, the code-owned schema (`PostTagsDefinition.OutputSchema`);

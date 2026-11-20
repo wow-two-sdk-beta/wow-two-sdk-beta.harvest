@@ -10,9 +10,10 @@ internal sealed partial class ModulePostBroker
 {
     /// <summary>Stores an extraction answer and, for a done <c>extract-event</c> answer about the post's current title and
     /// text, resolves the post again so the answer's kind and estimated dates become a new revision with
-    /// <c>post.changed</c>; all in one transaction.</summary>
+    /// <c>post.changed</c>; for a done <c>extract-listing</c> answer about that content, appends <c>post.extracted</c> carrying
+    /// <c>extras.listingAi</c> to the subscriptions that hold the post; all in one transaction.</summary>
     /// <remarks>An answer that changes nothing on the post — a listing, the same kind, a stated start — raises no
-    /// revision.</remarks>
+    /// revision. A failed or unavailable answer, and an answer about content the post has moved past, delivers nothing.</remarks>
     /// <returns>The revision the answer raised, or null.</returns>
     internal async Task<int?> WriteExtractionAsync(PostExtractionRecord record, bool queueEntities, CancellationToken ct)
     {
@@ -30,6 +31,13 @@ internal sealed partial class ModulePostBroker
             var updated = (await ReadPostAsync(connection, transaction, record.ContainerId, record.PostId, ct))!;
             await DeliveryEventWriter.AppendAsync(connection, transaction, updated, "post.changed", null, null, now, postFilters, ct);
             revised = updated.Revision;
+        }
+        else if (record is { Status: "done", Answer: not null, UseCase: PostExtractionConstants.ListingUseCase }
+            && await ReadPostAsync(connection, transaction, record.ContainerId, record.PostId, ct) is { MergedInto: null } listed
+            && PostTagsContent.Hash(listed.Base).AsSpan().SequenceEqual(record.ContentHash))
+        {
+            await DeliveryEventWriter.AppendExtractedAsync(connection, transaction, listed, ListingAiExtras.Key, ListingAiExtras.Build(record),
+                ListingAiExtras.ItemSuffix(record), now, postFilters, ct);
         }
         await transaction.CommitAsync(ct);
         return revised;
