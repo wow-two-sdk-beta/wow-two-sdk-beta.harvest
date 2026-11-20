@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { MapPin } from 'lucide-vue-next';
+import { MapLinks } from '@wow-two-beta/fe/domain/maps';
 import { Tooltip } from '@wow-two-beta/fe/presentation/overlays';
 import type { SourceOverviewModel, SourceProcessedPostModel } from '../../contracts';
 import HarvestPill from './HarvestPill.vue';
@@ -187,6 +188,7 @@ const LineGlyphs: Record<string, GlyphName | 'place'> = {
             class="text-muted-foreground"
           />
           <span class="min-w-0 truncate">{{ line.text }}</span>
+          <MapLinks v-if="line.key === 'place'" :query="line.text" class="shrink-0" />
         </p>
       </section>
     </div>

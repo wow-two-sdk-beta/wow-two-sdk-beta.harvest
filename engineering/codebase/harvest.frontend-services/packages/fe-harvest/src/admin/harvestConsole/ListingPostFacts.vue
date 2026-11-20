@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { MapLinks } from '@wow-two-beta/fe/domain/maps';
 import type { ListingProjection } from '../../contracts';
 import { areaOf, floorOf, listPriceOf, placeOfListing, wordOf, yearOf } from './ListingWords';
 
@@ -116,7 +117,10 @@ function sourceLabel(path: string) {
       </section>
       <section v-if="place.length" aria-label="Location" class="rounded-2xl border border-border bg-card p-5">
         <h2 class="text-sm font-semibold text-muted-foreground">Location</h2>
-        <p v-for="line in place" :key="line" class="mt-1 break-words">{{ line }}</p>
+        <p v-for="line in place" :key="line" class="mt-1 break-words">
+          {{ line }}
+          <MapLinks :query="line" />
+        </p>
       </section>
     </div>
     <section v-if="propertyFacts.length" aria-label="Property" class="rounded-2xl border border-border bg-card p-5">

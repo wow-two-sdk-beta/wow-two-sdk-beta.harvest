@@ -36,6 +36,18 @@ describe('apartment listing views', () => {
     expect(detail.find('details[open]').exists()).toBe(false);
   });
 
+  it('links the listing place to both maps on the card and the page, and shows none without a place', () => {
+    const card = mount(ListingCardFacts, { props: { listing: { rooms: 2, city: 'Tashkent', district: 'Chilonzor' } } });
+    const links = card.findAll('a[data-map-provider]');
+    expect(links).toHaveLength(2);
+    for (const link of links) expect(link.attributes('href')).toContain(encodeURIComponent('Chilonzor · Tashkent'));
+    expect(
+      mount(ListingCardFacts, { props: { listing: { rooms: 2 } } })
+        .find('[data-map-provider]')
+        .exists(),
+    ).toBe(false);
+  });
+
   it('keeps the chosen photo when a different thumbnail fails', async () => {
     const images = ['/test/photos/first.png', '/test/photos/second.png', '/test/photos/third.png'];
     const gallery = mount(ListingGallery, { props: { images, removed: false } });

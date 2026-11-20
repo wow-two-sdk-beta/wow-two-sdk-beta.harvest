@@ -11,8 +11,8 @@ importers:
   apps/web:
     dependencies:
       '@wow-two-beta/fe':
-        specifier: 0.0.52
-        version: 0.0.52(@vue/test-utils@2.5.1(@vue/compiler-dom@3.5.44)(@vue/server-renderer@3.5.44)(vue@3.5.44(typescript@5.9.3)))(tailwindcss@4.3.3)(vue-router@4.6.4(vue@3.5.44(typescript@5.9.3)))(vue@3.5.44(typescript@5.9.3))
+        specifier: 0.0.58
+        version: 0.0.58(@vue/test-utils@2.5.1(@vue/compiler-dom@3.5.44)(@vue/server-renderer@3.5.44)(vue@3.5.44(typescript@5.9.3)))(tailwindcss@4.3.3)(vue-router@4.6.4(vue@3.5.44(typescript@5.9.3)))(vue@3.5.44(typescript@5.9.3))
       '@wow-two-beta/fe-harvest':
         specifier: workspace:*
         version: link:../../packages/fe-harvest
@@ -93,8 +93,8 @@ importers:
         specifier: ^2.4.6
         version: 2.5.1(@vue/compiler-dom@3.5.44)(@vue/server-renderer@3.5.44)(vue@3.5.44(typescript@5.9.3))
       '@wow-two-beta/fe':
-        specifier: 0.0.52
-        version: 0.0.52(@vue/test-utils@2.5.1(@vue/compiler-dom@3.5.44)(@vue/server-renderer@3.5.44)(vue@3.5.44(typescript@5.9.3)))(tailwindcss@4.3.3)(vue-router@4.6.4(vue@3.5.44(typescript@5.9.3)))(vue@3.5.44(typescript@5.9.3))
+        specifier: 0.0.58
+        version: 0.0.58(@vue/test-utils@2.5.1(@vue/compiler-dom@3.5.44)(@vue/server-renderer@3.5.44)(vue@3.5.44(typescript@5.9.3)))(tailwindcss@4.3.3)(vue-router@4.6.4(vue@3.5.44(typescript@5.9.3)))(vue@3.5.44(typescript@5.9.3))
       eslint:
         specifier: ^9.14.0
         version: 9.39.5(jiti@2.7.0)
@@ -817,8 +817,8 @@ packages:
       '@vue/server-renderer':
         optional: true
 
-  '@wow-two-beta/fe@0.0.52':
-    resolution: {integrity: sha512-DwlndSTYr1U02d7gHE44PvW6ludZwjumxK0E1ifYaVpnst58EVKrFv0gBQic0wt3eG1grtObzqS6ju452yXaiA==}
+  '@wow-two-beta/fe@0.0.58':
+    resolution: {integrity: sha512-X9B6l0haxr86WjDMijVs4WsBGolcGjXdIyG49sbEiO3jGqB3Rz/1L5lITG/uAC7gRVG2WCbra/VPOedS2Zc/hA==}
     engines: {node: '>=20.0.0'}
     peerDependencies:
       '@tanstack/vue-form': ^1.0.0
@@ -2294,7 +2294,7 @@ snapshots:
     optionalDependencies:
       '@vue/server-renderer': 3.5.44
 
-  '@wow-two-beta/fe@0.0.52(@vue/test-utils@2.5.1(@vue/compiler-dom@3.5.44)(@vue/server-renderer@3.5.44)(vue@3.5.44(typescript@5.9.3)))(tailwindcss@4.3.3)(vue-router@4.6.4(vue@3.5.44(typescript@5.9.3)))(vue@3.5.44(typescript@5.9.3))':
+  '@wow-two-beta/fe@0.0.58(@vue/test-utils@2.5.1(@vue/compiler-dom@3.5.44)(@vue/server-renderer@3.5.44)(vue@3.5.44(typescript@5.9.3)))(tailwindcss@4.3.3)(vue-router@4.6.4(vue@3.5.44(typescript@5.9.3)))(vue@3.5.44(typescript@5.9.3))':
     dependencies:
       '@floating-ui/vue': 1.1.11(vue@3.5.44(typescript@5.9.3))
       bignumber.js: 11.1.5

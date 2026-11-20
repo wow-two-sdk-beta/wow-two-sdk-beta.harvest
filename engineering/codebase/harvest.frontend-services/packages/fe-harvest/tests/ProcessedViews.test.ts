@@ -609,12 +609,12 @@ describe('processed card', () => {
     for (const url of [undefined, 'javascript:alert(1)', 'ftp://files.example/a', 'https://user:pw@www.afisha.uz/a'])
       expect(
         card({ ...runway, url })
-          .find('a[target="_blank"]')
+          .find('header a[target="_blank"]')
           .exists(),
       ).toBe(false);
     expect(
       card({ ...runway, state: 'gone' })
-        .find('a[target="_blank"]')
+        .find('header a[target="_blank"]')
         .exists(),
     ).toBe(false);
   });
@@ -666,6 +666,26 @@ describe('processed card', () => {
       extraction: { ...runway.extraction!, role: undefined, event: undefined, flags: [] },
     });
     expect(bare.find('[aria-label="Event extraction"]').exists()).toBe(false);
+  });
+
+  it('puts Yandex and Google links after the place line, searching the full place text, and none without a place', () => {
+    const place = 'Youth Creativity Palace, Tashkent, UZ';
+    const wrapper = card(runway);
+    const links = wrapper.findAll('[data-line="place"] a[data-map-provider]');
+    expect(links.map((link) => link.attributes('data-map-provider'))).toEqual(['yandex', 'google']);
+    for (const link of links) expect(link.attributes('href')).toContain(encodeURIComponent(place));
+    const clicked = vi.fn();
+    wrapper.element.addEventListener('click', clicked);
+    links[0]!.trigger('click');
+    expect(clicked).not.toHaveBeenCalled();
+    const bare = card({
+      ...runway,
+      extraction: {
+        ...runway.extraction!,
+        event: { ...runway.extraction!.event!, venue: undefined, city: undefined, country: undefined },
+      },
+    });
+    expect(bare.find('[data-map-provider]').exists()).toBe(false);
   });
 
   it('opens the processed post’s page from the whole card: the title link stretches over it, the controls stay above', () => {

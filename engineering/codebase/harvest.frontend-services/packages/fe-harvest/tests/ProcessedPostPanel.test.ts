@@ -317,6 +317,28 @@ describe('processed post page', () => {
     expect(none.wrapper.find('[aria-label="AI passes"]').exists()).toBe(false);
   });
 
+  it('puts two map links after the Place row value, carrying the encoded place text', async () => {
+    const place = 'Youth Creativity Palace, Tashkent, UZ';
+    const { wrapper } = open(runwayDetails);
+    await flushPromises();
+    const links = wrapper.findAll('li[data-field="place"] a[data-map-provider]');
+    expect(links).toHaveLength(2);
+    for (const link of links) expect(link.attributes('href')).toContain(encodeURIComponent(place));
+    expect(wrapper.find('li[data-field="prices[0]"] a[data-map-provider]').exists()).toBe(false);
+    const { wrapper: bare } = open({
+      ...runwayDetails,
+      post: {
+        ...runway,
+        extraction: {
+          ...runway.extraction!,
+          event: { ...runway.extraction!.event!, venue: undefined, city: undefined, country: undefined },
+        },
+      },
+    });
+    await flushPromises();
+    expect(bare.find('[data-map-provider]').exists()).toBe(false);
+  });
+
   it('shows an extraction that did not finish as a warning with its error and no field rows, and a failed tags answer as a line', async () => {
     const failedExtraction = {
       ...runwayDetails,

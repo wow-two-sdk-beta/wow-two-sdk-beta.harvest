@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { MapLinks } from '@wow-two-beta/fe/domain/maps';
 import type { SourceListingSummary } from '../../contracts';
 import { factsOf, listPriceOf, placeOfListing } from './ListingWords';
 
@@ -48,8 +49,13 @@ const transaction = computed(() => {
     >
       <li v-for="fact in facts" :key="fact">{{ fact }}</li>
     </ul>
-    <p v-if="place" class="truncate text-[13px]" :class="onImage ? 'text-white/80' : 'text-muted-foreground'">
-      {{ place }}
+    <p
+      v-if="place"
+      class="flex min-w-0 items-center gap-1 text-[13px]"
+      :class="onImage ? 'text-white/80' : 'text-muted-foreground'"
+    >
+      <span class="min-w-0 truncate">{{ place }}</span>
+      <MapLinks :query="place" class="shrink-0" />
     </p>
   </div>
 </template>

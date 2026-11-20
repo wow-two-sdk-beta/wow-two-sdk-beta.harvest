@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onScopeDispose, shallowRef, watch } from 'vue';
 import { AiBrandMark } from '@wow-two-beta/fe/domain/aiBrands';
+import { MapLinks } from '@wow-two-beta/fe/domain/maps';
 import { Button } from '@wow-two-beta/fe/presentation/actions';
 import { EmptyState } from '@wow-two-beta/fe/presentation/display';
 import type { ProcessedPassModel, SourceProcessedPostDetailsModel } from '../../contracts';
@@ -258,6 +259,7 @@ const LinkClass =
             <div class="grid min-w-0 gap-1.5">
               <p class="flex flex-wrap items-center gap-2 text-[15px] font-semibold">
                 <span class="min-w-0 break-words">{{ row.value }}</span>
+                <MapLinks v-if="row.key === 'place' || row.key === 'location'" :query="row.value" />
                 <HarvestPill
                   v-if="row.certainty"
                   :tone="certaintyTone(row.certainty)"
