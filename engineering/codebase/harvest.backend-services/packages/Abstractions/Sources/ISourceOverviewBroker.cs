@@ -39,6 +39,15 @@ public interface ISourceOverviewBroker
     /// a filter, limit or cursor the rules refuse.</returns>
     Task<Result<SourceProcessedPage>> QuerySourceProcessedAsync(Guid sourceId, SourceProcessedQuery query, CancellationToken cancellationToken = default);
 
+    /// <summary>Reads one processed post in full: the post as the processed list shows it, the quotes behind its extracted
+    /// fields and each AI pass with the inference it ran as.</summary>
+    /// <param name="sourceId">The source.</param>
+    /// <param name="postId">The post.</param>
+    /// <param name="cancellationToken">The token that cancels the call.</param>
+    /// <returns>The post's details; <c>NotFound</c> for an unknown source, and for a post the source does not show or the
+    /// AI passes have not tagged (the processed list's own rule).</returns>
+    Task<Result<SourceProcessedPostDetailsModel>> GetSourceProcessedPostAsync(Guid sourceId, Guid postId, CancellationToken cancellationToken = default);
+
     /// <summary>Lists a post's revisions, newest first; a post from before revisions were kept has none.</summary>
     /// <param name="containerId">The container that owns the post.</param>
     /// <param name="postId">The post.</param>

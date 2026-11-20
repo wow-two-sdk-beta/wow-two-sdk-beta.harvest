@@ -13,7 +13,7 @@ import type {
   SourcePostQuery,
   SourceSectionOverviewModel,
 } from '@wow-two-beta/fe-harvest/contracts';
-import { demoEntities, demoProcessedCount, demoProcessedPage } from './DemoAiData';
+import { demoEntities, demoProcessedCount, demoProcessedPage, demoProcessedPost } from './DemoAiData';
 
 /** One synthetic source: its group, how it is read, the sections its reader lists and its earlier daily posts. */
 interface DemoSource {
@@ -590,6 +590,10 @@ export function createDemoHarvestClient(): HarvestClient {
       if (resource === 'sources' && itemId === 'groups') return reply(inContainer ? groups : []);
       if (resource === 'sources' && itemId && path[3] === 'posts')
         return reply(sourcePosts(itemId).slice(0, Number(url.searchParams.get('limit') ?? 200)));
+      if (resource === 'sources' && itemId && path[3] === 'processed' && path[4]) {
+        const details = demoProcessedPost(sourcePosts(itemId), path[4]);
+        return details ? reply(details) : missing();
+      }
       if (resource === 'sources' && itemId && path[3] === 'processed')
         return reply(demoProcessedPage(sourcePosts(itemId), url.searchParams));
       if (resource === 'entities') {

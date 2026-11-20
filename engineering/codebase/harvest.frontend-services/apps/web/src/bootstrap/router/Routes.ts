@@ -75,6 +75,15 @@ export const routes: RouteConfig = [
       sourceTab('sources/:id/posts', 'source-posts', 'Posts', 'posts'),
       sourceTab('sources/:id/processed', 'source-processed', 'Processed', 'processed'),
       {
+        path: 'sources/:id/processed/:postId',
+        id: 'source-processed-post',
+        handle: { title: 'Processed post' },
+        lazy: lazyPage(
+          () => import('../../presentation/console/pages/ProcessedPostPage.vue'),
+          (route) => ({ sourceId: String(route.params['id'] ?? ''), postId: String(route.params['postId'] ?? '') }),
+        ),
+      },
+      {
         path: 'sources/:id/posts/:postId',
         id: 'source-post',
         handle: { title: 'Post' },

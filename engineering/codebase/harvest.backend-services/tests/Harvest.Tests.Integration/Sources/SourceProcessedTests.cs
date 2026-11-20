@@ -3,6 +3,7 @@ using Harvest.Tests.Integration.Posts;
 using Harvest.Tests.Integration.Tagging;
 using Microsoft.Extensions.DependencyInjection;
 using WoW.Two.Sdk.Beta.Be.Ai.Testing.Providers;
+using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Sources;
 using WoW.Two.Sdk.Beta.Be.Harvest.Posts;
@@ -56,5 +57,26 @@ public sealed class SourceProcessedTests
         var source = PostHost.Value(await overview.ListOverviewAsync(host.ContainerId)).Single(row => row.SourceId == host.SourceId);
         source.ProcessedCount.Should().Be(page.Total).And.Be(1, "a merged post and an untagged one are not processed posts");
         source.PostCount.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task GetSourceProcessedPost_ShouldNameTheInferenceEachPassRanAs_AndPriceItFromTheLog()
+    {
+        await using var host = await TagsHost.StartAsync(configure: services => services.AddHarvestSources());
+        var saved = await host.SaveAsync("fw", "Tashkent Fashion Week", "Moda haftaligi dekabrda bo'ladi.");
+        host.Caller.Enqueue(ScriptedAiModelCaller.Answer(TagsHost.Answer(
+            domains: [new { node = "style-fashion/womens-fashion", primary = true }])));
+        (await host.Tags.ProcessDueAsync()).Should().Be(1);
+        var untagged = await host.SaveAsync("later", "A later post", "Queued, not tagged yet.");
+
+        var overview = host.Scoped.GetRequiredService<ISourceOverviewBroker>();
+        var details = PostHost.Value(await overview.GetSourceProcessedPostAsync(host.SourceId, saved.Post.Id));
+
+        details.Post.PostId.Should().Be(saved.Post.Id);
+        details.Evidence.Should().BeEmpty("no extraction ran");
+        var pass = details.Passes.Should().ContainSingle().Subject;
+        pass.Should().Match<ProcessedPassModel>(value => value.Pass == "post-tags" && value.Status == "done" && value.InferenceId != null
+            && value.Answer.LatencyMs == 50 && value.Answer.InputTokens == 100 && value.Answer.OutputTokens == 20);
+        (await overview.GetSourceProcessedPostAsync(host.SourceId, untagged.Post.Id)).Should().BeOfType<Result<SourceProcessedPostDetailsModel>.Failure>();
     }
 }

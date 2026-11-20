@@ -42,6 +42,11 @@ internal sealed class ApiSourceOverviewBroker(HttpClient http) : ISourceOverview
     }
 
     /// <inheritdoc />
+    public Task<Result<SourceProcessedPostDetailsModel>> GetSourceProcessedPostAsync(Guid sourceId, Guid postId, CancellationToken cancellationToken = default) =>
+        HarvestDataHttp.SendAsync<SourceProcessedPostDetailsModel>(http, HttpMethod.Get,
+            $"{RegistrationRouteConstants.Sources}/{sourceId}/{SourceRouteConstants.Processed}/{postId}", null, cancellationToken);
+
+    /// <inheritdoc />
     public Task<Result<IReadOnlyList<PostRevisionModel>>> ListPostRevisionsAsync(Guid containerId, Guid postId, CancellationToken cancellationToken = default) =>
         HarvestDataHttp.SendAsync<IReadOnlyList<PostRevisionModel>>(http, HttpMethod.Get,
             $"{PostRouteConstants.Posts}/{postId}/{SourceRouteConstants.Revisions}?{RegistrationRouteConstants.ContainerIdParameter}={containerId}",

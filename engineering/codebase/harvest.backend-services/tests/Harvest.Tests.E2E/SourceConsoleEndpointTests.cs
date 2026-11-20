@@ -3,6 +3,10 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using AwesomeAssertions;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
+using NpgsqlTypes;
 
 namespace Harvest.Tests.E2E;
 
@@ -19,6 +23,8 @@ public sealed class SourceConsoleEndpointTests(HarvestApiFixture fixture)
     [InlineData("PUT", "/api/sources/00000000-0000-0000-0000-000000000001/reading")]
     [InlineData("GET", "/api/sources/00000000-0000-0000-0000-000000000001/posts")]
     [InlineData("POST", "/api/sources/00000000-0000-0000-0000-000000000001/posts/query")]
+    [InlineData("GET", "/api/sources/00000000-0000-0000-0000-000000000001/processed")]
+    [InlineData("GET", "/api/sources/00000000-0000-0000-0000-000000000001/processed/00000000-0000-0000-0000-000000000002")]
     [InlineData("GET", "/api/posts/00000000-0000-0000-0000-000000000001/revisions")]
     public async Task SourceRoutes_ShouldRequireAnAuthenticatedCaller(string method, string path)
     {
@@ -125,6 +131,91 @@ public sealed class SourceConsoleEndpointTests(HarvestApiFixture fixture)
         await ExpectAsync(narrow.GetAsync($"/api/sources/overview?containerId={own.ContainerId}"), HttpStatusCode.Forbidden);
         await ExpectAsync(narrow.GetAsync($"/api/sources/{own.SourceId}/posts"), HttpStatusCode.Forbidden);
         await ExpectAsync(narrow.PostAsJsonAsync($"/api/sources/{own.SourceId}/posts/query", new { }), HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task ProcessedPost_ShouldServeATaggedPostInTheContractShape_AndRefuseWhatTheListDoesNotShow()
+    {
+        using var admin = fixture.CreateClient(HarvestApiFixture.OperatorKey);
+        var own = await LaneAsync(admin);
+        var other = await LaneAsync(admin);
+        var tagged = await CaptureAsync(admin, own, "Tashkent Fashion Week");
+        var untagged = await CaptureAsync(admin, own, "Not tagged yet");
+        var foreign = await CaptureAsync(admin, other, "Foreign exhibition");
+        await SeedAnswersAsync(tagged, withExtraction: true);
+        await SeedAnswersAsync(foreign, withExtraction: false);
+        using var reader = fixture.CreateClient(await KeyAsync(admin, own.TenantId, "posts:read"));
+        using var narrow = fixture.CreateClient(await KeyAsync(admin, own.TenantId, "events:read"));
+        using var anonymous = fixture.CreateClient();
+        var path = $"/api/sources/{own.SourceId}/processed/{tagged}";
+
+        await ExpectAsync(anonymous.GetAsync(path), HttpStatusCode.Unauthorized);
+        await ExpectAsync(narrow.GetAsync(path), HttpStatusCode.Forbidden);
+        await ExpectAsync(reader.GetAsync($"/api/sources/{other.SourceId}/processed/{foreign}"), HttpStatusCode.NotFound);
+        await ExpectAsync(reader.GetAsync($"/api/sources/{own.SourceId}/processed/{foreign}"), HttpStatusCode.NotFound);
+        await ExpectAsync(reader.GetAsync($"/api/sources/{own.SourceId}/processed/{untagged}"), HttpStatusCode.NotFound);
+        await ExpectAsync(reader.GetAsync($"/api/sources/{own.SourceId}/processed/{Guid.NewGuid()}"), HttpStatusCode.NotFound);
+        await ExpectAsync(reader.GetAsync($"/api/sources/{Guid.NewGuid()}/processed/{tagged}"), HttpStatusCode.NotFound);
+        await ExpectAsync(admin.GetAsync($"/api/sources/{other.SourceId}/processed/{foreign}"), HttpStatusCode.OK);
+
+        var data = await DataAsync(await reader.GetAsync(path));
+        Keys(data).Should().BeEquivalentTo("post", "evidence", "passes");
+        var post = data.GetProperty("post");
+        post.GetProperty("postId").GetString().Should().Be(tagged);
+        post.GetProperty("title").GetString().Should().Be("Tashkent Fashion Week");
+        post.GetProperty("tags").GetProperty("status").GetString().Should().Be("done");
+        post.GetProperty("tags").GetProperty("domains").EnumerateArray().Single().GetProperty("primary").GetBoolean().Should().BeTrue();
+        post.GetProperty("extraction").GetProperty("useCase").GetString().Should().Be("extract-event");
+        var evidence = data.GetProperty("evidence").EnumerateArray().Single();
+        Keys(evidence).Should().BeEquivalentTo("field", "certainty", "quotes");
+        evidence.GetProperty("field").GetString().Should().Be("occurrences[0]");
+        evidence.GetProperty("certainty").GetString().Should().Be("stated");
+        evidence.GetProperty("quotes").EnumerateArray().Select(quote => quote.GetString()).Should().Equal("held on 21 November");
+        var passes = data.GetProperty("passes").EnumerateArray().ToList();
+        passes.Select(pass => pass.GetProperty("pass").GetString()).Should().Equal("post-tags", "extract-event");
+        passes.Should().OnlyContain(pass => pass.GetProperty("status").GetString() == "done"
+            && pass.GetProperty("answer").GetProperty("provider").GetString() == "anthropic");
+    }
+
+    /// <summary>Writes the tags answer, and optionally an event extraction with one quoted date, a pass would have left about
+    /// a captured post's current title and text.</summary>
+    private async Task SeedAnswersAsync(string postId, bool withExtraction)
+    {
+        const string hash = "sha256(convert_to(COALESCE(p.base->>'title','') || chr(31) || COALESCE(p.base->>'text',''),'UTF8'))";
+        var configuration = fixture.Host.Services.GetRequiredService<IConfiguration>();
+        await using var connection = new NpgsqlConnection(configuration["DatabaseSettings:ConnectionString"]);
+        await connection.OpenAsync();
+        await using (var tags = new NpgsqlCommand($$"""
+            INSERT INTO harvest_post_tags(post_id,content_hash,container_id,revision,prompt_version,model,entity_type,domains,topics,about,
+                timeframe,confidence,title_en,flags,status,created_at)
+            SELECT p.id,{{hash}},p.container_id,p.revision,1,'anthropic/claude-haiku-5-5','event',
+                '[{"node":"style-fashion/womens-fashion","primary":true}]'::jsonb,ARRAY['fashion-week']::text[],'a fashion week',
+                'upcoming',0.9,'Tashkent Fashion Week','[]'::jsonb,'done',now()
+            FROM harvest_posts p WHERE p.id=@post
+            """, connection))
+        {
+            tags.Parameters.AddWithValue("post", Guid.Parse(postId));
+            (await tags.ExecuteNonQueryAsync()).Should().Be(1);
+        }
+        if (!withExtraction)
+            return;
+        await using var extraction = new NpgsqlCommand($"""
+            INSERT INTO harvest_post_extractions(post_id,content_hash,use_case,container_id,revision,prompt_version,model,role,answer,flags,
+                status,created_at,updated_at)
+            SELECT p.id,{hash},'extract-event',p.container_id,p.revision,2,'anthropic/claude-haiku-5-5','announcement',@answer,'[]'::jsonb,
+                'done',now(),now()
+            FROM harvest_posts p WHERE p.id=@post
+            """, connection);
+        extraction.Parameters.AddWithValue("post", Guid.Parse(postId));
+        extraction.Parameters.AddWithValue("answer", NpgsqlDbType.Jsonb, JsonSerializer.Serialize(new
+        {
+            name = new { en = "Tashkent Fashion Week", original = (string?)null },
+            occurrences = new[] { new { starts = "2026-11-21", ends = (string?)null, precision = "day", certainty = "stated", evidence = "held on 21 November" } },
+            place = new { venue = (string?)null, city = "Tashkent", country = (string?)null },
+            prices = Array.Empty<object>(),
+            registration = new { opens = (object?)null, deadline = (object?)null, link = (string?)null },
+        }));
+        (await extraction.ExecuteNonQueryAsync()).Should().Be(1);
     }
 
     private static object Edit(Lane lane, object? limits) => new

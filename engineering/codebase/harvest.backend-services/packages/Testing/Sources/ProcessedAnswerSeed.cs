@@ -71,6 +71,12 @@ public sealed record ProcessedExtractionSeed
     /// <summary>Gets the listing an <c>extract-listing</c> answer states.</summary>
     public ProcessedListingSummary? Listing { get; init; }
 
+    /// <summary>Gets the quotes the answer keeps behind its fields, as the details read returns them; a store writes each into
+    /// the answer's own shape: <c>occurrences[i]</c> and <c>prices[i]</c> as an item's <c>evidence</c>, <c>price</c> as the
+    /// listing price's, <c>registration.opens</c> and <c>.deadline</c> as an evidenced date, <c>rentalTerms.{term}</c> as a
+    /// term with a claim per quote.</summary>
+    public IReadOnlyList<ProcessedEvidenceModel> Evidence { get; init; } = [];
+
     /// <summary>Gets the flags.</summary>
     public IReadOnlyList<ProcessedFlagModel> Flags { get; init; } = [];
 

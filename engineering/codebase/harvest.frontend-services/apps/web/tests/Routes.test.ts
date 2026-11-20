@@ -102,12 +102,52 @@ describe('console routes', () => {
     expect(show.get('header [role="img"]').attributes('aria-label')).toBe('Claude Haiku 5.5');
     expect(show.find('footer').exists()).toBe(false);
     expect(show.get('[aria-label="Event extraction"]').text()).toContain('Youth Creativity Palace');
-    const href = show.get('a').attributes('href')!;
-    expect(href).toMatch(new RegExp(`^${Afisha}/posts/`));
+    const href = show.get('a[data-processed-link]').attributes('href')!;
+    expect(href).toMatch(new RegExp(`^${Afisha}/processed/`));
 
     await router.push(`/entities/${FashionWeek}`);
     await vi.waitFor(() => expect(wrapper.find('[aria-label="Entity"]').exists()).toBe(true));
-    expect(wrapper.get(`a[href="${href}"]`).text()).toContain('Показ мод The Fashion Show Line 2026');
+    const postHref = href.replace('/processed/', '/posts/');
+    expect(wrapper.get(`a[href="${postHref}"]`).text()).toContain('Показ мод The Fashion Show Line 2026');
+  });
+
+  it('opens a processed card on its own page, in the frame, with the trail ending in the post and its links', async () => {
+    const { router, wrapper } = await renderAt(`${Afisha}/processed`);
+    await vi.waitFor(() => expect(wrapper.findAll('article[aria-label]').length).toBeGreaterThan(0));
+    const title = 'Показ мод The Fashion Show Line 2026';
+    const link = wrapper.get(`article[aria-label="${title}"] a[data-processed-link]`);
+    const postId = link.attributes('href')!.split('/').at(-1)!;
+    await link.trigger('click');
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe(`${Afisha}/processed/${postId}`));
+    expect(router.currentRoute.value.name).toBe('source-processed-post');
+    await vi.waitFor(() => expect(wrapper.find('[aria-label="Processed post"] h1').exists()).toBe(true));
+    expect(wrapper.findAll('h1')).toHaveLength(1);
+    expect(wrapper.get('h1').text()).toBe(title);
+    expect(wrapper.get('nav[aria-label="Console"] [aria-current="page"]').text()).toContain('Afisha.uz');
+
+    const bar = wrapper.get('[data-app-frame-bar]');
+    await vi.waitFor(() => expect(bar.text()).toContain(title));
+    const trail = bar.text();
+    expect(trail.indexOf('Collect')).toBeLessThan(trail.indexOf('Sources'));
+    expect(trail.indexOf('Afisha.uz')).toBeLessThan(trail.indexOf('Processed'));
+    expect(trail.indexOf('Processed')).toBeLessThan(trail.indexOf(title));
+    expect(bar.find(`a[href="${Afisha}/processed"]`).exists()).toBe(true);
+
+    for (const section of ['Classification', 'Tags', 'Event extraction', 'AI passes', 'Links'])
+      expect(wrapper.find(`section[aria-label="${section}"]`).exists()).toBe(true);
+    expect(wrapper.get('[aria-label="Event extraction"] blockquote').text()).toContain('21 ноября');
+    expect(wrapper.get('[aria-label="Links"] a[href$="/posts/' + postId + '"]').text()).toBe('Open post');
+    expect(wrapper.get('[aria-label="Links"] a[target="_blank"]').text()).toContain('Open original');
+
+    await wrapper.get('[aria-label="Links"] a[href$="/posts/' + postId + '"]').trigger('click');
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('source-post'));
+  });
+
+  it('answers a processed post that is not in the source with the page’s error state', async () => {
+    const { wrapper } = await renderAt(`${Afisha}/processed/00000000-0000-4000-8000-00000000ffff`);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Could not read this processed post'));
+    expect(wrapper.findAll('h1')).toHaveLength(0);
+    expect(wrapper.get('[data-app-frame-bar]').text()).toContain('Processed');
   });
 
   it('opens a pipeline from the directory and links to a specific run audit', async () => {

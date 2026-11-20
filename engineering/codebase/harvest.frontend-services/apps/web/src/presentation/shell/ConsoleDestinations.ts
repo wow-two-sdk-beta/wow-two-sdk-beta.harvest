@@ -21,6 +21,7 @@ export const SourceRoutes = [
   'source',
   'source-posts',
   'source-processed',
+  'source-processed-post',
   'source-post',
   'source-pipelines',
   'source-run',

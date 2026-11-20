@@ -6,9 +6,12 @@ import type {
   EntityType,
   OccurrenceModel,
   ProcessedAnswerModel,
+  ProcessedEvidenceModel,
   ProcessedExtractionModel,
+  ProcessedPassModel,
   ProcessedTagsModel,
   SourceProcessedPage,
+  SourceProcessedPostDetailsModel,
   SourceProcessedPostModel,
 } from '@wow-two-beta/fe-harvest/contracts';
 
@@ -245,9 +248,9 @@ export function demoProcessedCount(posts: readonly DemoPost[]): number {
   return posts.filter((post) => readingOf(post) !== undefined).length;
 }
 
-/** Answers `GET api/sources/{id}/processed` over the demo posts: filters, then a cursor page of the given size. */
-export function demoProcessedPage(posts: readonly DemoPost[], params: URLSearchParams): SourceProcessedPage {
-  const items = posts.flatMap((post): SourceProcessedPostModel[] => {
+/** The demo posts the AI passes read, each with its post fields and what the passes made of it. @internal */
+function processedPostsOf(posts: readonly DemoPost[]): SourceProcessedPostModel[] {
+  return posts.flatMap((post): SourceProcessedPostModel[] => {
     const reading = readingOf(post);
     return reading
       ? [
@@ -268,6 +271,11 @@ export function demoProcessedPage(posts: readonly DemoPost[], params: URLSearchP
         ]
       : [];
   });
+}
+
+/** Answers `GET api/sources/{id}/processed` over the demo posts: filters, then a cursor page of the given size. */
+export function demoProcessedPage(posts: readonly DemoPost[], params: URLSearchParams): SourceProcessedPage {
+  const items = processedPostsOf(posts);
   const type = params.get('entityType');
   const verdict = params.get('verdict');
   const extracted = params.get('extracted');
@@ -287,6 +295,71 @@ export function demoProcessedPage(posts: readonly DemoPost[], params: URLSearchP
     ...(end < matches.length ? { nextCursor: String(end) } : {}),
     total: matches.length,
   };
+}
+
+/** The quotes the demo's extraction answers keep behind their fields, by post title. @internal */
+function evidenceOf(post: SourceProcessedPostModel): ProcessedEvidenceModel[] {
+  switch (post.title) {
+    case 'Показ мод The Fashion Show Line 2026':
+      return [
+        {
+          field: 'occurrences[0]',
+          certainty: 'stated',
+          quotes: ['Показ состоится 21 ноября в 12:00 во Дворце творчества молодёжи'],
+        },
+        { field: 'prices[0]', quotes: ['Билеты на показ — от 150 000 сум'] },
+        {
+          field: 'registration.deadline',
+          value: day(5),
+          quotes: ['Регистрация гостей открыта до конца этой недели'],
+        },
+      ];
+    case 'Autumn collections at a Tashkent showroom':
+      return [
+        {
+          field: 'occurrences[0]',
+          certainty: 'estimated',
+          quotes: ['the autumn collections go on show in a few weeks'],
+        },
+      ];
+    default:
+      return [];
+  }
+}
+
+/** A stable inference id for a demo answer, so the page's run column reads like the host's. @internal */
+function runIdOf(postId: string, pass: number) {
+  return `${postId.replace(/\W/g, '').slice(-8).padStart(8, '0')}-0000-4000-8000-${String(pass).padStart(12, '0')}`;
+}
+
+/** Answers `GET api/sources/{id}/processed/{postId}`: the post, the quotes behind its extraction and each pass. */
+export function demoProcessedPost(
+  posts: readonly DemoPost[],
+  postId: string,
+): SourceProcessedPostDetailsModel | undefined {
+  const post = processedPostsOf(posts).find((item) => item.postId === postId);
+  if (!post) return undefined;
+  const passes: ProcessedPassModel[] = [
+    {
+      pass: 'post-tags',
+      status: post.tags.status,
+      ...(post.tags.error ? { error: post.tags.error } : {}),
+      inferenceId: runIdOf(post.postId, 1),
+      answer: post.tags.answer,
+    },
+    ...(post.extraction
+      ? [
+          {
+            pass: post.extraction.useCase,
+            status: post.extraction.status,
+            ...(post.extraction.error ? { error: post.extraction.error } : {}),
+            inferenceId: runIdOf(post.postId, 2),
+            answer: post.extraction.answer,
+          },
+        ]
+      : []),
+  ];
+  return { post, evidence: post.extraction?.status === 'done' ? evidenceOf(post) : [], passes };
 }
 
 /** One synthetic entity with its occurrences and posts, the years and counts derived. @internal */

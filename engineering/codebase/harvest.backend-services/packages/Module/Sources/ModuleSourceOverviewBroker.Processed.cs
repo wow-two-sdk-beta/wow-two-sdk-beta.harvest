@@ -31,36 +31,81 @@ internal sealed partial class ModuleSourceOverviewBroker
         if (await registry.GetSourceAsync(sourceId, cancellationToken) is not Result<SourceModel>.Success { Value: var source })
             return Result<SourceProcessedPage>.Fail(RegistrationErrors.SourceNotFound(sourceId));
 
+        var (rows, total) = await ReadProcessedRowsAsync(source, query, after, null, query.Limit + 1, cancellationToken);
+        var page = rows.Take(query.Limit).ToList();
+        var attempts = await AttemptsAsync(page, cancellationToken);
+        var items = page.Select(row => Priced(row, attempts)).ToList();
+        var next = rows.Count > query.Limit ? SourceProcessedQueryRules.Cursor(sourceId, query, items[^1]) : null;
+        return Result<SourceProcessedPage>.Ok(new SourceProcessedPage(items, next, total));
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<SourceProcessedPostDetailsModel>> GetSourceProcessedPostAsync(Guid sourceId, Guid postId,
+        CancellationToken cancellationToken = default)
+    {
+        if (await registry.GetSourceAsync(sourceId, cancellationToken) is not Result<SourceModel>.Success { Value: var source })
+            return Result<SourceProcessedPostDetailsModel>.Fail(RegistrationErrors.SourceNotFound(sourceId));
+
+        var (rows, _) = await ReadProcessedRowsAsync(source, new SourceProcessedQuery(), null, postId, 1, cancellationToken);
+        if (rows.Count == 0)
+            return Result<SourceProcessedPostDetailsModel>.Fail(SourceProcessedQueryRules.PostNotFound(sourceId, postId));
+        var row = rows[0];
+        var post = Priced(row, await AttemptsAsync(rows, cancellationToken));
+        var passes = new List<ProcessedPassModel>
+        {
+            new()
+            {
+                Pass = PostTagsConstants.UseCase, Status = post.Tags.Status, Error = post.Tags.Error,
+                InferenceId = row.TagsInference?.InferenceId, Answer = post.Tags.Answer,
+            },
+        };
+        if (post.Extraction is { } extraction)
+            passes.Add(new ProcessedPassModel
+            {
+                Pass = extraction.UseCase, Status = extraction.Status, Error = extraction.Error,
+                InferenceId = row.ExtractionInference?.InferenceId, Answer = extraction.Answer,
+            });
+        return Result<SourceProcessedPostDetailsModel>.Ok(new SourceProcessedPostDetailsModel
+        {
+            Post = post, Evidence = EvidenceOf(post.Extraction?.UseCase, row.ExtractionAnswer), Passes = passes,
+        });
+    }
+
+    /// <summary>Runs <see cref="ProcessedSql"/> for a source: the filtered, paged posts, or the one post named, and the
+    /// total over the filters.</summary>
+    private async Task<(List<ProcessedRow> Rows, int Total)> ReadProcessedRowsAsync(SourceModel source, SourceProcessedQuery query,
+        (DateTimeOffset At, Guid PostId)? after, Guid? only, int limit, CancellationToken cancellationToken)
+    {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var command = PostSql.Command(connection, null, ProcessedSql,
             ("source", source.Id), ("container", source.ContainerId), ("type", query.EntityType ?? ""),
             ("verdict", query.Verdict?.ToString().ToLowerInvariant() ?? ""), ("extracted", (object?)query.Extracted),
             ("after", after.HasValue), ("at", after?.At ?? DateTimeOffset.MinValue), ("post", after?.PostId ?? Guid.Empty),
-            ("limit", query.Limit + 1), ("tagsCase", PostTagsConstants.UseCase),
+            ("only", (object?)only), ("limit", limit), ("tagsCase", PostTagsConstants.UseCase),
             ("asset_prefix", $"/api/sources/{source.Id:D}/{SourceRouteConstants.Assets}/"));
         command.Parameters["extracted"].NpgsqlDbType = NpgsqlTypes.NpgsqlDbType.Boolean;
+        command.Parameters["only"].NpgsqlDbType = NpgsqlTypes.NpgsqlDbType.Uuid;
         var rows = new List<ProcessedRow>();
         var total = 0;
-        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
-            while (await reader.ReadAsync(cancellationToken))
-            {
-                total = reader.GetInt32(39);
-                if (!reader.IsDBNull(0))
-                    rows.Add(ReadProcessed(reader));
-            }
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            total = reader.GetInt32(39);
+            if (!reader.IsDBNull(0))
+                rows.Add(ReadProcessed(reader));
+        }
+        return (rows, total);
+    }
 
-        var page = rows.Take(query.Limit).ToList();
-        var attempts = await AttemptsAsync(page, cancellationToken);
-        var items = page.Select(row => row.Post with
+    /// <summary>Returns the row's post with each answer priced from the inference log.</summary>
+    private static SourceProcessedPostModel Priced(ProcessedRow row, IReadOnlyDictionary<Guid, InferenceModel> attempts) =>
+        row.Post with
         {
             Tags = row.Post.Tags with { Answer = Priced(row.Post.Tags.Answer, row.TagsInference, attempts) },
             Extraction = row.Post.Extraction is { } extraction
                 ? extraction with { Answer = Priced(extraction.Answer, row.ExtractionInference, attempts) }
                 : null,
-        }).ToList();
-        var next = rows.Count > query.Limit ? SourceProcessedQueryRules.Cursor(sourceId, query, items[^1]) : null;
-        return Result<SourceProcessedPage>.Ok(new SourceProcessedPage(items, next, total));
-    }
+        };
 
     /// <summary>Selects the source's surviving posts with a tags answer: the done answer about the current title and
     /// text, else the newest done one, else the newest attempt, as the post's own resolve picks; and the extraction of
@@ -88,7 +133,7 @@ internal sealed partial class ModuleSourceOverviewBroker
                 WHERE l.container_id=p.container_id AND l.post_id=p.id AND l.source_id=@source
                 ORDER BY c.captured_at,c.id LIMIT 1
             ) fc ON true
-            WHERE p.container_id=@container AND p.merged_into IS NULL
+            WHERE p.container_id=@container AND p.merged_into IS NULL AND (@only::uuid IS NULL OR p.id=@only)
         ), processed AS (
             SELECT c.*,t.status AS t_status,t.error AS t_error,t.content_hash=c.hash AS t_current,t.entity_type,
                 (SELECT COALESCE(jsonb_agg(jsonb_build_object('key',d->>'node','label',COALESCE(n.label,d->>'node'),
@@ -184,7 +229,7 @@ internal sealed partial class ModuleSourceOverviewBroker
             Tags = tags,
             Extraction = extraction,
         };
-        return new(post, Attempt(post.PostId, Number(21), Id(19)), Attempt(post.PostId, Number(32), Id(30)));
+        return new(post, Attempt(post.PostId, Number(21), Id(19)), Attempt(post.PostId, Number(32), Id(30)), Text(26));
     }
 
     /// <summary>Reads each answer's attempt from the inference log, one read per post revision the answers name; empty
@@ -303,5 +348,5 @@ internal sealed partial class ModuleSourceOverviewBroker
     /// attempt's id.</summary>
     private sealed record AttemptKey(string Subject, Guid InferenceId);
 
-    private sealed record ProcessedRow(SourceProcessedPostModel Post, AttemptKey? TagsInference, AttemptKey? ExtractionInference);
+    private sealed record ProcessedRow(SourceProcessedPostModel Post, AttemptKey? TagsInference, AttemptKey? ExtractionInference, string? ExtractionAnswer);
 }

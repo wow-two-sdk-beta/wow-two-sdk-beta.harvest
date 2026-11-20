@@ -150,6 +150,43 @@ export interface SourceProcessedPostModel {
   readonly extraction?: ProcessedExtractionModel;
 }
 
+/** Mirrors `ProcessedEvidenceModel`: the verbatim quotes an extraction answer keeps behind one field. */
+export interface ProcessedEvidenceModel {
+  /**
+   * The field's JSON path, as the flags name it: `occurrences[0]`, `prices[1]`, `registration.opens`,
+   * `registration.deadline`, `price` or `rentalTerms.deposit`.
+   */
+  readonly field: string;
+  /** The value in short words, for a field the extraction summary does not carry; absent for a date or a price. */
+  readonly value?: string;
+  /** `stated` or `estimated` for an occurrence, `present`, `absent` or `conflict` for a rental term. */
+  readonly certainty?: string;
+  /** The quotes copied from the post, one per claim. */
+  readonly quotes: readonly string[];
+}
+
+/** Mirrors `ProcessedPassModel`: one AI pass over a post, with the inference it ran as. */
+export interface ProcessedPassModel {
+  /** `post-tags`, `extract-event` or `extract-listing`. */
+  readonly pass: string;
+  /** `done`, `failed` or `unavailable`. */
+  readonly status: string;
+  readonly error?: string;
+  /** The AI module's inference id the answer ran as — its run in the inference log. */
+  readonly inferenceId?: string;
+  readonly answer: ProcessedAnswerModel;
+}
+
+/** Mirrors `SourceProcessedPostDetailsModel`: one processed post opened in full, from `GET api/sources/{id}/processed/{postId}`. */
+export interface SourceProcessedPostDetailsModel {
+  /** The post exactly as the processed list reads it: every tag, the verdict with its reason, the unsure flags. */
+  readonly post: SourceProcessedPostModel;
+  /** The quotes behind the extraction's fields; empty without an extraction. */
+  readonly evidence: readonly ProcessedEvidenceModel[];
+  /** Each AI pass the post carries, the tags pass first. */
+  readonly passes: readonly ProcessedPassModel[];
+}
+
 /** Mirrors `SourceProcessedQuery`: the filters and page of `GET api/sources/{id}/processed`. */
 export interface SourceProcessedQuery {
   readonly entityType?: ProcessedEntityType;

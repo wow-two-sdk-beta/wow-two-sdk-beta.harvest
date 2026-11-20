@@ -41,6 +41,7 @@ export { default as RunAuditPanel } from './harvestConsole/RunAuditPanel.vue';
 export { default as PipelinesPanel } from './harvestConsole/PipelinesPanel.vue';
 export { default as PipelinePanel } from './harvestConsole/PipelinePanel.vue';
 export { default as PostPanel } from './harvestConsole/PostPanel.vue';
+export { default as ProcessedPostPanel } from './harvestConsole/ProcessedPostPanel.vue';
 export { default as EntitiesPanel } from './harvestConsole/EntitiesPanel.vue';
 export { default as EntityPanel } from './harvestConsole/EntityPanel.vue';
 export { default as SubscribersPanel } from './harvestConsole/SubscribersPanel.vue';

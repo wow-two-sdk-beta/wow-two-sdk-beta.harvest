@@ -170,6 +170,39 @@ public sealed class FakeSourceOverviewBroker(
             page.Count > query.Limit ? SourceProcessedQueryRules.Cursor(sourceId, query, items[^1]) : null, matches.Count));
     }
 
+    /// <inheritdoc />
+    public async Task<Result<SourceProcessedPostDetailsModel>> GetSourceProcessedPostAsync(Guid sourceId, Guid postId,
+        CancellationToken cancellationToken = default)
+    {
+        if (await registry.GetSourceAsync(sourceId, cancellationToken) is not Result<SourceModel>.Success { Value: var source })
+            return Result<SourceProcessedPostDetailsModel>.Fail(RegistrationErrors.SourceNotFound(sourceId));
+
+        var listed = SourcePosts(source).FirstOrDefault(post => post.PostId == postId);
+        ProcessedAnswerSeed? seed;
+        PostClassification? classification;
+        lock (posts.Gate)
+        {
+            seed = answers.GetValueOrDefault(postId);
+            classification = posts.Find(postId)?.Base.Classification;
+        }
+        if (listed is null || seed is null)
+            return Result<SourceProcessedPostDetailsModel>.Fail(SourceProcessedQueryRules.PostNotFound(sourceId, postId));
+
+        var post = Processed(listed, seed, classification);
+        var passes = new List<ProcessedPassModel>
+        {
+            new() { Pass = "post-tags", Status = post.Tags.Status, Error = post.Tags.Error, Answer = post.Tags.Answer },
+        };
+        if (post.Extraction is { } extraction)
+            passes.Add(new ProcessedPassModel { Pass = extraction.UseCase, Status = extraction.Status, Error = extraction.Error, Answer = extraction.Answer });
+        return Result<SourceProcessedPostDetailsModel>.Ok(new SourceProcessedPostDetailsModel
+        {
+            Post = post,
+            Evidence = post.Extraction is { Status: "done" } ? seed.Extraction?.Evidence ?? [] : [],
+            Passes = passes,
+        });
+    }
+
     /// <summary>Pauses a host until a moment, as a refusal would leave it, so the overview of every source on it reports the
     /// pause; the pause shows only while it lasts.</summary>
     /// <param name="hostKey">The host key, a source's handle in the fake.</param>

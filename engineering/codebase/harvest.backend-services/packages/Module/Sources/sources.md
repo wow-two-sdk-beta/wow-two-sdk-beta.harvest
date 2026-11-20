@@ -33,3 +33,8 @@ implementation. Source groups and display names are the registry's (`Registratio
   `(first_seen_at, id)` cursor follow `SourceProcessedQueryRules`. The route `{provider}/{model}` splits into provider
   and model; cost and latency come from one `IInferencesBroker.ListAsync` per post revision the page's answers name
   (subject `harvest:post:{id}@{revision}`), matched by `inference_id`; without the AI module both stay empty.
+- Processed post (`ModuleSourceOverviewBroker.Processed.cs`, `.ProcessedEvidence.cs`): the same query narrowed to one post id
+  (`@only`), so a post another source holds or one with no tags row is not found. `EvidenceOf` reads the quotes from the
+  stored extraction answer: `occurrences[i]`, `prices[i]`, `registration.opens`/`.deadline` (event), `price` and
+  `rentalTerms.{deposit,minimumStay,advanceRent,utilities}` (listing); a quote that is empty is left out. Each pass's
+  `inferenceId` is the row's stored `inference_id`.

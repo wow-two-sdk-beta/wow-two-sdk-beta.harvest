@@ -57,7 +57,7 @@ const isPipeline = computed(() => isPipelineRoute(routeName.value));
 /** The galleries carry the Cards | Rows switch: Sources and a source's Posts. */
 const hasViewSwitch = computed(() => routeName.value === 'sources' || routeName.value === 'source-posts');
 
-/** Section › page › group › source › tab, the last one the current page. */
+/** Section › page › group › source › tab › post, the last one the current page. */
 const crumbs = computed(() => {
   const place = destinationOf(routeName.value);
   if (!place) return [];
@@ -97,9 +97,10 @@ const crumbs = computed(() => {
   const group = source ? session.groupOf(source.groupId) : undefined;
   const groupKey = group?.id ?? OtherGroupKey;
   const isPost = routeName.value === 'source-post';
-  const tab = isPost ? 'Posts' : SourceTabLabels[routeName.value];
+  const isProcessedPost = routeName.value === 'source-processed-post';
+  const tab = isPost ? 'Posts' : isProcessedPost ? 'Processed' : SourceTabLabels[routeName.value];
   const sourceHref = router.resolve({ name: 'source', params: { id } }).href;
-  const postsHref = router.resolve({ name: 'source-posts', params: { id } }).href;
+  const tabHref = router.resolve({ name: isProcessedPost ? 'source-processed' : 'source-posts', params: { id } }).href;
   return [
     ...head,
     { label: page.label, href: router.resolve({ name: page.route }).href },
@@ -112,8 +113,9 @@ const crumbs = computed(() => {
         ]
       : []),
     tab ? { label: source?.name ?? 'Source', href: sourceHref } : { label: source?.name ?? 'Source' },
-    ...(tab ? [isPost ? { label: tab, href: postsHref } : { label: tab }] : []),
+    ...(tab ? [isPost || isProcessedPost ? { label: tab, href: tabHref } : { label: tab }] : []),
     ...(isPost ? [{ label: 'Post' }] : []),
+    ...(isProcessedPost ? [{ label: session.pageTitle.value ?? 'Post' }] : []),
   ];
 });
 const account = computed(() => {

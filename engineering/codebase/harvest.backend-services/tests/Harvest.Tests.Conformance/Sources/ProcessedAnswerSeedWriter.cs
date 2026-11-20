@@ -70,36 +70,61 @@ internal static class ProcessedAnswerSeedWriter
     private static string Flags(IEnumerable<WoW.Two.Sdk.Beta.Be.Harvest.Sources.ProcessedFlagModel> flags) =>
         JsonSerializer.Serialize(flags.Select(flag => new { field = flag.Field, reason = flag.Reason, proposed = flag.Proposed }));
 
-    /// <summary>Writes the summary back in the answer's own shape: the fields the read summarizes, the rest left out.</summary>
+    /// <summary>Writes the summary back in the answer's own shape: the fields the read summarizes and the quotes behind them,
+    /// the rest left out.</summary>
     private static string Answer(ProcessedExtractionSeed extraction)
     {
         var relation = new { role = extraction.Role, changes = Array.Empty<string>(), status = (string?)null };
+        string Quote(string field) => extraction.Evidence.FirstOrDefault(item => item.Field == field)?.Quotes.FirstOrDefault() ?? "";
+        object? Dated(string field) => extraction.Evidence.FirstOrDefault(item => item.Field == field) is { } item
+            ? new { value = item.Value, precision = "day", evidence = item.Quotes[0] }
+            : null;
         if (extraction.Event is { } item)
             return JsonSerializer.Serialize(new
             {
                 name = new { en = item.Name, original = item.OriginalName },
                 editionLabel = item.EditionLabel,
-                occurrences = item.Occurrences.Select(run => new
+                occurrences = item.Occurrences.Select((run, index) => new
                 {
-                    starts = run.Starts, ends = run.Ends, precision = run.Precision, certainty = run.Certainty, evidence = run.Starts,
+                    starts = run.Starts, ends = run.Ends, precision = run.Precision, certainty = run.Certainty,
+                    evidence = Quote($"occurrences[{index}]"),
                 }),
                 place = new { venue = item.Venue, city = item.City, country = item.Country },
                 format = item.Format,
                 access = item.Access,
-                prices = item.Prices.Select(price => new { amount = price.Amount, currency = price.Currency, label = price.Label, evidence = "" }),
+                prices = item.Prices.Select((price, index) => new
+                {
+                    amount = price.Amount, currency = price.Currency, label = price.Label, evidence = Quote($"prices[{index}]"),
+                }),
+                registration = new { opens = Dated("registration.opens"), deadline = Dated("registration.deadline"), link = (string?)null },
                 status = item.Status,
                 relation,
             });
         var listing = extraction.Listing ?? new();
+        var terms = extraction.Evidence.Where(entry => entry.Field.StartsWith("rentalTerms.", StringComparison.Ordinal))
+            .ToDictionary(entry => entry.Field["rentalTerms.".Length..], entry => new
+            {
+                status = entry.Certainty ?? "present",
+                claims = entry.Quotes.Select(quote => new { evidence = quote, value = Claim(entry.Value) }),
+            });
         return JsonSerializer.Serialize(new
         {
             offerType = listing.OfferType,
             price = listing.Price is { } price
-                ? new { amount = price.Amount, currency = price.Currency, period = price.Label, evidence = "" }
+                ? new { amount = price.Amount, currency = price.Currency, period = price.Label, evidence = Quote("price") }
                 : null,
             location = new { district = listing.District, city = listing.City, address = (string?)null },
             item = new { rooms = listing.Rooms, areaM2 = listing.AreaM2 },
             relation,
+            rentalTerms = terms.Count == 0 ? null : terms,
         });
+    }
+
+    /// <summary>Writes a seeded rental claim value, <c>500 USD</c>, as the amount and currency the answer stores.</summary>
+    private static object? Claim(string? value)
+    {
+        if (value?.Split(' ') is not [var amount, var currency])
+            return null;
+        return new { amount = decimal.Parse(amount, System.Globalization.CultureInfo.InvariantCulture), currency };
     }
 }

@@ -11,12 +11,16 @@ import ProcessedPostCard from '../src/admin/harvestConsole/ProcessedPostCard.vue
 import ProviderMark from '../src/admin/harvestConsole/ProviderMark.vue';
 import {
   answerLine,
+  certaintyTone,
   costText,
   eventLines,
+  extractionRows,
   latencyText,
   listingLines,
   markLabel,
   provenanceLines,
+  shortRunId,
+  tagFlagLabel,
   tokenCount,
   tokensText,
   unsureFields,
@@ -189,6 +193,40 @@ const mystery: SourceProcessedPostModel = {
   },
 };
 
+const flat: SourceProcessedPostModel = {
+  postId: 'flat',
+  title: '2 xonali kvartira ijaraga',
+  url: 'https://olx.example/flat',
+  revision: 1,
+  firstSeenAt: new Date().toISOString(),
+  state: 'live',
+  tags: {
+    status: 'done',
+    current: true,
+    entityType: 'listing',
+    domains: [{ key: 'real-estate', label: 'Real estate', primary: true }],
+    topics: ['rent'],
+    flags: [],
+    answer: { provider: 'openai', model: 'gpt-5-mini', promptVersion: 4, answeredAt: '2026-11-19T09:00:00Z' },
+  },
+  classification: { classifier: 'model:openai/gpt-5-mini@post-tags:4', verdict: 'irrelevant' },
+  extraction: {
+    useCase: 'extract-listing',
+    status: 'done',
+    role: 'mention',
+    listing: {
+      offerType: 'rent',
+      price: { amount: 500, currency: 'USD', label: 'month' },
+      rooms: 2,
+      areaM2: 54,
+      district: 'Chilonzor',
+      city: 'Tashkent',
+    },
+    flags: [],
+    answer: { provider: 'openai', model: 'gpt-5-mini', promptVersion: 3, answeredAt: '2026-11-19T09:00:00Z' },
+  },
+};
+
 function show(pages: SourceProcessedPage[]) {
   const query = vi.fn(async () => ResultExtensions.ok(pages.shift() ?? { items: [], total: 0 }));
   session = { querySourceProcessed: query } as unknown as HarvestConsole;
@@ -240,6 +278,73 @@ describe('processed words', () => {
     expect(markLabel(undefined, undefined)).toBe('Unknown provider');
   });
 
+  it('builds the extraction rows: each field with its value, certainty, quotes and flags, stray flags apart', () => {
+    const now = new Date('2026-11-19T00:00:00Z');
+    const { rows, strayFlags } = extractionRows(
+      {
+        ...runway.extraction!,
+        flags: [
+          ...runway.extraction!.flags,
+          { field: 'format', reason: 'value outside the list', proposed: 'gala' },
+          { field: 'organizer', reason: 'unknown field' },
+        ],
+      },
+      [
+        { field: 'occurrences[0]', certainty: 'stated', quotes: ['Show on 21–23 November'] },
+        { field: 'prices[0]', quotes: ["Tickets 150 000 so'm"] },
+        { field: 'registration.deadline', value: '2026-11-10', quotes: ['register by 10 November'] },
+      ],
+      now,
+    );
+    expect(rows.map((row) => [row.key, row.label, row.value])).toEqual([
+      ['name', 'Name', 'The Fashion Show Line · 2026'],
+      ['occurrences[0]', 'Dates', '21–23 Nov'],
+      ['place', 'Place', 'Youth Creativity Palace, Tashkent, UZ'],
+      ['format', 'Format', 'runway'],
+      ['access', 'Access', 'ticketed'],
+      ['prices[0]', 'Price', '150,000 UZS entry'],
+      ['registration.deadline', 'Registration deadline', '2026-11-10'],
+    ]);
+    const dates = rows[1]!;
+    expect(dates.certainty).toBe('stated');
+    expect(dates.quotes).toEqual(['Show on 21–23 November']);
+    expect(dates.flags).toEqual([
+      { field: 'occurrences[0].ends', reason: 'the post states no end', proposed: '2026-11-23' },
+    ]);
+    expect(rows[3]!.flags.map((flag) => flag.proposed)).toEqual(['gala']);
+    expect(rows[5]!.quotes).toEqual(["Tickets 150 000 so'm"]);
+    expect(rows[6]!.quotes).toEqual(['register by 10 November']);
+    expect(strayFlags).toEqual([{ field: 'organizer', reason: 'unknown field' }]);
+  });
+
+  it('builds a listing’s rows with its rental terms from the evidence, and no rows for an unfinished pass', () => {
+    const { rows } = extractionRows(flat.extraction!, [
+      { field: 'price', quotes: ['500 USD per month'] },
+      { field: 'rentalTerms.deposit', value: '500 USD', certainty: 'present', quotes: ['deposit 500 USD'] },
+      { field: 'rentalTerms.utilities', certainty: 'absent', quotes: ['no utilities mentioned'] },
+    ]);
+    expect(rows.map((row) => [row.label, row.value])).toEqual([
+      ['Offer', 'rent'],
+      ['Price', '500 USD/month'],
+      ['Rooms', '2'],
+      ['Area', '54 m²'],
+      ['Location', 'Chilonzor, Tashkent'],
+      ['Deposit', '500 USD'],
+      ['Utilities', 'absent'],
+    ]);
+    expect(rows[1]!.quotes).toEqual(['500 USD per month']);
+    expect(rows[5]).toMatchObject({ certainty: 'present', quotes: ['deposit 500 USD'] });
+    const failed = extractionRows(showroom.extraction!, []);
+    expect(failed.rows).toEqual([]);
+    expect(certaintyTone('estimated')).toBe('warning');
+    expect(certaintyTone('stated')).toBe('success');
+    expect(certaintyTone(undefined)).toBe('neutral');
+    expect(shortRunId('1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed')).toBe('1b9d6bcd');
+    expect(shortRunId(undefined)).toBeUndefined();
+    expect(tagFlagLabel('timeframe')).toBe('Timeframe');
+    expect(tagFlagLabel('x.y')).toBe('x.y');
+  });
+
   it('summarizes an event and a listing extraction in a few lines', () => {
     const now = new Date('2026-11-19T00:00:00Z');
     expect(eventLines(runway.extraction!.event!, now).map((line) => line.text)).toEqual([
@@ -271,7 +376,7 @@ describe('processed tab', () => {
     const card = wrapper.get(`article[aria-label="${runway.title}"]`);
     expect(card.text()).toContain('Relevant');
     expect(card.text()).toContain('Event');
-    expect(card.get('ul[aria-label="Entity type, verdict and language"]').text()).toContain('Russian');
+    expect(card.get('ul[aria-label="Entity type, verdict, language and AI provider"]').text()).toContain('Russian');
     expect(card.text()).toContain("Women's Fashion");
     expect(card.text()).toContain('Style & Fashion');
     expect(card.text()).toContain('#fashion-show');
@@ -290,8 +395,7 @@ describe('processed tab', () => {
     expect(JSON.parse(card.get('a[data-to]').attributes('data-to')!)).toEqual({
       kind: 'source',
       id: 'afisha',
-      tab: 'posts',
-      post: 'runway',
+      processed: 'runway',
     });
     const other = wrapper.get(`article[aria-label="${essay.title}"]`);
     expect(other.get('header [data-ai-brand]').attributes('data-ai-brand')).toBe('openai');
@@ -471,11 +575,124 @@ describe('processed card', () => {
     expect(gone.get('header').text()).toContain('removed');
   });
 
+  it('opens the original from the Posts card’s glass ↗ button top right, only for a safe web address', async () => {
+    const wrapper = card(runway);
+    const open = wrapper.get('header a[target="_blank"]');
+    expect(open.attributes('href')).toBe('https://www.afisha.uz/ru/fashion/1');
+    expect(open.attributes('rel')).toBe('noopener noreferrer');
+    expect(open.attributes('aria-label')).toBe(`Open the original of ${runway.title}`);
+    expect(open.classes()).toEqual(
+      expect.arrayContaining([
+        'absolute',
+        'top-3',
+        'right-3',
+        'z-20',
+        'size-8',
+        'rounded-full',
+        'border-white/20',
+        'bg-black/35',
+        'text-white',
+        'backdrop-blur-md',
+      ]),
+    );
+    expect(open.get('svg path').attributes('d')).toBe('M7 17 17 7M8 7h9v9');
+    await open.trigger('focus');
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain('Open the original');
+    });
+    const suspect = card({ ...runway, state: 'suspect' });
+    await suspect.get('header a[target="_blank"]').trigger('focus');
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain('could not confirm it is still there');
+    });
+
+    for (const url of [undefined, 'javascript:alert(1)', 'ftp://files.example/a', 'https://user:pw@www.afisha.uz/a'])
+      expect(
+        card({ ...runway, url })
+          .find('a[target="_blank"]')
+          .exists(),
+      ).toBe(false);
+    expect(
+      card({ ...runway, state: 'gone' })
+        .find('a[target="_blank"]')
+        .exists(),
+    ).toBe(false);
+  });
+
+  it('puts the AI provider mark last in the top pill row as a round glass pill, no longer top right', () => {
+    const wrapper = card(runway);
+    const row = wrapper.get('ul[aria-label="Entity type, verdict, language and AI provider"]');
+    const mark = row.findAll('li').at(-1)!.get('[data-provider-pill]');
+    expect(mark.attributes('aria-label')).toBe('Claude Haiku 5.5');
+    expect(mark.classes()).toEqual(
+      expect.arrayContaining(['size-6', 'rounded-full', 'border-white/20', 'bg-white/15']),
+    );
+    expect(mark.get('[data-ai-brand]').attributes('data-ai-brand')).toBe('claude');
+    expect(wrapper.findAll('[role="img"][aria-label="Claude Haiku 5.5"]')).toHaveLength(1);
+    expect(wrapper.get('header').find('.end-3').exists()).toBe(false);
+    expect(card(essay).get('[data-provider-pill]').classes()).toEqual(
+      expect.arrayContaining(['border-border', 'bg-card']),
+    );
+    const items = card(mystery).get('ul[aria-label="Entity type, verdict, language and AI provider"]').findAll('li');
+    expect(items.at(-2)!.text()).toBe('removed');
+    expect(items.at(-1)!.find('[data-provider-pill]').exists()).toBe(true);
+  });
+
+  it('keeps the pass-by-pass hover on the provider pill: each pass with its model, cost, time and tokens', async () => {
+    const wrapper = card(runway);
+    await wrapper.get('[data-provider-pill]').trigger('focus');
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain('tags haiku-5-5 · $0.0003 · 1.8s · 1.4k tok · p2');
+    });
+    expect(document.body.textContent).toContain('event haiku-5-5 · $0.0011 · 2.4s · 2.8k tok · p3');
+    expect(document.body.textContent).toMatch(/answered .+ ago/);
+  });
+
+  it('names the extraction by its role alone: no Event or Listing word, no done', () => {
+    const event = card(runway).get('[aria-label="Event extraction"] p');
+    expect(event.get('span').text()).toBe('announcement');
+    expect(event.text()).not.toMatch(/Event|done/);
+    const listing = card(flat).get('[aria-label="Listing extraction"]');
+    expect(listing.get('p').text()).toBe('mention');
+    expect(listing.text()).not.toMatch(/Listing|done/);
+    expect(listing.get('[data-line="offer"]').text()).toBe('rent · 500 USD/month');
+    const failed = card(showroom).get('[aria-label="Event extraction"] p');
+    expect(failed.get('[data-tone="warning"]').text()).toBe('failed');
+    expect(failed.text()).toContain('no date found');
+    expect(failed.text()).not.toMatch(/Event|done/);
+    const bare = card({
+      ...runway,
+      tags: { ...runway.tags, flags: [] },
+      extraction: { ...runway.extraction!, role: undefined, event: undefined, flags: [] },
+    });
+    expect(bare.find('[aria-label="Event extraction"]').exists()).toBe(false);
+  });
+
+  it('opens the processed post’s page from the whole card: the title link stretches over it, the controls stay above', () => {
+    const wrapper = card(runway);
+    const link = wrapper.get('a[data-processed-link]');
+    expect(JSON.parse(link.attributes('data-to')!)).toEqual({ kind: 'source', id: 'afisha', processed: 'runway' });
+    expect(link.text()).toBe(runway.title);
+    expect(link.classes()).toEqual(
+      expect.arrayContaining(['after:absolute', 'after:-inset-[100rem]', "after:content-['']"]),
+    );
+    expect(wrapper.findAll('a[data-to]')).toHaveLength(1);
+    expect(wrapper.get('article').classes()).toEqual(expect.arrayContaining(['isolate', 'overflow-hidden']));
+    expect(wrapper.get('header').classes()).not.toContain('overflow-hidden');
+    expect(wrapper.get('ul[aria-label="Entity type, verdict, language and AI provider"]').classes()).toContain('z-10');
+    expect(wrapper.get('a[target="_blank"]').classes()).toContain('z-20');
+    expect(wrapper.get('[aria-label^="2 unsure"]').classes()).toEqual(expect.arrayContaining(['relative', 'z-10']));
+    expect(wrapper.get('ul[aria-label="Tags"] li').classes()).toEqual(expect.arrayContaining(['relative', 'z-10']));
+    expect(JSON.parse(card(flat).get('a[data-processed-link]').attributes('data-to')!)).toMatchObject({
+      processed: 'flat',
+    });
+  });
+
   it('shows the language as a pill with its icon after the verdict, never in the subline', () => {
     const wrapper = card(runway);
-    const pills = wrapper.get('ul[aria-label="Entity type, verdict and language"]');
-    const language = pills.findAll('li').at(-1)!;
-    expect(pills.findAll('li').map((item) => item.text())).toEqual(['Event', 'Relevant', 'Russian']);
+    const pills = wrapper.get('ul[aria-label="Entity type, verdict, language and AI provider"]');
+    const language = pills.findAll('li').at(-2)!;
+    expect(pills.findAll('li').map((item) => item.text())).toEqual(['Event', 'Relevant', 'Russian', '']);
     expect(language.get('[data-tone]').attributes('data-tone')).toBe('glass');
     expect(language.find('svg').exists()).toBe(true);
     expect(wrapper.get('header').text()).toContain('Russian');
@@ -483,11 +700,11 @@ describe('processed card', () => {
     expect(subline.text()).toContain('first seen');
     expect(subline.text()).not.toContain('Russian');
 
-    const uzbek = card(showroom).get('ul[aria-label="Entity type, verdict and language"]');
-    expect(uzbek.findAll('li').map((item) => item.text())).toEqual(['Event', 'Uncertain', 'Uzbek']);
+    const uzbek = card(showroom).get('ul[aria-label="Entity type, verdict, language and AI provider"]');
+    expect(uzbek.findAll('li').map((item) => item.text())).toEqual(['Event', 'Uncertain', 'Uzbek', '']);
     expect(card(showroom).get('header p').text()).not.toContain('Uzbek');
 
-    const quiet = card(essay).get('ul[aria-label="Entity type, verdict and language"]');
+    const quiet = card(essay).get('ul[aria-label="Entity type, verdict, language and AI provider"]');
     expect(quiet.text()).not.toMatch(/Russian|Uzbek/);
     expect(card(essay).find('header [data-tone="outline"]').exists()).toBe(false);
   });

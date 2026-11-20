@@ -81,6 +81,13 @@ public static class SourceProcessedQueryRules
         return RegistrationErrors.Invalid("The processed posts cursor is invalid or belongs to another query.");
     }
 
+    /// <summary>Builds the <c>NotFound</c> error of a post a source does not show as processed.</summary>
+    /// <param name="sourceId">The source.</param>
+    /// <param name="postId">The post.</param>
+    /// <returns>The error.</returns>
+    public static AppError PostNotFound(Guid sourceId, Guid postId) =>
+        AppErrorFactory.NotFound($"Source {sourceId} shows no processed post {postId}.");
+
     /// <summary>Writes the cursor that continues after a post.</summary>
     /// <param name="sourceId">The source the query reads.</param>
     /// <param name="query">The query, whose filters bind the cursor.</param>

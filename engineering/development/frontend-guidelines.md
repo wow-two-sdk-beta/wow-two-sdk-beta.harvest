@@ -13,7 +13,7 @@ Defer to `wow-two-ws/conventions/development/frontend/`.
   Access) inside the fe sdk `AppFrame`. Posts shows what the source gave, untouched; Processed shows what the AI passes
   made of it — a card in the Posts card's look with tags, verdict, extraction summary and the answering AI's brand mark
   (`@wow-two-beta/fe/domain/aiBrands`, resolved from the model id first, the provider key next) whose tooltip names the
-  model, cost, latency, tokens and prompt version; the Posts and Processed tab labels carry the source's totals
+  model, cost, latency, tokens and prompt version, and a link to the processed post's own page (`/sources/{id}/processed/{postId}`: classification, every tag, the extraction with each field's quote, certainty and unsure flag, and each AI pass); the Posts and Processed tab labels carry the source's totals
   (`Posts 88`) and a pill first in the filter row reads the match count (`12 of 88`) only while a search or filter
   narrows; hosted pages join as consumers forward to them. On screen it says source, group, section, harvest and subscriber, never pipeline, host
   lane, tenant, container or scope names. It takes

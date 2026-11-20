@@ -124,6 +124,25 @@ describe('standalone demo client', () => {
     const paged = await api.querySourceProcessed!(afisha, { limit: 2 });
     expect(paged.ok && paged.value.nextCursor).toBeTruthy();
 
+    const opened = await api.getSourceProcessedPost!(afisha, show!.postId);
+    if (!opened.ok) throw new Error('Demo processed post missing');
+    expect(opened.value.post).toEqual(show);
+    expect(opened.value.passes.map((pass) => pass.pass)).toEqual(['post-tags', 'extract-event']);
+    expect(opened.value.passes.every((pass) => !!pass.inferenceId && typeof pass.answer.latencyMs === 'number')).toBe(
+      true,
+    );
+    expect(opened.value.evidence.map((entry) => entry.field)).toEqual([
+      'occurrences[0]',
+      'prices[0]',
+      'registration.deadline',
+    ]);
+    expect(opened.value.evidence.every((entry) => entry.quotes.length > 0)).toBe(true);
+    const plain = processed.value.items.find((post) => !post.extraction)!;
+    const bare = await api.getSourceProcessedPost!(afisha, plain.postId);
+    expect(bare.ok && bare.value.evidence).toEqual([]);
+    expect(bare.ok && bare.value.passes.map((pass) => pass.pass)).toEqual(['post-tags']);
+    expect((await api.getSourceProcessedPost!(afisha, 'unknown-post')).ok).toBe(false);
+
     const entities = api.entities!;
     const found = await entities.search(container, { q: 'fashion week' });
     if (!found.ok) throw new Error('Demo entities missing');

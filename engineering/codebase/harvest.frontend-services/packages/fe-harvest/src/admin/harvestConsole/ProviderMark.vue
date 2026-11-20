@@ -7,27 +7,42 @@ import { markLabel } from './ProcessedWords';
 /**
  * The AI that answered, as its brand mark — Claude, Gemini, OpenAI and the other providers, resolved from the model id
  * first and the provider key next; a model the SDK does not know shows a neutral chip. Hovering or focusing it shows
- * the exact model, cost, latency, tokens and prompt version, one line per answer. `onImage` draws it as a glass circle
- * for a card's image header.
+ * the exact model, cost, latency, tokens and prompt version, one line per answer. `onImage` draws it as glass for a
+ * card's image header; `pill` sizes it to the pills it sits among, a round pill as tall as they are.
  */
 defineOptions({ name: 'ProviderMark' });
 const props = withDefaults(
-  defineProps<{ provider?: string; model?: string; lines: readonly string[]; onImage?: boolean }>(),
-  { provider: undefined, model: undefined, onImage: false },
+  defineProps<{
+    provider?: string;
+    model?: string;
+    lines: readonly string[];
+    onImage?: boolean;
+    pill?: boolean;
+    placement?: 'top-end' | 'bottom-start';
+  }>(),
+  { provider: undefined, model: undefined, onImage: false, pill: false, placement: 'top-end' },
 );
 const label = computed(() => markLabel(props.provider, props.model));
 </script>
 
 <template>
-  <Tooltip :open-delay="150" placement="top-end">
+  <Tooltip :open-delay="150" :placement="props.placement">
     <span
-      class="inline-grid size-8 shrink-0 place-items-center rounded-full border backdrop-blur-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-      :class="props.onImage ? 'border-white/20 bg-black/35 text-white' : 'border-border bg-card text-foreground'"
+      class="inline-grid shrink-0 place-items-center rounded-full border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      :class="[
+        props.pill ? 'size-6' : 'size-8 backdrop-blur-md',
+        props.onImage
+          ? props.pill
+            ? 'border-white/20 bg-white/15 text-white'
+            : 'border-white/20 bg-black/35 text-white'
+          : 'border-border bg-card text-foreground',
+      ]"
       tabindex="0"
       role="img"
       :aria-label="label"
+      v-bind="props.pill ? { 'data-provider-pill': '' } : {}"
     >
-      <AiBrandMark :provider="props.provider" :model="props.model" :size="18" />
+      <AiBrandMark :provider="props.provider" :model="props.model" :size="props.pill ? 14 : 18" />
     </span>
     <template #content>
       <span class="grid gap-0.5 font-mono text-[11px] leading-4 whitespace-nowrap">

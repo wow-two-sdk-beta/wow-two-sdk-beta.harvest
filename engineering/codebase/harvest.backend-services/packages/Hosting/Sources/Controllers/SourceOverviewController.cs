@@ -107,6 +107,22 @@ public sealed class SourceOverviewController(ISourceOverviewBroker overview, IRe
             value => Ok(ApiResponse<SourceProcessedPage>.Ok(value)), this.ToProblem);
     }
 
+    /// <summary>Reads one processed post of the visible source in full: the post as the list shows it, the quotes behind its
+    /// extracted fields and each AI pass with its inference id.</summary>
+    /// <param name="sourceId">The source.</param>
+    /// <param name="postId">The post.</param>
+    /// <param name="ct">The token that cancels the request.</param>
+    [HttpGet("/" + RegistrationRouteConstants.Sources + "/{sourceId:guid}/" + SourceRouteConstants.Processed + "/{postId:guid}")]
+    [Authorize(Policy = HarvestScopeConstants.PostsRead)]
+    [ProducesResponseType<ApiResponse<SourceProcessedPostDetailsModel>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ProcessedPost(Guid sourceId, Guid postId, CancellationToken ct)
+    {
+        if (await SourceAccessErrorAsync(sourceId, ct) is { } error)
+            return this.ToProblem(error);
+        return (await overview.GetSourceProcessedPostAsync(sourceId, postId, ct)).Match<IActionResult>(
+            value => Ok(ApiResponse<SourceProcessedPostDetailsModel>.Ok(value)), this.ToProblem);
+    }
+
     private async Task<AppError?> SourceAccessErrorAsync(Guid sourceId, CancellationToken ct)
     {
         if (await callers.ResolveAsync(User, ct) is not { } caller)

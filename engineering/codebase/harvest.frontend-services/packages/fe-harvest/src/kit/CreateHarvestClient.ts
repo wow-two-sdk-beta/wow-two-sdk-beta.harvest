@@ -26,6 +26,7 @@ import type {
   PostRevisionModel,
   PostProcessingModel,
   SourceProcessedPage,
+  SourceProcessedPostDetailsModel,
   SourceProcessedQuery,
 } from '../contracts';
 import { createEntitiesClient, type EntitiesClient } from './CreateEntitiesClient';
@@ -144,6 +145,12 @@ export interface HarvestClient extends RegistryClient {
     query: SourceProcessedQuery,
     signal?: AbortSignal,
   ): Promise<Result<SourceProcessedPage, ApiFailure>>;
+  /** Reads one processed post in full: its tags, verdict and extraction, the quotes behind the extracted fields and each AI pass. */
+  getSourceProcessedPost?(
+    sourceId: string,
+    postId: string,
+    signal?: AbortSignal,
+  ): Promise<Result<SourceProcessedPostDetailsModel, ApiFailure>>;
   /** Reads saved processing results within the post's container, optionally for one source. */
   listPostProcessing?(
     postId: string,
@@ -274,6 +281,25 @@ function processedPage(value: unknown): Result<SourceProcessedPage, ApiFailure> 
     page.total >= 0;
   return valid
     ? ResultExtensions.ok(page as SourceProcessedPage)
+    : ResultExtensions.fail(ApiFailureFactory.create('protocol'));
+}
+
+/** Validates a processed post's details before the page reads them. */
+function processedDetails(value: unknown): Result<SourceProcessedPostDetailsModel, ApiFailure> {
+  const details = value as Partial<SourceProcessedPostDetailsModel> | null;
+  const valid =
+    details &&
+    details.post !== null &&
+    typeof details.post === 'object' &&
+    typeof details.post.postId === 'string' &&
+    typeof details.post.title === 'string' &&
+    details.post.tags !== null &&
+    typeof details.post.tags === 'object' &&
+    Array.isArray(details.post.tags.domains) &&
+    Array.isArray(details.evidence) &&
+    Array.isArray(details.passes);
+  return valid
+    ? ResultExtensions.ok(details as SourceProcessedPostDetailsModel)
     : ResultExtensions.fail(ApiFailureFactory.create('protocol'));
 }
 
@@ -446,6 +472,11 @@ export function createHarvestClient(options: RegistryClientOptions = {}): Harves
         query: processedQuery(query),
         ...signalOf(signal),
         decode: processedPage,
+      }),
+    getSourceProcessedPost: (sourceId, postId, signal) =>
+      api.get(`/api/sources/${encodeURIComponent(sourceId)}/processed/${encodeURIComponent(postId)}`, {
+        ...signalOf(signal),
+        decode: processedDetails,
       }),
     listPostProcessing: (postId, containerId, signal, sourceId) =>
       api.get(`/api/posts/${encodeURIComponent(postId)}/processing`, {

@@ -44,7 +44,7 @@ The panels are styled with Tailwind utilities on the fe sdk theme; add the packa
 
 | Export | Holds |
 |---|---|
-| `./contracts` | `TenantModel`, `ApiKeyModel`, `ContainerModel`, `SourceModel`, `PipelineModel`, `ScheduleModel`, the Sources area's `SourceOverviewModel`, `SourceGroupModel`, `SourcePostModel`, `SourceProcessedPostModel` and `PostRevisionModel`, the entity reads' `EntitySummaryModel`, `EntityTimelineModel`, `EntityPostModel`, `EntityCalendarEntryModel` and `EntityEventModel`, the enum labels, `RegistrationRouteConstants`, `HarvestScopeConstants`, `ApiKeyConstants` |
+| `./contracts` | `TenantModel`, `ApiKeyModel`, `ContainerModel`, `SourceModel`, `PipelineModel`, `ScheduleModel`, the Sources area's `SourceOverviewModel`, `SourceGroupModel`, `SourcePostModel`, `SourceProcessedPostModel`, `SourceProcessedPostDetailsModel` and `PostRevisionModel`, the entity reads' `EntitySummaryModel`, `EntityTimelineModel`, `EntityPostModel`, `EntityCalendarEntryModel` and `EntityEventModel`, the enum labels, `RegistrationRouteConstants`, `HarvestScopeConstants`, `ApiKeyConstants` |
 | `./kit` | `createRegistryClient`, `createHarvestClient`, `createEntitiesClient` |
 | `./admin` | `HarvestConsoleProvider`, `useHarvestConsole` and the page panels it serves |
 

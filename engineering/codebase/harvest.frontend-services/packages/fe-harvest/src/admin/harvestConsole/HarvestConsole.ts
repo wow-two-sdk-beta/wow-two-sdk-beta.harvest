@@ -35,6 +35,7 @@ import type {
   SourceOverviewModel,
   SourcePostModel,
   SourcePostQuery,
+  SourceProcessedPostDetailsModel,
   SourceProcessedQuery,
   SourceUpdate,
   SubscriptionModel,
@@ -61,6 +62,8 @@ export type ConsolePlace =
       readonly id: string;
       readonly tab?: SourceTab;
       readonly post?: string;
+      /** A processed post's page: what the AI passes made of the post; `post` opens the captured post itself. */
+      readonly processed?: string;
       readonly run?: string;
     }
   | { readonly kind: 'pipelines' }
@@ -183,6 +186,8 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
   const canReadPostProcessing = computed(() => typeof client.value?.listPostProcessing === 'function');
   /** Whether the client reads a source's processed posts; an older client hides the Processed tab. */
   const canReadProcessed = computed(() => typeof client.value?.querySourceProcessed === 'function');
+  /** What the open page names its last crumb, such as a processed post's title; the host's trail reads it. */
+  const pageTitle = shallowRef<string>();
   /** Whether the client reads entities; an older client hides the Entities page. */
   const canReadEntities = computed(() => client.value?.entities !== undefined);
   const connecting = ref(client.value !== null);
@@ -929,6 +934,18 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
       : Promise.resolve(ResultExtensions.fail(offline()));
   }
 
+  /** Reads one processed post in full: its tags, verdict, extraction with quotes, and each AI pass. */
+  function readSourceProcessedPost(
+    sourceId: string,
+    postId: string,
+    signal?: AbortSignal,
+  ): Promise<Result<SourceProcessedPostDetailsModel, ApiFailure>> {
+    const api = client.value;
+    return api?.getSourceProcessedPost
+      ? api.getSourceProcessedPost(sourceId, postId, signal)
+      : Promise.resolve(ResultExtensions.fail(offline()));
+  }
+
   /** Searches the open container's entities. */
   function searchEntities(query: EntitySearchQuery, signal?: AbortSignal) {
     const entities = client.value?.entities;
@@ -1132,6 +1149,8 @@ export function createHarvestConsole(options: HarvestConsoleOptions) {
     readPostProcessing,
     canReadProcessed,
     querySourceProcessed,
+    readSourceProcessedPost,
+    pageTitle,
     canReadEntities,
     searchEntities,
     readEntity,

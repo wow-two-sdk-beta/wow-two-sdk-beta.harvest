@@ -3,7 +3,9 @@ import type {
   ClassificationVerdict,
   ProcessedAnswerModel,
   ProcessedEventSummary,
+  ProcessedEvidenceModel,
   ProcessedExtractionModel,
+  ProcessedFlagModel,
   ProcessedListingSummary,
   ProcessedOccurrenceModel,
   ProcessedPriceModel,
@@ -218,4 +220,131 @@ export function listingLines(listing: ProcessedListingSummary) {
     ...(unit ? [{ key: 'unit', text: unit }] : []),
     ...(place ? [{ key: 'place', text: place }] : []),
   ];
+}
+
+/** What each pass is called on the processed post's page. */
+export const PassWords: Record<string, string> = {
+  'post-tags': 'Tags',
+  'extract-event': 'Event extraction',
+  'extract-listing': 'Listing extraction',
+};
+
+/** One labelled row of the extraction section: a field's value, how sure the answer is, its quotes and its unsure flags. */
+export interface ExtractionRow {
+  /** The field's JSON path, as the flags and the evidence name it. */
+  readonly key: string;
+  readonly label: string;
+  readonly value: string;
+  /** `stated` or `estimated` for a date, `present`, `absent` or `conflict` for a rental term. */
+  readonly certainty?: string;
+  /** The verbatim quotes the answer keeps behind the value. */
+  readonly quotes: readonly string[];
+  /** The flags that name this field or one beneath it. */
+  readonly flags: readonly ProcessedFlagModel[];
+}
+
+/** Whether a flag's JSON path names `key` or a field beneath it: `occurrences[0].ends` is beneath `occurrences[0]`. */
+function flagNames(field: string, key: string) {
+  return field === key || field.startsWith(`${key}.`) || field.startsWith(`${key}[`);
+}
+
+/**
+ * The extraction section's rows from a done answer: each extracted field as a label and a value, with the quotes the
+ * answer keeps behind it and its unsure flags attached. A field the answer left empty has no row. Registration dates
+ * and rental terms come from the evidence alone, which carries their value. Flags that name no row come back apart,
+ * so no flag is lost.
+ */
+export function extractionRows(
+  extraction: ProcessedExtractionModel,
+  evidence: readonly ProcessedEvidenceModel[],
+  now = new Date(),
+): { rows: ExtractionRow[]; strayFlags: ProcessedFlagModel[] } {
+  const quoted = new Map(evidence.map((entry) => [entry.field, entry]));
+  const rows: ExtractionRow[] = [];
+  const add = (key: string, label: string, value?: string, certainty?: string) => {
+    if (!value) return;
+    const entry = quoted.get(key);
+    const sure = certainty ?? entry?.certainty;
+    rows.push({ key, label, value, ...(sure ? { certainty: sure } : {}), quotes: entry?.quotes ?? [], flags: [] });
+  };
+  const numbered = (label: string, index: number, count: number) => (count > 1 ? `${label} ${index + 1}` : label);
+
+  const event = extraction.status === 'done' ? extraction.event : undefined;
+  if (event) {
+    add('name', 'Name', [event.name, event.editionLabel].filter(Boolean).join(' · '));
+    if (event.originalName && event.originalName !== event.name)
+      add('name.original', 'Original name', event.originalName);
+    event.occurrences.forEach((occurrence, index) =>
+      add(
+        `occurrences[${index}]`,
+        numbered('Dates', index, event.occurrences.length),
+        eventDatesOf(occurrence.starts, occurrence.ends, now) ?? occurrence.starts,
+        occurrence.certainty,
+      ),
+    );
+    add('place', 'Place', placeText(event.venue, event.city, event.country));
+    add('format', 'Format', event.format);
+    add('access', 'Access', event.access);
+    event.prices.forEach((price, index) =>
+      add(
+        `prices[${index}]`,
+        numbered('Price', index, event.prices.length),
+        [priceText(price), price.label].filter(Boolean).join(' '),
+      ),
+    );
+    add('registration.opens', 'Registration opens', quoted.get('registration.opens')?.value);
+    add('registration.deadline', 'Registration deadline', quoted.get('registration.deadline')?.value);
+    add('status', 'Status', event.status);
+  }
+  const listing = extraction.status === 'done' ? extraction.listing : undefined;
+  if (listing) {
+    add('offerType', 'Offer', listing.offerType);
+    add('price', 'Price', priceText(listing.price, listing.offerType === 'rent'));
+    if (listing.rooms !== undefined && listing.rooms !== null) add('item.rooms', 'Rooms', String(listing.rooms));
+    if (listing.areaM2 !== undefined && listing.areaM2 !== null) add('item.areaM2', 'Area', `${listing.areaM2} m²`);
+    add('location', 'Location', placeText(listing.district, listing.city));
+    for (const [term, label] of Object.entries({
+      deposit: 'Deposit',
+      minimumStay: 'Minimum stay',
+      advanceRent: 'Advance rent',
+      utilities: 'Utilities',
+    })) {
+      const entry = quoted.get(`rentalTerms.${term}`);
+      add(`rentalTerms.${term}`, label, entry?.value ?? entry?.certainty);
+    }
+  }
+
+  const strayFlags: ProcessedFlagModel[] = [];
+  const attached = rows.map((row) => ({ ...row, flags: [] as ProcessedFlagModel[] }));
+  for (const flag of extraction.flags) {
+    const row = attached.find((candidate) => flagNames(flag.field, candidate.key));
+    if (row) row.flags.push(flag);
+    else strayFlags.push(flag);
+  }
+  return { rows: attached, strayFlags };
+}
+
+/** The flags of a tags answer, each with the words that name its field. */
+export function tagFlagLabel(field: string) {
+  const words: Record<string, string> = {
+    entityType: 'Entity type',
+    domains: 'Domains',
+    topics: 'Topics',
+    timeframe: 'Timeframe',
+    about: 'About',
+    titleEn: 'English title',
+  };
+  return words[field] ?? field;
+}
+
+/** The class of a certainty's pill: a date the post states reads calm, an estimate or a conflict warns. */
+export function certaintyTone(certainty?: string): PillTone {
+  if (certainty === 'estimated' || certainty === 'conflict') return 'warning';
+  if (certainty === 'stated' || certainty === 'present') return 'success';
+  return 'neutral';
+}
+
+/** A run id short enough for a row: the inference id's first group, the whole id on hover. */
+export function shortRunId(id?: string) {
+  return id ? id.split('-')[0] : undefined;
 }

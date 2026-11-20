@@ -74,7 +74,7 @@
 | `PUT api/pipelines/{id}` with `limits` | `pipelines:manage`, operator | nothing (403); the same edit without `limits` follows the row above |
 | `POST api/sources/groups` · `PUT api/sources/{id}` · `PUT api/sources/{id}/reading` | `harvest:manage-sources`: `sources:manage` held by the operator | nothing (403), a browser session's `sources:manage` included |
 | `GET api/sources/overview` · `GET api/sources/groups` | `pipelines:read` (no `sources:read` exists) | the pool and its own tenant's; another tenant's is 404 |
-| `GET api/sources/{id}/posts` · `GET api/sources/{id}/processed` · `GET api/posts/{id}/revisions` | `posts:read` | sources and posts of the pool and its own tenant's; another tenant's is 404 |
+| `GET api/sources/{id}/posts` · `GET api/sources/{id}/processed` · `GET api/sources/{id}/processed/{postId}` · `GET api/posts/{id}/revisions` | `posts:read` | sources and posts of the pool and its own tenant's; another tenant's is 404 |
 | `GET api/entities` · `api/entities/{id}` · `api/entities/{id}/posts` · `api/entities/calendar` · `api/entities/events` | `posts:read` (no `entities:read` exists) | entities of the pool and its own tenant's containers; another tenant's container, or an entity of another container, is 404 |
 | `PUT api/subscriptions/{id}/selector` · `PUT api/subscriptions/{id}/state` · `POST api/subscriptions/preview` | `subscriptions:manage` | its own tenant's subscriptions and containers (a preview names the caller's own tenant); another tenant's subscription or container is 404 |
 
@@ -477,6 +477,7 @@ stores. Groups and display names are `IRegistrationBroker`'s; the reading pace i
 | `ListSourcePostsAsync(sourceId, limit = 200)` | `SourcePostModel` newest first: title, kind, state, revision, first seen, last changed, the section that first captured it, stated start, URL, the first image's source URL (never a `fileRef`) | `NotFound` source · `Validation` limit outside 1–500 |
 | `QuerySourcePostsAsync(sourceId, query)` | `SourcePostPage` with matching items, an optional continuation cursor, counts and facets over the full query | `NotFound` source · `Validation` unsupported filters, limits or cursor |
 | `QuerySourceProcessedAsync(sourceId, query)` | `SourceProcessedPage` newest first seen first: every surviving post with a `post-tags` answer — the post's card fields (`kind`, `state`, `postedAt`, `language`, `pipelineId`, `imageUrl`, read as the Posts list reads them), its `ProcessedTagsModel` (entity type, domains with labels, topics, about, timeframe, English title, flags), its `classification`, the extraction of its tagged type about the same content with an event or listing summary — each answer's `ProcessedAnswerModel` (provider, model, prompt version; cost, latency and input and output tokens from the inference log); `nextCursor`, `total` | `NotFound` source · `Validation` entity type, limit outside 1–90, a cursor of another source or filters (`SourceProcessedQueryRules`) |
+| `GetSourceProcessedPostAsync(sourceId, postId)` | `SourceProcessedPostDetailsModel` for one post the processed list shows: `post` (the list's `SourceProcessedPostModel`, with every tag, the verdict's reason and confidence and the unsure flags), `evidence` (the quotes the stored extraction answer keeps: `occurrences[i]` with its `certainty`, `prices[i]`, `registration.opens`/`.deadline` and `price` with their value, `rentalTerms.{term}` with value and status; none without a done extraction), `passes` (the `post-tags` pass, then the extraction's: `pass`, `status`, `error`, `inferenceId`, and the `ProcessedAnswerModel`) | `NotFound` source · `NotFound` post another source holds, one not tagged yet, or an unknown one (`SourceProcessedQueryRules.PostNotFound`) |
 | `ListPostRevisionsAsync(containerId, postId)` | `PostRevisionModel` newest first: `revision`, `at`, `changed`; empty for a post from before `006` | `NotFound` post in the container |
 
 - For an active source with open/granted permission, operational `state` is `needsAttention` while the host is paused,
@@ -499,9 +500,12 @@ stores. Groups and display names are `IRegistrationBroker`'s; the reading pace i
   text, else the newest done one, else the newest attempt) and the extraction about that answer's content; cost and
   latency are the answer's attempt as the AI module's inference log holds it, read by the post revision it answered,
   and absent on a host without the log; the fake keeps no log. It carries no post text beyond the title, and its
-  summaries leave out the evidence quotes.
+  summaries leave out the evidence quotes. The details read returns them (`evidence`): the answer stores a quote only
+  behind a date, a price, a registration date and a rental term, so no other field has one; `inferenceId` is the stored
+  `inference_id` of each answer, present with or without the inference log, absent in the fake.
 - Routes: `GET api/sources/overview?containerId`, `GET api/sources/{id}/posts?limit`,
   `GET api/sources/{id}/processed?entityType&verdict&extracted&limit&cursor`,
+  `GET api/sources/{id}/processed/{postId}`,
   `GET api/posts/{id}/revisions` (`containerId` optional; without it the caller's visible containers are searched),
   and the registry's `GET`/`POST api/sources/groups`, `PUT api/sources/{id}`.
 
@@ -510,10 +514,10 @@ stores. Groups and display names are `IRegistrationBroker`'s; the reading pace i
 | 1 | `ModuleSourceOverviewBroker` (Module, `Sources/`) | `AddHarvestSources()` |
 | 2/3 | `ApiSourceOverviewBroker` (Client) | `AddHarvestSourceClient()` after `AddHarvestClient` |
 | fake | `FakeSourceOverviewBroker` (Testing) over the registry, run, post and delivery fakes | constructed |
-| fe | `createHarvestClient` (`fe-harvest/kit`): `listSourceOverview`, `querySourcePosts`, `querySourceProcessed` | the console's Sources pages |
+| fe | `createHarvestClient` (`fe-harvest/kit`): `listSourceOverview`, `querySourcePosts`, `querySourceProcessed`, `getSourceProcessedPost` | the console's Sources pages |
 
 - Conformance: `SourceOverviewBrokerConformance` runs against all three, seeding answers through `SeedAnswersAsync`
-  (`ProcessedAnswerSeed`: SQL rows for the module and client, `SeedAnswers` for the fake); groups, names and `maxPages` join
+  (`ProcessedAnswerSeed`, its `Evidence` written into the answers' own shape for the module and client, kept as given in the fake: SQL rows for the module and client, `SeedAnswers` for the fake); groups, names and `maxPages` join
   `RegistrationBrokerConformance`, the reading pace `RunBrokerConformance`.
 
 ### Stages, discoveries and Posts queries

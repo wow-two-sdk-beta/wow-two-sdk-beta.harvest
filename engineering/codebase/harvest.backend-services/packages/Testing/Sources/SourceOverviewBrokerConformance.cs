@@ -405,6 +405,99 @@ public abstract class SourceOverviewBrokerConformance
         Error(await Overview.QuerySourceProcessedAsync(Guid.NewGuid(), new())).Type.Should().Be(AppErrorType.NotFound);
     }
 
+    /// <summary>The details read returns the post as the list shows it, the quotes behind its extracted dates, prices,
+    /// registration and rental terms, and each pass; a post another source holds, one not tagged yet and an unknown post or
+    /// source are not found.</summary>
+    [Fact]
+    public async Task GetSourceProcessedPost_ShouldReturnThePostWithItsQuotesAndPasses_AndRefuseWhatTheListDoesNotShow()
+    {
+        var context = await ContextAsync();
+        var other = await SourceAsync(context.Container, "e-" + Unique() + ".example");
+        var at = Clock.GetUtcNow();
+        var runway = await SavePostAsync(context, "details-runway", "Tashkent Fashion Week", ClassificationVerdict.Relevant);
+        var flat = await SavePostAsync(context, "details-flat", "2 xonali kvartira ijaraga", ClassificationVerdict.Irrelevant);
+        var essay = await SavePostAsync(context, "details-essay", "Notes on autumn fabrics", ClassificationVerdict.Irrelevant);
+        var untagged = await SavePostAsync(context, "details-untagged", "Not tagged yet", null);
+        var foreign = Value(await Posts.SaveCaptureAsync(context.Container, other.Id, null, Capture(context, "details-foreign"), Envelope("Foreign exhibition"))).Post.Id;
+        await SeedAnswersAsync(new ProcessedAnswerSeed
+        {
+            PostId = runway, Domains = ["style-fashion/womens-fashion", "style-fashion"], Topics = ["fashion-week", "runway"], AnsweredAtUtc = at,
+            Flags = [new ProcessedFlagModel("timeframe", "unsure", "upcoming")],
+            Extraction = new ProcessedExtractionSeed
+            {
+                Event = new ProcessedEventSummary
+                {
+                    Name = "Tashkent Fashion Week", City = "Tashkent",
+                    Occurrences =
+                    [
+                        new ProcessedOccurrenceModel("2026-11-21", "2026-11-23", "day", "stated"),
+                        new ProcessedOccurrenceModel("2026-12-05", null, "day", "estimated"),
+                    ],
+                    Prices = [new ProcessedPriceModel(150000m, "UZS", "entry")],
+                },
+                Flags = [new ProcessedFlagModel("occurrences[1].starts", "estimated from the publication date", "2026-12-05")],
+                Evidence =
+                [
+                    new ProcessedEvidenceModel("occurrences[0]", null, "stated", ["Fashion Week runs 21-23 November"]),
+                    new ProcessedEvidenceModel("occurrences[1]", null, "estimated", ["next show in early December"]),
+                    new ProcessedEvidenceModel("prices[0]", null, null, ["Tickets 150 000 so'm"]),
+                    new ProcessedEvidenceModel("registration.deadline", "2026-11-10", null, ["register by 10 November"]),
+                ],
+            },
+        });
+        await SeedAnswersAsync(new ProcessedAnswerSeed
+        {
+            PostId = flat, EntityType = "listing", Domains = ["real-estate"], Model = "openai/gpt-5-mini", AnsweredAtUtc = at,
+            Extraction = new ProcessedExtractionSeed
+            {
+                UseCase = "extract-listing", Model = "openai/gpt-5-mini", PromptVersion = 3,
+                Listing = new ProcessedListingSummary { OfferType = "rent", Price = new ProcessedPriceModel(500m, "USD", "month"), Rooms = 2 },
+                Evidence =
+                [
+                    new ProcessedEvidenceModel("price", null, null, ["500 USD per month"]),
+                    new ProcessedEvidenceModel("rentalTerms.deposit", "500 USD", "present", ["deposit 500 USD"]),
+                ],
+            },
+        });
+        await SeedAnswersAsync(new ProcessedAnswerSeed { PostId = essay, EntityType = "none", Timeframe = "evergreen", AnsweredAtUtc = at });
+        await SeedAnswersAsync(new ProcessedAnswerSeed { PostId = foreign, Domains = ["style-fashion"], AnsweredAtUtc = at });
+
+        var listed = Value(await Overview.QuerySourceProcessedAsync(context.Source.Id, new())).Items;
+        var details = Value(await Overview.GetSourceProcessedPostAsync(context.Source.Id, runway));
+
+        details.Post.Should().BeEquivalentTo(listed.Single(post => post.PostId == runway));
+        details.Post.Tags.Domains.Should().HaveCount(2);
+        details.Post.Tags.Flags.Should().ContainSingle().Which.Field.Should().Be("timeframe");
+        details.Evidence.Should().BeEquivalentTo(
+        [
+            new ProcessedEvidenceModel("occurrences[0]", null, "stated", ["Fashion Week runs 21-23 November"]),
+            new ProcessedEvidenceModel("occurrences[1]", null, "estimated", ["next show in early December"]),
+            new ProcessedEvidenceModel("prices[0]", null, null, ["Tickets 150 000 so'm"]),
+            new ProcessedEvidenceModel("registration.deadline", "2026-11-10", null, ["register by 10 November"]),
+        ], options => options.WithStrictOrdering());
+        details.Passes.Select(pass => (pass.Pass, pass.Status)).Should().Equal(("post-tags", "done"), ("extract-event", "done"));
+        details.Passes[0].Answer.Should().Match<ProcessedAnswerModel>(answer => answer.Provider == "anthropic"
+            && answer.Model == "claude-haiku-5-5" && answer.PromptVersion == 1 && answer.AnsweredAt == details.Post.Tags.Answer.AnsweredAt);
+        details.Passes[1].Answer.PromptVersion.Should().Be(2);
+
+        var rental = Value(await Overview.GetSourceProcessedPostAsync(context.Source.Id, flat));
+        rental.Passes.Select(pass => pass.Pass).Should().Equal("post-tags", "extract-listing");
+        rental.Evidence.Should().BeEquivalentTo(
+        [
+            new ProcessedEvidenceModel("price", null, null, ["500 USD per month"]),
+            new ProcessedEvidenceModel("rentalTerms.deposit", "500 USD", "present", ["deposit 500 USD"]),
+        ], options => options.WithStrictOrdering());
+
+        var bare = Value(await Overview.GetSourceProcessedPostAsync(context.Source.Id, essay));
+        bare.Evidence.Should().BeEmpty();
+        bare.Passes.Should().ContainSingle().Which.Pass.Should().Be("post-tags");
+
+        foreach (var missing in new[] { foreign, untagged, Guid.NewGuid() })
+            Error(await Overview.GetSourceProcessedPostAsync(context.Source.Id, missing)).Type.Should().Be(AppErrorType.NotFound);
+        Error(await Overview.GetSourceProcessedPostAsync(Guid.NewGuid(), runway)).Type.Should().Be(AppErrorType.NotFound);
+        Value(await Overview.GetSourceProcessedPostAsync(other.Id, foreign)).Post.PostId.Should().Be(foreign);
+    }
+
     /// <summary>A post's creation and each rise of its revision are recorded with the base fields that changed.</summary>
     [Fact]
     public async Task ListPostRevisions_ShouldRecordCreationAndChangedFields_WhenThePostChanges()
