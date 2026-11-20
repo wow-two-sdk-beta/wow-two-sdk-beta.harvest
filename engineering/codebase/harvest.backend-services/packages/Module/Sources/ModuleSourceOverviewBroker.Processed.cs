@@ -318,14 +318,20 @@ internal sealed partial class ModuleSourceOverviewBroker
         {
             OfferType = Str(answer, "offerType"),
             Price = price.ValueKind == JsonValueKind.Object
-                ? new ProcessedPriceModel(Dec(price, "amount"), Str(price, "currency"), Str(price, "period"))
+                ? new ProcessedPriceModel(Dec(price, "amount"), Currency(Str(price, "currency")), Period(Str(price, "period")))
                 : null,
             Rooms = Dec(item, "rooms") is { } rooms ? (int)rooms : null,
-            AreaM2 = Dec(item, "areaM2"),
+            AreaM2 = Child(item, "areaM2") is { ValueKind: JsonValueKind.Object } areas ? Dec(areas, "total") : Dec(item, "areaM2"),
             District = Str(location, "district"),
             City = Str(location, "city"),
         };
     }
+
+    /// <summary>Names a listing price's currency as the card shows it: the code in capitals, none for an unsure one (an answer
+    /// of the first version wrote the code itself).</summary>
+    private static string? Currency(string? currency) => currency is null or "unsure" ? null : currency.ToUpperInvariant();
+
+    private static string? Period(string? period) => period == "unsure" ? null : period;
 
     private static JsonElement Child(JsonElement parent, string name) =>
         parent.ValueKind == JsonValueKind.Object && parent.TryGetProperty(name, out var value) ? value : default;

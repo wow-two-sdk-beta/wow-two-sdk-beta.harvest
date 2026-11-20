@@ -114,21 +114,35 @@ internal static class EntitiesHost
             flags = Array.Empty<object>(),
         });
 
-    /// <summary>Builds a stored <c>extract-listing</c> answer for a flat.</summary>
+    /// <summary>Builds a stored <c>extract-listing</c> answer (schema version 2) for a flat.</summary>
     internal static string Listing(decimal price, string district = "Yunusobod tumani", string city = "Tashkent", decimal area = 64m, int rooms = 2,
         string role = "announcement", string authorKind = "owner", string[]? categoryPath = null) =>
         JsonSerializer.Serialize(new
         {
             title = "2-room flat for rent",
-            offerType = "rent",
             categoryPath = categoryPath ?? ["Недвижимость", "Квартиры", "Аренда"],
-            price = new { amount = (decimal?)price, currency = "USD", period = "month", evidence = $"{price} USD" },
+            propertyKind = "apartment",
+            invalid = (string?)null,
+            offerType = "rent",
+            price = new { amount = price, currency = "usd", period = "month", negotiable = false, evidence = $"{price} USD" },
+            item = new
+            {
+                propertyType = (string?)null, buildingType = (string?)null, yearBuilt = (int?)null, rooms = (int?)rooms, layout = (string?)null,
+                areaM2 = new { total = (decimal?)area, living = (decimal?)null, kitchen = (decimal?)null }, floor = (int?)5, floors = (int?)9,
+                ceilingM = (decimal?)null, bathrooms = new { count = (int?)null, type = (string?)null }, renovation = (string?)null, building = (string?)null,
+            },
+            furnished = "unknown",
+            apartmentAmenities = Array.Empty<string>(),
+            nearbyAmenities = Array.Empty<string>(),
             location = new { district, city, address = (string?)null },
-            item = new { rooms = (int?)rooms, areaM2 = (decimal?)area, floor = (int?)5, floors = (int?)9, building = (string?)null,
-                brand = (string?)null, model = (string?)null, year = (int?)null },
+            landmarks = Array.Empty<object>(),
             author = new { kind = authorKind },
+            noAgents = false,
             relation = new { role, changes = Array.Empty<string>(), status = (string?)null },
             rentalTerms = (object?)null,
+            acceptedTenants = Array.Empty<string>(),
+            excludedTenants = Array.Empty<string>(),
+            urgent = false,
             flags = Array.Empty<object>(),
         });
 }

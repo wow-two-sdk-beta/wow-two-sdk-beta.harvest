@@ -20,11 +20,15 @@ internal sealed record ValidatedExtraction(JsonElement Answer, string Role, IRea
 ///     is removed with a <c>contacts</c> flag, so a row holds no post text beyond its quotes
 ///   - <c>fashion</c> stays only for a primary domain under <c>style-fashion</c>; <c>rentalTerms</c> only for a rent
 ///     offer whose primary domain is under <c>real-estate</c>
+///   - a quote may also come from the listing's rendered <c>attributes</c> (OLX's <c>label: value</c> lines), a source of its
+///     own like the other renders; a rental term may quote the title and text or the attribute lines
+///   - a landmark keeps its name and type only with a quote; a listing's numbers are clamped to what a listing can hold
 ///   - a relation other than <c>update</c> carries no changes
 /// </remarks>
 internal static partial class PostExtractionValidation
 {
     internal const int MaxFlags = 20;
+    internal const int MaxLandmarks = 10;
     internal const int MaxEvidence = 300;
     internal const string QuoteNotFound = "the quote is not in the post";
     internal const string QuoteTooLong = "the quote is longer than 300 characters";
@@ -114,32 +118,55 @@ internal static partial class PostExtractionValidation
         return new(JsonSerializer.SerializeToElement(validated, EvidenceWire.Options), Name(relation.Role), validated.Flags);
     }
 
-    /// <summary>Checks an <c>extract-listing</c> answer.</summary>
+    /// <summary>Checks an <c>extract-listing</c> answer (schema version 2).</summary>
     internal static ValidatedExtraction ValidateListing(ExtractListingAnswer answer, ExtractionCorpus corpus, ExtractionTags tags)
     {
         var flags = ModelFlags(answer.Flags);
+        Unsure(answer.PropertyKind == ListingKind.Unsure, "propertyKind", flags);
         Unsure(answer.OfferType == ListingOfferType.Unsure, "offerType", flags);
+        Unsure(answer.Furnished == ListingFurnished.Unsure, "furnished", flags);
         Unsure(answer.Author?.Kind == ListingAuthorKind.Unsure, "author", flags);
 
         ListingAsk? price = null;
         if (answer.Price is { } ask && Price(ask.Amount, ask.Evidence, corpus, "price", flags) is { } evidence)
-            price = ask with { Currency = Currency(ask.Currency), Evidence = evidence };
+        {
+            price = ask with { Evidence = evidence };
+            Unsure(ask.Currency == ListingCurrency.Unsure, "price.currency", flags);
+            Unsure(ask.Period == ListingAskPeriod.Unsure, "price.period", flags);
+        }
 
         var category = (answer.CategoryPath ?? []).Select(step => Clip(step?.Trim(), 80)).OfType<string>()
             .Where(step => step.Length > 0).Take(6).ToList();
         var location = answer.Location ?? new ListingLocation(null, null, null);
-        var item = answer.Item ?? new ListingItem(null, null, null, null, null, null, null, null);
-        item = new(Range(item.Rooms, 0, 100), item.AreaM2 is > 0 and <= 1_000_000 ? item.AreaM2 : null, Range(item.Floor, -5, 300),
-            Range(item.Floors, 1, 300), Text(item.Building, 80, "item", flags), Text(item.Brand, 80, "item", flags),
-            Text(item.Model, 80, "item", flags), Range(item.Year, 1800, 2100));
+        var item = Item(answer.Item, flags);
 
-        RentalTermsAnswer? terms = null;
+        var apartment = Picks(answer.ApartmentAmenities, ListingApartmentAmenity.Unsure, "apartmentAmenities", flags);
+        var nearby = Picks(answer.NearbyAmenities, ListingNearbyAmenity.Unsure, "nearbyAmenities", flags);
+        var accepted = Picks(answer.AcceptedTenants, ListingTenant.Unsure, "acceptedTenants", flags);
+        var excluded = Picks(answer.ExcludedTenants, ListingTenant.Unsure, "excludedTenants", flags);
+
+        var landmarks = new List<ListingLandmark>();
+        foreach (var landmark in answer.Landmarks ?? [])
+        {
+            if (landmarks.Count >= MaxLandmarks || landmark is null)
+                break;
+            if (Text(landmark.Name, 120, "landmarks", flags) is not { } name
+                || Evidence(landmark.Evidence, corpus, "landmarks", flags) is not { } quote)
+                continue;
+            Unsure(landmark.Type == ListingLandmarkType.Unsure, "landmarks", flags);
+            if (!landmarks.Any(known => known.Type == landmark.Type && known.Name == name))
+                landmarks.Add(landmark with { Name = name, Evidence = quote });
+        }
+
+        ListingRentalTerms? terms = null;
         if (answer.RentalTerms is { } stated && answer.OfferType == ListingOfferType.Rent
             && Under(tags.Primary, PostExtractionConstants.RealEstateDomain))
         {
-            var (checkedTerms, rejected) = RentalTermEvidence.CheckTerms(stated, corpus.Text, corpus.Visible);
+            var (source, visible) = corpus.TermSource();
+            var (checkedTerms, rejected) = RentalTermEvidence.CheckListingTerms(stated, source, visible);
             terms = checkedTerms;
             flags.AddRange(rejected.Select(field => new PostTagsFlag($"rentalTerms.{field}", "a claim's quote or value did not match the post", null)));
+            UnsureClaims(checkedTerms, flags);
         }
 
         var relation = Relation(answer.Relation, flags);
@@ -148,16 +175,77 @@ internal static partial class PostExtractionValidation
             Title = Text(answer.Title, 200, "title", flags) ?? "",
             CategoryPath = category,
             Price = price,
+            Item = item,
+            ApartmentAmenities = apartment,
+            NearbyAmenities = nearby,
             Location = new(Text(location.District, 80, "location", flags), Text(location.City, 80, "location", flags),
                 Text(location.Address, 160, "location", flags)),
-            Item = item,
+            Landmarks = landmarks,
             Author = new(answer.Author?.Kind ?? ListingAuthorKind.Unknown),
             Relation = relation,
             RentalTerms = terms,
+            AcceptedTenants = accepted,
+            ExcludedTenants = excluded,
             Flags = [.. flags.Take(MaxFlags)],
         };
         return new(JsonSerializer.SerializeToElement(validated, EvidenceWire.Options), Name(relation.Role), validated.Flags);
     }
+
+    /// <summary>Clamps the offered thing's numbers to what a listing can hold, drops an area above the total, flags a floor above the
+    /// building's floors and an unsure pick, and removes a contact from the building's name.</summary>
+    private static ListingItem Item(ListingItem? stated, List<PostTagsFlag> flags)
+    {
+        var item = stated ?? new ListingItem(null, null, null, null, null, new ListingAreas(null, null, null), null, null, null,
+            new ListingBathrooms(null, null), null, null);
+        var areas = item.AreaM2 ?? new ListingAreas(null, null, null);
+        decimal? total = Area(areas.Total), living = Area(areas.Living), kitchen = Area(areas.Kitchen);
+        if (total is { } whole)
+        {
+            if (living > whole)
+            {
+                flags.Add(new("item.areaM2.living", "an area above the total", living.Value.ToString(CultureInfo.InvariantCulture)));
+                living = null;
+            }
+            if (kitchen > whole)
+            {
+                flags.Add(new("item.areaM2.kitchen", "an area above the total", kitchen.Value.ToString(CultureInfo.InvariantCulture)));
+                kitchen = null;
+            }
+        }
+        int? floor = Range(item.Floor, -5, 300), floors = Range(item.Floors, 1, 300);
+        if (floor > floors)
+            flags.Add(new("item.floor", "the floor is above the building's floors", floor.Value.ToString(CultureInfo.InvariantCulture)));
+        var bathrooms = item.Bathrooms ?? new ListingBathrooms(null, null);
+        Unsure(item.PropertyType == ListingMarket.Unsure, "item.propertyType", flags);
+        Unsure(item.BuildingType == ListingBuildingType.Unsure, "item.buildingType", flags);
+        Unsure(item.Layout == ListingRoomLayout.Unsure, "item.layout", flags);
+        Unsure(bathrooms.Type == ListingBathroomType.Unsure, "item.bathrooms.type", flags);
+        Unsure(item.Renovation == ListingRenovationLevel.Unsure, "item.renovation", flags);
+        return new(item.PropertyType, item.BuildingType, Range(item.YearBuilt, 1800, 2100), Range(item.Rooms, 0, 100), item.Layout,
+            new ListingAreas(total, living, kitchen), floor, floors, item.CeilingM is > 0 and <= 20 ? item.CeilingM : null,
+            new ListingBathrooms(Range(bathrooms.Count, 0, 20), bathrooms.Type), item.Renovation, Text(item.Building, 80, "item", flags));
+    }
+
+    /// <summary>Removes duplicates from a pick list and flags an <c>unsure</c> one.</summary>
+    private static List<T> Picks<T>(IReadOnlyList<T>? values, T unsure, string field, List<PostTagsFlag> flags) where T : struct, Enum
+    {
+        var picks = (values ?? []).Distinct().ToList();
+        Unsure(picks.Contains(unsure), field, flags);
+        return picks;
+    }
+
+    /// <summary>Flags a kept rental claim that holds an <c>unsure</c> currency, unit or billing.</summary>
+    private static void UnsureClaims(ListingRentalTerms terms, List<PostTagsFlag> flags)
+    {
+        Unsure(terms.Deposit.Claims.Any(claim => claim.Value?.Currency == ListingCurrency.Unsure), "rentalTerms.deposit", flags);
+        Unsure(terms.AdvanceRent.Claims.Any(claim => claim.Value?.Currency == ListingCurrency.Unsure
+            || claim.Value?.Duration?.Unit == ListingDurationUnit.Unsure), "rentalTerms.advanceRent", flags);
+        Unsure(terms.Utilities.Claims.Any(claim => claim.Value?.Billing == ListingUtilitiesBilling.Unsure), "rentalTerms.utilities", flags);
+        Unsure(terms.MinimumStay.Claims.Any(claim => claim.Value?.Unit == ListingDurationUnit.Unsure), "rentalTerms.minimumStay", flags);
+        Unsure(terms.Commission.Claims.Any(claim => claim.Value?.Currency == ListingCurrency.Unsure), "rentalTerms.commission", flags);
+    }
+
+    private static decimal? Area(decimal? value) => value is > 0 and <= 1_000_000 ? value : null;
 
     /// <summary>Whether <paramref name="value"/> is an ISO date at <paramref name="precision"/>: <c>yyyy</c>, <c>yyyy-MM</c>,
     /// <c>yyyy-MM-dd</c>, or <c>yyyy-MM-ddTHH:mm</c> (seconds optional) for a time.</summary>

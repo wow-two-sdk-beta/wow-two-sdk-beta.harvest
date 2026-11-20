@@ -157,11 +157,11 @@ public sealed class PostExtractionValidationTests
         var corpus = new ExtractionCorpus($"Квартира\n{text}", $"Квартира\n{text}".Length);
         var answer = Listing() with
         {
-            Price = new ListingAsk(500m, "usd", ListingAskPeriod.Month, "Цена 500 USD в месяц"),
-            RentalTerms = RentalTermsAnswer.Empty with
+            Price = Ask(500m, "Цена 500 USD в месяц"),
+            RentalTerms = ListingRentalTerms.Empty with
             {
-                Deposit = new(RentalTermStatus.Present, [new("Депозит: 500 USD", new RentalDeposit(600m, "USD", null))]),
-                Utilities = new(RentalTermStatus.Present, [new("Коммунальные включены", new RentalUtilities(RentalUtilitiesBilling.Included))]),
+                Deposit = new(RentalTermStatus.Present, [new("Депозит: 500 USD", new ListingDeposit(600m, ListingCurrency.Usd, null))]),
+                Utilities = new(RentalTermStatus.Present, [new("Коммунальные включены", new ListingUtilities(ListingUtilitiesBilling.Included))]),
             },
         };
 
@@ -172,7 +172,8 @@ public sealed class PostExtractionValidationTests
         terms.GetProperty("deposit").GetProperty("status").GetString().Should().Be("unknown");
         terms.GetProperty("deposit").GetProperty("claims").GetArrayLength().Should().Be(0);
         terms.GetProperty("utilities").GetProperty("status").GetString().Should().Be("present");
-        validated.Answer.GetProperty("price").GetProperty("currency").GetString().Should().Be("USD");
+        terms.GetProperty("commission").GetProperty("status").GetString().Should().Be("unknown");
+        validated.Answer.GetProperty("price").GetProperty("currency").GetString().Should().Be("usd");
         validated.Flags.Should().ContainSingle(flag => flag.Field == "rentalTerms.deposit");
         notRent.Answer.GetProperty("rentalTerms").ValueKind.Should().Be(JsonValueKind.Null);
     }
@@ -183,18 +184,168 @@ public sealed class PostExtractionValidationTests
         var corpus = new ExtractionCorpus("Toyota Camry\nSotiladi, narxi kelishiladi.", 40);
         var answer = Listing() with
         {
-            OfferType = ListingOfferType.Unsure, Author = new(ListingAuthorKind.Unsure),
-            Price = new ListingAsk(25_000m, "USD", null, "narxi 25 000$"),
-            Item = new(2, -5m, 400, null, null, "Toyota", "Camry", 2019),
+            OfferType = ListingOfferType.Unsure, Author = new(ListingAuthorKind.Unsure), Furnished = ListingFurnished.Unsure,
+            Price = Ask(25_000m, "narxi 25 000$") with { Currency = ListingCurrency.Unsure },
+            Item = Listing().Item with
+            {
+                Rooms = 2, AreaM2 = new(-5m, null, null), Floor = 400, Floors = 9, Layout = ListingRoomLayout.Unsure, Building = "Skyline Tower",
+                Bathrooms = new(1, ListingBathroomType.Unsure), YearBuilt = 2019,
+            },
+            ApartmentAmenities = [ListingApartmentAmenity.Balcony, ListingApartmentAmenity.Balcony, ListingApartmentAmenity.Unsure],
+            AcceptedTenants = [ListingTenant.Family, ListingTenant.Unsure],
         };
 
         var validated = PostExtractionValidation.ValidateListing(answer, corpus, Rental);
 
         validated.Answer.GetProperty("price").ValueKind.Should().Be(JsonValueKind.Null);
-        validated.Answer.GetProperty("item").GetProperty("areaM2").ValueKind.Should().Be(JsonValueKind.Null);
+        validated.Answer.GetProperty("item").GetProperty("areaM2").GetProperty("total").ValueKind.Should().Be(JsonValueKind.Null);
         validated.Answer.GetProperty("item").GetProperty("floor").ValueKind.Should().Be(JsonValueKind.Null);
-        validated.Answer.GetProperty("item").GetProperty("model").GetString().Should().Be("Camry");
-        validated.Flags.Select(flag => flag.Field).Should().Contain(["offerType", "author", "price"]);
+        validated.Answer.GetProperty("item").GetProperty("building").GetString().Should().Be("Skyline Tower");
+        validated.Answer.GetProperty("apartmentAmenities").EnumerateArray().Select(value => value.GetString()).Should().Equal("balcony", "unsure");
+        validated.Flags.Select(flag => flag.Field).Should().Contain(["offerType", "author", "furnished", "item.layout", "item.bathrooms.type",
+            "apartmentAmenities", "acceptedTenants", "price"]);
+    }
+
+    [Fact]
+    public void ValidateListing_ShouldFlagAnUnsureCurrencyOnAKeptPrice_AndAnAreaAboveTheTotal()
+    {
+        const string text = "Arenda kvartira. Narxi 500 dollar.";
+        var corpus = new ExtractionCorpus($"Kvartira\n{text}", $"Kvartira\n{text}".Length);
+        var answer = Listing() with
+        {
+            Price = new ListingAsk(500m, ListingCurrency.Unsure, ListingAskPeriod.Unsure, false, "Narxi 500 dollar"),
+            Item = Listing().Item with { AreaM2 = new(40m, 55m, 10m), Floor = 12, Floors = 9 },
+        };
+
+        var validated = PostExtractionValidation.ValidateListing(answer, corpus, Rental);
+
+        validated.Answer.GetProperty("price").GetProperty("currency").GetString().Should().Be("unsure");
+        validated.Answer.GetProperty("item").GetProperty("areaM2").GetProperty("living").ValueKind.Should().Be(JsonValueKind.Null);
+        validated.Answer.GetProperty("item").GetProperty("areaM2").GetProperty("kitchen").GetDecimal().Should().Be(10m);
+        validated.Flags.Should().Contain(new PostTagsFlag("price.currency", PostExtractionValidation.ChoseUnsure, null))
+            .And.Contain(new PostTagsFlag("price.period", PostExtractionValidation.ChoseUnsure, null))
+            .And.Contain(new PostTagsFlag("item.areaM2.living", "an area above the total", "55"))
+            .And.Contain(new PostTagsFlag("item.floor", "the floor is above the building's floors", "12"));
+    }
+
+    [Fact]
+    public void ValidateListing_ShouldKeepALandmarkOnlyWithItsQuote_AndNeverAContact()
+    {
+        const string text = "Kvartira Oybek metro yonida. Qo'ng'iroq: Ali, 90 123 45 67.";
+        var corpus = Corpus(new PostEnvelope { Title = "Kvartira", Text = text, Extraction = Stamp() });
+        var answer = Listing() with
+        {
+            Landmarks =
+            [
+                new(ListingLandmarkType.MetroStation, "Oybek", "Oybek metro yonida"),
+                new(ListingLandmarkType.MetroStation, "Oybek", "Oybek metro yonida"),
+                new(ListingLandmarkType.Supermarket, "Korzinka", "Korzinka yonida"),
+                new(ListingLandmarkType.Other, "+998 90 123 45 67", "Oybek metro yonida"),
+            ],
+        };
+
+        var validated = PostExtractionValidation.ValidateListing(answer, corpus, Rental);
+
+        validated.Answer.GetProperty("landmarks").EnumerateArray().Select(value => value.GetProperty("name").GetString()).Should().Equal("Oybek");
+        validated.Flags.Should().Contain(new PostTagsFlag("landmarks", PostExtractionValidation.QuoteNotFound, null))
+            .And.Contain(new PostTagsFlag("contacts", PostExtractionValidation.ContactRemoved, "landmarks"));
+        corpus.Text.Should().Contain("[phone]").And.NotContain("123 45 67");
+    }
+
+    [Fact]
+    public void ValidateListing_ShouldBackAnAbsentCommission_WithAQuoteCopiedFromTheAttributes()
+    {
+        var corpus = Corpus(new PostEnvelope
+        {
+            Title = "Kvartira", Text = "Сдается 2-комнатная. Цена 500 USD в месяц.", Extraction = Stamp(),
+            Extras = Olx(attributes: new Dictionary<string, string> { ["Комиссионные"] = "Нет", ["Количество комнат"] = "2" }),
+        });
+        ListingRentalTerms Terms(string quote) => ListingRentalTerms.Empty with
+        {
+            Commission = new(RentalTermStatus.Absent, [new(quote, null)]),
+        };
+
+        var fromAttributes = PostExtractionValidation.ValidateListing(Listing() with { RentalTerms = Terms("Комиссионные: Нет") }, corpus, Rental);
+        var elsewhere = PostExtractionValidation.ValidateListing(Listing() with { RentalTerms = Terms("Комиссионные: Да") }, corpus, Rental);
+        var spanning = PostExtractionValidation.ValidateListing(Listing() with { RentalTerms = Terms("в месяц. Комиссионные: Нет") }, corpus, Rental);
+
+        corpus.Attributes.Should().Be("Комиссионные: Нет\nКоличество комнат: 2");
+        var commission = fromAttributes.Answer.GetProperty("rentalTerms").GetProperty("commission");
+        commission.GetProperty("status").GetString().Should().Be("absent");
+        commission.GetProperty("claims")[0].GetProperty("evidence").GetString().Should().Be("Комиссионные: Нет");
+        fromAttributes.Flags.Should().NotContain(flag => flag.Field.StartsWith("rentalTerms", StringComparison.Ordinal));
+        elsewhere.Answer.GetProperty("rentalTerms").GetProperty("commission").GetProperty("status").GetString().Should().Be("unknown");
+        elsewhere.Flags.Should().ContainSingle(flag => flag.Field == "rentalTerms.commission");
+        spanning.Answer.GetProperty("rentalTerms").GetProperty("commission").GetProperty("status").GetString().Should().Be("unknown");
+    }
+
+    [Fact]
+    public void ValidateListing_ShouldAcceptAnAttributeLineAsAPriceQuote_AndStillCheckItsAmount()
+    {
+        var corpus = Corpus(new PostEnvelope
+        {
+            Title = "Kvartira", Text = "Arenda.", Extraction = Stamp(),
+            Extras = Olx(attributes: new Dictionary<string, string> { ["Цена"] = "650 y.e." }),
+        });
+
+        var kept = PostExtractionValidation.ValidateListing(Listing() with { Price = Ask(650m, "Цена: 650 y.e.") }, corpus, Rental);
+        var wrong = PostExtractionValidation.ValidateListing(Listing() with { Price = Ask(700m, "Цена: 650 y.e.") }, corpus, Rental);
+
+        kept.Answer.GetProperty("price").GetProperty("evidence").GetString().Should().Be("Цена: 650 y.e.");
+        wrong.Answer.GetProperty("price").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Theory]
+    [InlineData("Комиссия 50% от месячной аренды", 50, true)]
+    [InlineData("Комиссия 50% от месячной аренды", 5, false)]
+    [InlineData("Агентская комиссия 0,5 месячной аренды", 50, false)]
+    [InlineData("Komissiya 30 foiz", 30, true)]
+    [InlineData("Комиссия 10 процентов", 10, true)]
+    public void CheckListingTerms_ShouldReadAPercentCommission(string quote, int percent, bool kept)
+    {
+        var terms = ListingRentalTerms.Empty with
+        {
+            Commission = new(RentalTermStatus.Present, [new(quote, new ListingCommission(null, null, percent, null))]),
+        };
+
+        var (checkedTerms, rejected) = RentalTermEvidence.CheckListingTerms(terms, quote, quote.Length);
+
+        checkedTerms.Commission.Status.Should().Be(kept ? RentalTermStatus.Present : RentalTermStatus.Unknown);
+        rejected.Should().Equal(kept ? Array.Empty<string>() : new[] { "commission" });
+    }
+
+    [Theory]
+    [InlineData("Без комиссии", true)]
+    [InlineData("Комиссия 0%", true)]
+    [InlineData("Комиссионные: Нет", true)]
+    [InlineData("Комиссия не взимается", true)]
+    [InlineData("Komissiya yo'q", true)]
+    [InlineData("Комиссия 50%", false)]
+    public void CheckListingTerms_ShouldReadAbsentCommissionWordings(string quote, bool kept)
+    {
+        var terms = ListingRentalTerms.Empty with { Commission = new(RentalTermStatus.Absent, [new(quote, null)]) };
+
+        RentalTermEvidence.CheckListingTerms(terms, quote, quote.Length).Answer.Commission.Status
+            .Should().Be(kept ? RentalTermStatus.Absent : RentalTermStatus.Unknown);
+    }
+
+    [Fact]
+    public void CheckListingTerms_ShouldReadAmountsInLowercaseCurrencies_AndRefuseAnUnreadableUnit()
+    {
+        const string text = "Депозит: 500 USD. Минимум 3 месяца. Предоплата 1 месяц.";
+        var terms = ListingRentalTerms.Empty with
+        {
+            Deposit = new(RentalTermStatus.Present, [new("Депозит: 500 USD", new ListingDeposit(500m, ListingCurrency.Usd, null))]),
+            MinimumStay = new(RentalTermStatus.Present, [new("Минимум 3 месяца", new ListingDuration(3m, ListingDurationUnit.Month))]),
+            AdvanceRent = new(RentalTermStatus.Present, [new("Предоплата 1 месяц", new ListingAdvance(null, null, null, new ListingDuration(1m, ListingDurationUnit.Hour)))]),
+        };
+
+        var (kept, rejected) = RentalTermEvidence.CheckListingTerms(terms, text, text.Length);
+
+        kept.Deposit.Status.Should().Be(RentalTermStatus.Present);
+        kept.MinimumStay.Status.Should().Be(RentalTermStatus.Present);
+        kept.AdvanceRent.Status.Should().Be(RentalTermStatus.Unknown, "an hour unit no quote can back");
+        rejected.Should().Equal("advanceRent");
     }
 
     [Theory]
@@ -237,7 +388,7 @@ public sealed class PostExtractionValidationTests
         var corpus = new ExtractionCorpus($"Kvartira\n{text}", $"Kvartira\n{text}".Length);
 
         var validated = PostExtractionValidation.ValidateListing(
-            Listing() with { Price = new ListingAsk(800_000m, "UZS", ListingAskPeriod.Month, "Narxi 800 mingdan") }, corpus, Rental);
+            Listing() with { Price = Ask(800_000m, "Narxi 800 mingdan", ListingCurrency.Uzs) }, corpus, Rental);
 
         validated.Answer.GetProperty("price").GetProperty("amount").GetDecimal().Should().Be(800_000m);
         validated.Flags.Should().NotContain(flag => flag.Field == "price");
@@ -324,11 +475,9 @@ public sealed class PostExtractionValidationTests
             Title = "Kvartira", Text = "Arenda, narx kelishiladi.", Extraction = Stamp(),
             Prices = [new PostPrice { Amount = 800_000m, Currency = "UZS", Per = "month" }],
         });
-        ListingAsk Ask(decimal amount, string quote) => new(amount, "UZS", ListingAskPeriod.Month, quote);
-
-        var kept = PostExtractionValidation.ValidateListing(Listing() with { Price = Ask(800_000m, "listed: 800000 UZS/month") }, corpus, Rental);
-        var wrongAmount = PostExtractionValidation.ValidateListing(Listing() with { Price = Ask(900_000m, "listed: 800000 UZS/month") }, corpus, Rental);
-        var elsewhere = PostExtractionValidation.ValidateListing(Listing() with { Price = Ask(800_000m, "narxi 800 ming") }, corpus, Rental);
+        var kept = PostExtractionValidation.ValidateListing(Listing() with { Price = Ask(800_000m, "listed: 800000 UZS/month", ListingCurrency.Uzs) }, corpus, Rental);
+        var wrongAmount = PostExtractionValidation.ValidateListing(Listing() with { Price = Ask(900_000m, "listed: 800000 UZS/month", ListingCurrency.Uzs) }, corpus, Rental);
+        var elsewhere = PostExtractionValidation.ValidateListing(Listing() with { Price = Ask(800_000m, "narxi 800 ming", ListingCurrency.Uzs) }, corpus, Rental);
 
         kept.Answer.GetProperty("price").GetProperty("evidence").GetString().Should().Be("listed: 800000 UZS/month");
         wrongAmount.Answer.GetProperty("price").ValueKind.Should().Be(JsonValueKind.Null);
@@ -483,7 +632,23 @@ public sealed class PostExtractionValidationTests
         new EventRegistration(null, null, null), [EventParticipation.Visitor], EventStatus.Scheduled,
         new EntityRelation(RelationRole.Announcement, [], null), null, []);
 
-    private static ExtractListingAnswer Listing() => new("2-room flat", ListingOfferType.Rent, ["Недвижимость", "Аренда"], null,
-        new ListingLocation("Chilanzar", "Tashkent", null), new ListingItem(2, 54m, 3, 9, null, null, null, null),
-        new ListingAuthor(ListingAuthorKind.Owner), new EntityRelation(RelationRole.Announcement, [], null), null, []);
+    private static ListingAsk Ask(decimal amount, string quote, ListingCurrency currency = ListingCurrency.Usd) =>
+        new(amount, currency, ListingAskPeriod.Month, false, quote);
+
+    /// <summary>Builds the <c>extra</c> map of an OLX ad whose source fields carry the given attributes.</summary>
+    private static Dictionary<string, JsonElement> Olx(Dictionary<string, string> attributes, bool? isBusiness = null) => new()
+    {
+        ["source"] = JsonSerializer.SerializeToElement(new
+        {
+            schema = "olx.ad.v1", parserVersion = "olx-html@2", fields = new Dictionary<string, object?>
+            {
+                ["externalId"] = "ID0", ["title"] = "Kvartira", ["attributes"] = attributes, ["isBusiness"] = isBusiness,
+            },
+        }),
+    };
+
+    private static ExtractListingAnswer Listing() => new("2-room flat", ["Недвижимость", "Аренда"], ListingKind.Apartment, null, ListingOfferType.Rent,
+        null, new ListingItem(null, null, null, 2, null, new ListingAreas(54m, null, null), 3, 9, null, new ListingBathrooms(null, null), null, null),
+        ListingFurnished.Unknown, [], [], new ListingLocation("Chilanzar", "Tashkent", null), [], new ListingAuthor(ListingAuthorKind.Owner), false,
+        new EntityRelation(RelationRole.Announcement, [], null), null, [], [], false, []);
 }

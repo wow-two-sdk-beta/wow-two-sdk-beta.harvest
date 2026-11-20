@@ -14,7 +14,8 @@ namespace HarvestSources.Api.Extraction;
 /// <remarks>
 ///   - <c>prompt --use-case &lt;event|listing&gt; --file &lt;draft.json | -&gt; [--by &lt;actor&gt;]</c> creates the
 ///     versioned <c>extract-event</c> or <c>extract-listing</c> use case with the code-owned schema (<c>KeepOutputs</c>
-///     true) and saves an immutable version; no prompt text lives in code
+///     true) and saves an immutable version; an existing use case with an older code schema takes the new one in place; no
+///     prompt text lives in code; the listing draft may also use the <c>attributes</c>, <c>section</c> and <c>seller</c> variables
 ///   - <c>run --post &lt;id&gt; [--dry-run]</c> extracts one tagged post and prints the checked answer; a dry run stores nothing
 ///   - <c>backfill [--since &lt;date&gt;] [--limit N]</c> queues stored posts whose tags match a wanted pair
 ///   - <c>report [--since &lt;date&gt;]</c> prints counts per use case by status and role, flags, cost and p95 latency as
@@ -37,7 +38,7 @@ public static class PostExtractionVerb
         ["event"] = (PostExtractionConstants.EventUseCase,
             "Parse an SCFD event post: name, occurrences, place, format, access, prices, registration, relation and a fashion block."),
         ["listing"] = (PostExtractionConstants.ListingUseCase,
-            "Parse an SCFD listing post: offer, category path, price, location, identity hints, author kind, relation and rental terms."),
+            "Parse an SCFD listing post (schema 2): property kind, offer, price, the building and unit, amenities, location, landmarks, author kind, relation, rental terms with evidence, tenants and urgency."),
     };
 
     /// <summary>Runs one sub-command against the built internal host's services.</summary>
@@ -103,9 +104,10 @@ public static class PostExtractionVerb
             await error.WriteLineAsync($"Provide system and user templates for {useCase.Key}.");
             return 1;
         }
-        if (VerbArguments.UnknownPlaceholder(draft, PostExtractionDefinitions.Variables) is not null)
+        var variables = PostExtractionDefinitions.VariablesOf(useCase.Key);
+        if (VerbArguments.UnknownPlaceholder(draft, variables) is not null)
         {
-            await error.WriteLineAsync($"Use only the extraction variables: {string.Join(", ", PostExtractionDefinitions.Variables)}.");
+            await error.WriteLineAsync($"Use only the {useCase.Key} variables: {string.Join(", ", variables)}.");
             return 1;
         }
         if (!VerbArguments.Binds(draft.UserTemplate, "text"))
@@ -115,7 +117,7 @@ public static class PostExtractionVerb
         }
 
         if (!await VerbArguments.EnsureUseCaseAsync(prompts, useCase.Key, useCase.Description,
-                PostExtractionDefinitions.OutputSchema(useCase.Key)!, ct))
+                PostExtractionDefinitions.OutputSchema(useCase.Key)!, ct, refreshSchema: true))
         {
             await error.WriteLineAsync($"The {useCase.Key} use case requires the versioned SCFD prompt contract.");
             return 1;

@@ -51,8 +51,21 @@ Prompt text lives in the shared AI database; keep drafts outside the repository.
 - Variables, both use cases: `{{title}}`, `{{text}}`, `{{sourceCategory}}`, `{{language}}`, `{{dates}}`, `{{place}}`,
   `{{prices}}`, `{{postedAt}}`, and the post's tags `{{entityType}}`, `{{domains}}` (nodes, primary first), `{{about}}`,
   `{{timeframe}}`, `{{titleEn}}`. Any other placeholder is refused; `{{text}}` belongs in `userTemplate`.
+- `extract-listing` only: `{{attributes}}`, `{{section}}`, `{{seller}}` (an `extract-event` prompt naming one is refused).
+  `{{attributes}}` and `{{seller}}` are OLX-only (`olx.ad.v1`, `olx.md`); `{{section}}` serves every source. They render:
+  - `{{attributes}}`: the ad's attribute lines as `label: value`, a badge such as `Бизнес` (no value, or a value that
+    repeats the label) as the label alone, in the stored order, at most 40 lines of 200 characters, phones scrubbed.
+  - `{{section}}`: for any source, the section key (`apartments-rent`, `houses-rent`, `daily-rent`) when the pipeline's
+    scope address is one of the adapter's sections (`ISourceSectionCatalog`), else the pipeline's name.
+  - `{{seller}}`: `business` or `private` from the ad's own flag, else its `Бизнес` / `Частное лицо` (`Biznes` /
+    `Jismoniy shaxs`) badge, else `unknown`.
+  A post that is not an OLX ad (an Afisha one among them) renders `{{attributes}}` and `{{seller}}` empty, and
+  `{{section}}` still names its section or pipeline. Eval subjects resolve all three the same way.
+- Every prompt's `{{title}}` and `{{text}}` (and the attribute lines) carry no phone: a number becomes `[phone]` before
+  the prompt is built (`post-tags.md` § Phone scrub). A name or a contact is never an input; the answer has no field for one.
 - `{{postedAt}}` renders as for tagging (`post-tags.md`): an unknown publication date reads the post's first capture.
-- The prompt asks for quotes copied exactly from the title or text: the check is verbatim, on whole tokens.
+- The prompt asks for quotes copied exactly from the title, the text or the attribute lines: the check is verbatim, on
+  whole tokens, and on the same scrubbed text.
 
 ```sh
 dotnet HarvestSources.Api.dll extract prompt --use-case event --file /private/path/extract-event-draft.json --by operator
@@ -60,8 +73,11 @@ dotnet HarvestSources.Api.dll extract prompt --use-case listing --file /private/
 ```
 
 The verb creates the versioned use case with the code schema and `KeepOutputs=true`, then saves an immutable version,
-printing only use case, version, content hash and ID. It refuses a draft for the other use case and an existing
-incompatible use case.
+printing only use case, version, content hash and ID. It refuses a draft for the other use case, a draft naming a
+variable the use case does not take, and an existing use case in another prompt mode or without `KeepOutputs`. A stored
+use case whose schema is an older code schema is brought to the current one in place (route and description kept), so a
+schema change such as `extract-listing@2` needs no new use case key: the SQL checks of `harvest_post_extractions`
+and the entity tables name `extract-listing`, and earlier versions of the prompt keep their stored outputs.
 
 ## Answers
 
@@ -84,14 +100,29 @@ values are `null` or `unknown`, and every list pick allows `unsure`, which flags
 
 | `extract-listing` field | Holds |
 |---|---|
-| `title` · `offerType` | a short title · `sale` · `rent` · `service` · `unsure` |
-| `categoryPath` | the source's own category path, as given |
-| `price` | `{amount, currency, period, evidence}`; `period` `hour` · `night` · `day` · `week` · `month` · `year` for a rent |
-| `location` | `{district, city, address}` |
-| `item` | identity hints for deduplication: `rooms`, `areaM2`, `floor`, `floors`, `building`, `brand`, `model`, `year` |
-| `author` | `{kind: owner · agent · business · unknown}`; no names or contacts |
+| `title` · `categoryPath` | a short title · the source's own category path, as given |
+| `propertyKind` | `apartment` · `house` · `room` · `bed-space` · `commercial` · `land` · `unsure`, or `null` |
+| `invalid` | `null` for a usable offer, else `not-a-property` · `multi-listing` |
+| `offerType` | `rent` · `sale` · `rent-or-sale` · `exchange` · `rent-to-own` · `unsure` |
+| `price` | `null` without an amount, else `{amount, currency: usd · uzs · unsure, period, negotiable, evidence}`; `period` `hour` · `night` · `day` · `week` · `month` · `year` · `unsure` for a rent, else `null` |
+| `item` | the unit and its building, for deduplication and filters: `propertyType` (`new-build` · `secondary` · `unsure`), `buildingType` (`brick` · `panel` · `monolithic` · `block` · `wooden` · `unsure`), `yearBuilt`, `rooms`, `layout`, `areaM2` `{total, living, kitchen}`, `floor`, `floors`, `ceilingM`, `bathrooms` `{count, type}`, `renovation`, `building` (the complex's name); each `null` when unknown |
+| `furnished` | `yes` · `partly` · `no` · `unknown` · `unsure` |
+| `apartmentAmenities` · `nearbyAmenities` | lists over closed sets (24 and 14 values, plus `unsure`) |
+| `location` · `landmarks` | `{district, city, address}` · at most 10 of `{type, name, evidence}`, `type` one of 15 closed values or `unsure` |
+| `author` · `noAgents` | `{kind: owner · agent · agency · developer · management-company · unknown · unsure}`, no names or contacts · whether the ad refuses agents |
 | `relation` | `{role, changes, status}` (below) |
-| `rentalTerms` | only for a `rent` offer whose primary domain is under `real-estate`: `deposit`, `minimumStay`, `advanceRent`, `utilities`, each `{status: unknown · absent · present · conflict, claims: [{evidence, value}]}` as `rental-terms@2` |
+| `rentalTerms` | only for a `rent` offer whose primary domain is under `real-estate`: `deposit`, `minimumStay`, `advanceRent`, `utilities`, `commission`, each `{status: unknown · absent · present · conflict, claims: [{evidence, value}]}` as `rental-terms@2`; `commission` holds `{amount, currency, percent, rentMultiple}` |
+| `acceptedTenants` · `excludedTenants` | lists over one closed set (15 values, plus `unsure`) |
+| `urgent` | whether the ad presses for a quick deal |
+
+- Every field above is required in the answer; a field with nothing to say is `null`, an empty list or `false`. There is
+  no field for a name, a phone or any contact: a contact field is an unknown property and the normalizer removes it
+  with a flag. `item.areaM2` has `living` and `kitchen` at or under `total`; `floor` is at or under `floors`; a number
+  that breaks the first is dropped with a flag, one that breaks the second is kept with a flag.
+- The shape follows the prompt drafts' `schema-v2.json`, with the unit and building facts nested in `item`. Version 1's
+  `item.brand`, `model` and `year` and its `service` offer type are gone, and `author.kind` has no `business`.
+- Any `unsure` pick, in a field, a list or a claim's currency, adds a flag; a rental term whose claim the version-2
+  checks cannot back (an `hour` or `unsure` duration unit, an `unsure` billing) becomes `unknown` with a flag.
 
 - `relation.role`: `announcement` · `update` · `report` · `mention` (#3.1). `changes` applies to an `update` only:
   `dates` · `place` · `price` · `program` · `registration` · `deadline` · `results` · `status`, and `status` names the new
@@ -101,12 +132,14 @@ values are `null` or `unknown`, and every list pick allows `unsure`, which flags
 - Normalizing (`AnswerNormalizer`, before the strict read; both passes run with `AiRunRequest.CheckEnums` false, so the
   AI runner checks the answer's shape and types but leaves every out-of-list value, top-level ones such as `format`
   included, to this repair): a value outside its enum becomes the enum's `unsure` member,
-  else its `unknown` one, else `null` for a nullable field (`relation.status`, `price.period`), plus a flag
+  else its `unknown` one, else `null` for a nullable field (`relation.status`, `invalid`), plus a flag
   `{field: <json path>, reason: "value outside the list", proposed: <the value, 40 characters>}` -- a required enum with
   none of these, a wrong JSON type and a missing field still reject the answer (`failed`, `answer-invalid`). In a list
-  (`participation`, `fashion.segments`, `exhibitorProfile`, `relation.changes`) an item outside the enum is dropped, with
+  (`participation`, `fashion.segments`, `exhibitorProfile`, `relation.changes`, `apartmentAmenities`, `nearbyAmenities`,
+  `acceptedTenants`, `excludedTenants`) an item outside the enum is dropped, with
   the flag at `field[index]`, and duplicates go. Case, `-`, `_` and spaces do not matter (`trade fair` reads as
-  `trade-fair`), without a flag. An unknown property is removed with a flag `reason: "unknown field"`, no value kept.
+  `trade-fair`), without a flag. An unknown property is removed with a flag `reason: "unknown field"`, no value kept (a
+  `phone` or `contacts` an `extract-listing` answer invents goes this way).
   A contact in a rejected value is never kept as `proposed`. The flags ride in the answer's own `flags`, so the checks
   below carry them like the model's; `post-tags` answers take the same repair.
 
@@ -117,7 +150,9 @@ values are `null` or `unknown`, and every list pick allows `unsure`, which flags
   date may also come from the rendered `prices`, `dates` or `place` the prompt received (`ExtractionCorpus`), so a value
   the source holds only in its structured fields can be stored. A render is one source: a quote never spans two, and
   one that reads `none` or `unknown` is no source. The `dates` render leaves out an estimated date, so an estimate never
-  backs a quote; rental terms quote the title and text only.
+  backs a quote. A rental term may also quote an attribute line of an OLX ad, as the prompt rendered it (`label: value`,
+  `ExtractionCorpus.TermSource`): the lines are one more source after the title and text, and a quote never spans the
+  two, so `Комиссионные: Нет` backs an `absent` commission.
 - A price's quote must also state its amount, thousand, million and billion words included (`50 000 so'm`, `500 тыс`,
   `1,5 mln`, `2 mlrd`); an Uzbek case suffix may follow the scale word (`800 mingdan`, `3 millionga`), and a word that only
   starts like one does not count (`800 mingle`). This holds for a price quoted from `prices` too.
@@ -134,6 +169,13 @@ values are `null` or `unknown`, and every list pick allows `unsure`, which flags
   passes and a claim of no or another currency does not. `rental-terms@2` (`RentalTermEvidence.Parse`) keeps its pinned
   rule that a USD claim for `500 у.е.` is rejected (`RentalTermsV2Tests`).
 - The utilities cue reads `kommunal`, `komunal`, `kamunal`, `коммунал…` and `комунал…`.
+- The `commission` term takes the checks of the other terms (`RentalTermEvidence.CheckListingTerms` maps the listing's
+  types onto them): the quote holds a commission cue (`комиссия`, `komissiya`, `commission`, `vositachilik haqi`); a
+  percent claim states that percent beside the cue; an amount or rent-multiple claim states it; a claim without a value
+  says only that one is charged (`есть`, `bor`); an `absent` claim's quote negates the cue (`Комиссионные: Нет`,
+  `без комиссии`).
+- The check runs on the text the prompt held: a phone the scrub replaced is `[phone]` in the corpus too, so a quote
+  holding a number never matches (`post-tags.md` § Phone scrub).
 - Free text is clipped, and a phone, email, handle or messenger link in it is removed with a `contacts` flag, so a stored
   row holds no post text beyond its quotes.
 

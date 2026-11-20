@@ -39,12 +39,13 @@ internal static class PostTagsContent
 
     /// <summary>Builds the prompt variables: <c>title</c>, <c>text</c> (cut), <c>sourceCategory</c>, <c>language</c>,
     /// <c>dates</c>, <c>place</c>, <c>postedAt</c> and <c>taxonomy</c>; an absent value reads <c>unknown</c> or
-    /// <c>none</c>, never empty. <paramref name="firstSeen"/> bounds an unknown publication date.</summary>
+    /// <c>none</c>, never empty. <paramref name="firstSeen"/> bounds an unknown publication date. The title and text are
+    /// phone-scrubbed (<see cref="PhoneScrub"/>) before they are cut.</summary>
     internal static Dictionary<string, string?> Variables(PostEnvelope envelope, string? sourceCategory, string taxonomy, int maxTextChars,
         DateTimeOffset? firstSeen = null) => new()
     {
-        ["title"] = envelope.Title?.Trim() ?? "",
-        ["text"] = Cut(envelope.Text, maxTextChars),
+        ["title"] = Title(envelope),
+        ["text"] = Text(envelope, maxTextChars),
         ["sourceCategory"] = string.IsNullOrWhiteSpace(sourceCategory) ? "unknown" : sourceCategory.Trim(),
         ["language"] = envelope.Language?.Code ?? "und",
         ["dates"] = Dates(envelope.Dates),
@@ -52,6 +53,13 @@ internal static class PostTagsContent
         ["postedAt"] = PostedAt(envelope.PostedAt, firstSeen),
         ["taxonomy"] = taxonomy,
     };
+
+    /// <summary>Gets the title a prompt receives: trimmed and phone-scrubbed, never null.</summary>
+    internal static string Title(PostEnvelope envelope) => PhoneScrub.Apply(envelope.Title?.Trim()) ?? "";
+
+    /// <summary>Gets the text a prompt receives: phone-scrubbed, then cut to <paramref name="maxTextChars"/>, so the cut and the
+    /// window a quote must fall in agree.</summary>
+    internal static string Text(PostEnvelope envelope, int maxTextChars) => Cut(PhoneScrub.Apply(envelope.Text), maxTextChars);
 
     /// <summary>Renders the post's stated dates, one <c>role: value[ – end]</c> per date; a date the extraction pass
     /// estimated stays out, so no prompt reads a model's own estimate as the post's.</summary>

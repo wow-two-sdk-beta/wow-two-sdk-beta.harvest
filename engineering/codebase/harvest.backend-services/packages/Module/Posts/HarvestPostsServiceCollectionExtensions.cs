@@ -16,6 +16,7 @@ public static class HarvestPostsServiceCollectionExtensions
         services.TryAddScoped<ModulePostBroker>();
         services.TryAddSingleton<PostTagsGate>();
         services.TryAddScoped<PostExtractionGate>();
+        services.TryAddScoped<PostSections>();
         services.TryAddScoped<IPostProcessingBroker, ModulePostProcessingBroker>();
         return services;
     }

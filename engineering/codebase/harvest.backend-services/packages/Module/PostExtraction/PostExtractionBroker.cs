@@ -19,6 +19,7 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
 internal sealed class PostExtractionBroker(
     [FromKeyedServices(HarvestModuleConstants.ServiceKey)] NpgsqlDataSource dataSource,
     PostExtractionGate gate,
+    PostSections sections,
     ModulePostBroker posts,
     IOptions<PostExtractionOptions> options,
     IServiceProvider services,
@@ -180,7 +181,8 @@ internal sealed class PostExtractionBroker(
             Subject = $"{PostTagsConstants.SubjectPrefix}{post.Id:D}@{post.Revision}",
             Version = settings.PromptVersions.TryGetValue(useCase, out var pinned) ? pinned : null,
             Models = settings.Models,
-            Variables = PostExtractionContent.Variables(post.Base, SourceCategory(subject), tags, settings.MaxTextChars, post.FirstSeenAtUtc),
+            Variables = PostExtractionContent.VariablesFor(useCase, post.Base, SourceCategory(subject), tags, settings.MaxTextChars,
+                post.FirstSeenAtUtc, useCase == PostExtractionConstants.ListingUseCase ? await sections.NameAsync(subject, ct) : null),
             // The answer's parse maps an out-of-list value to its fallback and flags it (AnswerNormalizer).
             CheckEnums = false,
         }, ct);

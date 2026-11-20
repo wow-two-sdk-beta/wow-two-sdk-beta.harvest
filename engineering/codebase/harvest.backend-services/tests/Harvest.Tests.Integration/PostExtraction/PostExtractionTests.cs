@@ -315,21 +315,36 @@ public sealed class PostExtractionTests
     internal static string ListingAnswer() => JsonSerializer.Serialize(new
     {
         title = "2-room flat for rent",
-        offerType = "rent",
         categoryPath = new[] { "Ko'chmas mulk", "Ijara" },
-        price = new { amount = 500m, currency = "USD", period = "month", evidence = "Narxi 500 USD oyiga" },
+        propertyKind = "apartment",
+        invalid = (string?)null,
+        offerType = "rent",
+        price = new { amount = 500m, currency = "usd", period = "month", negotiable = false, evidence = "Narxi 500 USD oyiga" },
+        item = new
+        {
+            propertyType = (string?)null, buildingType = (string?)null, yearBuilt = (int?)null, rooms = (int?)2, layout = (string?)null,
+            areaM2 = new { total = (decimal?)null, living = (decimal?)null, kitchen = (decimal?)null }, floor = (int?)null, floors = (int?)null,
+            ceilingM = (decimal?)null, bathrooms = new { count = (int?)null, type = (string?)null }, renovation = (string?)null, building = (string?)null,
+        },
+        furnished = "unknown",
+        apartmentAmenities = Array.Empty<string>(),
+        nearbyAmenities = Array.Empty<string>(),
         location = new { district = (string?)null, city = "Tashkent", address = (string?)null },
-        item = new { rooms = 2, areaM2 = (decimal?)null, floor = (int?)null, floors = (int?)null, building = (string?)null, brand = (string?)null,
-            model = (string?)null, year = (int?)null },
+        landmarks = Array.Empty<object>(),
         author = new { kind = "owner" },
+        noAgents = false,
         relation = new { role = "announcement", changes = Array.Empty<string>(), status = (string?)null },
         rentalTerms = new
         {
-            deposit = new { status = "present", claims = new[] { new { evidence = "Depozit: 500 USD", value = new { amount = 500m, currency = "USD", rentMultiple = (decimal?)null } } } },
-            minimumStay = new { status = "unknown", claims = Array.Empty<object>() },
+            deposit = new { status = "present", claims = new[] { new { evidence = "Depozit: 500 USD", value = new { amount = 500m, currency = "usd", rentMultiple = (decimal?)null } } } },
             advanceRent = new { status = "unknown", claims = Array.Empty<object>() },
             utilities = new { status = "unknown", claims = Array.Empty<object>() },
+            minimumStay = new { status = "unknown", claims = Array.Empty<object>() },
+            commission = new { status = "unknown", claims = Array.Empty<object>() },
         },
+        acceptedTenants = Array.Empty<string>(),
+        excludedTenants = Array.Empty<string>(),
+        urgent = false,
         flags = Array.Empty<object>(),
     });
 }

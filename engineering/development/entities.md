@@ -52,10 +52,11 @@ The layer reads stored extraction answers and needs no AI. `service/HarvestSourc
   irregular — with a confidence; one `predicted` occurrence follows the last real one and is replaced when a real one
   arrives.
 - **Listings**: the same post or the same `(source_id, external_key)` is an `update`. Otherwise item identity scores the
-  ad — offer type, category path, city, district, rooms, area within 5%, floor, building, brand, model, year and the
-  price band — and the same author adds to it. The same author's ad is an `update`; another author's is an
-  `announcement` with its own offer (author kind, price, link, source, first seen). `facts.priceSpread` keeps each
-  author's latest price per currency and period.
+  ad — offer type, category path, city, district, and from the answer's `item` the rooms, `areaM2.total` within 5%,
+  floor, floors, building and `yearBuilt`, then the price band — and the same author adds to it (`ListingIdentity`;
+  `extract-listing@2` has no brand, model or year, `extraction.md`); the listing's stored facts keep the same `item`
+  paths. The same author's ad is an `update`; another author's is an `announcement` with its own offer (author kind,
+  price, link, source, first seen). `facts.priceSpread` keeps each author's latest price per currency and period.
 - **Unsure**: a best match under `MinMatchConfidence`, or two too close to call, binds nothing and records a flag with
   the candidate for review; a false merge is worse than a duplicate. `entities report` counts the open flags.
 - **Keep-apart**: a split pair is never merged, and resolution never binds a post to an entity kept apart from the one

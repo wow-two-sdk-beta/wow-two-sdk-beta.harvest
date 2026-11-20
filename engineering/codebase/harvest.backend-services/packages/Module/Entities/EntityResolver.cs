@@ -514,11 +514,10 @@ internal sealed class EntityResolver(NpgsqlConnection connection, NpgsqlTransact
     private static ListingFacts ListingFactsOf(ExtractListingAnswer answer) => new()
     {
         OfferType = Offer(answer.OfferType), CategoryPath = answer.CategoryPath ?? [], City = Clean(answer.Location?.City),
-        District = Clean(answer.Location?.District), Rooms = answer.Item?.Rooms, AreaM2 = answer.Item?.AreaM2, Floor = answer.Item?.Floor,
-        Floors = answer.Item?.Floors, Building = Clean(answer.Item?.Building), Brand = Clean(answer.Item?.Brand), Model = Clean(answer.Item?.Model),
-        Year = answer.Item?.Year,
-        Prices = answer.Price is { Amount: { } amount } price
-            ? [new ListingPrice(amount, price.Currency, price.Period?.ToString().ToLowerInvariant())] : [],
+        District = Clean(answer.Location?.District), Rooms = answer.Item?.Rooms, AreaM2 = answer.Item?.AreaM2?.Total, Floor = answer.Item?.Floor,
+        Floors = answer.Item?.Floors, Building = Clean(answer.Item?.Building), YearBuilt = answer.Item?.YearBuilt,
+        Prices = answer.Price is { } price
+            ? [new ListingPrice(price.Amount, CurrencyCode(price.Currency), PeriodName(price.Period))] : [],
     };
 
     /// <summary>Reads a listing's merged facts and its offers' price range back into comparable facts.</summary>
@@ -537,8 +536,8 @@ internal sealed class EntityResolver(NpgsqlConnection connection, NpgsqlTransact
             City = EntityJson.Text(facts, "location", "city"), District = EntityJson.Text(facts, "location", "district"),
             Rooms = (int?)EntityJson.Number(facts, "item", "rooms"), AreaM2 = EntityJson.Number(facts, "item", "areaM2"),
             Floor = (int?)EntityJson.Number(facts, "item", "floor"), Floors = (int?)EntityJson.Number(facts, "item", "floors"),
-            Building = EntityJson.Text(facts, "item", "building"), Brand = EntityJson.Text(facts, "item", "brand"),
-            Model = EntityJson.Text(facts, "item", "model"), Year = (int?)EntityJson.Number(facts, "item", "year"), Prices = prices,
+            Building = EntityJson.Text(facts, "item", "building"), YearBuilt = (int?)EntityJson.Number(facts, "item", "yearBuilt"),
+            Prices = prices,
         };
     }
 
@@ -557,8 +556,8 @@ internal sealed class EntityResolver(NpgsqlConnection connection, NpgsqlTransact
             },
             ["item"] = new JsonObject
             {
-                ["rooms"] = item?.Rooms, ["areaM2"] = item?.AreaM2, ["floor"] = item?.Floor, ["floors"] = item?.Floors,
-                ["building"] = Clean(item?.Building), ["brand"] = Clean(item?.Brand), ["model"] = Clean(item?.Model), ["year"] = item?.Year,
+                ["rooms"] = item?.Rooms, ["areaM2"] = item?.AreaM2?.Total, ["floor"] = item?.Floor, ["floors"] = item?.Floors,
+                ["building"] = Clean(item?.Building), ["yearBuilt"] = item?.YearBuilt,
             },
             ["price"] = Price(answer.Price),
         };
@@ -566,7 +565,7 @@ internal sealed class EntityResolver(NpgsqlConnection connection, NpgsqlTransact
 
     private static JsonObject Offer(EntityPost post, ExtractListingAnswer answer) => new()
     {
-        ["authorKind"] = (answer.Author?.Kind ?? ListingAuthorKind.Unknown).ToString().ToLowerInvariant(),
+        ["authorKind"] = Wire(answer.Author?.Kind ?? ListingAuthorKind.Unknown),
         ["authorKey"] = post.AuthorKey,
         ["price"] = Price(answer.Price),
         ["link"] = post.Url,
@@ -576,8 +575,8 @@ internal sealed class EntityResolver(NpgsqlConnection connection, NpgsqlTransact
         ["firstSeenAt"] = post.FirstSeenAt.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
     };
 
-    private static JsonObject? Price(ListingAsk? ask) => ask is { Amount: { } amount }
-        ? new JsonObject { ["amount"] = amount, ["currency"] = ask.Currency, ["period"] = ask.Period?.ToString().ToLowerInvariant() }
+    private static JsonObject? Price(ListingAsk? ask) => ask is { } stated
+        ? new JsonObject { ["amount"] = stated.Amount, ["currency"] = CurrencyCode(stated.Currency), ["period"] = PeriodName(stated.Period) }
         : null;
 
     /// <summary>Computes the listing's price spread over each author's latest offer, per currency and period.</summary>
@@ -597,7 +596,21 @@ internal sealed class EntityResolver(NpgsqlConnection connection, NpgsqlTransact
         })]);
     }
 
-    private static string? Offer(ListingOfferType type) => type == ListingOfferType.Unsure ? null : type.ToString().ToLowerInvariant();
+    private static string? Offer(ListingOfferType type) => type == ListingOfferType.Unsure ? null : Wire(type);
+
+    /// <summary>Names a price's currency as the entity facts keep it (<c>USD</c>, <c>UZS</c>); an unsure one has none.</summary>
+    private static string? CurrencyCode(ListingCurrency currency) => currency switch
+    {
+        ListingCurrency.Usd => "USD",
+        ListingCurrency.Uzs => "UZS",
+        _ => null,
+    };
+
+    /// <summary>Names a rent price's period as the answer writes it; none and an unsure period read as none.</summary>
+    private static string? PeriodName(ListingAskPeriod? period) => period is { } named && named != ListingAskPeriod.Unsure ? Wire(named) : null;
+
+    /// <summary>Names an enum value as the answer writes it (<c>rent-or-sale</c>, <c>management-company</c>).</summary>
+    private static string Wire<T>(T value) where T : struct, Enum => JsonSerializer.SerializeToElement(value, EvidenceWire.Options).GetString()!;
 
     private static void StripEvidence(JsonNode? node)
     {

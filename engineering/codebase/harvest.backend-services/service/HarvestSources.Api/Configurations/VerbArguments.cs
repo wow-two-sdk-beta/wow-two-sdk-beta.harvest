@@ -108,11 +108,21 @@ internal static partial class VerbArguments
 
     /// <summary>Creates a versioned use case with the code-owned schema and kept outputs, or confirms an existing one is
     /// compatible; false when the existing one differs.</summary>
-    internal static async Task<bool> EnsureUseCaseAsync(IPromptsBroker prompts, string key, string description, string schema, CancellationToken ct)
+    /// <remarks><paramref name="refreshSchema"/> lets a use case whose schema the code owns follow the code: an existing use case
+    /// that keeps versions and outputs but holds an older schema is saved again with the code's schema and its route and
+    /// description (the AI module's <c>PutUseCaseAsync</c> replaces the schema in place), so a schema change needs no new use
+    /// case key; one with another prompt mode or no kept outputs still counts as different.</remarks>
+    internal static async Task<bool> EnsureUseCaseAsync(IPromptsBroker prompts, string key, string description, string schema, CancellationToken ct,
+        bool refreshSchema = false)
     {
         var existing = await prompts.GetUseCaseAsync(key, ct);
         if (existing is Result<UseCaseModel>.Success { Value: var useCase })
-            return Compatible(useCase, schema);
+        {
+            if (Compatible(useCase, schema))
+                return true;
+            return refreshSchema && useCase is { PromptMode: PromptMode.Versioned, KeepOutputs: true }
+                && await prompts.PutUseCaseAsync(useCase with { OutputSchema = schema }, ct) is Result<UseCaseModel>.Success;
+        }
 
         return existing is Result<UseCaseModel>.Failure { Error.Type: AppErrorType.NotFound }
             && await prompts.PutUseCaseAsync(new()

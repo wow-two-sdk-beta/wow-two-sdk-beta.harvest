@@ -4,7 +4,8 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Entities;
 internal sealed record ListingPrice(decimal Amount, string? Currency, string? Period);
 
 /// <summary>Represents what identifies an offered thing across ads: the offer, the source's category path, the place and
-/// the item's own facts, with the prices its offers ask.</summary>
+/// the item's own facts (the answer's <c>item</c>: rooms, total area, floor, floors, building, year built), with the prices its
+/// offers ask.</summary>
 internal sealed record ListingFacts
 {
     internal string? OfferType { get; init; }
@@ -16,18 +17,16 @@ internal sealed record ListingFacts
     internal int? Floor { get; init; }
     internal int? Floors { get; init; }
     internal string? Building { get; init; }
-    internal string? Brand { get; init; }
-    internal string? Model { get; init; }
-    internal int? Year { get; init; }
+    internal int? YearBuilt { get; init; }
     internal IReadOnlyList<ListingPrice> Prices { get; init; } = [];
 }
 
 /// <summary>Scores whether an ad offers the same thing as a listing, 0 to 1: the item-identity match of the build plan.</summary>
 /// <remarks>
 ///   - a known fact that differs rules the pair out: offer type, category path (neither a prefix of the other), city,
-///     district, rooms, area beyond the tolerance (5% by default), floor, floor count, building, brand, model or year
-///   - each fact both sides know and share adds its weight: area 0.3, district 0.2, rooms 0.2, model 0.2, price band 0.15,
-///     building 0.15, floor 0.1, brand 0.1, year 0.1, city 0.05, category path 0.05, floor count 0.05
+///     district, rooms, area beyond the tolerance (5% by default), floor, floor count, building or year built
+///   - each fact both sides know and share adds its weight: area 0.3, district 0.2, rooms 0.2, price band 0.15, building 0.15,
+///     floor 0.1, year built 0.1, city 0.05, category path 0.05, floor count 0.05
 ///   - a price outside the band (20% by default) beyond every offer of the listing, in the same currency and period,
 ///     takes 0.2 off; the same author adds 0.2
 /// </remarks>
@@ -64,7 +63,7 @@ internal static class ListingIdentity
         foreach (var (left, right, weight) in new (object? Left, object? Right, double Weight)[]
                  {
                      (ad.Rooms, listing.Rooms, 0.2), (ad.Floor, listing.Floor, 0.1), (ad.Floors, listing.Floors, 0.05),
-                     (ad.Year, listing.Year, 0.1),
+                     (ad.YearBuilt, listing.YearBuilt, 0.1),
                  })
         {
             if (left is null || right is null)
@@ -75,7 +74,7 @@ internal static class ListingIdentity
         }
         foreach (var (left, right, weight) in new (string? Left, string? Right, double Weight)[]
                  {
-                     (ad.Building, listing.Building, 0.15), (ad.Brand, listing.Brand, 0.1), (ad.Model, listing.Model, 0.2),
+                     (ad.Building, listing.Building, 0.15),
                  })
         {
             if (!Both(left, right))

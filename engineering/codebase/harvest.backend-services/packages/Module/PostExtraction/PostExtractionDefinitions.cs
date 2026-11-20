@@ -13,10 +13,12 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
 ///     <c>occurrences</c> (<c>[{starts, ends, precision, certainty, evidence}]</c>), <c>place</c>, <c>organizer</c>,
 ///     <c>format</c>, <c>access</c>, <c>prices</c>, <c>registration</c>, <c>participation</c>, <c>status</c>,
 ///     <c>relation</c>, <c>fashion</c> and <c>flags</c>
-///   - <c>extract-listing</c>: <c>title</c>, <c>offerType</c>, <c>categoryPath</c>, <c>price</c>, <c>location</c>,
-///     <c>item</c>, <c>author</c> (<c>{kind}</c>, no names or contacts), <c>relation</c>, <c>rentalTerms</c> (the
-///     <c>rental-terms@2</c> terms) and <c>flags</c>
-///   - every date, price and rental term carries a verbatim <c>evidence</c> quote
+///   - <c>extract-listing</c> (schema version 2, <c>ListingAnswer.cs</c>): <c>title</c>, <c>categoryPath</c>, <c>propertyKind</c>,
+///     <c>invalid</c>, <c>offerType</c>, <c>price</c>, <c>item</c> (building and unit), <c>furnished</c>, the amenity lists,
+///     <c>location</c>, <c>landmarks</c>, <c>author</c> (<c>{kind}</c>, no names or contacts), <c>noAgents</c>, <c>relation</c>,
+///     <c>rentalTerms</c> (deposit, advance rent, utilities, minimum stay and commission), the tenant lists, <c>urgent</c>
+///     and <c>flags</c>
+///   - every date, price, landmark and rental-term claim carries a verbatim <c>evidence</c> quote
 /// </remarks>
 public static class PostExtractionDefinitions
 {
@@ -26,6 +28,21 @@ public static class PostExtractionDefinitions
         "title", "text", "sourceCategory", "language", "dates", "place", "prices", "postedAt",
         "entityType", "domains", "about", "timeframe", "titleEn",
     ];
+
+    /// <summary>The variables only an <c>extract-listing</c> prompt may use: the post's own listing <c>attributes</c> (OLX's
+    /// <c>label: value</c> lines, empty for other sources), its harvest <c>section</c> and the <c>seller</c> category
+    /// (<c>business</c> · <c>private</c> · <c>unknown</c>, empty for other sources).</summary>
+    public static IReadOnlyList<string> ListingVariables { get; } = ["attributes", "section", "seller"];
+
+    /// <summary>Returns the variables a use case's prompt may use: <see cref="Variables"/> for <c>extract-event</c>, and for
+    /// <c>extract-listing</c> those plus <see cref="ListingVariables"/>; none for another key.</summary>
+    /// <param name="useCase"><c>extract-event</c> or <c>extract-listing</c>.</param>
+    public static IReadOnlyList<string> VariablesOf(string useCase) => useCase switch
+    {
+        PostExtractionConstants.EventUseCase => Variables,
+        PostExtractionConstants.ListingUseCase => [.. Variables, .. ListingVariables],
+        _ => [],
+    };
 
     internal static readonly AnswerNormalizer Normalizer = new(EvidenceWire.Options);
 
@@ -163,37 +180,3 @@ internal enum FashionExhibitor { Designers, Brands, Manufacturers, Suppliers, Re
 
 /// <summary>Refers to whom the event is for.</summary>
 internal enum FashionAudience { Trade, Consumer, Mixed, Unknown, Unsure }
-
-/// <summary>Represents an <c>extract-listing</c> answer as the schema states it.</summary>
-internal sealed record ExtractListingAnswer(
-    string Title,
-    ListingOfferType OfferType,
-    IReadOnlyList<string> CategoryPath,
-    ListingAsk? Price,
-    ListingLocation Location,
-    ListingItem Item,
-    ListingAuthor Author,
-    EntityRelation Relation,
-    RentalTermsAnswer? RentalTerms,
-    IReadOnlyList<PostTagsFlag> Flags);
-
-/// <summary>Refers to what the listing offers.</summary>
-internal enum ListingOfferType { Sale, Rent, Service, Unsure }
-
-/// <summary>Represents the asking price, its period for a rent, and the quote it comes from.</summary>
-internal sealed record ListingAsk(decimal? Amount, string? Currency, ListingAskPeriod? Period, string Evidence);
-
-/// <summary>Refers to the period a rent price covers.</summary>
-internal enum ListingAskPeriod { Hour, Night, Day, Week, Month, Year }
-
-/// <summary>Represents where the offer is.</summary>
-internal sealed record ListingLocation(string? District, string? City, string? Address);
-
-/// <summary>Represents the facts that identify the offered thing across ads, for deduplication.</summary>
-internal sealed record ListingItem(int? Rooms, decimal? AreaM2, int? Floor, int? Floors, string? Building, string? Brand, string? Model, int? Year);
-
-/// <summary>Represents who offers it, by kind only: contacts stay masked and no name is kept.</summary>
-internal sealed record ListingAuthor(ListingAuthorKind Kind);
-
-/// <summary>Refers to who offers the listing.</summary>
-internal enum ListingAuthorKind { Owner, Agent, Business, Unknown, Unsure }

@@ -39,7 +39,7 @@ internal sealed partial class ModuleSourceOverviewBroker
             if (Child(answer, "price") is { ValueKind: JsonValueKind.Object } price)
                 Add(found, "price", null, null, Str(price, "evidence"));
             var terms = Child(answer, "rentalTerms");
-            foreach (var name in new[] { "deposit", "minimumStay", "advanceRent", "utilities" })
+            foreach (var name in new[] { "deposit", "minimumStay", "advanceRent", "utilities", "commission" })
             {
                 if (Child(terms, name) is not { ValueKind: JsonValueKind.Object } term)
                     continue;
@@ -67,7 +67,9 @@ internal sealed partial class ModuleSourceOverviewBroker
             return null;
         var parts = new List<string>();
         if (Dec(value, "amount") is { } amount)
-            parts.Add(string.Join(' ', new[] { Number(amount), Str(value, "currency") }.Where(part => !string.IsNullOrEmpty(part))));
+            parts.Add(string.Join(' ', new[] { Number(amount), Str(value, "currency") is { } currency && currency != "unsure" ? currency.ToUpperInvariant() : null }.Where(part => !string.IsNullOrEmpty(part))));
+        if (Dec(value, "percent") is { } percent)
+            parts.Add($"{Number(percent)}%");
         if (Dec(value, "rentMultiple") is { } multiple)
             parts.Add($"{Number(multiple)}× rent");
         if (Dec(value, "count") is { } count && Str(value, "unit") is { } unit)

@@ -10,9 +10,10 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
 /// <summary>Resolves <c>harvest:post:{id}@{revision}</c> eval subjects to the prompt variables of the use case the set
 /// evaluates, once, when an eval item is added — exactly as the passes build them.</summary>
 /// <remarks>
-///   - <c>post-tags</c>: title, text (cut), the category hint, language, dates, place, publication date and taxonomy
+///   - <c>post-tags</c>: title, text (phone-scrubbed, cut), the category hint, language, dates, place, publication date and taxonomy
 ///   - <c>extract-event</c> and <c>extract-listing</c>: the post fields with prices, and the done tags for the revision's
-///     title and text; a subject whose tags name another entity type, or none yet, resolves to nothing
+///     title and text, and for a listing its <c>attributes</c>, <c>section</c> and <c>seller</c>; a subject whose tags name
+///     another entity type, or none yet, resolves to nothing
 ///   - the current post answers its own revision, or a subject with no revision; an older revision answers from a
 ///     delivered snapshot when one exists
 ///   - a post whose sources have model processing <c>off</c> resolves to nothing; <c>manual</c> resolves, as an operator
@@ -21,7 +22,8 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
 internal sealed class PostTagsSubjectSource(
     [FromKeyedServices(HarvestModuleConstants.ServiceKey)] NpgsqlDataSource dataSource,
     IOptions<PostTagsOptions> options,
-    IOptions<PostExtractionOptions> extraction) : IEvalSubjectSource
+    IOptions<PostExtractionOptions> extraction,
+    PostSections sections) : IEvalSubjectSource
 {
     public string Prefix => PostTagsConstants.SubjectPrefix;
 
@@ -45,7 +47,8 @@ internal sealed class PostTagsSubjectSource(
         }
         var tags = await PostExtractionStore.ReadTagsAsync(dataSource, postId, PostTagsContent.Hash(envelope), cancellationToken);
         return tags is not null && PostExtractionConstants.UseCaseFor(tags.EntityType) == useCase
-            ? PostExtractionContent.Variables(envelope, category, tags, extraction.Value.MaxTextChars, post.Post.FirstSeenAtUtc)
+            ? PostExtractionContent.VariablesFor(useCase, envelope, category, tags, extraction.Value.MaxTextChars, post.Post.FirstSeenAtUtc,
+                useCase == PostExtractionConstants.ListingUseCase ? await sections.NameAsync(post, cancellationToken) : null)
             : null;
     }
 

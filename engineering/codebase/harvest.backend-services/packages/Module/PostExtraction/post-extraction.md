@@ -26,10 +26,19 @@ takes only an `extract-event` answer's format, as its classification's kind, and
   type. `QueueAsync(force: true)` queues over a done answer for a re-run, and a done answer passes its run to the
   entity queue.
 - Call: use case `extract-event` or `extract-listing`, versioned, `KeepOutputs` true, the code-owned schema
-  (`PostExtractionDefinitions`); variables `title`, `text` (cut to `MaxTextChars`), `sourceCategory`, `language`,
-  `dates`, `place`, `prices`, `postedAt`, and the tags `entityType`, `domains`, `about`, `timeframe`, `titleEn`. Routes
+  (`PostExtractionDefinitions`, the listing types in `ListingAnswer.cs`); variables `title`, `text` (cut to
+  `MaxTextChars`), `sourceCategory`, `language`, `dates`, `place`, `prices`, `postedAt`, and the tags `entityType`,
+  `domains`, `about`, `timeframe`, `titleEn`; `extract-listing` adds `attributes`, `section` and `seller`
+  (`PostExtractionContent.VariablesFor`, `PostExtractionDefinitions.VariablesOf`): `attributes` (an OLX ad's attribute lines)
+  and `seller` (its seller category) are OLX-only and empty for any other post, while `section` names the section's catalog
+  key, else the pipeline's name, for any source (`PostSections`). Routes
   come from `Harvest:Processing:Extraction:Models`, default `anthropic/claude-haiku-5-5`; `PromptVersions` pins a
   version per use case.
+- Scrub: `title` and `text` pass `../Tagging/PhoneScrub` first (a phone becomes `[phone]`), as do the attribute lines;
+  the quote corpus is built from the scrubbed text, so a quote can never hold a number the prompt did not. The listing
+  schema has no field for a name, phone or contact. `extract-listing` is at version 2 of its schema, replaced in place
+  under the same use case key: the `extract prompt` verb refreshes a stored older code schema (the SQL checks of 013,
+  014 and 017 name the key).
 - Normalizing: `PostExtractionDefinitions.Parse` runs `AnswerNormalizer` before the strict read, so a model value the
   schema lacks no longer discards the answer. A value outside an enum becomes `unsure` (else `unknown`, else `null`
   for a nullable field) with a flag `{field: json path, reason: "value outside the list", proposed}`; a list drops the
@@ -38,14 +47,18 @@ takes only an `extract-event` answer's format, as its classification's kind, and
   reject the answer. The flags join the answer's `flags` and pass `PostExtractionValidation` like the model's.
   `post-tags` uses the same normalizer (`../Tagging/tagging.md`); `rental-terms@2` keeps its strict read.
 - Evidence: a quote must appear verbatim, on whole tokens, in the title or the part of the text the model read
-  (`RentalTermEvidence.Quoted`); a price's quote must also state its amount. A failing date, price or registration date
-  is dropped, and a failing rental term turns `unknown` (`RentalTermEvidence.CheckTerms`); each gets a flag. The rest of
-  the answer stays. `RentalTermEvidence` and the rental-term types are shared with `rental-terms@2` in
+  (`RentalTermEvidence.Quoted`); a rental term may also quote an attribute line of an OLX ad (`ExtractionCorpus.TermSource`,
+  one more source, never joined to the text); a price's quote must also state its amount. A failing date, price or registration date
+  is dropped, and a failing rental term turns `unknown` (`RentalTermEvidence.CheckTerms`, and
+  `RentalTermEvidence.CheckListingTerms` for the listing's own types, `commission` included); each gets a flag. The rest
+  of the answer stays. `RentalTermEvidence` and the rental-term types are shared with `rental-terms@2` in
   `sources/Module/Marketplace/`, which keeps rejecting a whole answer.
 - Field rules: an unsure pick always carries a flag; `fashion` stays only for a primary domain under `style-fashion`;
   `rentalTerms` only for a `rent` offer whose primary domain is under `real-estate`; changes only on an `update`, with
   `status` added when the relation names a new status; free text is clipped, and a phone, email, handle or messenger link
-  is removed with a `contacts` flag; the listing author keeps its kind only.
+  is removed with a `contacts` flag; the listing author keeps its kind only; the listing's unit and building facts sit in
+  `item` (an area above the total is dropped, a floor above the floors is flagged), and every closed list drops an
+  unknown value with a flag.
 - Outcomes: `done` stores the answer and clears the queue row; `failed` (refused, schema-invalid, provider errors, an
   answer of the wrong shape: a wrong JSON type or a missing field) and `unavailable` (no runner, use case or prompt; a
   provider without key) store the status, no answer, and retry after `RetryDelay` × attempts, capped at a day. A failure

@@ -131,6 +131,100 @@ public sealed class PostExtractionVerbTests
     }
 
     [Fact]
+    public async Task Prompt_allows_the_attributes_section_and_seller_variables_for_listing_only()
+    {
+        await using var host = Build(new Dictionary<string, string?>
+        {
+            [AiEnabledSetting] = "true",
+            ["DB_CONNECTION"] = await SourcePostgres.NewDatabaseAsync(),
+        });
+        await host.ConfigureAsync();
+        const string listingUser = "{{title}}\n{{section}}\n{{seller}}\n{{attributes}}\n{{text}}";
+
+        Version(await RunAsync(host.Services, ["prompt", "--use-case", "listing", "--file", "-"], Draft("extract-listing", listingUser))).Should().Be(1);
+        var attributes = await RunAsync(host.Services, ["prompt", "--use-case", "event", "--file", "-"], Draft("extract-event", "{{text}}\n{{attributes}}"));
+        var section = await RunAsync(host.Services, ["prompt", "--use-case", "event", "--file", "-"], Draft("extract-event", "{{text}}\n{{section}}"));
+        var seller = await RunAsync(host.Services, ["prompt", "--use-case", "event", "--file", "-"], Draft("extract-event", "{{text}}\n{{seller}}"));
+        var unknown = await RunAsync(host.Services, ["prompt", "--use-case", "listing", "--file", "-"], Draft("extract-listing", "{{text}}\n{{phone}}"));
+
+        foreach (var refused in new[] { attributes, section, seller })
+        {
+            refused.Exit.Should().Be(1);
+            refused.Error.Should().Contain("extract-event variables").And.NotContain("attributes");
+        }
+        unknown.Exit.Should().Be(1);
+        unknown.Error.Should().Contain("extract-listing variables").And.Contain("attributes, section, seller").And.NotContain(PrivateTemplate);
+    }
+
+    [Fact]
+    public async Task Prompt_replaces_an_older_code_schema_of_the_listing_use_case_in_place()
+    {
+        await using var host = Build(new Dictionary<string, string?>
+        {
+            [AiEnabledSetting] = "true",
+            ["DB_CONNECTION"] = await SourcePostgres.NewDatabaseAsync(),
+        });
+        await host.ConfigureAsync();
+        await using (var scope = host.Services.CreateAsyncScope())
+        {
+            var prompts = scope.ServiceProvider.GetRequiredService<IPromptsBroker>();
+            (await prompts.PutUseCaseAsync(new UseCaseModel
+            {
+                Key = "extract-listing", Description = "first version", PromptMode = PromptMode.Versioned, KeepOutputs = true,
+                OutputSchema = """{"type":"object","properties":{"title":{"type":"string"}},"required":["title"],"additionalProperties":false}""",
+                Route = ["anthropic/claude-haiku-5-5"],
+            })).ValueOrThrow();
+            (await prompts.PutUseCaseAsync(new UseCaseModel { Key = "extract-event", PromptMode = PromptMode.Rewrite })).ValueOrThrow();
+        }
+
+        Version(await RunAsync(host.Services, ["prompt", "--use-case", "listing", "--file", "-"], Draft("extract-listing"))).Should().Be(1);
+        var rewrite = await RunAsync(host.Services, ["prompt", "--use-case", "event", "--file", "-"], Draft("extract-event"));
+
+        await using var check = host.Services.CreateAsyncScope();
+        var stored = (await check.ServiceProvider.GetRequiredService<IPromptsBroker>().GetUseCaseAsync("extract-listing")).ValueOrThrow();
+        using var actual = JsonDocument.Parse(stored.OutputSchema!);
+        using var expected = JsonDocument.Parse(PostExtractionDefinitions.ListingSchema);
+        JsonElement.DeepEquals(actual.RootElement, expected.RootElement).Should().BeTrue("the code owns the schema, so the use case follows it");
+        stored.Route.Should().Equal("anthropic/claude-haiku-5-5");
+        stored.KeepOutputs.Should().BeTrue();
+        rewrite.Exit.Should().Be(1, "a use case with another prompt mode is not the code's to replace");
+        rewrite.Error.Should().Contain("extract-event");
+    }
+
+    [Fact]
+    public async Task Prompt_refuses_a_listing_use_case_stored_without_kept_outputs_and_leaves_it_as_it_is()
+    {
+        await using var host = Build(new Dictionary<string, string?>
+        {
+            [AiEnabledSetting] = "true",
+            ["DB_CONNECTION"] = await SourcePostgres.NewDatabaseAsync(),
+        });
+        await host.ConfigureAsync();
+        const string olderSchema = """{"type":"object","properties":{"title":{"type":"string"}},"required":["title"],"additionalProperties":false}""";
+        await using (var scope = host.Services.CreateAsyncScope())
+        {
+            (await scope.ServiceProvider.GetRequiredService<IPromptsBroker>().PutUseCaseAsync(new UseCaseModel
+            {
+                Key = "extract-listing", Description = "outputs are not kept", PromptMode = PromptMode.Versioned, KeepOutputs = false,
+                OutputSchema = olderSchema, Route = ["anthropic/claude-haiku-5-5"],
+            })).ValueOrThrow();
+        }
+
+        var refused = await RunAsync(host.Services, ["prompt", "--use-case", "listing", "--file", "-"], Draft("extract-listing"));
+
+        refused.Exit.Should().Be(1, "a use case that drops its outputs is not the code's to replace");
+        refused.Error.Should().Contain("extract-listing").And.NotContain(PrivateTemplate);
+        await using var check = host.Services.CreateAsyncScope();
+        var prompts = check.ServiceProvider.GetRequiredService<IPromptsBroker>();
+        var stored = (await prompts.GetUseCaseAsync("extract-listing")).ValueOrThrow();
+        stored.KeepOutputs.Should().BeFalse();
+        using var actual = JsonDocument.Parse(stored.OutputSchema!);
+        using var expected = JsonDocument.Parse(olderSchema);
+        JsonElement.DeepEquals(actual.RootElement, expected.RootElement).Should().BeTrue("the refused verb left the stored schema alone");
+        (await prompts.ListPromptsAsync("extract-listing")).ValueOrThrow().Should().BeEmpty("no prompt version was saved");
+    }
+
+    [Fact]
     public async Task Run_backfill_and_report_drive_extraction_with_a_scripted_model()
     {
         var caller = new ScriptedAiModelCaller();

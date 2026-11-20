@@ -11,7 +11,7 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
 
 /// <summary>Represents a post as the pass reads it: the post, the strictest model-processing mode of the sources supplying
 /// its title and text, and the section hint for <c>sourceCategory</c>.</summary>
-internal sealed record PostTagsSubject(PostModel Post, bool Current, ModelProcessingMode Mode, string? Section)
+internal sealed record PostTagsSubject(PostModel Post, bool Current, ModelProcessingMode Mode, string? Section, string? SectionUrl = null, Guid? SourceId = null)
 {
     /// <summary>Gets whether work nobody named may send the post to a model: every source is <c>auto</c>.</summary>
     internal bool Automatic => Mode == ModelProcessingMode.Auto;
@@ -80,12 +80,13 @@ internal static class PostTagsStore
         Guid containerId;
         bool current;
         ModelProcessingMode mode;
-        string? section;
+        string? section, sectionUrl;
+        Guid? sourceId;
         await using (var command = PostSql.Command(connection, null, $"""
-                         SELECT p.container_id,p.merged_into IS NULL AND p.purged_at IS NULL,{ModeSql},section.name
+                         SELECT p.container_id,p.merged_into IS NULL AND p.purged_at IS NULL,{ModeSql},section.name,section.url,section.source_id
                          FROM harvest_posts p
                          LEFT JOIN LATERAL (
-                             SELECT pl.name FROM harvest_post_links l
+                             SELECT pl.name,pl.scope->>'url' AS url,l.source_id FROM harvest_post_links l
                              JOIN harvest_captures c ON c.container_id=l.container_id AND c.id=l.latest_capture_id AND c.captured_at=l.latest_captured_at
                              JOIN harvest_runs r ON r.id=c.run_id
                              JOIN harvest_pipelines pl ON pl.id=r.pipeline_id
@@ -102,9 +103,11 @@ internal static class PostTagsStore
             current = reader.GetBoolean(1);
             mode = ParseMode(reader.GetString(2));
             section = reader.IsDBNull(3) ? null : reader.GetString(3);
+            sectionUrl = reader.IsDBNull(4) ? null : reader.GetString(4);
+            sourceId = reader.IsDBNull(5) ? null : reader.GetGuid(5);
         }
         var post = await ModulePostBroker.ReadPostAsync(connection, null, containerId, postId, ct);
-        return post is null ? null : new PostTagsSubject(post, current, mode, section);
+        return post is null ? null : new PostTagsSubject(post, current, mode, section, sectionUrl, sourceId);
     }
 
     /// <summary>Reads the base of a post's revision from a delivered snapshot, for an eval subject that names a revision

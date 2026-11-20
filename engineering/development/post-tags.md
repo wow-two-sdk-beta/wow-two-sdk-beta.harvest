@@ -33,6 +33,7 @@ Prompt text lives in the shared AI database; keep drafts outside the repository.
 - Variables: `{{title}}`, `{{text}}`, `{{sourceCategory}}`, `{{language}}`, `{{dates}}`, `{{place}}`, `{{postedAt}}`
   and `{{taxonomy}}`; any other placeholder is refused. `{{taxonomy}}` belongs in `systemTemplate`, so the provider's
   prompt cache holds it; `{{text}}` in `userTemplate`.
+- `{{title}}` and `{{text}}` are phone-scrubbed (§ Phone scrub); the text is cut after the scrub.
 - `postedAt` is the publication date as `yyyy-MM-dd`; with no publisher date it reads `unknown; first seen yyyy-MM-dd`,
   the post's first capture, since the post was out by then, else `unknown`. The prompt judges `timeframe` against it.
 - The answer schema is code-owned (`PostTagsDefinition.OutputSchema`): `entityType` (`event` · `listing` · `none` ·
@@ -46,6 +47,26 @@ dotnet HarvestSources.Api.dll post-tags prompt --file /private/path/post-tags-dr
 
 The verb creates the versioned use case with the code schema and `KeepOutputs=true`, then saves an immutable version,
 printing only use case, version, content hash and ID. It refuses an existing incompatible use case.
+
+## Phone scrub
+
+Before any prompt is built, `PhoneScrub` replaces a phone number in the title and text with `[phone]`: for `post-tags`,
+`extract-event` and `extract-listing` alike (`PostTagsContent.Title` / `.Text`, shared with the extraction content), and in
+an OLX ad's `{{attributes}}` lines. The extraction evidence check reads the same scrubbed text, so a quote can never hold
+a number the prompt did not.
+
+- It takes a number with a `+` and 7 to 15 digits; a run of 9 to 12 digits with at most two separators (space, dot,
+  hyphen, brackets) between digits, when it starts like a Russian `7`/`8` number or `998`; and any such run with a cue word
+  (`тел`, `tel`, `phone`, `call`, `whatsapp`, `звон`, `связ`, `номер`, `контакт`) up to 24 characters before it.
+- A bare Uzbek mobile goes with no cue word: a 9-digit number whose first two digits are an operator code (20, 33, 50, 55,
+  61, 62, 65, 66, 67, 69, 70 to 79, 88, 90, 91, 93, 94, 95, 97, 98, 99), plain or grouped (`901234567`, `90 123 45 67`,
+  `(90) 123-45-67`, `901 234 567`, `90.123.45.67`), unless a currency or unit follows within 3 characters (`сум`, `so'm`,
+  `sum`, `uzs`, `у.е.`, `$`, `usd`, `м2`, `m²`, `кв`).
+- It keeps prices (`1 500 000`, `500000000`, `650 000 000 сум`, `150,000,000`), years, ranges, areas, floors (`3/9`), room
+  counts (`2+1`), dates and times, and a lone number that follows a phone (`90 123 45 67 2 комнаты` keeps its `2`).
+- It covers phones only: not emails, handles or messenger links (the stored answers clip those, `extraction.md`
+  § Evidence). A 9-digit number outside the operator list, and one in a round-price shape (`650 000 000` with no unit),
+  stays unless a cue word precedes it.
 
 ## Verbs
 

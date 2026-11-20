@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using AwesomeAssertions;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Entities;
 
@@ -82,14 +83,40 @@ public sealed class ListingIdentityTests
     }
 
     [Fact]
-    public void Score_ShouldKeepACommonVehicleWeak_UnlessTheSameAuthorOffersIt()
+    public void Score_ShouldKeepAThinListingWeak_UnlessTheSameAuthorOffersIt()
     {
-        var car = new ListingFacts { OfferType = "sale", City = "Tashkent", Brand = "Chevrolet", Model = "Cobalt", Year = 2021,
-            Prices = [new ListingPrice(11_500m, "USD", null)] };
-        var ad = car with { Prices = [new ListingPrice(11_000m, "USD", null)] };
+        var thin = new ListingFacts { OfferType = "sale", City = "Tashkent", Rooms = 2, Building = "Sample Residence", YearBuilt = 2021,
+            Prices = [new ListingPrice(60_000m, "USD", null)] };
+        var ad = thin with { Prices = [new ListingPrice(58_000m, "USD", null)] };
 
-        ListingIdentity.Score(ad, car, false, Defaults).Should().BeLessThan(Defaults.MinMatchConfidence, "many such cars are for sale");
-        ListingIdentity.Score(ad, car, true, Defaults).Should().BeGreaterThanOrEqualTo(Defaults.MinMatchConfidence);
-        ListingIdentity.Score(car with { Year = 2019 }, car, true, Defaults).Should().Be(0);
+        ListingIdentity.Score(ad, thin, false, Defaults).Should().BeLessThan(Defaults.MinMatchConfidence, "many such flats are for sale");
+        ListingIdentity.Score(ad, thin, true, Defaults).Should().BeGreaterThanOrEqualTo(Defaults.MinMatchConfidence);
+    }
+
+    [Fact]
+    public void Score_ShouldRuleOut_ADifferentYearBuiltOrBuilding()
+    {
+        var known = Flat with { Building = "Sample Residence", YearBuilt = 2021 };
+
+        ListingIdentity.Score(known with { YearBuilt = 2019 }, known, true, Defaults).Should().Be(0);
+        ListingIdentity.Score(known with { Building = "Other Residence" }, known, true, Defaults).Should().Be(0);
+        ListingIdentity.Score(known with { YearBuilt = null, Building = null }, known, true, Defaults).Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public void ListingFactsOf_ShouldReadTheItemPathsTheAnswerWrites_AndNoBrandOrModel()
+    {
+        var facts = (JsonObject)JsonNode.Parse("""
+            {"offerType":"rent","categoryPath":["Недвижимость"],"location":{"city":"Tashkent","district":"Yunusobod"},
+             "item":{"rooms":2,"areaM2":64.5,"floor":5,"floors":9,"building":"Sample Residence","yearBuilt":2021,"brand":"X","model":"Y","year":1999},
+             "priceSpread":[{"currency":"USD","period":"month","min":500,"max":550}]}
+            """)!;
+
+        var read = EntityResolver.ListingFactsOf(facts);
+
+        (read.OfferType, read.City, read.District, read.Rooms, read.AreaM2, read.Floor, read.Floors, read.Building, read.YearBuilt)
+            .Should().Be(("rent", "Tashkent", "Yunusobod", 2, 64.5m, 5, 9, "Sample Residence", 2021));
+        read.CategoryPath.Should().Equal("Недвижимость");
+        read.Prices.Select(price => (price.Amount, price.Currency, price.Period)).Should().Equal((500m, "USD", "month"), (550m, "USD", "month"));
     }
 }

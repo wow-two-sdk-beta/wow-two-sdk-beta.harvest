@@ -90,15 +90,103 @@ public sealed class AnswerNormalizerTests
         {
             answer["relation"] = new JsonObject { ["role"] = "update", ["changes"] = new JsonArray("dates"), ["status"] = "closed" };
         }))!;
-        var listing = PostExtractionDefinitions.Parse<ExtractListingAnswer>(ListingJson(answer =>
-            answer["price"] = new JsonObject { ["amount"] = 500, ["currency"] = "USD", ["period"] = "fortnight", ["evidence"] = "500 USD" }))!;
+        var listing = PostExtractionDefinitions.Parse<ExtractListingAnswer>(ListingJson(answer => answer["invalid"] = "spam"))!;
         var required = EventJson(answer => answer["occurrences"]![0]!["precision"] = "date");
 
         cleared.Relation.Status.Should().BeNull();
         cleared.Flags.Should().ContainSingle().Which.Should().Be(new PostTagsFlag("relation.status", AnswerNormalizer.OutsideList, "closed"));
-        listing.Price!.Period.Should().BeNull();
-        listing.Flags.Should().ContainSingle().Which.Field.Should().Be("price.period");
+        listing.Invalid.Should().BeNull("a nullable pick with no unsure clears");
+        listing.Flags.Should().ContainSingle().Which.Should().Be(new PostTagsFlag("invalid", AnswerNormalizer.OutsideList, "spam"));
         PostExtractionDefinitions.Parse<ExtractEventAnswer>(required).Should().BeNull();
+    }
+
+    [Fact]
+    public void Parse_ShouldRepairOutOfListVersionTwoValues_ToUnsureWithAFlagEach()
+    {
+        var parsed = PostExtractionDefinitions.Parse<ExtractListingAnswer>(ListingJson(answer =>
+        {
+            answer["propertyKind"] = "villa";
+            answer["offerType"] = "lease";
+            answer["furnished"] = "somewhat";
+            answer["price"] = JsonNode.Parse("""{"amount":500,"currency":"eur","period":"fortnight","negotiable":false,"evidence":"500 EUR"}""");
+            var item = answer["item"]!;
+            item["layout"] = "loft";
+            item["renovation"] = "Euro Renovation";
+            item["bathrooms"]!["type"] = "outdoor";
+            answer["author"]!["kind"] = "broker";
+            answer["landmarks"] = JsonNode.Parse("""[{"type":"bus stop","name":"Minor","evidence":"Minor yonida"}]""");
+        }))!;
+
+        parsed.PropertyKind.Should().Be(ListingKind.Unsure);
+        parsed.OfferType.Should().Be(ListingOfferType.Unsure);
+        parsed.Furnished.Should().Be(ListingFurnished.Unsure);
+        parsed.Price!.Currency.Should().Be(ListingCurrency.Unsure);
+        parsed.Price.Period.Should().Be(ListingAskPeriod.Unsure);
+        parsed.Item.Layout.Should().Be(ListingRoomLayout.Unsure);
+        parsed.Item.Renovation.Should().Be(ListingRenovationLevel.Unsure);
+        parsed.Item.Bathrooms.Type.Should().Be(ListingBathroomType.Unsure);
+        parsed.Author.Kind.Should().Be(ListingAuthorKind.Unsure);
+        parsed.Landmarks.Single().Type.Should().Be(ListingLandmarkType.Unsure);
+        parsed.Flags.Should().BeEquivalentTo(
+        [
+            new PostTagsFlag("propertyKind", AnswerNormalizer.OutsideList, "villa"),
+            new PostTagsFlag("offerType", AnswerNormalizer.OutsideList, "lease"),
+            new PostTagsFlag("furnished", AnswerNormalizer.OutsideList, "somewhat"),
+            new PostTagsFlag("price.currency", AnswerNormalizer.OutsideList, "eur"),
+            new PostTagsFlag("price.period", AnswerNormalizer.OutsideList, "fortnight"),
+            new PostTagsFlag("item.layout", AnswerNormalizer.OutsideList, "loft"),
+            new PostTagsFlag("item.renovation", AnswerNormalizer.OutsideList, "Euro Renovation"),
+            new PostTagsFlag("item.bathrooms.type", AnswerNormalizer.OutsideList, "outdoor"),
+            new PostTagsFlag("author.kind", AnswerNormalizer.OutsideList, "broker"),
+            new PostTagsFlag("landmarks[0].type", AnswerNormalizer.OutsideList, "bus stop"),
+        ]);
+        var validated = PostExtractionValidation.ValidateListing(parsed, Corpus(), Rental);
+        validated.Flags.Count(flag => flag.Field is "offerType" or "propertyKind" or "furnished").Should().Be(3);
+        validated.Flags.Count(flag => flag.Field == "offerType").Should().Be(1, "the normalizer's flag stands for the unsure pick");
+    }
+
+    [Fact]
+    public void Parse_ShouldRepairVersionTwoLists_DropAnOutOfListItemAndMapVariantsSilently()
+    {
+        var parsed = PostExtractionDefinitions.Parse<ExtractListingAnswer>(ListingJson(answer =>
+        {
+            answer["apartmentAmenities"] = new JsonArray("balcony", "wifi", "Air Conditioner", "WASHING_MACHINE", "balcony");
+            answer["nearbyAmenities"] = new JsonArray("Metro", "zoo");
+            answer["acceptedTenants"] = new JsonArray("Family", "pets", "Students");
+            answer["excludedTenants"] = new JsonArray("animals", "smoking", "animals");
+        }))!;
+
+        parsed.ApartmentAmenities.Should().Equal(ListingApartmentAmenity.Balcony, ListingApartmentAmenity.AirConditioner, ListingApartmentAmenity.WashingMachine);
+        parsed.NearbyAmenities.Should().Equal(ListingNearbyAmenity.Metro);
+        parsed.AcceptedTenants.Should().Equal(ListingTenant.Family, ListingTenant.Students);
+        parsed.ExcludedTenants.Should().Equal(ListingTenant.Animals, ListingTenant.Smoking);
+        parsed.Flags.Should().BeEquivalentTo(
+        [
+            new PostTagsFlag("apartmentAmenities[1]", AnswerNormalizer.OutsideList, "wifi"),
+            new PostTagsFlag("nearbyAmenities[1]", AnswerNormalizer.OutsideList, "zoo"),
+            new PostTagsFlag("acceptedTenants[1]", AnswerNormalizer.OutsideList, "pets"),
+        ]);
+    }
+
+    [Fact]
+    public void Parse_ShouldRepairVersionTwoClaimValues_InsideRentalTerms()
+    {
+        var parsed = PostExtractionDefinitions.Parse<ExtractListingAnswer>(ListingJson(answer =>
+        {
+            var terms = answer["rentalTerms"]!;
+            terms["deposit"] = JsonNode.Parse("""{"status":"present","claims":[{"evidence":"Depozit 500 USD","value":{"amount":500,"currency":"US Dollar","rentMultiple":null}}]}""");
+            terms["minimumStay"] = JsonNode.Parse("""{"status":"present","claims":[{"evidence":"3 oy","value":{"count":3,"unit":"months"}}]}""");
+            terms["utilities"] = JsonNode.Parse("""{"status":"present","claims":[{"evidence":"kommunal","value":{"billing":"mixed"}}]}""");
+            terms["commission"] = JsonNode.Parse("""{"status":"present","claims":[{"evidence":"komissiya 50%","value":{"amount":null,"currency":null,"percent":50,"rentMultiple":null}}]}""");
+        }))!;
+
+        var terms = parsed.RentalTerms!;
+        terms.Deposit.Claims.Single().Value!.Currency.Should().Be(ListingCurrency.Unsure);
+        terms.MinimumStay.Claims.Single().Value!.Unit.Should().Be(ListingDurationUnit.Unsure);
+        terms.Utilities.Claims.Single().Value!.Billing.Should().Be(ListingUtilitiesBilling.Unsure);
+        terms.Commission.Claims.Single().Value!.Percent.Should().Be(50m);
+        parsed.Flags.Select(flag => flag.Field).Should().BeEquivalentTo("rentalTerms.deposit.claims[0].value.currency",
+            "rentalTerms.minimumStay.claims[0].value.unit", "rentalTerms.utilities.claims[0].value.billing");
     }
 
     [Theory]
@@ -280,13 +368,17 @@ public sealed class AnswerNormalizerTests
     private static string ListingJson(Action<JsonObject> change)
     {
         var answer = JsonNode.Parse("""
-            {"title":"2-room flat","offerType":"rent","categoryPath":["Real estate","Rent"],"price":null,
-             "location":{"district":"Chilanzar","city":"Tashkent","address":null},
-             "item":{"rooms":2,"areaM2":54,"floor":3,"floors":9,"building":null,"brand":null,"model":null,"year":null},
-             "author":{"kind":"owner"},"relation":{"role":"announcement","changes":[],"status":null},
-             "rentalTerms":{"deposit":{"status":"unknown","claims":[]},"minimumStay":{"status":"unknown","claims":[]},
-                            "advanceRent":{"status":"unknown","claims":[]},"utilities":{"status":"unknown","claims":[]}},
-             "flags":[]}
+            {"title":"2-room flat","categoryPath":["Real estate","Rent"],"propertyKind":"apartment","invalid":null,"offerType":"rent","price":null,
+             "item":{"propertyType":null,"buildingType":null,"yearBuilt":null,"rooms":2,"layout":null,
+                     "areaM2":{"total":54,"living":null,"kitchen":null},"floor":3,"floors":9,"ceilingM":null,
+                     "bathrooms":{"count":null,"type":null},"renovation":null,"building":null},
+             "furnished":"unknown","apartmentAmenities":[],"nearbyAmenities":[],
+             "location":{"district":"Chilanzar","city":"Tashkent","address":null},"landmarks":[],
+             "author":{"kind":"owner"},"noAgents":false,"relation":{"role":"announcement","changes":[],"status":null},
+             "rentalTerms":{"deposit":{"status":"unknown","claims":[]},"advanceRent":{"status":"unknown","claims":[]},
+                            "utilities":{"status":"unknown","claims":[]},"minimumStay":{"status":"unknown","claims":[]},
+                            "commission":{"status":"unknown","claims":[]}},
+             "acceptedTenants":[],"excludedTenants":[],"urgent":false,"flags":[]}
             """)!.AsObject();
         change(answer);
         return answer.ToJsonString();
