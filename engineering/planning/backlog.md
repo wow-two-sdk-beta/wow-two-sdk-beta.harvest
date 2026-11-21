@@ -98,11 +98,14 @@ ChatGPT builds these in the pull order of wow-two-ws `system/sessions/events-int
 | Render companion | engineering | core companion package on Playwright; iticket waits on it |
 | ICS recurrence expansion and oEmbed | feature | recurrence masters and OpenGraph metadata work; expansion and secondary fetches remain separate |
 | Broader date and language rules | feature | current text dates cover ISO and DD.MM.YYYY; unresolved text stays unresolved |
+| Hunarmand bot check | decision | 2026-11-21: hunarmandlar.uz (`hunarmand/association-calls`) and craftfair.uz answer a captcha or a JavaScript interstitial on dev, so both hosts pause; never bypassed. A dedicated outgoing server per source is allowed, rotating proxies are not |
+| Zero-post sitemap seeds | feature | 2026-11-21: texworld-apparel.uz, emkp.org and visituzbek.uz hold 0 posts after their sitemap runs at `MaxPages` 5; seed an events page or let the site reader follow event paths first |
 
 ## Engine
 
 | Item | Type | Notes |
 |---|---|---|
+| Requeue an item whose step has no broker | engineering | 2026-11-21: an older release deployed after a newer one ran for about 3 minutes and failed 6 Telegram page items with "No broker is registered for the frozen step" (`HarvestEngine.cs:142-143`); requeue it for a minute instead, and fail it only past the run's time limit |
 | Entity-type architecture | feature | a basic collector (sources, pipelines, posts) with entity-type modules on top, each with its own logic: events link recurring editions, marketplace dedups and researches prices, news gets its own components; other source wrappers may feed it too (developer, 2026-11-18: "we need entity type based architecture and we'll break it down as such later"). Deadline 2026-11-30, wow-two-ws `pln-tasks.md` `app-t-010`. Build plan in wow-two-ws `ideas/scfd-entity-model.md`: step A shipped in v0.2 iteration 10 — the Layer 1 `post-tags` pass, the IAB 3.1 taxonomy, tags written back as revisions, unsure flags and the `harvest:post:` eval subject (`development/post-tags.md`); step B shipped in iteration 11 — Layer 2 `extract-event` and `extract-listing`, gated by
 wanted (entity type, domain) pairs until the selector supplies demand, evidence-checked into `harvest_post_extractions`
 (`development/extraction.md`); step C shipped in iteration 12 — the entity layer: events with occurrences, cadence and a
