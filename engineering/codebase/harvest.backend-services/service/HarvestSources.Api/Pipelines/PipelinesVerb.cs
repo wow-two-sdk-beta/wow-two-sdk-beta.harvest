@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Engine;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
 using WoW.Two.Sdk.Beta.Be.Harvest.Runs;
@@ -13,22 +14,28 @@ namespace HarvestSources.Api.Pipelines;
 
 /// <summary>Answers <c>pipelines</c>: sets a host's reading pace, queues one pipeline run, sets one schedule's interval and
 /// reads a pipeline's state from the deployed host, so a platform job does each with no operator token — the verb forms of
-/// <c>PUT api/sources/{id}/reading</c>, <c>POST api/runs</c>, <c>PUT api/pipelines/{id}</c> and <c>GET api/pipelines/{id}</c>.</summary>
+/// <c>PUT api/sources/{id}/reading</c>, <c>POST api/runs</c>, <c>PUT api/pipelines/{id}</c>, <c>PUT api/pipelines/{id}/stages</c>
+/// and <c>GET api/pipelines/{id}</c>.</summary>
 /// <remarks>
-///   - <c>pipelines run --pipeline &lt;id&gt; [--kind capture|check|refresh]</c> queues one run (capture by default) and is
-///     refused while the pipeline has a queued or running run of that kind; the last stdout line is
-///     <c>{"pipelineId","runId","kind","status"}</c>
+///   - <c>pipelines run --pipeline &lt;id&gt; [--kind capture|check|refresh|discover|harvest]</c> queues one run (capture by
+///     default) and is refused while the pipeline has a queued or running run of that kind; the last stdout line is
+///     <c>{"pipelineId","runId","kind","status"}</c>; <c>discover</c> and <c>harvest</c> are the pair that walks a whole
+///     catalog, where a <c>capture</c> run restarts at page 1; <c>sweep</c> is a usage error
 ///   - <c>pipelines pace --source &lt;id|family/handle&gt; --ms &lt;1000-60000&gt; [--tenant &lt;slug&gt;]</c> sets the least gap
 ///     between two requests to the source's host, which every source on that host shares; a source is named as
 ///     <c>sources processing</c> names it, and the last line is <c>{"sourceId","host","minDelayMs"}</c>
-///   - <c>pipelines schedule --pipeline &lt;id&gt; --kind capture|check|refresh --every &lt;duration&gt; [--off]</c> makes the
-///     schedule of that kind an interval schedule (<c>15m</c>, <c>1h</c>, <c>2h30m</c> or <c>01:00:00</c>, at least five
-///     minutes), disabled with <c>--off</c>; every other schedule, the name, the scope and the limits stay as stored, and a
-///     pipeline with no schedule of that kind gets one; the last line is
+///   - <c>pipelines schedule --pipeline &lt;id&gt; --kind capture|check|refresh|discover|harvest --every &lt;duration&gt; [--off]</c>
+///     makes the schedule of that kind an interval schedule (<c>15m</c>, <c>1h</c>, <c>2h30m</c> or <c>01:00:00</c>, at least
+///     five minutes), disabled with <c>--off</c>; every other schedule, the name, the scope and the limits stay as stored, and
+///     a pipeline with no schedule of that kind gets one; the last line is
 ///     <c>{"pipelineId","schedules":[{"kind","mode","every","cron","enabled","nextDueAtUtc"}]}</c>
+///   - a <c>discover</c> or <c>harvest</c> row is a stage row: it is saved through <see cref="PipelineStages.SaveAsync"/>, as
+///     <c>PUT api/pipelines/{id}/stages</c> saves it, with the stage's stored settings (or the defaults a run would use);
+///     enabling one while the pipeline has an enabled capture schedule is refused and names the
+///     <c>pipelines schedule --kind capture --every &lt;d&gt; --off</c> that comes first
 ///   - <c>pipelines show --pipeline &lt;id&gt; [--runs &lt;n&gt;]</c> writes nothing; the last line carries the pipeline's name,
-///     state, limits and schedules and its newest <c>n</c> runs (5 by default, 0–20), with counters only: no post text and
-///     no URL
+///     state, limits and schedules (the discover and harvest stage rows among them) and its newest <c>n</c> runs (5 by
+///     default, 0–20), with counters only: no post text and no URL
 ///   - <c>--tenant</c> narrows <c>--source</c> to one tenant's containers; a <c>family/handle</c> that matches sources of
 ///     several tenants is refused
 ///   - exit codes: <c>0</c> done, <c>1</c> refused or not found, <c>2</c> usage
@@ -43,9 +50,9 @@ public static partial class PipelinesVerb
     private const int ActiveRunScan = 200;
 
     private const string Usage = """
-        Usage: pipelines run --pipeline <id> [--kind <capture|check|refresh>]
+        Usage: pipelines run --pipeline <id> [--kind <capture|check|refresh|discover|harvest>]
                pipelines pace --source <id|family/handle> --ms <1000-60000> [--tenant <slug>]
-               pipelines schedule --pipeline <id> --kind <capture|check|refresh> --every <15m|1h|2h30m|01:00:00> [--off]
+               pipelines schedule --pipeline <id> --kind <capture|check|refresh|discover|harvest> --every <15m|1h|2h30m|01:00:00> [--off]
                pipelines show --pipeline <id> [--runs <0-20>]
         """;
 
@@ -67,7 +74,8 @@ public static partial class PipelinesVerb
 
         await using var scope = services.CreateAsyncScope();
         if (scope.ServiceProvider.GetService<IRegistrationBroker>() is not { } registry
-            || scope.ServiceProvider.GetService<IRunBroker>() is not { } runs)
+            || scope.ServiceProvider.GetService<IRunBroker>() is not { } runs
+            || scope.ServiceProvider.GetService<PipelineStages>() is not { } stages)
         {
             await error.WriteLineAsync($"pipelines {request.Command} runs on the internal source host; HarvestSources:Audience is public.");
             return 1;
@@ -79,7 +87,7 @@ public static partial class PipelinesVerb
             {
                 "run" => await QueueAsync(runs, request, error, ct),
                 "pace" => await PaceAsync(registry, runs, request, error, ct),
-                "schedule" => await ScheduleAsync(registry, request, error, ct),
+                "schedule" => await ScheduleAsync(registry, stages, request, error, ct),
                 _ => await ShowAsync(registry, runs, request, ct),
             };
             await output.WriteLineAsync(JsonSerializer.Serialize(result));
@@ -114,7 +122,8 @@ public static partial class PipelinesVerb
         return new { sourceId = source.Source.Id, host = health.HostKey, minDelayMs = health.MinDelayMs };
     }
 
-    private static async Task<object> ScheduleAsync(IRegistrationBroker registry, Request request, TextWriter error, CancellationToken ct)
+    private static async Task<object> ScheduleAsync(IRegistrationBroker registry, PipelineStages stages, Request request, TextWriter error,
+        CancellationToken ct)
     {
         var pipelineId = request.Pipeline!.Value;
         var kind = request.Kind!.Value;
@@ -123,20 +132,51 @@ public static partial class PipelinesVerb
             throw new Refusal($"--every must be at least {PipelineConstants.MinInterval.TotalMinutes:0} minutes.");
 
         var pipeline = Value(await registry.GetPipelineAsync(pipelineId, ct));
+        var saved = kind is WorkKind.Discover or WorkKind.Harvest
+            ? await SaveStageAsync(registry, stages, pipeline, kind, every, request.Off, ct)
+            : await SaveScheduleAsync(registry, pipeline, kind, every, request.Off, ct);
+        await error.WriteLineAsync($"{Snake(kind)} of pipeline {pipelineId:D} runs every {Duration(every)}{(request.Off ? ", off" : "")}");
+        return new { pipelineId, schedules = saved.Schedules.OrderBy(schedule => schedule.Kind).Select(Describe).ToArray() };
+    }
+
+    /// <summary>Sets a capture, check or refresh row through the pipeline update, which carries every other row as stored.</summary>
+    private static async Task<PipelineModel> SaveScheduleAsync(IRegistrationBroker registry, PipelineModel pipeline, WorkKind kind,
+        TimeSpan every, bool off, CancellationToken ct)
+    {
         var schedules = pipeline.Schedules.Select(Declare).ToList();
         var index = schedules.FindIndex(schedule => schedule.Kind == kind);
         var changed = (index >= 0 ? schedules[index] : new ScheduleDeclaration { Kind = kind, Mode = ScheduleMode.Interval })
-            with { Mode = ScheduleMode.Interval, Every = every, MaxEvery = null, Cron = null, Enabled = !request.Off };
+            with { Mode = ScheduleMode.Interval, Every = every, MaxEvery = null, Cron = null, Enabled = !off };
         if (index >= 0)
             schedules[index] = changed;
         else
             schedules.Add(changed);
 
-        var saved = Value(await registry.UpdatePipelineAsync(pipelineId,
+        return Value(await registry.UpdatePipelineAsync(pipeline.Id,
             new PipelineUpdate { Name = pipeline.Name, Scope = pipeline.Scope, Schedules = schedules }, ct));
-        await error.WriteLineAsync($"{Snake(kind)} of pipeline {pipelineId:D} runs every {Duration(every)}{(request.Off ? ", off" : "")}");
-        return new { pipelineId, schedules = saved.Schedules.OrderBy(schedule => schedule.Kind).Select(Describe).ToArray() };
     }
+
+    /// <summary>Sets a discover or harvest stage row as <c>PUT api/pipelines/{id}/stages</c> does, so no other row is touched.</summary>
+    private static async Task<PipelineModel> SaveStageAsync(IRegistrationBroker registry, PipelineStages stages, PipelineModel pipeline,
+        WorkKind kind, TimeSpan every, bool off, CancellationToken ct)
+    {
+        if (!off && pipeline.Schedules.FirstOrDefault(schedule => schedule.Kind == WorkKind.Capture) is { Enabled: true, Mode: not ScheduleMode.Manual })
+            throw new Refusal($"Pipeline {pipeline.Id:D} has an enabled capture schedule, and a section runs either capture or the discover and "
+                + $"harvest stages; run `pipelines schedule --pipeline {pipeline.Id:D} --kind capture --every <d> --off` first.");
+
+        var source = Value(await registry.GetSourceAsync(pipeline.SourceId, ct));
+        var stored = pipeline.Schedules.FirstOrDefault(schedule => schedule.Kind == kind);
+        var stage = (stored is null ? new ScheduleDeclaration { Kind = kind, Mode = ScheduleMode.Interval } : Declare(stored))
+            with { Mode = ScheduleMode.Interval, Every = every, MaxEvery = null, Cron = null, Enabled = !off, Stage = stored?.Stage ?? DefaultStage(pipeline, kind) };
+        Value(await stages.SaveAsync(pipeline, source, stage, seedOnly: false, ct));
+        return Value(await registry.GetPipelineAsync(pipeline.Id, ct));
+    }
+
+    /// <summary>Gives a stage with no stored row the batch a run of it would use: the pipeline's page limit for discover, its item limit for harvest.</summary>
+    private static PipelineStageOptions DefaultStage(PipelineModel pipeline, WorkKind kind) => new()
+    {
+        BatchSize = kind == WorkKind.Harvest ? pipeline.Limits.MaxItems ?? 50 : pipeline.Limits.MaxPages ?? 10,
+    };
 
     private static async Task<object> ShowAsync(IRegistrationBroker registry, IRunBroker runs, Request request, CancellationToken ct)
     {
@@ -320,7 +360,7 @@ public static partial class PipelinesVerb
 
     private static bool TryParseKind(string value, out WorkKind kind)
     {
-        foreach (var candidate in new[] { WorkKind.Capture, WorkKind.Check, WorkKind.Refresh })
+        foreach (var candidate in new[] { WorkKind.Capture, WorkKind.Check, WorkKind.Refresh, WorkKind.Discover, WorkKind.Harvest })
         {
             if (string.Equals(Snake(candidate), value, StringComparison.OrdinalIgnoreCase))
             {

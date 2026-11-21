@@ -21,7 +21,8 @@ using WoW.Two.Sdk.Beta.Be.Meta;
 namespace HarvestSources.Tests.E2E;
 
 /// <summary>The <c>pipelines</c> host verb: it queues a run, sets a host's reading pace and one schedule's interval, and
-/// reads a pipeline, on the deployed host's own services with no operator token.</summary>
+/// reads a pipeline, on the deployed host's own services with no operator token; its discover and harvest kinds walk a
+/// whole catalog.</summary>
 public sealed class PipelinesVerbTests
 {
     [Fact]
@@ -83,6 +84,54 @@ public sealed class PipelinesVerbTests
         running.Error.Should().Contain("already has a capture run").And.Contain("running");
         finished.Exit.Should().Be(0, finished.Error);
         LastLine(finished.Output).GetProperty("runId").GetGuid().Should().NotBe(Guid.Parse(runId));
+    }
+
+    [Fact]
+    public async Task Run_discover_queues_a_discover_run_and_refuses_a_second_while_it_is_queued()
+    {
+        await using var host = await StartAsync();
+        var pipelineId = await PipelineAsync(host.Services);
+
+        var first = await Run(host.Services, "run", "--pipeline", pipelineId.ToString("D"), "--kind", "discover");
+        var second = await Run(host.Services, "run", "--pipeline", pipelineId.ToString("D"), "--kind", "Discover");
+        var other = await Run(host.Services, "run", "--pipeline", pipelineId.ToString("D"), "--kind", "capture");
+
+        first.Exit.Should().Be(0, first.Error);
+        var line = LastLine(first.Output);
+        line.GetProperty("pipelineId").GetGuid().Should().Be(pipelineId);
+        line.GetProperty("kind").GetString().Should().Be("discover");
+        line.GetProperty("status").GetString().Should().Be("queued");
+        second.Exit.Should().Be(1);
+        second.Error.Should().Contain("pipelines run:").And.Contain("already has a discover run").And.Contain("queued");
+        second.Output.Should().BeEmpty();
+        other.Exit.Should().Be(0, "another kind is not blocked by the queued discover run");
+        var stored = await RunsAsync(host.Services, pipelineId);
+        stored.Select(item => item.Kind).Should().BeEquivalentTo([WorkKind.Discover, WorkKind.Capture]);
+        stored.Single(item => item.Kind == WorkKind.Discover).Id.Should().Be(line.GetProperty("runId").GetGuid());
+    }
+
+    [Fact]
+    public async Task Run_harvest_starts_a_harvest_run_and_refuses_a_second_while_one_is_running()
+    {
+        await using var host = await StartAsync();
+        var pipelineId = await PipelineAsync(host.Services);
+
+        var first = await Run(host.Services, "run", "--pipeline", pipelineId.ToString("D"), "--kind", "harvest");
+        string runId = LastLine(first.Output).GetProperty("runId").GetGuid().ToString("D");
+        await SetStatusAsync(host.Services, runId, "running");
+        var second = await Run(host.Services, "run", "--pipeline", pipelineId.ToString("D"), "--kind", "harvest");
+        await SetStatusAsync(host.Services, runId, "completed");
+        var again = await Run(host.Services, "run", "--pipeline", pipelineId.ToString("D"), "--kind", "harvest");
+
+        first.Exit.Should().Be(0, first.Error);
+        LastLine(first.Output).GetProperty("kind").GetString().Should().Be("harvest");
+        var stored = (await RunsAsync(host.Services, pipelineId)).Should().Contain(item => item.Id.ToString("D") == runId).Subject;
+        stored.Kind.Should().Be(WorkKind.Harvest);
+        second.Exit.Should().Be(1);
+        second.Error.Should().Contain("pipelines run:").And.Contain("already has a harvest run").And.Contain("running");
+        second.Output.Should().BeEmpty();
+        again.Exit.Should().Be(0, "a finished harvest run does not block the next");
+        LastLine(again.Output).GetProperty("runId").GetGuid().Should().NotBe(Guid.Parse(runId));
     }
 
     [Fact]
@@ -231,6 +280,107 @@ public sealed class PipelinesVerbTests
         printed.GetProperty("enabled").GetBoolean().Should().BeFalse("the line reads the saved pipeline");
     }
 
+    [Fact]
+    public async Task Schedule_saves_the_discover_and_harvest_rows_and_keeps_every_other_row_the_name_the_scope_and_the_limits()
+    {
+        await using var host = await StartAsync();
+        var pipelineId = await PipelineAsync(host.Services);
+        await TuneAsync(host.Services, pipelineId);
+        var before = await ReadAsync(host.Services, pipelineId);
+
+        var discover = await Run(host.Services, "schedule", "--pipeline", pipelineId.ToString("D"), "--kind", "discover", "--every", "1h");
+        var harvest = await Run(host.Services, "schedule", "--pipeline", pipelineId.ToString("D"), "--kind", "harvest", "--every", "20m");
+
+        discover.Exit.Should().Be(0, discover.Error);
+        harvest.Exit.Should().Be(0, harvest.Error);
+        discover.Error.Should().Contain("discover of pipeline").And.Contain("runs every 1h");
+        var after = await ReadAsync(host.Services, pipelineId);
+        var saved = after.Schedules.Single(schedule => schedule.Kind == WorkKind.Discover);
+        (saved.Mode, saved.Every, saved.Cron, saved.Enabled).Should().Be((ScheduleMode.Interval, (TimeSpan?)TimeSpan.FromHours(1), (string?)null, true));
+        saved.Stage.Should().NotBeNull("a stage row carries its settings");
+        var tuned = after.Schedules.Single(schedule => schedule.Kind == WorkKind.Harvest);
+        (tuned.Mode, tuned.Every, tuned.Enabled).Should().Be((ScheduleMode.Interval, (TimeSpan?)TimeSpan.FromMinutes(20), true));
+        tuned.Stage!.BatchSize.Should().Be(17, "the stored stage settings stay");
+        after.Schedules.Where(schedule => schedule.Kind is not (WorkKind.Discover or WorkKind.Harvest)).Should()
+            .BeEquivalentTo(before.Schedules.Where(schedule => schedule.Kind is not (WorkKind.Discover or WorkKind.Harvest)),
+                "the other rows stay as stored");
+        after.Name.Should().Be(before.Name);
+        after.Scope.Should().BeEquivalentTo(before.Scope);
+        after.Limits.Should().BeEquivalentTo(before.Limits);
+        after.State.Should().Be(before.State);
+        var printed = LastLine(harvest.Output).GetProperty("schedules").EnumerateArray().ToDictionary(item => item.GetProperty("kind").GetString()!);
+        printed.Keys.Should().BeEquivalentTo(after.Schedules.Select(schedule => schedule.Kind.ToString().ToLowerInvariant()));
+        printed["discover"].GetProperty("every").GetString().Should().Be("1h");
+        printed["harvest"].GetProperty("every").GetString().Should().Be("20m");
+        printed["harvest"].GetProperty("enabled").GetBoolean().Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Schedule_off_disables_a_stage_row_and_leaves_the_other_stage_enabled()
+    {
+        await using var host = await StartAsync();
+        var pipelineId = await PipelineAsync(host.Services);
+        await Run(host.Services, "schedule", "--pipeline", pipelineId.ToString("D"), "--kind", "discover", "--every", "1h");
+        await Run(host.Services, "schedule", "--pipeline", pipelineId.ToString("D"), "--kind", "harvest", "--every", "30m");
+
+        var off = await Run(host.Services, "schedule", "--pipeline", pipelineId.ToString("D"), "--kind", "harvest", "--every", "45m", "--off");
+
+        off.Exit.Should().Be(0, off.Error);
+        off.Error.Should().Contain("harvest of pipeline").And.Contain("runs every 45m, off");
+        var after = await ReadAsync(host.Services, pipelineId);
+        var harvest = after.Schedules.Single(schedule => schedule.Kind == WorkKind.Harvest);
+        (harvest.Mode, harvest.Every, harvest.Enabled).Should().Be((ScheduleMode.Interval, (TimeSpan?)TimeSpan.FromMinutes(45), false));
+        after.Schedules.Single(schedule => schedule.Kind == WorkKind.Discover).Enabled.Should().BeTrue();
+        var printed = LastLine(off.Output).GetProperty("schedules").EnumerateArray().Single(item => item.GetProperty("kind").GetString() == "harvest");
+        printed.GetProperty("enabled").GetBoolean().Should().BeFalse("the line reads the saved pipeline");
+    }
+
+    [Theory]
+    [InlineData("discover")]
+    [InlineData("harvest")]
+    public async Task Schedule_of_a_stage_while_capture_is_enabled_is_refused_names_the_fix_and_saves_nothing(string kind)
+    {
+        await using var host = await StartAsync();
+        var pipelineId = await PipelineAsync(host.Services, "--schedules");
+        var before = await ReadAsync(host.Services, pipelineId);
+        before.Schedules.Single(schedule => schedule.Kind == WorkKind.Capture).Enabled.Should().BeTrue();
+
+        var run = await Run(host.Services, "schedule", "--pipeline", pipelineId.ToString("D"), "--kind", kind, "--every", "1h");
+
+        run.Exit.Should().Be(1);
+        run.Error.Should().Contain("pipelines schedule:")
+            .And.Contain($"pipelines schedule --pipeline {pipelineId:D} --kind capture --every <d> --off");
+        run.Output.Should().BeEmpty();
+        (await ReadAsync(host.Services, pipelineId)).Should().BeEquivalentTo(before);
+    }
+
+    [Fact]
+    public async Task A_catalog_walk_is_capture_off_then_discover_then_harvest_and_show_lists_the_three_rows()
+    {
+        await using var host = await StartAsync();
+        var pipelineId = await PipelineAsync(host.Services, "--schedules");
+        string id = pipelineId.ToString("D");
+
+        var capture = await Run(host.Services, "schedule", "--pipeline", id, "--kind", "capture", "--every", "6h", "--off");
+        var discover = await Run(host.Services, "schedule", "--pipeline", id, "--kind", "discover", "--every", "1h");
+        var harvest = await Run(host.Services, "schedule", "--pipeline", id, "--kind", "harvest", "--every", "30m");
+        var show = await Run(host.Services, "show", "--pipeline", id);
+
+        foreach (var step in new[] { capture, discover, harvest, show })
+            step.Exit.Should().Be(0, step.Error);
+        var rows = LastLine(show.Output).GetProperty("schedules").EnumerateArray().ToDictionary(item => item.GetProperty("kind").GetString()!);
+        rows["capture"].GetProperty("enabled").GetBoolean().Should().BeFalse();
+        foreach (var (kind, every) in new[] { ("discover", "1h"), ("harvest", "30m") })
+        {
+            rows[kind].GetProperty("mode").GetString().Should().Be("interval");
+            rows[kind].GetProperty("every").GetString().Should().Be(every);
+            rows[kind].GetProperty("enabled").GetBoolean().Should().BeTrue();
+            rows[kind].TryGetProperty("nextDueAtUtc", out _).Should().BeTrue("show lists the next due time of a stage row too");
+        }
+        var stored = await ReadAsync(host.Services, pipelineId);
+        stored.Schedules.Where(schedule => schedule.Kind is WorkKind.Discover or WorkKind.Harvest).Should().OnlyContain(schedule => schedule.Enabled);
+    }
+
     [Theory]
     [InlineData("4m")]
     [InlineData("0:04:59")]
@@ -356,7 +506,8 @@ public sealed class PipelinesVerbTests
     [InlineData("schedule --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --kind capture")]
     [InlineData("schedule --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --kind capture --every soon")]
     [InlineData("schedule --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --kind capture --every 1h --off --off")]
-    [InlineData("schedule --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --kind discover --every 1h")]
+    [InlineData("schedule --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --kind sweep --every 1h")]
+    [InlineData("schedule --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --kind process --every 1h")]
     [InlineData("show")]
     [InlineData("show --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --runs 21")]
     [InlineData("show --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --runs many")]

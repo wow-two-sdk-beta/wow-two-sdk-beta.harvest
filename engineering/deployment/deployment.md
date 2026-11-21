@@ -300,12 +300,28 @@ output's `searches[].pipelineId`.
 
 - `pipelines pace --source site/www.olx.uz --tenant haven --ms 15000` sets the least gap between two requests to the source's
   host, 1000–60000 ms. Every source on that host shares it, so the pace is the host's, not Haven's alone.
-- `pipelines run --pipeline <id> [--kind capture|check|refresh]` queues one run (capture by default) and is refused while a run
-  of that kind is queued or running.
-- `pipelines schedule --pipeline <id> --kind capture|check|refresh --every 2h [--off]` sets that kind's interval (`15m`, `1h`,
-  `2h30m` or `01:00:00`, at least 5 minutes), disabled with `--off`; the other schedules, the name, the scope and the limits stay.
-- `pipelines show --pipeline <id> [--runs <n>]` writes nothing; it reads the pipeline's name, state, limits and schedules and
-  its newest runs' counters, with no post text and no URL.
+- `pipelines run --pipeline <id> [--kind capture|check|refresh|discover|harvest]` queues one run (capture by default) and is
+  refused while a run of that kind is queued or running. `sweep` is a usage error.
+- `pipelines schedule --pipeline <id> --kind capture|check|refresh|discover|harvest --every 2h [--off]` sets that kind's interval
+  (`15m`, `1h`, `2h30m` or `01:00:00`, at least 5 minutes), disabled with `--off`; the other schedules, the name, the scope and
+  the limits stay. A `discover` or `harvest` row is a stage row, saved as `PUT api/pipelines/{id}/stages` saves it; enabling one
+  while the pipeline has an enabled capture schedule is refused with exit `1`, and the message names the command to run first
+  (`pipelines schedule --pipeline <id> --kind capture --every <d> --off`).
+- `pipelines show --pipeline <id> [--runs <n>]` writes nothing; it reads the pipeline's name, state, limits and schedules, the
+  discover and harvest stage rows among them, and its newest runs' counters, with no post text and no URL.
+
+A capture run restarts at catalog page 1 and re-reads the newest ads, so a source with a large catalog (Joymee on harvest-prod)
+is walked with the discover and harvest pair instead: discover lists the catalog's pages into the saved discoveries and resumes
+from its cursor, and harvest captures the pending ones in batches (§ Source stages). Capture off, discover every hour, harvest
+every half hour:
+
+```
+pipelines schedule --pipeline <id> --kind capture --every 6h --off
+pipelines schedule --pipeline <id> --kind discover --every 1h
+pipelines schedule --pipeline <id> --kind harvest --every 30m
+```
+
+`pipelines run --pipeline <id> --kind discover` and `--kind harvest` start either stage at once, before its first due time.
 
 `assets report [--sources <id,id>]` is the read-only form for a source's image copies: copies by state, outcome and bytes, and
 live posts by contact kind, as counts only (§ Private source media).
