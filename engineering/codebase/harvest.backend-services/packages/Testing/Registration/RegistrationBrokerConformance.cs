@@ -509,7 +509,9 @@ public abstract class RegistrationBrokerConformance
         harvest.Stage.Should().BeEquivalentTo(new PipelineStageOptions { BatchSize = 500, GapMs = 250, Parallel = 4 });
         declared.Schedules.Single(row => row.Kind == WorkKind.Discover).Stage
             .Should().BeEquivalentTo(new PipelineStageOptions { BatchSize = 1, Walk = DiscoveryWalk.New, GapMs = 100 });
-        Value(await Broker.GetPipelineAsync(declared.Id)).Schedules.Should().BeEquivalentTo(declared.Schedules);
+        // A live scheduler may queue the 15-second row between reads, so its next due time is not compared.
+        Value(await Broker.GetPipelineAsync(declared.Id)).Schedules
+            .Should().BeEquivalentTo(declared.Schedules, options => options.Excluding(schedule => schedule.NextDueAtUtc));
 
         var elsewhere = Pipeline(container, source) with { Scope = new() { Url = $"https://{source.Handle}/other" } };
         Error(await Broker.DeclarePipelineAsync(elsewhere with { Schedules = [Harvest(TimeSpan.FromSeconds(14))] })).Type
@@ -520,7 +522,8 @@ public abstract class RegistrationBrokerConformance
         {
             Scope = declared.Scope, Schedules = [Harvest(TimeSpan.FromSeconds(14))],
         })).Type.Should().Be(AppErrorType.Validation);
-        Value(await Broker.GetPipelineAsync(declared.Id)).Schedules.Should().BeEquivalentTo(declared.Schedules);
+        Value(await Broker.GetPipelineAsync(declared.Id)).Schedules
+            .Should().BeEquivalentTo(declared.Schedules, options => options.Excluding(schedule => schedule.NextDueAtUtc));
 
         var updated = Value(await Broker.UpdatePipelineAsync(declared.Id, new PipelineUpdate
         {
