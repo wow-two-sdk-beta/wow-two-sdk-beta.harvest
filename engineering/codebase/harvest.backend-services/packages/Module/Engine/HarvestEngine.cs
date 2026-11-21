@@ -118,19 +118,27 @@ public sealed class HarvestEngine(
         return queued;
     }
 
-    /// <summary>Executes one due item, or returns false when no host lane can currently work.</summary>
+    /// <summary>Executes one due item, or returns false when no host lane can currently work. It claims from the shared pool, then
+    /// from the parallel pool, and runs the claim here; the worker claims each pool itself and runs the claims as tasks.</summary>
     public async Task<bool> ProcessNextAsync(CancellationToken cancellationToken = default)
     {
-        WorkClaim? claim = await ClaimAsync(cancellationToken);
+        WorkClaim? claim = await ClaimAsync(ClaimPool.Shared, cancellationToken) ?? await ClaimAsync(ClaimPool.Parallel, cancellationToken);
         if (claim is null)
             return false;
+        await ExecuteAsync(claim, cancellationToken);
+        return true;
+    }
+
+    /// <summary>Runs one claim to its completion: the step, the extraction, the fenced result write and the auto-off check.</summary>
+    internal async Task ExecuteAsync(WorkClaim claim, CancellationToken cancellationToken)
+    {
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         lifetime.CancelAfter(options.Value.LeaseDuration - TimeSpan.FromSeconds(5));
         var trace = new StepTrace(database, claim.Item, claim.Owner, clock, logger, cancellationToken);
         if (claim.Frozen.Kind == WorkKind.Process)
         {
             await ProcessSavedCaptureAsync(claim, trace, lifetime.Token, cancellationToken);
-            return true;
+            return;
         }
         using HttpClient http = clients.CreateClient();
         var context = new EngineStepContext(claim.Plan, claim.Frozen.Source, http, challenges, clock,
@@ -207,7 +215,6 @@ public sealed class HarvestEngine(
         // and the next failed run checks again.
         if (failed)
             await autoOff.AfterFailedRunAsync(claim.Item.PipelineId, cancellationToken);
-        return true;
     }
 
     private async Task ProcessSavedCaptureAsync(WorkClaim claim, StepTrace trace, CancellationToken stepToken, CancellationToken ct)
@@ -260,9 +267,26 @@ public sealed class HarvestEngine(
         }
     }
 
-    private async Task<WorkClaim?> ClaimAsync(CancellationToken ct)
+    /// <summary>Claims one due item from a pool, or returns null when no lane of that pool can currently work.</summary>
+    /// <remarks>The shared pool holds the runs that fetch one item at a time, and keeps one running item per host lane across
+    /// them. The parallel pool holds the runs whose harvest stage sets <c>parallel</c> above 1, and lets such a run hold as many
+    /// running items as it states, on one host lane. Both pools skip locked rows and keep the host and lane pauses.</remarks>
+    internal async Task<WorkClaim?> ClaimAsync(ClaimPool pool, CancellationToken ct)
     {
         DateTimeOffset now = clock.GetUtcNow();
+        string poolRule = pool == ClaimPool.Shared
+            ? """
+              AND COALESCE((r.frozen->'stage'->>'parallel')::int,1)<=1
+              AND NOT EXISTS(SELECT 1 FROM harvest_work_item busy JOIN harvest_runs busy_run ON busy_run.id=busy.run_id
+                WHERE busy.host_key=w.host_key AND busy.lane=w.lane
+                AND busy.state='running' AND busy.lease_until>@now
+                AND COALESCE((busy_run.frozen->'stage'->>'parallel')::int,1)<=1)
+              """
+            : """
+              AND COALESCE((r.frozen->'stage'->>'parallel')::int,1)>1
+              AND (SELECT count(*) FROM harvest_work_item busy WHERE busy.run_id=w.run_id
+                AND busy.state='running' AND busy.lease_until>@now)<(r.frozen->'stage'->>'parallel')::int
+              """;
         await using NpgsqlConnection connection = await database.OpenConnectionAsync(ct);
         await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(ct);
         await using NpgsqlCommand command = EngineSql.Command(connection, transaction,
@@ -278,8 +302,7 @@ public sealed class HarvestEngine(
               AND NOT {CatalogGate.SourceOff}
               AND (h.paused_until IS NULL OR h.paused_until<=@now)
               AND (r.kind='process' OR COALESCE(GREATEST(hs.paused_until,hs.retry_after_until),@now)<=@now)
-              AND NOT EXISTS(SELECT 1 FROM harvest_work_item busy WHERE busy.host_key=w.host_key AND busy.lane=w.lane
-                AND busy.state='running' AND busy.lease_until>@now)
+              {poolRule}
             ORDER BY w.priority DESC,w.due_at,w.id LIMIT 1 FOR UPDATE OF r,w,h SKIP LOCKED
             """, ("now", now));
         WorkClaim? claim;
@@ -610,5 +633,15 @@ public sealed class HarvestEngine(
             or FetchOutcome.RateLimited or FetchOutcome.RobotsDisallowed or FetchOutcome.Restricted or FetchOutcome.LoginRequired;
     }
 
-    private sealed record WorkClaim(StepItem Item, FrozenRun Frozen, ResolvedPlan Plan, string Owner);
+    /// <summary>Names the pool a claim draws from.</summary>
+    internal enum ClaimPool
+    {
+        /// <summary>The runs that fetch one item at a time: one running item per host lane.</summary>
+        Shared,
+
+        /// <summary>The runs that set parallel fetches above one: each may hold that many running items.</summary>
+        Parallel,
+    }
+
+    internal sealed record WorkClaim(StepItem Item, FrozenRun Frozen, ResolvedPlan Plan, string Owner);
 }

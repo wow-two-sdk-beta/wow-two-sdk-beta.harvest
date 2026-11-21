@@ -12,7 +12,8 @@ public sealed record ScheduleDeclaration
     public required ScheduleMode Mode { get; init; }
 
     /// <summary>Gets the interval for <see cref="ScheduleMode.Interval"/>, or the shortest one for
-    /// <see cref="ScheduleMode.Adaptive"/>; at least <see cref="PipelineConstants.MinInterval"/>.</summary>
+    /// <see cref="ScheduleMode.Adaptive"/>; at least <see cref="PipelineConstants.MinIntervalFor"/> of the row's kind: 15 seconds
+    /// for harvest, 5 minutes for every other kind.</summary>
     public TimeSpan? Every { get; init; }
 
     /// <summary>Gets the longest interval for <see cref="ScheduleMode.Adaptive"/>.</summary>

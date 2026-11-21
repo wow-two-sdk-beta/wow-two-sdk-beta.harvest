@@ -172,14 +172,22 @@ internal static partial class RegistrationRules
             {
                 if (stage.CatalogUrl is not null)
                     return RegistrationErrors.Invalid("Discovery entry points come from the source catalog.");
-                if ((schedule.Kind is WorkKind.Harvest or WorkKind.Process)
-                    && stage.BatchSize is < 1 or > PipelineConstants.MaxItemsCap)
-                    return RegistrationErrors.Invalid($"The {schedule.Kind} batch size must be 1–{PipelineConstants.MaxItemsCap}.");
+                if (schedule.Kind == WorkKind.Harvest && stage.BatchSize is < 1 or > PipelineConstants.MaxHarvestBatch)
+                    return RegistrationErrors.Invalid($"The Harvest batch size must be 1–{PipelineConstants.MaxHarvestBatch}.");
+                if (schedule.Kind == WorkKind.Process && stage.BatchSize is < 1 or > PipelineConstants.MaxItemsCap)
+                    return RegistrationErrors.Invalid($"The Process batch size must be 1–{PipelineConstants.MaxItemsCap}.");
                 if (schedule.Kind is not (WorkKind.Discover or WorkKind.Harvest or WorkKind.Process)
                     || ((stage.TitleContains is not null || stage.PublishedSinceUtc is not null || stage.Model is not null || stage.Processor is not null
                         || stage.PromptVersion is not null)
-                        && schedule.Kind != WorkKind.Process))
+                        && schedule.Kind != WorkKind.Process)
+                    || (stage.Walk is not null && schedule.Kind != WorkKind.Discover)
+                    || (stage.Parallel is not null && schedule.Kind != WorkKind.Harvest)
+                    || (stage.GapMs is not null && schedule.Kind is not (WorkKind.Discover or WorkKind.Harvest)))
                     return RegistrationErrors.Invalid("These stage settings do not apply to this work kind.");
+                if (stage.GapMs is < 0 or > PipelineConstants.MaxGapMs)
+                    return RegistrationErrors.Invalid($"The request gap must be 0–{PipelineConstants.MaxGapMs} ms.");
+                if (stage.Parallel is < 1 or > PipelineConstants.MaxParallel)
+                    return RegistrationErrors.Invalid($"Parallel fetches must be 1–{PipelineConstants.MaxParallel}.");
                 if (stage.TitleContains is { Length: > 200 } || stage.Model is { Length: > 100 } || stage.Processor is { Length: > 100 })
                     return RegistrationErrors.Invalid("A stage setting is too long.");
                 if (stage.PromptVersion is <= 0)
@@ -328,15 +336,19 @@ internal static partial class RegistrationRules
 
     private static AppError? ValidateScheduleSpec(ScheduleDeclaration schedule) => schedule.Mode switch
     {
-        ScheduleMode.Interval when schedule.Every is not { } every || every < PipelineConstants.MinInterval =>
-            RegistrationErrors.Invalid($"An interval schedule runs every {PipelineConstants.MinInterval.TotalMinutes:0} minutes or more."),
+        ScheduleMode.Interval when schedule.Every is not { } every || every < PipelineConstants.MinIntervalFor(schedule.Kind) =>
+            RegistrationErrors.Invalid(schedule.Kind == WorkKind.Harvest
+                ? $"A harvest interval schedule runs every {PipelineConstants.MinHarvestInterval.TotalSeconds:0} seconds or more."
+                : $"An interval schedule runs every {PipelineConstants.MinInterval.TotalMinutes:0} minutes or more."),
         ScheduleMode.Interval when schedule.Cron is not null => RegistrationErrors.Invalid("An interval schedule takes no cron expression."),
         ScheduleMode.Cron when !IsCron(schedule.Cron) =>
             RegistrationErrors.Invalid("A cron schedule needs a five- or six-field cron expression."),
         ScheduleMode.Cron when schedule.Every is not null => RegistrationErrors.Invalid("A cron schedule takes no interval."),
-        ScheduleMode.Adaptive when schedule.Every is not { } min || min < PipelineConstants.MinInterval
+        ScheduleMode.Adaptive when schedule.Every is not { } min || min < PipelineConstants.MinIntervalFor(schedule.Kind)
                                    || schedule.MaxEvery is not { } max || max < min =>
-            RegistrationErrors.Invalid("An adaptive schedule needs a shortest interval of at least five minutes and a longest at or above it."),
+            RegistrationErrors.Invalid(schedule.Kind == WorkKind.Harvest
+                ? "An adaptive schedule needs a shortest interval of at least fifteen seconds and a longest at or above it."
+                : "An adaptive schedule needs a shortest interval of at least five minutes and a longest at or above it."),
         _ => null,
     };
 

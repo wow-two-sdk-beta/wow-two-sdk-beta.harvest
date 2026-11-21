@@ -400,6 +400,107 @@ public sealed class PipelinesVerbTests
     }
 
     [Fact]
+    public async Task Schedule_of_a_harvest_saves_the_interval_batch_gap_and_parallel_fetches_and_prints_them()
+    {
+        await using var host = await StartAsync();
+        var pipelineId = await PipelineAsync(host.Services);
+        string id = pipelineId.ToString("D");
+
+        var harvest = await Run(host.Services, "schedule", "--pipeline", id, "--kind", "harvest", "--every", "15s",
+            "--batch", "50", "--gap-ms", "250", "--parallel", "4");
+        var discover = await Run(host.Services, "schedule", "--pipeline", id, "--kind", "discover", "--every", "5m", "--walk", "full");
+
+        harvest.Exit.Should().Be(0, harvest.Error);
+        harvest.Error.Should().Contain("harvest of pipeline").And.Contain("runs every 15s").And.Contain("batch 50, gap 250 ms, parallel 4");
+        discover.Exit.Should().Be(0, discover.Error);
+        discover.Error.Should().Contain("runs every 5m").And.Contain("walk full, gap host pace");
+        var stored = (await ReadAsync(host.Services, pipelineId)).Schedules;
+        var saved = stored.Single(schedule => schedule.Kind == WorkKind.Harvest);
+        (saved.Every, saved.Enabled).Should().Be((TimeSpan.FromSeconds(15), true));
+        (saved.Stage!.BatchSize, saved.Stage.GapMs, saved.Stage.Parallel).Should().Be((50, 250, 4));
+        stored.Single(schedule => schedule.Kind == WorkKind.Discover).Stage!.Walk.Should().Be(DiscoveryWalk.Full);
+        var rows = LastLine(discover.Output).GetProperty("schedules").EnumerateArray().ToDictionary(item => item.GetProperty("kind").GetString()!);
+        var harvestStage = rows["harvest"].GetProperty("stage");
+        harvestStage.GetProperty("batch").GetInt32().Should().Be(50);
+        harvestStage.GetProperty("gapMs").GetInt32().Should().Be(250);
+        harvestStage.GetProperty("parallel").GetInt32().Should().Be(4);
+        harvestStage.GetProperty("walk").GetString().Should().Be("resume");
+        harvestStage.GetProperty("disabled").GetBoolean().Should().BeFalse();
+        rows["discover"].GetProperty("stage").GetProperty("walk").GetString().Should().Be("full");
+        rows["discover"].GetProperty("stage").GetProperty("gapMs").GetString().Should().Be("host");
+        rows["discover"].GetProperty("stage").GetProperty("parallel").GetInt32().Should().Be(1);
+        rows["discover"].GetProperty("every").GetString().Should().Be("5m");
+        var show = await Run(host.Services, "show", "--pipeline", id);
+        var shown = LastLine(show.Output).GetProperty("schedules").EnumerateArray().ToDictionary(item => item.GetProperty("kind").GetString()!);
+        shown["harvest"].GetProperty("stage").GetProperty("parallel").GetInt32().Should().Be(4);
+        shown["discover"].GetProperty("stage").GetProperty("walk").GetString().Should().Be("full");
+    }
+
+    [Fact]
+    public async Task Schedule_keeps_the_stored_settings_of_an_omitted_flag_and_gap_host_clears_the_gap()
+    {
+        await using var host = await StartAsync();
+        var pipelineId = await PipelineAsync(host.Services);
+        string id = pipelineId.ToString("D");
+        await Run(host.Services, "schedule", "--pipeline", id, "--kind", "harvest", "--every", "1m", "--batch", "30", "--gap-ms", "500", "--parallel", "3");
+
+        var later = await Run(host.Services, "schedule", "--pipeline", id, "--kind", "harvest", "--every", "2m");
+
+        later.Exit.Should().Be(0, later.Error);
+        var kept = (await ReadAsync(host.Services, pipelineId)).Schedules.Single(schedule => schedule.Kind == WorkKind.Harvest);
+        (kept.Every, kept.Stage!.BatchSize, kept.Stage.GapMs, kept.Stage.Parallel).Should().Be((TimeSpan.FromMinutes(2), 30, 500, 3));
+
+        var cleared = await Run(host.Services, "schedule", "--pipeline", id, "--kind", "harvest", "--every", "2m", "--gap-ms", "host");
+
+        cleared.Exit.Should().Be(0, cleared.Error);
+        cleared.Error.Should().Contain("gap host pace");
+        var after = (await ReadAsync(host.Services, pipelineId)).Schedules.Single(schedule => schedule.Kind == WorkKind.Harvest);
+        (after.Stage!.BatchSize, after.Stage.GapMs, after.Stage.Parallel).Should().Be((30, null, 3));
+        LastLine(cleared.Output).GetProperty("schedules").EnumerateArray().Single(item => item.GetProperty("kind").GetString() == "harvest")
+            .GetProperty("stage").GetProperty("gapMs").GetString().Should().Be("host");
+    }
+
+    [Theory]
+    [InlineData("harvest", "14s")]
+    [InlineData("harvest", "0:00:14")]
+    [InlineData("capture", "15s")]
+    [InlineData("discover", "15s")]
+    public async Task Schedule_under_its_floor_is_refused_and_a_harvest_floor_is_fifteen_seconds(string kind, string every)
+    {
+        await using var host = await StartAsync();
+        var pipelineId = await PipelineAsync(host.Services);
+        var before = await ReadAsync(host.Services, pipelineId);
+
+        var run = await Run(host.Services, "schedule", "--pipeline", pipelineId.ToString("D"), "--kind", kind, "--every", every);
+
+        run.Exit.Should().Be(1);
+        run.Error.Should().Contain("pipelines schedule:").And.Contain(kind == "harvest" ? "15 seconds" : "5 minutes");
+        run.Output.Should().BeEmpty();
+        (await ReadAsync(host.Services, pipelineId)).Should().BeEquivalentTo(before);
+    }
+
+    [Theory]
+    [InlineData("harvest", "--batch", "501")]
+    [InlineData("harvest", "--batch", "0")]
+    [InlineData("harvest", "--parallel", "17")]
+    [InlineData("harvest", "--parallel", "0")]
+    [InlineData("harvest", "--gap-ms", "60001")]
+    [InlineData("discover", "--gap-ms", "60001")]
+    public async Task Schedule_with_a_stage_value_out_of_range_is_refused_and_saves_nothing(string kind, string flag, string value)
+    {
+        await using var host = await StartAsync();
+        var pipelineId = await PipelineAsync(host.Services);
+        var before = await ReadAsync(host.Services, pipelineId);
+
+        var run = await Run(host.Services, "schedule", "--pipeline", pipelineId.ToString("D"), "--kind", kind, "--every", "1h", flag, value);
+
+        run.Exit.Should().Be(1);
+        run.Error.Should().Contain("pipelines schedule:");
+        run.Output.Should().BeEmpty();
+        (await ReadAsync(host.Services, pipelineId)).Should().BeEquivalentTo(before);
+    }
+
+    [Fact]
     public async Task Schedule_of_a_pipeline_that_does_not_exist_is_refused()
     {
         await using var host = await StartAsync();
@@ -620,6 +721,20 @@ public sealed class PipelinesVerbTests
     [InlineData("schedule --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --kind capture --every 1h --off --off")]
     [InlineData("schedule --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --kind sweep --every 1h")]
     [InlineData("schedule --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --kind process --every 1h")]
+    [InlineData("schedule --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --kind harvest --every 1h --walk full")]
+    [InlineData("schedule --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --kind capture --every 1h --walk full")]
+    [InlineData("schedule --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --kind discover --every 1h --walk sideways")]
+    [InlineData("schedule --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --kind discover --every 1h --batch 5")]
+    [InlineData("schedule --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --kind capture --every 1h --batch 5")]
+    [InlineData("schedule --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --kind discover --every 1h --parallel 2")]
+    [InlineData("schedule --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --kind capture --every 1h --parallel 2")]
+    [InlineData("schedule --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --kind capture --every 1h --gap-ms 100")]
+    [InlineData("schedule --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --kind harvest --every 1h --gap-ms fast")]
+    [InlineData("schedule --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --kind harvest --every 1h --gap-ms -5")]
+    [InlineData("schedule --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --kind harvest --every 1h --batch many")]
+    [InlineData("schedule --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --kind harvest --every 1h --parallel 2 --parallel 3")]
+    [InlineData("schedule --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --kind harvest --every 1h --parallel")]
+    [InlineData("show --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --batch 5")]
     [InlineData("auto-off")]
     [InlineData("auto-off --after 3")]
     [InlineData("auto-off --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11")]

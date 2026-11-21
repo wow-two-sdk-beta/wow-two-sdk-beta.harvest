@@ -19,6 +19,7 @@ export type {
 export { RegistrationRouteConstants } from './RegistrationRouteConstants';
 export { ApiKeyConstants, HarvestScopeConstants } from './HarvestScopeConstants';
 export type {
+  DiscoveryWalk,
   PipelineStageKind,
   PipelineStageOptions,
   PipelineStageModel,

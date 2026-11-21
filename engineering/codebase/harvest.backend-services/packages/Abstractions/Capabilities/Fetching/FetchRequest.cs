@@ -15,6 +15,10 @@ public sealed record FetchRequest
     /// <summary>Gets an additional minimum gap between requests; the longer host delay wins.</summary>
     public TimeSpan? MinDelay { get; init; }
 
+    /// <summary>Gets the pipeline's own pacing, which replaces the host's pace for this request; null keeps the host's pace and its
+    /// lock through the request.</summary>
+    public RequestPace? Pace { get; init; }
+
     /// <summary>Gets the run's anonymous cookie jar, when one is used.</summary>
     public CookieContainer? Cookies { get; init; }
 

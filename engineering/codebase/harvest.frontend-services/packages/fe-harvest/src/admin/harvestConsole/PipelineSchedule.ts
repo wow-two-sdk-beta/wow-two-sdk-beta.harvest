@@ -1,4 +1,5 @@
 import type { PipelineAutoOffModel, ScheduleModel } from '../../contracts';
+import type { DiscoveryWalk } from '../../contracts/PipelineStagesModel';
 import { clockOf, plural } from './SourceWords';
 
 export const Weekdays = [
@@ -68,6 +69,7 @@ export function intervalMinutes(value?: string) {
 function intervalWords(value?: string) {
   const minutes = intervalMinutes(value);
   if (!minutes) return value ?? '1 hour';
+  if (minutes < 1) return `${Math.round(minutes * 60)} s`;
   if (minutes % 1440 === 0) return plural(minutes / 1440, 'day');
   if (minutes % 60 === 0) return plural(minutes / 60, 'hour');
   return `${Number(minutes.toFixed(2))} min`;
@@ -110,8 +112,35 @@ export function autoOffWords(autoOff: PipelineAutoOffModel) {
 }
 
 export function postBatchLimit(kind: 'harvest' | 'process', model?: string) {
-  if (kind === 'harvest') return 50;
+  if (kind === 'harvest') return 500;
   return model?.trim() ? 20 : 100;
+}
+
+/** The shortest interval a schedule of a kind may run at, in seconds: 15 s for harvest, 5 minutes for every other kind. */
+export function minimumInterval(kind: ScheduleModel['kind']) {
+  return kind === 'harvest' ? 15 : 300;
+}
+
+/** The longest request gap a stage may set, in ms. */
+export const MaxGapMs = 60_000;
+/** The most parallel fetches a harvest stage may run. */
+export const MaxParallel = 16;
+
+/** How a discover stage walks its catalog, in words. */
+export function walkWords(walk?: DiscoveryWalk) {
+  if (walk === 'full') return 'Whole catalog each run';
+  if (walk === 'new') return 'Newest pages until a known page';
+  return 'Resumes its cursor';
+}
+
+/** The gap between a stage's requests, in words: its own, or the host's pace. */
+export function gapWords(gapMs?: number) {
+  return gapMs === undefined ? 'Host pace' : `${gapMs} ms apart`;
+}
+
+/** The parallel fetches of a harvest stage, in words. */
+export function parallelWords(parallel: number) {
+  return `${parallel} at once`;
 }
 
 export function nextAutomaticSchedule(schedules: readonly ScheduleModel[]) {

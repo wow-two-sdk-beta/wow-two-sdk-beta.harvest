@@ -627,9 +627,9 @@ public sealed partial class FakeRegistrationBroker(TimeProvider? time = null) : 
             && (schedule.Window is not { } window || window.Start != window.End)
             && schedule.Mode switch
             {
-                ScheduleMode.Interval => schedule.Every >= PipelineConstants.MinInterval && schedule.Cron is null,
+                ScheduleMode.Interval => schedule.Every >= PipelineConstants.MinIntervalFor(schedule.Kind) && schedule.Cron is null,
                 ScheduleMode.Cron => schedule.Every is null && schedule.Cron?.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length is 5 or 6,
-                ScheduleMode.Adaptive => schedule.Every >= PipelineConstants.MinInterval && schedule.MaxEvery >= schedule.Every,
+                ScheduleMode.Adaptive => schedule.Every >= PipelineConstants.MinIntervalFor(schedule.Kind) && schedule.MaxEvery >= schedule.Every,
                 _ => true,
             });
     }

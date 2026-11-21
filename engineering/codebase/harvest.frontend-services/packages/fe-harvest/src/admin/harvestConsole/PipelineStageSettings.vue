@@ -22,9 +22,13 @@ import {
   calendarCron,
   defaultCalendar,
   intervalMinutes,
+  MaxGapMs,
+  MaxParallel,
+  minimumInterval,
   postBatchLimit,
   readCalendar,
   scheduleWords,
+  walkWords,
   Weekdays,
 } from './PipelineSchedule';
 
@@ -37,6 +41,12 @@ const busy = ref(false);
 const error = ref('');
 const inputClass = 'w-full min-w-0 rounded-md border border-border bg-background px-3 py-2 text-sm';
 const name = computed(() => WorkLabels[props.stage.kind]);
+/** A harvest stage runs as often as every 15 seconds, so its interval is set in seconds; every other kind sets minutes. */
+const inSeconds = computed(() => props.stage.kind === 'harvest');
+const everyMinimum = computed(() => minimumInterval(props.stage.kind) / (inSeconds.value ? 1 : 60));
+/** The gap and the parallel fetches pace a host every tenant shares, so only an operator edits them; a tenant's save keeps them. */
+const canSetPacing = computed(() => session.canOperate.value);
+const Walks = (['resume', 'full', 'new'] as const).map((value) => ({ value, label: walkWords(value) }));
 const Repeats = [
   { value: 'daily', label: 'Daily' },
   { value: 'weekly', label: 'Weekly' },
@@ -78,8 +88,8 @@ function fieldsOf(stage: PipelineStageModel) {
   return {
     mode: schedule?.mode === 'cron' && !calendar ? ('saved' as const) : (schedule?.mode ?? 'interval'),
     enabled: schedule?.enabled ?? false,
-    every: Math.ceil(intervalMinutes(schedule?.every) ?? 60),
-    maxEvery: Math.ceil(intervalMinutes(schedule?.maxEvery) ?? 120),
+    every: intervalCount(intervalMinutes(schedule?.every) ?? 60, stage.kind),
+    maxEvery: intervalCount(intervalMinutes(schedule?.maxEvery) ?? 120, stage.kind),
     calendar: calendar ?? defaultCalendar(),
     startsOn: stage.options.startsOn ?? '',
     timeZone: schedule?.timeZone ?? DefaultTimeZone,
@@ -88,7 +98,15 @@ function fieldsOf(stage: PipelineStageModel) {
     processor: stage.options.processor ?? (stage.processorKeys?.length ? SavedReading : ''),
     model: stage.options.model ?? '',
     promptVersion: stage.options.promptVersion ?? '',
+    walk: stage.options.walk ?? ('resume' as const),
+    gapMs: stage.options.gapMs ?? ('' as number | ''),
+    parallel: stage.options.parallel ?? 1,
   };
+}
+
+/** A count of the kind's interval unit: seconds for harvest, minutes for every other kind. */
+function intervalCount(minutes: number, kind: PipelineStageModel['kind']) {
+  return kind === 'harvest' ? Math.round(minutes * 60) : Math.ceil(minutes);
 }
 const draft = ref(fieldsOf(props.stage));
 const processorChoices = computed(() =>
@@ -121,8 +139,32 @@ function changeOpen(value: boolean) {
   if (!busy.value) open.value = value;
 }
 
-function intervalValue(minutes: number, previous?: string) {
-  return previous && Math.ceil(intervalMinutes(previous) ?? 0) === minutes ? previous : `PT${minutes}M`;
+function intervalValue(count: number, previous?: string) {
+  const kind = props.stage.kind;
+  return previous && intervalCount(intervalMinutes(previous) ?? 0, kind) === count
+    ? previous
+    : `PT${count}${inSeconds.value ? 'S' : 'M'}`;
+}
+
+/** What a save sends for the stage's requests: an operator's gap and parallel fetches, else the stored ones, so a save never drops them. */
+function pacingOf(fields: ReturnType<typeof fieldsOf>): Pick<PipelineStageOptions, 'gapMs' | 'parallel'> | string {
+  const stored = props.stage.options;
+  if (!canSetPacing.value) {
+    return {
+      ...(stored.gapMs !== undefined ? { gapMs: stored.gapMs } : {}),
+      ...(stored.parallel !== undefined ? { parallel: stored.parallel } : {}),
+    };
+  }
+  const gap = fields.gapMs === '' ? undefined : Number(fields.gapMs);
+  if (gap !== undefined && (!Number.isInteger(gap) || gap < 0 || gap > MaxGapMs))
+    return `Enter a whole gap from 0 to ${MaxGapMs} ms, or leave it empty for the host pace.`;
+  const parallel = props.stage.kind === 'harvest' ? Number(fields.parallel) : undefined;
+  if (parallel !== undefined && (!Number.isInteger(parallel) || parallel < 1 || parallel > MaxParallel))
+    return `Enter a whole number of parallel fetches from 1 to ${MaxParallel}.`;
+  return {
+    ...(gap !== undefined ? { gapMs: gap } : {}),
+    ...(parallel !== undefined && (parallel > 1 || stored.parallel !== undefined) ? { parallel } : {}),
+  };
 }
 
 async function save() {
@@ -154,8 +196,15 @@ async function save() {
       ? props.stage.options.publishedSinceUtc
       : `${fields.publishedSince}T00:00:00Z`
     : undefined;
+  const pacing = props.stage.kind === 'process' ? {} : pacingOf(fields);
+  if (typeof pacing === 'string') {
+    error.value = pacing;
+    return;
+  }
   const stage: PipelineStageOptions = {
     batchSize: batchSize.value,
+    ...(props.stage.kind === 'discover' ? { walk: fields.walk } : {}),
+    ...pacing,
     ...(mode === 'cron' && fields.startsOn ? { startsOn: fields.startsOn } : {}),
     ...(props.stage.kind === 'process'
       ? {
@@ -220,11 +269,11 @@ async function save() {
               <ChoicePicker v-model="draft.mode" :choices="scheduleChoices" label="Schedule" :is-disabled="busy" />
             </div>
             <label v-if="draft.mode === 'interval' || draft.mode === 'adaptive'" class="grid gap-1.5 text-sm">
-              Every (minutes)
-              <input v-model.number="draft.every" type="number" min="5" required :class="inputClass" />
+              Every ({{ inSeconds ? 'seconds' : 'minutes' }})
+              <input v-model.number="draft.every" type="number" :min="everyMinimum" required :class="inputClass" />
             </label>
             <label v-if="draft.mode === 'adaptive'" class="grid gap-1.5 text-sm">
-              Maximum interval (minutes)
+              Maximum interval ({{ inSeconds ? 'seconds' : 'minutes' }})
               <input v-model.number="draft.maxEvery" type="number" :min="draft.every" required :class="inputClass" />
             </label>
           </div>
@@ -285,6 +334,48 @@ async function save() {
               Enable scheduled runs
             </label>
           </template>
+          <fieldset
+            v-if="stage.kind !== 'process'"
+            class="grid min-w-0 gap-3 border-t border-border pt-3 sm:grid-cols-2"
+          >
+            <legend class="px-1 text-sm font-medium">Requests</legend>
+            <div v-if="stage.kind === 'discover'" class="grid min-w-0 gap-1.5 text-sm sm:col-span-2">
+              <span>Walk</span>
+              <ChoicePicker v-model="draft.walk" :choices="Walks" label="Walk" :is-disabled="busy" />
+            </div>
+            <label class="grid gap-1.5 text-sm">
+              Gap between requests (ms)
+              <input
+                v-model.number="draft.gapMs"
+                type="number"
+                min="0"
+                :max="MaxGapMs"
+                step="1"
+                placeholder="Host pace"
+                :disabled="!canSetPacing || busy"
+                :class="inputClass"
+              />
+            </label>
+            <label v-if="stage.kind === 'harvest'" class="grid gap-1.5 text-sm">
+              Parallel fetches
+              <input
+                v-model.number="draft.parallel"
+                type="number"
+                min="1"
+                :max="MaxParallel"
+                step="1"
+                :disabled="!canSetPacing || busy"
+                :class="inputClass"
+              />
+            </label>
+            <p class="text-sm text-muted-foreground sm:col-span-2">
+              {{
+                canSetPacing
+                  ? 'An empty gap follows the host pace. A gap of its own replaces the host pace for this stage’s requests; robots delays and refusals still hold the host.'
+                  : 'Only an operator sets the gap and the parallel fetches, as they pace a host every tenant shares.'
+              }}
+            </p>
+          </fieldset>
           <fieldset
             v-if="stage.kind === 'process'"
             class="grid min-w-0 gap-3 border-t border-border pt-3 sm:grid-cols-2"

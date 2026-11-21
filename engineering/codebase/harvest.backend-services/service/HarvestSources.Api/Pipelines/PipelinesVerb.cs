@@ -25,13 +25,25 @@ namespace HarvestSources.Api.Pipelines;
 ///   - <c>pipelines pace --source &lt;id|family/handle&gt; --ms &lt;1000-60000&gt; [--tenant &lt;slug&gt;]</c> sets the least gap
 ///     between two requests to the source's host, which every source on that host shares; a source is named as
 ///     <c>sources processing</c> names it, and the last line is <c>{"sourceId","host","minDelayMs"}</c>
-///   - <c>pipelines schedule --pipeline &lt;id&gt; --kind capture|check|refresh|discover|harvest --every &lt;duration&gt; [--off]</c>
+///   - <c>pipelines schedule --pipeline &lt;id&gt; --kind capture|check|refresh|discover|harvest --every &lt;duration&gt; [--off]
+///     [--walk full|new|resume] [--batch &lt;1-500&gt;] [--gap-ms &lt;0-60000|host&gt;] [--parallel &lt;1-16&gt;]</c>
 ///     makes the schedule of that kind an interval schedule (<c>15m</c>, <c>1h</c>, <c>2h30m</c> or <c>01:00:00</c>, at least
-///     five minutes), disabled with <c>--off</c>; every other schedule, the name, the scope and the limits stay as stored, and
-///     a pipeline with no schedule of that kind gets one; the last line is
-///     <c>{"pipelineId","schedules":[{"kind","mode","every","cron","enabled","nextDueAtUtc"}]}</c>; turning a row on that was
-///     off (or manual, or stage-disabled) clears a pipeline's automatic turn-off and starts its failed-run count again, and the
-///     report line says so
+///     five minutes, and for <c>harvest</c> at least 15 seconds, <c>15s</c>), disabled with <c>--off</c>; every other schedule,
+///     the name, the scope and the limits stay as stored, and a pipeline with no schedule of that kind gets one; the last line is
+///     <c>{"pipelineId","schedules":[{"kind","mode","every","cron","enabled","nextDueAtUtc","stage"}]}</c>; turning a row on that
+///     was off (or manual, or stage-disabled) clears a pipeline's automatic turn-off and starts its failed-run count again, and the
+///     report line says so; the stage flags tune a stage row, and an omitted flag keeps the stored value:
+///       <c>--walk</c> (discover only) reads the whole catalog on every run (<c>full</c>), reads from the first page until a
+///       page saves nothing new (<c>new</c>) or resumes at the cursor (<c>resume</c>, the default);
+///       <c>--batch</c> (harvest only) is the items a run takes, and <c>--parallel</c> (harvest only) how many it fetches at
+///       once;
+///       <c>--gap-ms</c> (discover and harvest) is the gap between the starts of the stage's own requests to its host, which
+///       replaces the host's pace for them, and <c>host</c> clears it;
+///       a flag on another kind, a repeated flag or a non-number is a usage error, and a value out of range is refused with
+///       nothing saved; each stage row (discover, harvest, process) prints a <c>stage</c> object
+///       <c>{"batch","walk","gapMs","parallel","disabled"}</c> with <c>"resume"</c>, <c>"host"</c> and <c>1</c> for the unset
+///       values, in this form and in <c>show</c>; the verb runs as the host's operator, which may set the gap and the parallel
+///       fetches
 ///   - <c>pipelines auto-off --pipeline &lt;id&gt; --after &lt;0-1000|default&gt;</c> sets how many capture, check, refresh,
 ///     discover or harvest runs in a row may fail before the pipeline's schedules of those kinds turn themselves off (a
 ///     pipeline's own value wins over <c>Harvest:Worker:AutoOffAfter</c>, 10 by default; <c>0</c> never turns it off;
@@ -61,7 +73,8 @@ public static partial class PipelinesVerb
     private const string Usage = """
         Usage: pipelines run --pipeline <id> [--kind <capture|check|refresh|discover|harvest>]
                pipelines pace --source <id|family/handle> --ms <1000-60000> [--tenant <slug>]
-               pipelines schedule --pipeline <id> --kind <capture|check|refresh|discover|harvest> --every <15m|1h|2h30m|01:00:00> [--off]
+               pipelines schedule --pipeline <id> --kind <capture|check|refresh|discover|harvest> --every <15s|15m|1h|2h30m|01:00:00> [--off]
+                   [--walk <full|new|resume>] [--batch <1-500>] [--gap-ms <0-60000|host>] [--parallel <1-16>]
                pipelines auto-off --pipeline <id> --after <0-1000|default>
                pipelines show --pipeline <id> [--runs <0-20>]
         """;
@@ -140,16 +153,20 @@ public static partial class PipelinesVerb
         var pipelineId = request.Pipeline!.Value;
         var kind = request.Kind!.Value;
         var every = request.Every!.Value;
-        if (every < PipelineConstants.MinInterval)
-            throw new Refusal($"--every must be at least {PipelineConstants.MinInterval.TotalMinutes:0} minutes.");
+        if (every < PipelineConstants.MinIntervalFor(kind))
+            throw new Refusal(kind == WorkKind.Harvest
+                ? $"--every must be at least {PipelineConstants.MinHarvestInterval.TotalSeconds:0} seconds."
+                : $"--every must be at least {PipelineConstants.MinInterval.TotalMinutes:0} minutes.");
 
         var pipeline = Value(await registry.GetPipelineAsync(pipelineId, ct));
         var saved = kind is WorkKind.Discover or WorkKind.Harvest
-            ? await SaveStageAsync(registry, stages, pipeline, kind, every, request.Off, ct)
+            ? await SaveStageAsync(registry, stages, pipeline, kind, every, request, ct)
             : await SaveScheduleAsync(registry, pipeline, kind, every, request.Off, ct);
         string cleared = pipeline.AutoOff is not null && saved.AutoOff is null
             ? "; the automatic turn-off is cleared and its failed-run count starts again" : "";
-        await error.WriteLineAsync($"{Snake(kind)} of pipeline {pipelineId:D} runs every {Duration(every)}{(request.Off ? ", off" : "")}{cleared}");
+        string tuning = saved.Schedules.FirstOrDefault(schedule => schedule.Kind == kind) is { Stage: { } stage }
+            && kind is WorkKind.Discover or WorkKind.Harvest ? ", " + Settings(kind, stage) : "";
+        await error.WriteLineAsync($"{Snake(kind)} of pipeline {pipelineId:D} runs every {Duration(every)}{(request.Off ? ", off" : "")}{tuning}{cleared}");
         return new { pipelineId, schedules = saved.Schedules.OrderBy(schedule => schedule.Kind).Select(Describe).ToArray() };
     }
 
@@ -172,25 +189,46 @@ public static partial class PipelinesVerb
 
     /// <summary>Sets a discover or harvest stage row as <c>PUT api/pipelines/{id}/stages</c> does, so no other row is touched.</summary>
     private static async Task<PipelineModel> SaveStageAsync(IRegistrationBroker registry, PipelineStages stages, PipelineModel pipeline,
-        WorkKind kind, TimeSpan every, bool off, CancellationToken ct)
+        WorkKind kind, TimeSpan every, Request request, CancellationToken ct)
     {
+        bool off = request.Off;
         if (!off && pipeline.Schedules.FirstOrDefault(schedule => schedule.Kind == WorkKind.Capture) is { Enabled: true, Mode: not ScheduleMode.Manual })
             throw new Refusal($"Pipeline {pipeline.Id:D} has an enabled capture schedule, and a section runs either capture or the discover and "
                 + $"harvest stages; run `pipelines schedule --pipeline {pipeline.Id:D} --kind capture --every <d> --off` first.");
 
         var source = Value(await registry.GetSourceAsync(pipeline.SourceId, ct));
         var stored = pipeline.Schedules.FirstOrDefault(schedule => schedule.Kind == kind);
+        var current = stored?.Stage ?? DefaultStage(pipeline, kind);
+        // An omitted flag keeps the stored value; the stage is saved whole, as PUT api/pipelines/{id}/stages saves it.
+        var tuned = current with
+        {
+            BatchSize = request.Batch ?? current.BatchSize,
+            Walk = request.Walk ?? current.Walk,
+            GapMs = request.GapHost ? null : request.GapMs ?? current.GapMs,
+            Parallel = request.Parallel ?? current.Parallel,
+        };
         var stage = (stored is null ? new ScheduleDeclaration { Kind = kind, Mode = ScheduleMode.Interval } : Declare(stored))
-            with { Mode = ScheduleMode.Interval, Every = every, MaxEvery = null, Cron = null, Enabled = !off, Stage = stored?.Stage ?? DefaultStage(pipeline, kind) };
+            with { Mode = ScheduleMode.Interval, Every = every, MaxEvery = null, Cron = null, Enabled = !off, Stage = tuned };
         Value(await stages.SaveAsync(pipeline, source, stage, seedOnly: false, ct));
         return Value(await registry.GetPipelineAsync(pipeline.Id, ct));
     }
 
-    /// <summary>Gives a stage with no stored row the batch a run of it would use: the pipeline's page limit for discover, its item limit for harvest.</summary>
+    /// <summary>Gives a stage with no stored row the batch a run of it would use: the pipeline's page limit for discover, its item
+    /// limit for harvest, at most the harvest batch's own limit.</summary>
     private static PipelineStageOptions DefaultStage(PipelineModel pipeline, WorkKind kind) => new()
     {
-        BatchSize = kind == WorkKind.Harvest ? pipeline.Limits.MaxItems ?? 50 : pipeline.Limits.MaxPages ?? 10,
+        BatchSize = kind == WorkKind.Harvest
+            ? Math.Min(pipeline.Limits.MaxItems ?? 50, PipelineConstants.MaxHarvestBatch) : pipeline.Limits.MaxPages ?? 10,
     };
+
+    /// <summary>Spells a stage's tuning for the report line: the walk and gap of a discover row, the batch, gap and parallel fetches of a harvest row.</summary>
+    private static string Settings(WorkKind kind, PipelineStageOptions stage)
+    {
+        string gap = stage.GapMs is { } ms ? $"{ms} ms" : "host pace";
+        return kind == WorkKind.Discover
+            ? $"walk {Snake(stage.Walk ?? DiscoveryWalk.Resume)}, gap {gap}"
+            : $"batch {stage.BatchSize}, gap {gap}, parallel {stage.Parallel ?? 1}";
+    }
 
     private static async Task<object> AutoOffAsync(PipelineAutoOff autoOff, Request request, TextWriter error, CancellationToken ct)
     {
@@ -252,6 +290,14 @@ public static partial class PipelinesVerb
     {
         kind = Snake(schedule.Kind), mode = Snake(schedule.Mode), every = schedule.Every is { } every ? Duration(every) : null,
         cron = schedule.Cron, enabled = schedule.Enabled, nextDueAtUtc = schedule.NextDueAtUtc,
+        stage = schedule.Kind is WorkKind.Discover or WorkKind.Harvest or WorkKind.Process ? DescribeStage(schedule.Stage) : null,
+    };
+
+    /// <summary>Reads a stage row's tuning for the report; an unset walk is <c>resume</c>, an unset gap <c>host</c> and unset parallel fetches 1.</summary>
+    private static object DescribeStage(PipelineStageOptions? stage) => new
+    {
+        batch = stage?.BatchSize, walk = Snake(stage?.Walk ?? DiscoveryWalk.Resume),
+        gapMs = stage?.GapMs is { } gap ? (object)gap : "host", parallel = stage?.Parallel ?? 1, disabled = stage?.Disabled is true,
     };
 
     /// <summary>Reads a stored schedule back as the declaration that keeps it as it is.</summary>
@@ -374,6 +420,21 @@ public static partial class PipelinesVerb
                 case "--every" when TryParseDuration(next, out var every):
                     request.Every = every;
                     break;
+                case "--walk" when TryParseWalk(next, out var walk):
+                    request.Walk = walk;
+                    break;
+                case "--batch" when int.TryParse(next, NumberStyles.None, CultureInfo.InvariantCulture, out var batch):
+                    request.Batch = batch;
+                    break;
+                case "--parallel" when int.TryParse(next, NumberStyles.None, CultureInfo.InvariantCulture, out var parallel):
+                    request.Parallel = parallel;
+                    break;
+                case "--gap-ms" when string.Equals(next, "host", StringComparison.OrdinalIgnoreCase):
+                    request.GapHost = true;
+                    break;
+                case "--gap-ms" when int.TryParse(next, NumberStyles.None, CultureInfo.InvariantCulture, out var gapMs):
+                    request.GapMs = gapMs;
+                    break;
                 case "--after" when TryParseAfter(next, out var after):
                     request.After = after;
                     request.AfterGiven = true;
@@ -390,11 +451,35 @@ public static partial class PipelinesVerb
         {
             "run" => seen.IsSubsetOf(["--pipeline", "--kind"]) && request.Pipeline is not null,
             "pace" => seen.IsSubsetOf(["--source", "--ms", "--tenant"]) && request.Source is not null && request.Ms is not null,
-            "schedule" => seen.IsSubsetOf(["--pipeline", "--kind", "--every", "--off"])
-                && request.Pipeline is not null && request.Kind is not null && request.Every is not null,
+            "schedule" => seen.IsSubsetOf(["--pipeline", "--kind", "--every", "--off", "--walk", "--batch", "--gap-ms", "--parallel"])
+                && request.Pipeline is not null && request.Kind is not null && request.Every is not null
+                && FlagsFitKind(request.Kind.Value, seen),
             "auto-off" => seen.IsSubsetOf(["--pipeline", "--after"]) && request.Pipeline is not null && request.AfterGiven,
             _ => seen.IsSubsetOf(["--pipeline", "--runs"]) && request.Pipeline is not null,
         };
+    }
+
+    /// <summary>Reads whether the stage flags given belong to the kind: <c>--walk</c> to discover, <c>--batch</c> and
+    /// <c>--parallel</c> to harvest, <c>--gap-ms</c> to either.</summary>
+    private static bool FlagsFitKind(WorkKind kind, HashSet<string> seen) =>
+        (!seen.Contains("--walk") || kind == WorkKind.Discover)
+        && (!seen.Contains("--batch") || kind == WorkKind.Harvest)
+        && (!seen.Contains("--parallel") || kind == WorkKind.Harvest)
+        && (!seen.Contains("--gap-ms") || kind is WorkKind.Discover or WorkKind.Harvest);
+
+    /// <summary>Reads <c>--walk</c>: <c>full</c>, <c>new</c> or <c>resume</c>.</summary>
+    private static bool TryParseWalk(string value, out DiscoveryWalk walk)
+    {
+        foreach (var candidate in new[] { DiscoveryWalk.Full, DiscoveryWalk.New, DiscoveryWalk.Resume })
+        {
+            if (string.Equals(Snake(candidate), value, StringComparison.OrdinalIgnoreCase))
+            {
+                walk = candidate;
+                return true;
+            }
+        }
+        walk = default;
+        return false;
     }
 
     /// <summary>Reads <c>--after</c>: a count from 0 to 1000, or <c>default</c>, which is no value of the pipeline's own.</summary>
@@ -446,6 +531,11 @@ public static partial class PipelinesVerb
         internal int? Runs { get; set; }
         internal int? After { get; set; }
         internal bool AfterGiven { get; set; }
+        internal DiscoveryWalk? Walk { get; set; }
+        internal int? Batch { get; set; }
+        internal int? GapMs { get; set; }
+        internal bool GapHost { get; set; }
+        internal int? Parallel { get; set; }
     }
 
     private sealed record Entry(SourceModel Source, string Label);

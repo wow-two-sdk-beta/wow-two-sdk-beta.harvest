@@ -2,6 +2,8 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Npgsql;
+using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
+using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Engine;
@@ -9,14 +11,16 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Engine;
 /// <summary>Stores catalog checkpoints and listing identities beyond the lifetime of a run.</summary>
 internal static class DiscoveryStore
 {
+    // Seeds a discover run's catalog pages: the cursor's unfinished pages, or the entry page when none is left. With restart, the
+    // run clears every cursor row of the pipeline first and starts at the entry page, as a full or new walk does on every run.
     internal static async Task SeedCatalogAsync(NpgsqlConnection connection, NpgsqlTransaction transaction,
-        FrozenRun frozen, Guid run, string step, string entry, DateTimeOffset now, CancellationToken ct)
+        FrozenRun frozen, Guid run, string step, string entry, bool restart, DateTimeOffset now, CancellationToken ct)
     {
         await EngineSql.ExecuteAsync(connection, transaction, """
             DELETE FROM harvest_catalog_pages
-            WHERE pipeline_id=@pipeline AND (entry_url<>@entry OR NOT EXISTS (
+            WHERE pipeline_id=@pipeline AND (@restart OR entry_url<>@entry OR NOT EXISTS (
                 SELECT 1 FROM harvest_catalog_pages WHERE pipeline_id=@pipeline AND entry_url=@entry AND completed_at IS NULL));
-            """, ct, ("pipeline", frozen.Pipeline.Id), ("entry", entry));
+            """, ct, ("pipeline", frozen.Pipeline.Id), ("entry", entry), ("restart", restart));
         await EngineSql.ExecuteAsync(connection, transaction, """
             INSERT INTO harvest_catalog_pages(pipeline_id,target_key,target,entry_url,queued_at)
             SELECT @pipeline,@key,@entry,@entry,@now WHERE NOT EXISTS (
@@ -51,42 +55,55 @@ internal static class DiscoveryStore
             """, ct, ("pipeline", item.PipelineId), ("key", Key(item.Target)), ("now", now));
         int found = 0;
         bool pageLimit = false;
+        bool anyNew = false;
+        // Listings go first, so a walk that stops at a page with nothing new knows it before it queues the next page.
+        foreach (var target in next)
+        {
+            if (!RunPlanner.InScope(target.Target, frozen.Source, frozen.Pipeline.Scope, frozen.Adapter))
+                continue;
+            var role = frozen.Adapter.Steps.FirstOrDefault(step => step.Key == target.StepKey)?.Role;
+            if (role != StepRole.Detail)
+                continue;
+            anyNew |= await StoreListingAsync(connection, transaction, item, target, Address(target.Target), now, ct);
+            found++;
+        }
+        if (frozen.Stage?.Walk == DiscoveryWalk.New && !anyNew)
+            return (found, pageLimit);
         foreach (var target in next)
         {
             if (!RunPlanner.InScope(target.Target, frozen.Source, frozen.Pipeline.Scope, frozen.Adapter))
                 continue;
             string address = Address(target.Target);
             var role = frozen.Adapter.Steps.FirstOrDefault(step => step.Key == target.StepKey)?.Role;
-            if (role == StepRole.Enumerate)
-            {
-                int added = await EngineSql.ExecuteAsync(connection, transaction, """
-                    INSERT INTO harvest_catalog_pages(pipeline_id,target_key,target,payload,entry_url,queued_at)
-                    VALUES(@pipeline,@key,@target,@payload::jsonb,@entry,@now) ON CONFLICT DO NOTHING
-                    """, ct, ("pipeline", item.PipelineId), ("key", Key(address)), ("target", address),
-                    ("payload", target.Payload?.GetRawText()), ("entry", frozen.CatalogEntry), ("now", now));
-                if (added > 0)
-                    pageLimit |= await RunPlanner.EnqueueAsync(connection, transaction, frozen, item.RunId,
-                        target with { Target = address }, now, ct) == RunPlanner.EnqueueResult.PageLimit;
-            }
-            else if (role == StepRole.Detail)
-            {
-                await StoreListingAsync(connection, transaction, item, target, address, now, ct);
-                found++;
-            }
+            if (role != StepRole.Enumerate)
+                continue;
+            int added = await EngineSql.ExecuteAsync(connection, transaction, """
+                INSERT INTO harvest_catalog_pages(pipeline_id,target_key,target,payload,entry_url,queued_at)
+                VALUES(@pipeline,@key,@target,@payload::jsonb,@entry,@now) ON CONFLICT DO NOTHING
+                """, ct, ("pipeline", item.PipelineId), ("key", Key(address)), ("target", address),
+                ("payload", target.Payload?.GetRawText()), ("entry", frozen.CatalogEntry), ("now", now));
+            if (added > 0)
+                pageLimit |= await RunPlanner.EnqueueAsync(connection, transaction, frozen, item.RunId,
+                    target with { Target = address }, now, ct) == RunPlanner.EnqueueResult.PageLimit;
         }
         return (found, pageLimit);
     }
 
-    private static Task<int> StoreListingAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, StepItem item,
+    /// <summary>Saves one listing and reports whether it is new: saved <c>pending</c> for the first time, or put back to
+    /// <c>pending</c> by a changed fingerprint. A listing already pending, captured, failed or gone and unchanged is not.</summary>
+    private static async Task<bool> StoreListingAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, StepItem item,
         StepTarget target, string address, DateTimeOffset now, CancellationToken ct)
     {
         var observation = target.Discovery;
         string externalKey = observation?.ExternalKey is { Length: > 0 and <= 500 } id ? id : "url:" + Key(address);
-        return EngineSql.ExecuteAsync(connection, transaction, """
+        await using var command = EngineSql.Command(connection, transaction, """
             WITH known AS (
                 SELECT id FROM harvest_post_links
                 WHERE container_id=@container AND source_id=@source AND external_key=@external
                   AND retired_at IS NULL AND latest_capture_id IS NOT NULL
+            ), prior AS (
+                SELECT detail_state FROM harvest_discoveries
+                WHERE container_id=@container AND source_id=@source AND external_key=@external
             ), recorded AS (
                 INSERT INTO harvest_discoveries AS saved
                     (id,container_id,source_id,external_key,url,title,published_at,source_modified_at,native_fields,
@@ -110,15 +127,19 @@ internal static class DiscoveryStore
                             OR (excluded.native_fields IS NOT NULL AND saved.native_fields IS DISTINCT FROM excluded.native_fields)
                             THEN 'pending' ELSE saved.detail_state END,
                         next_detail_at=CASE WHEN saved.detail_state IN ('captured','gone') THEN excluded.next_detail_at ELSE saved.next_detail_at END
-                RETURNING id
+                RETURNING id,detail_state
+            ), scoped AS (
+                INSERT INTO harvest_discovery_scopes(container_id,pipeline_id,discovery_id,catalog_url,last_seen_at)
+                SELECT @container,@pipeline,id,@catalog,@now FROM recorded
+                ON CONFLICT(pipeline_id,discovery_id) DO UPDATE SET catalog_url=excluded.catalog_url,last_seen_at=excluded.last_seen_at
             )
-            INSERT INTO harvest_discovery_scopes(container_id,pipeline_id,discovery_id,catalog_url,last_seen_at)
-            SELECT @container,@pipeline,id,@catalog,@now FROM recorded
-            ON CONFLICT(pipeline_id,discovery_id) DO UPDATE SET catalog_url=excluded.catalog_url,last_seen_at=excluded.last_seen_at
-            """, ct, ("id", Guid.CreateVersion7(now)), ("container", item.ContainerId), ("source", item.SourceId),
+            SELECT EXISTS(SELECT 1 FROM recorded WHERE detail_state='pending')
+               AND NOT EXISTS(SELECT 1 FROM prior WHERE detail_state='pending')
+            """, ("id", Guid.CreateVersion7(now)), ("container", item.ContainerId), ("source", item.SourceId),
             ("pipeline", item.PipelineId), ("external", externalKey), ("url", address), ("catalog", item.Target), ("now", now),
             ("title", observation?.Title), ("published", observation?.PublishedAtUtc?.ToUniversalTime()),
             ("modified", observation?.LastModifiedUtc?.ToUniversalTime()), ("native", observation?.NativeFields?.GetRawText()));
+        return await command.ExecuteScalarAsync(ct) is true;
     }
 
     internal static async Task SeedDetailsAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, FrozenRun frozen,
@@ -151,6 +172,22 @@ internal static class DiscoveryStore
                 await EngineSql.ExecuteAsync(connection, transaction,
                     "UPDATE harvest_discoveries SET reserved_run_id=@run WHERE id=@id", ct, ("run", run), ("id", candidate.Id));
         }
+    }
+
+    /// <summary>Reads whether <see cref="SeedDetailsAsync"/> would queue at least one detail now: a pending or failed discovery of
+    /// the pipeline whose next detail time has come and that no queued, running or paused run holds.</summary>
+    internal static async Task<bool> AnyDueAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, PipelineModel pipeline,
+        SourceModel source, DateTimeOffset now, CancellationToken ct)
+    {
+        await using var command = EngineSql.Command(connection, transaction, """
+            SELECT EXISTS (
+                SELECT 1 FROM harvest_discoveries d
+                JOIN harvest_discovery_scopes s ON s.discovery_id=d.id AND s.pipeline_id=@pipeline
+                WHERE d.container_id=@container AND d.source_id=@source AND d.detail_state IN ('pending','failed')
+                  AND d.next_detail_at<=@now AND NOT EXISTS (
+                    SELECT 1 FROM harvest_runs r WHERE r.id=d.reserved_run_id AND r.status IN ('queued','running','paused')))
+            """, ("pipeline", pipeline.Id), ("container", pipeline.ContainerId), ("source", source.Id), ("now", now));
+        return await command.ExecuteScalarAsync(ct) is true;
     }
 
     internal static Task<int> CompleteDetailAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, StepItem item,

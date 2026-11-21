@@ -49,6 +49,7 @@ public sealed class GenericStepBroker : IStepBroker
         var response = await context.RunOperationAsync("fetch", () => fetcher.FetchAsync(new FetchRequest
         {
             Uri = uri, RobotsPolicy = context.Source.RobotsPolicy, MinDelay = context.Plan.Requirements.MinDelay, DestinationPolicy = destinations,
+            Pace = context.Plan.Requirements.Pace,
         }, cancellationToken), answer => new(
             answer.Outcome is FetchOutcome.Ok or FetchOutcome.Gone ? "completed" : "failed",
             Input: 1, Output: answer.Document is null ? 0 : 1,

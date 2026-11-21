@@ -9,7 +9,7 @@ import { useHarvestConsole } from './HarvestConsole';
 import HarvestPill from './HarvestPill.vue';
 import PillIcon from './PillIcon.vue';
 import { activeRun, RunTones, WorkLabels } from './PipelineActivity';
-import { postBatchLimit, scheduleWords } from './PipelineSchedule';
+import { gapWords, parallelWords, postBatchLimit, scheduleWords, walkWords } from './PipelineSchedule';
 import PipelineStageSettings from './PipelineStageSettings.vue';
 import { clockOf } from './SourceWords';
 
@@ -215,6 +215,23 @@ async function run() {
           <HarvestPill v-else tone="outline" size="md" wrap>
             <PillIcon name="clock" />
             {{ scheduleWords(schedule) }}
+          </HarvestPill>
+          <HarvestPill v-if="stage.kind === 'discover'" tone="outline" size="md">
+            <PillIcon name="section" />
+            {{ walkWords(stage.options.walk) }}
+          </HarvestPill>
+          <HarvestPill v-if="stage.kind !== 'process'" tone="outline" size="md" class="tabular-nums">
+            <PillIcon name="clock" />
+            {{ gapWords(stage.options.gapMs) }}
+          </HarvestPill>
+          <HarvestPill
+            v-if="stage.kind === 'harvest' && (stage.options.parallel ?? 1) > 1"
+            tone="outline"
+            size="md"
+            class="tabular-nums"
+          >
+            <PillIcon name="all" />
+            {{ parallelWords(stage.options.parallel ?? 1) }}
           </HarvestPill>
           <HarvestPill v-if="stage.pending !== undefined" tone="outline" size="md" class="tabular-nums">
             <PillIcon name="section" />

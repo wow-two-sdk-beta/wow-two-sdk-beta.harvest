@@ -19,6 +19,9 @@ public sealed class HarvestEngineOptions
     public TimeSpan MaxDuration { get; set; } = TimeSpan.FromHours(1);
     /// <summary>Gets or sets the initial host pause following a refusal.</summary>
     public TimeSpan RefusalBackoff { get; set; } = TimeSpan.FromMinutes(15);
+    /// <summary>Gets or sets how many claims the worker runs at once for runs whose harvest stage sets parallel fetches above 1,
+    /// 1–64, alongside its one shared slot for every other run.</summary>
+    public int ParallelSlots { get; set; } = 16;
     /// <summary>Gets or sets how many failed runs in a row turn a pipeline's capture, check, refresh, discover and harvest
     /// schedules off, 0–1000; <c>0</c> never turns a pipeline off, and a pipeline's own value wins.</summary>
     public int AutoOffAfter { get; set; } = 10;

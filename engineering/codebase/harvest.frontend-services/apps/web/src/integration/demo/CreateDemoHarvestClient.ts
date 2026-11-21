@@ -812,7 +812,13 @@ export function createDemoHarvestClient(): HarvestClient {
               kind,
               available: pipeline.state === 'active',
               schedule,
-              options: schedule?.stage ?? { batchSize: kind === 'discover' ? 5 : 20 },
+              options:
+                schedule?.stage ??
+                {
+                  discover: { batchSize: 5, walk: 'new' as const },
+                  harvest: { batchSize: 20, gapMs: 250, parallel: 4 },
+                  process: { batchSize: 20 },
+                }[kind],
               operationKeys: operations[kind],
               ...(kind === 'process'
                 ? {

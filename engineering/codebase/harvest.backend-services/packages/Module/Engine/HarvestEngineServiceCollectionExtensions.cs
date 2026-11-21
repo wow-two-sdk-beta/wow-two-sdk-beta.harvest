@@ -23,7 +23,8 @@ public static class HarvestEngineServiceCollectionExtensions
             .Validate(options => options.MaxItems > 0 && options.MaxRequests > 0 && options.MaxBytes > 0
                 && options.MaxDuration > TimeSpan.Zero, "Run limits must be positive.")
             .Validate(options => options.AutoOffAfter is >= 0 and <= PipelineAutoOff.MaxAfter,
-                $"AutoOffAfter must be between 0 and {PipelineAutoOff.MaxAfter}.");
+                $"AutoOffAfter must be between 0 and {PipelineAutoOff.MaxAfter}.")
+            .Validate(options => options.ParallelSlots is >= 1 and <= 64, "ParallelSlots must be between 1 and 64.");
     }
 
     /// <summary>Opts into scheduled pipeline work in this host.</summary>

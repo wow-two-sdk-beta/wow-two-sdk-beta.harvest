@@ -100,6 +100,10 @@ public sealed class HarvestEngineTests
         (await engine.QueueDueAsync()).Should().Be(0);
 
         await Save(cadence with { Stage = new() { BatchSize = 7, Disabled = false } });
+        // A scheduled harvest slot queues a run only when a discovery is due, so the section holds one.
+        Fixtures(host, "mstar.uz", count: 1);
+        EngineHost.Data(await runs.StartAsync(pipeline.Id, WorkKind.Discover));
+        (await host.DrainAsync()).Should().Be(1);
         EngineHost.Data(await runs.SetPausedAsync(pipeline.Id, true)).State.Should().Be(PipelineState.Paused);
         (await engine.QueueDueAsync()).Should().Be(0);
         EngineHost.Data(await runs.SetPausedAsync(pipeline.Id, false)).State.Should().Be(PipelineState.Active);
@@ -147,6 +151,10 @@ public sealed class HarvestEngineTests
         // A mixed row created before the policy cannot queue duplicate capture work.
         await host.ExecuteAsync("UPDATE harvest_schedules SET enabled=true WHERE pipeline_id=@pipeline AND kind='capture'",
             ("pipeline", pipeline.Id));
+        // The scheduled harvest queues a run only when a discovery is due, so the section holds one.
+        Fixtures(host, "mstar.uz", count: 1);
+        EngineHost.Data(await scope.ServiceProvider.GetRequiredService<IRunBroker>().StartAsync(pipeline.Id, WorkKind.Discover));
+        (await host.DrainAsync()).Should().Be(1);
         (await scope.ServiceProvider.GetRequiredService<HarvestEngine>().QueueDueAsync()).Should().Be(1);
         (await host.ScalarAsync<long>("SELECT count(*) FROM harvest_runs WHERE pipeline_id=@pipeline AND kind='capture'",
             ("pipeline", pipeline.Id))).Should().Be(0);

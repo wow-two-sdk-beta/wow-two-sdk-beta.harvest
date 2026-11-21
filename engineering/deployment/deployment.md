@@ -302,12 +302,31 @@ output's `searches[].pipelineId`.
   host, 1000–60000 ms. Every source on that host shares it, so the pace is the host's, not Haven's alone.
 - `pipelines run --pipeline <id> [--kind capture|check|refresh|discover|harvest]` queues one run (capture by default) and is
   refused while a run of that kind is queued or running. `sweep` is a usage error.
-- `pipelines schedule --pipeline <id> --kind capture|check|refresh|discover|harvest --every 2h [--off]` sets that kind's interval
-  (`15m`, `1h`, `2h30m` or `01:00:00`, at least 5 minutes), disabled with `--off`; the other schedules, the name, the scope and
-  the limits stay. A `discover` or `harvest` row is a stage row, saved as `PUT api/pipelines/{id}/stages` saves it; enabling one
-  while the pipeline has an enabled capture schedule is refused with exit `1`, and the message names the command to run first
-  (`pipelines schedule --pipeline <id> --kind capture --every <d> --off`). Turning a row on that was off clears the pipeline's
-  automatic turn-off and starts its failed-run count again, and the report line says so.
+- `pipelines schedule --pipeline <id> --kind capture|check|refresh|discover|harvest --every 2h [--off] [--walk full|new|resume]
+  [--batch <1-500>] [--gap-ms <0-60000|host>] [--parallel <1-16>]` sets that kind's interval (`15s`, `15m`, `1h`, `2h30m` or
+  `01:00:00`; at least 5 minutes, and for `harvest` at least 15 seconds), disabled with `--off`; the other schedules, the name,
+  the scope and the limits stay. A `discover` or `harvest` row is a stage row, saved as `PUT api/pipelines/{id}/stages` saves
+  it; enabling one while the pipeline has an enabled capture schedule is refused with exit `1`, and the message names the
+  command to run first (`pipelines schedule --pipeline <id> --kind capture --every <d> --off`). Turning a row on that was off
+  clears the pipeline's automatic turn-off and starts its failed-run count again, and the report line says so.
+  - The stage flags tune the stage row, and an omitted flag keeps the stored value: `--walk` (discover only) is `full` to read
+    the whole catalog on every run, `new` to read from the first page until a page saves nothing new, or `resume` (the
+    default) to continue at the cursor; `--batch` (harvest only) is the items a run takes, 1–500; `--parallel` (harvest only)
+    is how many it fetches at once, 1–16; `--gap-ms` (discover and harvest) is the gap between the starts of the stage's own
+    requests to its host, 0–60000 ms, and `host` clears it so the host's pace applies again. A flag on another kind, a
+    repeated flag or a value that is not a number is a usage error (exit `2`); a number out of range is refused with exit `1`
+    and nothing saved. Each stage row (discover, harvest, process) prints a `stage` object
+    `{"batch","walk","gapMs","parallel","disabled"}` in this form and in `show`, with `"resume"`, `"host"` and `1` for the
+    unset values.
+  - Only an operator sets `--gap-ms` and `--parallel`, as only an operator sets the host pace: the verb runs as the host's
+    operator, and a tenant key that sends `gapMs` or `parallel` to `PUT api/pipelines/{id}/stages` (or sets them on a pipeline
+    it declares or updates) gets 403 and nothing is saved. A tenant save that keeps the stored values passes.
+  - A stage's own gap replaces the host's pace (`pipelines pace`), the reader's declared gap and the 2 s fetch minimum for
+    that stage's requests, so a host pace under 2000 ms still behaves as 2000 ms for every request that has no gap of its own;
+    `--gap-ms` is the way to go under it. What still binds a request that has its own gap: the host's `robots.txt`
+    `Crawl-delay`, a `Retry-After`, a pause after a challenge, block or rate limit (for every pipeline on the host), and a
+    delay a refusal raised above the minimum. A refusal stops the run and pauses the host, and a reply still in flight does not
+    lift that pause.
 - `pipelines auto-off --pipeline <id> --after <0-1000|default>` sets how many failed runs in a row turn this pipeline's
   schedules off: `0` never, `default` the host's value. It writes only that value; it never turns a row on or off and never
   starts the count again. Exit `2` for a missing or out-of-range `--after` or any other flag.
@@ -316,15 +335,20 @@ output's `searches[].pipelineId`.
   null or the turn-off's `atUtc`, `runId`, `failures` and `reason`), and its newest runs' counters, with no post text and no URL.
 
 A capture run restarts at catalog page 1 and re-reads the newest ads, so a source with a large catalog (Joymee on harvest-prod)
-is walked with the discover and harvest pair instead: discover lists the catalog's pages into the saved discoveries and resumes
-from its cursor, and harvest captures the pending ones in batches (§ Source stages). Capture off, discover every hour, harvest
-every half hour:
+is walked with the discover and harvest pair instead: discover lists the catalog's pages into the saved discoveries (from its
+cursor, or from the first page with `--walk full` or `--walk new`), and harvest captures the pending ones in batches (§ Source
+stages). Capture off, the whole catalog listed every 5 minutes, 50 ads harvested every 15 seconds, 250 ms apart, 4 at once:
 
 ```
 pipelines schedule --pipeline <id> --kind capture --every 6h --off
-pipelines schedule --pipeline <id> --kind discover --every 1h
-pipelines schedule --pipeline <id> --kind harvest --every 30m
+pipelines schedule --pipeline <id> --kind discover --every 5m --walk full
+pipelines schedule --pipeline <id> --kind harvest --every 15s --batch 50 --gap-ms 250 --parallel 4
 ```
+
+Add `--gap-ms` to the discover line when the walk should not slow the harvest. A walk that takes longer than its interval runs
+back to back: a slot that finds the pipeline's discover run still active queues nothing and passes, so the next run starts at
+the first slot after the walk ends. `--walk new` reads only the newest pages (it stops at the first page that holds nothing
+new), which costs about a page or two per run when little is new.
 
 `pipelines run --pipeline <id> --kind discover` and `--kind harvest` start either stage at once, before its first due time.
 
@@ -391,8 +415,28 @@ Provider setup and protocols: [integration-providers.md](../research/integration
 ### Source stages
 
 Each registered section has independent Discover, Harvest, and Process schedules.
-Batch size bounds Harvest detail captures and Process saved captures. Discover ignores `BatchSize` and follows
+Batch size bounds Harvest detail captures (1–500) and Process saved captures (1–2000). Discover ignores `BatchSize` and follows
 the declared catalog and run budgets.
+
+- **Walk** (`Walk` on a Discover stage): `Resume`, the default, continues at the saved cursor and keeps the pipeline's request
+  budget. `Full` clears the cursor and lists the whole catalog from its first page on every run, saving only the ads it does
+  not hold yet (a known ad stays captured); `New` clears the cursor too but stops paging at the first catalog page that saves
+  no new ad, so a newest-first catalog costs about a page or two per run when little is new. A `Full` or `New` walk is not cut
+  by the pipeline's request budget: a run of it ends `exhausted` at the catalog's last page (or `New`'s first known page), and
+  only its byte and time budgets (and the engine's own request ceiling) still end it early.
+- **Harvest budget**: a run takes up to its `BatchSize` pending items and its request budget does not cut it, so a batch of
+  100 under a pipeline `MaxRequests` of 70 captures 100. A scheduled Harvest slot with nothing pending queues no run (the next
+  due time still moves on), which keeps a 15-second schedule from filling the run history; a run started by hand with nothing
+  pending still records `no_items`.
+- **Interval**: a Harvest schedule may run as often as every 15 seconds (`00:00:15`); every other schedule stays at 5 minutes or
+  more.
+- **Gap and parallel fetches** (`GapMs` 0–60000 ms and `Parallel` 1–16 on a Harvest stage; `GapMs` also on Discover): the
+  gap between the starts of the stage's own requests to its host replaces the host pace, the reader's gap and the 2 s fetch
+  minimum, and a Harvest stage with `Parallel` above 1 fetches that many items at once. The host's `Crawl-delay`, `Retry-After`,
+  pauses and refusal delays still bind, and only an operator may set either (a tenant key gets 403). A run that sets neither
+  paces and claims as before.
+- **Claim pools**: `Harvest:Worker:ParallelSlots` (default 16, 1–64) is how many claims of parallel runs a worker executes at
+  once, beside its one slot for every other run; a parallel run never holds more items than its `Parallel`.
 The console's Pipelines tab controls automatic scheduling and manual runs.
 Choose scheduled Capture or scheduled Discover and Harvest per section. Check and Process can run with either path.
 
@@ -405,7 +449,7 @@ Roll out historical data backfills separately in indexed batches for the sources
 An instance can seed missing stage settings under `Harvest:PipelineStages` in its mounted
 `appsettings.Target.json`. Select a section by `PipelineId` or by its container external reference,
 source handle, and section URL. Supply `Family` when a handle has both a site and an import source.
-Existing stage settings take precedence over the seed on restart.
+Existing stage settings take precedence over the seed on restart. `Walk` is `Resume`, `Full` or `New`.
 
 ```json
 {
@@ -416,8 +460,8 @@ Existing stage settings take precedence over the seed on restart.
       "Family": "Site",
       "SectionUrl": "https://birbir.uz/ru/tashkent/cat/nedvizhimost/arenda/kvartiry",
       "Schedules": [
-        { "Kind": "Discover", "Mode": "Interval", "Every": "00:30:00", "Enabled": false, "Stage": {} },
-        { "Kind": "Harvest", "Mode": "Interval", "Every": "00:15:00", "Enabled": false, "Stage": { "BatchSize": 30 } },
+        { "Kind": "Discover", "Mode": "Interval", "Every": "00:05:00", "Enabled": false, "Stage": { "Walk": "Full" } },
+        { "Kind": "Harvest", "Mode": "Interval", "Every": "00:00:15", "Enabled": false, "Stage": { "BatchSize": 50, "GapMs": 250, "Parallel": 4 } },
         { "Kind": "Process", "Mode": "Manual", "Enabled": false, "Stage": { "BatchSize": 20 } }
       ]
     }]

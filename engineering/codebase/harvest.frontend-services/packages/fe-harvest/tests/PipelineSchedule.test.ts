@@ -3,8 +3,13 @@ import {
   autoOffWords,
   calendarCron,
   defaultCalendar,
+  gapWords,
+  minimumInterval,
+  parallelWords,
+  postBatchLimit,
   readCalendar,
   scheduleWords,
+  walkWords,
 } from '../src/admin/harvestConsole/PipelineSchedule';
 import { clockOf } from '../src/admin/harvestConsole/SourceWords';
 
@@ -49,5 +54,35 @@ describe('a pipeline turned off after failed runs', () => {
     const words = autoOffWords({ ...autoOff, failures: 1, reason: 'rate_limited' });
     expect(words.words).toBe('Turned off after 1 failed run');
     expect(words.detail).toMatch(/^Last run ended rate limited · /);
+  });
+});
+
+describe('a stage tuned for fast, small requests', () => {
+  const row = { id: 'schedule', timeZone: 'Asia/Tashkent', enabled: true, stage: { batchSize: 50 } } as const;
+
+  it('reads a sub-minute interval in seconds and the others as before', () => {
+    expect(scheduleWords({ ...row, kind: 'harvest', mode: 'interval', every: 'PT15S' })).toBe('Every 15 s');
+    expect(scheduleWords({ ...row, kind: 'harvest', mode: 'interval', every: 'PT45S' })).toBe('Every 45 s');
+    expect(scheduleWords({ ...row, kind: 'discover', mode: 'interval', every: 'PT5M' })).toBe('Every 5 min');
+    expect(scheduleWords({ ...row, kind: 'discover', mode: 'interval', every: 'PT6H' })).toBe('Every 6 hours');
+  });
+
+  it('takes 500 harvest posts per run, and gives each kind its shortest interval', () => {
+    expect(postBatchLimit('harvest')).toBe(500);
+    expect(postBatchLimit('process')).toBe(100);
+    expect(minimumInterval('harvest')).toBe(15);
+    for (const kind of ['capture', 'discover', 'refresh', 'check', 'process'] as const)
+      expect(minimumInterval(kind), kind).toBe(300);
+  });
+
+  it('names the walk, the gap and the parallel fetches', () => {
+    expect(walkWords()).toBe('Resumes its cursor');
+    expect(walkWords('resume')).toBe('Resumes its cursor');
+    expect(walkWords('full')).toBe('Whole catalog each run');
+    expect(walkWords('new')).toBe('Newest pages until a known page');
+    expect(gapWords()).toBe('Host pace');
+    expect(gapWords(250)).toBe('250 ms apart');
+    expect(gapWords(0)).toBe('0 ms apart');
+    expect(parallelWords(4)).toBe('4 at once');
   });
 });

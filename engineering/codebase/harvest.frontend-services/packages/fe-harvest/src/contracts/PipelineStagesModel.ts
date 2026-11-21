@@ -3,9 +3,18 @@ import type { ScheduleModel } from './PipelineModel';
 
 export type PipelineStageKind = 'discover' | 'harvest' | 'process';
 export type DiscoveryState = 'pending' | 'captured' | 'failed' | 'gone';
+/** How a discover stage walks its catalog: at its cursor, the whole catalog, or from the first page until a page holds nothing new. */
+export type DiscoveryWalk = 'resume' | 'full' | 'new';
 
 export interface PipelineStageOptions {
+  /** Harvest takes 1-500, process 1-2000; discover ignores it. */
   readonly batchSize: number;
+  /** Discover rows only; absent means `resume`. */
+  readonly walk?: DiscoveryWalk;
+  /** The gap in ms between the starts of the stage's requests, 0-60000, on discover and harvest rows; absent means the host's pace. Only an operator sets it. */
+  readonly gapMs?: number;
+  /** Harvest rows only: how many items the run fetches at once, 1-16; absent means 1. Only an operator sets it. */
+  readonly parallel?: number;
   readonly disabled?: boolean;
   readonly startsOn?: string;
   readonly titleContains?: string;

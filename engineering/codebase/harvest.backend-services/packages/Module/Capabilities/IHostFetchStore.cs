@@ -1,6 +1,9 @@
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Capabilities;
 
 /// <summary>Serializes a host's fetches and persists the state that survives worker restarts.</summary>
+/// <remarks>A lease holds the host's lock until it is disposed. An unpaced request keeps one lease through its robots read, its
+/// wait, its request and its reply; a paced request (<c>RequestPace</c>) holds one only to reserve its start time and again,
+/// briefly, to record its result, and sends outside the lock.</remarks>
 internal interface IHostFetchStore
 {
     Task<IHostFetchLease> AcquireAsync(string host, CancellationToken cancellationToken);

@@ -259,8 +259,8 @@ describe('console routes', () => {
     await vi.waitFor(() => expect(wrapper.find(field).exists()).toBe(true));
     const batch = wrapper.get<HTMLInputElement>(field);
     const original = batch.element.value;
-    expect([batch.element.min, batch.element.max, batch.element.step]).toEqual(['1', '50', '1']);
-    for (const invalid of ['0', '51', '1.5', '2234234234234234']) {
+    expect([batch.element.min, batch.element.max, batch.element.step]).toEqual(['1', '500', '1']);
+    for (const invalid of ['0', '501', '1.5', '2234234234234234']) {
       await batch.setValue(invalid);
       expect(batch.element.value).toBe(original);
     }

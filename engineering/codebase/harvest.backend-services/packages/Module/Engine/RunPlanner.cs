@@ -68,6 +68,12 @@ internal static class RunPlanner
             descriptor = descriptor with { Steps = [.. descriptor.Steps, new StepDescriptor { Key = ProcessingStore.Step, Role = StepRole.Extract }] };
         var catalog = kind == WorkKind.Discover ? DiscoverySection(adapter, source, pipeline.Scope) : null;
         bool available = steps.Count > 0 && (kind != WorkKind.Discover || catalog is not null);
+        // A scheduled harvest slot with nothing due queues no run, so a 15 s cadence does not fill a pipeline's run lists with
+        // no_items runs; the scheduler passes the slot without stamping it. A harvest that fails at queue time still records its
+        // failure, and a manual harvest still records no_items.
+        if (kind == WorkKind.Harvest && scheduleId is not null && available
+            && !await DiscoveryStore.AnyDueAsync(connection, transaction, pipeline, source, now, ct))
+            return Result<Guid>.Fail(AppErrorFactory.Conflict("Nothing is due to harvest."));
         string? initialTarget = null;
         if (available && kind is not (WorkKind.Check or WorkKind.Refresh or WorkKind.Harvest or WorkKind.Process))
         {
@@ -87,10 +93,14 @@ internal static class RunPlanner
                 initialTarget = url.Uri.AbsoluteUri;
             }
         }
+        // A full or new walk ends at the catalog's end, a page with nothing new, or its byte and time budgets, so the pipeline's
+        // request budget does not cut it; a harvest run's requests follow its batch, so the pipeline's request budget does not bind
+        // it either. The engine's own request default still bounds both.
+        bool wholeWalk = stage?.Walk is DiscoveryWalk.Full or DiscoveryWalk.New;
         var limits = kind switch
         {
-            WorkKind.Discover => pipeline.Limits with { MaxPages = null },
-            WorkKind.Harvest => pipeline.Limits with { MaxItems = stage!.BatchSize },
+            WorkKind.Discover => pipeline.Limits with { MaxPages = null, MaxRequests = wholeWalk ? null : pipeline.Limits.MaxRequests },
+            WorkKind.Harvest => pipeline.Limits with { MaxItems = stage!.BatchSize, MaxRequests = null },
             _ => pipeline.Limits,
         };
         if (adapter is ISourceRunLimitsResolver resolver)
@@ -135,7 +145,8 @@ internal static class RunPlanner
 
         if (kind == WorkKind.Discover)
         {
-            await DiscoveryStore.SeedCatalogAsync(connection, transaction, frozen, runId, steps[0], frozen.CatalogEntry!, now, ct);
+            await DiscoveryStore.SeedCatalogAsync(connection, transaction, frozen, runId, steps[0], frozen.CatalogEntry!,
+                restart: wholeWalk, now, ct);
         }
         else if (kind == WorkKind.Harvest)
         {
@@ -187,7 +198,7 @@ internal static class RunPlanner
         pipeline.Schedules.FirstOrDefault(row => row.Kind == kind)?.Stage ?? kind switch
         {
             WorkKind.Discover => new PipelineStageOptions { BatchSize = pipeline.Limits.MaxPages ?? 10 },
-            WorkKind.Harvest => new PipelineStageOptions { BatchSize = pipeline.Limits.MaxItems ?? 50 },
+            WorkKind.Harvest => new PipelineStageOptions { BatchSize = Math.Min(pipeline.Limits.MaxItems ?? 50, PipelineConstants.MaxHarvestBatch) },
             WorkKind.Process => new PipelineStageOptions { BatchSize = 50 },
             _ => null,
         };
@@ -262,7 +273,13 @@ internal static class RunPlanner
         StepCapabilityPolicy? policy = frozen.Source.CapabilityPolicy.Steps.GetValueOrDefault(step.Key);
         string lane = frozen.Kind == WorkKind.Process ? ProcessingStore.Step
             : change?.Lane ?? policy?.Lane ?? frozen.Source.CapabilityPolicy.Defaults?.Lane ?? step.Lane;
-        var plan = new ResolvedPlan { StepKey = step.Key, HostKey = sourceAddress.HostKey, Lane = lane, Requirements = step.Requires };
+        // A discover or harvest stage that sets its own gap, or fetches in parallel, paces its requests itself: the plan carries it,
+        // so work already queued keeps the pacing it was queued with.
+        StepRequirements requirements = frozen.Kind is WorkKind.Discover or WorkKind.Harvest
+            && frozen.Stage is { } tuned && (tuned.GapMs is not null || tuned.Parallel > 1)
+            ? step.Requires with { Pace = new() { Gap = tuned.GapMs is { } gapMs ? TimeSpan.FromMilliseconds(gapMs) : null } }
+            : step.Requires;
+        var plan = new ResolvedPlan { StepKey = step.Key, HostKey = sourceAddress.HostKey, Lane = lane, Requirements = requirements };
         await EngineSql.ExecuteAsync(connection, transaction,
             "INSERT INTO harvest_host_state(host_key,next_allowed_at,updated_at) VALUES(@host,@now,@now) ON CONFLICT DO NOTHING", ct,
             ("host", plan.HostKey), ("now", now));

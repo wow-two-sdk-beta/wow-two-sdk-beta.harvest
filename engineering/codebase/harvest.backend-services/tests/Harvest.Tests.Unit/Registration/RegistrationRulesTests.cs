@@ -142,7 +142,7 @@ public sealed class RegistrationRulesTests
     }
 
     [Theory]
-    [InlineData(WorkKind.Harvest, PipelineConstants.MaxItemsCap)]
+    [InlineData(WorkKind.Harvest, PipelineConstants.MaxHarvestBatch)]
     [InlineData(WorkKind.Process, PipelineConstants.MaxItemsCap)]
     public void ValidateSchedules_ShouldEnforceTheStageBatchBoundsForEachKind(WorkKind kind, int cap)
     {
@@ -154,6 +154,123 @@ public sealed class RegistrationRulesTests
             var error = RegistrationRules.ValidateSchedules([schedule with { Stage = new() { BatchSize = batch } }]);
             (error?.Message).Should().Be($"The {kind} batch size must be 1–{cap}.");
         }
+    }
+
+    [Fact]
+    public void ValidateSchedules_ShouldHoldTheStageBatchLimitsAsDocumented()
+    {
+        PipelineConstants.MaxHarvestBatch.Should().Be(500);
+        PipelineConstants.MaxItemsCap.Should().Be(2000);
+        var harvest = new ScheduleDeclaration { Kind = WorkKind.Harvest, Mode = ScheduleMode.Manual, Stage = new() { BatchSize = 500 } };
+
+        RegistrationRules.ValidateSchedules([harvest]).Should().BeNull();
+        (RegistrationRules.ValidateSchedules([harvest with { Stage = new() { BatchSize = 501 } }])?.Message)
+            .Should().Be("The Harvest batch size must be 1–500.");
+        RegistrationRules.ValidateSchedules([harvest with { Kind = WorkKind.Process, Stage = new() { BatchSize = 2000 } }]).Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(250, true)]
+    [InlineData(PipelineConstants.MaxGapMs, true)]
+    [InlineData(-1, false)]
+    [InlineData(PipelineConstants.MaxGapMs + 1, false)]
+    public void ValidateSchedules_ShouldBoundTheRequestGapOfDiscoverAndHarvest(int gapMs, bool valid)
+    {
+        foreach (var kind in new[] { WorkKind.Discover, WorkKind.Harvest })
+        {
+            var schedule = new ScheduleDeclaration { Kind = kind, Mode = ScheduleMode.Manual, Stage = new() { BatchSize = 5, GapMs = gapMs } };
+
+            var error = RegistrationRules.ValidateSchedules([schedule]);
+            if (valid)
+                error.Should().BeNull(kind.ToString());
+            else
+                (error?.Message).Should().Be("The request gap must be 0–60000 ms.", kind.ToString());
+        }
+    }
+
+    [Theory]
+    [InlineData(1, true)]
+    [InlineData(4, true)]
+    [InlineData(PipelineConstants.MaxParallel, true)]
+    [InlineData(0, false)]
+    [InlineData(PipelineConstants.MaxParallel + 1, false)]
+    public void ValidateSchedules_ShouldBoundTheParallelFetchesOfAHarvestStage(int parallel, bool valid)
+    {
+        var schedule = new ScheduleDeclaration { Kind = WorkKind.Harvest, Mode = ScheduleMode.Manual, Stage = new() { BatchSize = 5, Parallel = parallel } };
+
+        var error = RegistrationRules.ValidateSchedules([schedule]);
+        if (valid)
+            error.Should().BeNull();
+        else
+            (error?.Message).Should().Be("Parallel fetches must be 1–16.");
+    }
+
+    [Theory]
+    [InlineData(WorkKind.Harvest, nameof(PipelineStageOptions.Walk))]
+    [InlineData(WorkKind.Process, nameof(PipelineStageOptions.Walk))]
+    [InlineData(WorkKind.Discover, nameof(PipelineStageOptions.Parallel))]
+    [InlineData(WorkKind.Process, nameof(PipelineStageOptions.Parallel))]
+    [InlineData(WorkKind.Process, nameof(PipelineStageOptions.GapMs))]
+    [InlineData(WorkKind.Capture, nameof(PipelineStageOptions.GapMs))]
+    [InlineData(WorkKind.Check, nameof(PipelineStageOptions.Parallel))]
+    public void ValidateSchedules_ShouldRefuseTheWalkTheGapAndParallelFetchesOnTheWrongKind(WorkKind kind, string setting)
+    {
+        var options = setting switch
+        {
+            nameof(PipelineStageOptions.Walk) => new PipelineStageOptions { BatchSize = 5, Walk = DiscoveryWalk.Full },
+            nameof(PipelineStageOptions.Parallel) => new PipelineStageOptions { BatchSize = 5, Parallel = 2 },
+            nameof(PipelineStageOptions.GapMs) => new PipelineStageOptions { BatchSize = 5, GapMs = 250 },
+            _ => throw new ArgumentOutOfRangeException(nameof(setting)),
+        };
+        var schedule = new ScheduleDeclaration { Kind = kind, Mode = ScheduleMode.Manual, Stage = options };
+
+        (RegistrationRules.ValidateSchedules([schedule])?.Message).Should().Be("These stage settings do not apply to this work kind.");
+    }
+
+    [Fact]
+    public void ValidateSchedules_ShouldAcceptEachWalkOnADiscoverStage()
+    {
+        foreach (var walk in Enum.GetValues<DiscoveryWalk>())
+            RegistrationRules.ValidateSchedules(
+                [new ScheduleDeclaration { Kind = WorkKind.Discover, Mode = ScheduleMode.Manual, Stage = new() { BatchSize = 1, Walk = walk } }])
+                .Should().BeNull(walk.ToString());
+    }
+
+    [Theory]
+    [InlineData(ScheduleMode.Interval)]
+    [InlineData(ScheduleMode.Adaptive)]
+    public void ValidateSchedules_ShouldLetOnlyAHarvestStageRunEveryFifteenSeconds(ScheduleMode mode)
+    {
+        ScheduleDeclaration Row(WorkKind kind, int seconds) => new()
+        {
+            Kind = kind, Mode = mode, Every = TimeSpan.FromSeconds(seconds), MaxEvery = TimeSpan.FromHours(1),
+            Stage = kind is WorkKind.Discover or WorkKind.Harvest ? new() { BatchSize = 5 } : null,
+        };
+
+        RegistrationRules.ValidateSchedules([Row(WorkKind.Harvest, 15)]).Should().BeNull();
+        RegistrationRules.ValidateSchedules([Row(WorkKind.Harvest, 14)]).Should().NotBeNull();
+        foreach (var kind in new[] { WorkKind.Capture, WorkKind.Discover, WorkKind.Check, WorkKind.Refresh })
+            RegistrationRules.ValidateSchedules([Row(kind, 15)]).Should().NotBeNull(kind.ToString());
+        RegistrationRules.ValidateSchedules([Row(WorkKind.Discover, 300)]).Should().BeNull();
+    }
+
+    [Fact]
+    public void ValidateSchedules_ShouldNameTheFloorOfEachKindInItsMessage()
+    {
+        ScheduleDeclaration Interval(WorkKind kind, int seconds) => new()
+        {
+            Kind = kind, Mode = ScheduleMode.Interval, Every = TimeSpan.FromSeconds(seconds),
+            Stage = kind is WorkKind.Discover or WorkKind.Harvest ? new() { BatchSize = 5 } : null,
+        };
+
+        (RegistrationRules.ValidateSchedules([Interval(WorkKind.Harvest, 14)])?.Message)
+            .Should().Be("A harvest interval schedule runs every 15 seconds or more.");
+        foreach (var kind in new[] { WorkKind.Capture, WorkKind.Discover })
+            (RegistrationRules.ValidateSchedules([Interval(kind, 15)])?.Message)
+                .Should().Be("An interval schedule runs every 5 minutes or more.", kind.ToString());
+        PipelineConstants.MinIntervalFor(WorkKind.Harvest).Should().Be(TimeSpan.FromSeconds(15));
+        PipelineConstants.MinIntervalFor(WorkKind.Capture).Should().Be(PipelineConstants.MinInterval);
     }
 
     [Theory]

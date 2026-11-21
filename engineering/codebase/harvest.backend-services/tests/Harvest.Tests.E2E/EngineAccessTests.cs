@@ -96,6 +96,58 @@ public sealed class EngineAccessTests(HarvestApiFixture fixture)
     }
 
     [Fact]
+    public async Task StageGapAndParallelFetches_ShouldBeTheOperatorsToSet_OnEveryRouteThatWritesAStage()
+    {
+        using var operatorClient = fixture.CreateClient(HarvestApiFixture.OperatorKey);
+        var lane = await LaneAsync(operatorClient);
+        using var tenant = fixture.CreateClient(await KeyAsync(operatorClient, lane.TenantId, "pipelines:read", "pipelines:manage"));
+        object Stage(string kind, int batch, int? gapMs = null, int? parallel = null, string? walk = null) => new
+        {
+            kind, mode = "manual", timeZone = "Asia/Tashkent", stage = new { batchSize = batch, gapMs, parallel, walk },
+        };
+        async Task<JsonElement> OptionsAsync(string kind) =>
+            (await DataAsync(await tenant.GetAsync($"/api/pipelines/{lane.PipelineId}/stages")))
+                .EnumerateArray().Single(item => item.GetProperty("kind").GetString() == kind).GetProperty("options");
+        Task<HttpResponseMessage> Edit(HttpClient client, params object[] schedules) => client.PutAsJsonAsync($"/api/pipelines/{lane.PipelineId}", new
+        {
+            name = "Tuned section", scope = new { }, schedules,
+        });
+        string stages = $"/api/pipelines/{lane.PipelineId}/stages";
+
+        // A tenant that sends a gap or parallel fetches is refused on both routes, and nothing is saved.
+        await ExpectAsync(tenant.PutAsJsonAsync(stages, Stage("harvest", 5, gapMs: 250)), HttpStatusCode.Forbidden);
+        await ExpectAsync(tenant.PutAsJsonAsync(stages, Stage("harvest", 5, parallel: 4)), HttpStatusCode.Forbidden);
+        await ExpectAsync(tenant.PutAsJsonAsync(stages, Stage("discover", 5, gapMs: 100)), HttpStatusCode.Forbidden);
+        await ExpectAsync(Edit(tenant, Stage("harvest", 5, parallel: 4)), HttpStatusCode.Forbidden);
+        await ExpectAsync(Edit(tenant, Stage("harvest", 5, gapMs: 250, parallel: 4)), HttpStatusCode.Forbidden);
+        static bool Has(JsonElement options, string name) => options.TryGetProperty(name, out var value) && value.ValueKind != JsonValueKind.Null;
+        Has(await OptionsAsync("harvest"), "gapMs").Should().BeFalse();
+        Has(await OptionsAsync("harvest"), "parallel").Should().BeFalse();
+        Has(await OptionsAsync("discover"), "gapMs").Should().BeFalse();
+
+        // A tenant sets the walk, the batch and the cadence as before.
+        await ExpectAsync(tenant.PutAsJsonAsync(stages, Stage("discover", 5, walk: "full")), HttpStatusCode.OK);
+        (await OptionsAsync("discover")).GetProperty("walk").GetString().Should().Be("full");
+        await ExpectAsync(tenant.PutAsJsonAsync(stages, Stage("harvest", 7)), HttpStatusCode.OK);
+
+        // The operator sets them.
+        await ExpectAsync(operatorClient.PutAsJsonAsync(stages, Stage("harvest", 5, gapMs: 250, parallel: 4)), HttpStatusCode.OK);
+        var tuned = await OptionsAsync("harvest");
+        tuned.GetProperty("gapMs").GetInt32().Should().Be(250);
+        tuned.GetProperty("parallel").GetInt32().Should().Be(4);
+
+        // A tenant save that keeps the stored values passes; one that drops or changes them does not.
+        await ExpectAsync(tenant.PutAsJsonAsync(stages, Stage("harvest", 9, gapMs: 250, parallel: 4)), HttpStatusCode.OK);
+        await ExpectAsync(Edit(tenant, Stage("harvest", 9, gapMs: 250, parallel: 4)), HttpStatusCode.OK);
+        await ExpectAsync(tenant.PutAsJsonAsync(stages, Stage("harvest", 9)), HttpStatusCode.Forbidden);
+        await ExpectAsync(tenant.PutAsJsonAsync(stages, Stage("harvest", 9, gapMs: 250, parallel: 5)), HttpStatusCode.Forbidden);
+        var kept = await OptionsAsync("harvest");
+        kept.GetProperty("batchSize").GetInt32().Should().Be(9);
+        kept.GetProperty("gapMs").GetInt32().Should().Be(250);
+        kept.GetProperty("parallel").GetInt32().Should().Be(4);
+    }
+
+    [Fact]
     public async Task RunAudit_ShouldReportEachAttemptWithHttpStatusAndRetryTime()
     {
         using var operatorClient = fixture.CreateClient(HarvestApiFixture.OperatorKey);

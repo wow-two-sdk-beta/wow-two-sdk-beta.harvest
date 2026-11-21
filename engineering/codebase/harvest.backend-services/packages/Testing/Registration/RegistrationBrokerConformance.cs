@@ -485,6 +485,52 @@ public abstract class RegistrationBrokerConformance
             Error(await Broker.DeclarePipelineAsync(declaration)).Type.Should().Be(AppErrorType.Validation, declaration.ToString());
     }
 
+    /// <summary>A harvest row runs every 15 seconds with its batch, gap and parallel fetches, and a discover row walks its catalog and
+    /// paces its requests; both read back as saved, while a harvest every 14 seconds and a discover every 15 seconds are refused.</summary>
+    [Fact]
+    public async Task DeclarePipeline_ShouldSaveTunedStages_AndRefuseIntervalsUnderTheirKindsFloor()
+    {
+        var (container, source) = await SourceAsync(SourceCoverage.Whole);
+        ScheduleDeclaration Harvest(TimeSpan every) => new()
+        {
+            Kind = WorkKind.Harvest, Mode = ScheduleMode.Interval, Every = every,
+            Stage = new() { BatchSize = 500, GapMs = 250, Parallel = 4 },
+        };
+        var discover = new ScheduleDeclaration
+        {
+            Kind = WorkKind.Discover, Mode = ScheduleMode.Interval, Every = TimeSpan.FromMinutes(5),
+            Stage = new() { BatchSize = 1, Walk = DiscoveryWalk.New, GapMs = 100 },
+        };
+
+        var declared = Value(await Broker.DeclarePipelineAsync(Pipeline(container, source) with { Schedules = [discover, Harvest(TimeSpan.FromSeconds(15))] }));
+
+        var harvest = declared.Schedules.Single(row => row.Kind == WorkKind.Harvest);
+        harvest.Every.Should().Be(TimeSpan.FromSeconds(15));
+        harvest.Stage.Should().BeEquivalentTo(new PipelineStageOptions { BatchSize = 500, GapMs = 250, Parallel = 4 });
+        declared.Schedules.Single(row => row.Kind == WorkKind.Discover).Stage
+            .Should().BeEquivalentTo(new PipelineStageOptions { BatchSize = 1, Walk = DiscoveryWalk.New, GapMs = 100 });
+        Value(await Broker.GetPipelineAsync(declared.Id)).Schedules.Should().BeEquivalentTo(declared.Schedules);
+
+        var elsewhere = Pipeline(container, source) with { Scope = new() { Url = $"https://{source.Handle}/other" } };
+        Error(await Broker.DeclarePipelineAsync(elsewhere with { Schedules = [Harvest(TimeSpan.FromSeconds(14))] })).Type
+            .Should().Be(AppErrorType.Validation);
+        Error(await Broker.DeclarePipelineAsync(elsewhere with { Schedules = [discover with { Every = TimeSpan.FromSeconds(15) }] })).Type
+            .Should().Be(AppErrorType.Validation);
+        Error(await Broker.UpdatePipelineAsync(declared.Id, new PipelineUpdate
+        {
+            Scope = declared.Scope, Schedules = [Harvest(TimeSpan.FromSeconds(14))],
+        })).Type.Should().Be(AppErrorType.Validation);
+        Value(await Broker.GetPipelineAsync(declared.Id)).Schedules.Should().BeEquivalentTo(declared.Schedules);
+
+        var updated = Value(await Broker.UpdatePipelineAsync(declared.Id, new PipelineUpdate
+        {
+            Scope = declared.Scope, Schedules = [Harvest(TimeSpan.FromSeconds(30))],
+        }));
+        updated.Schedules.Single(row => row.Kind == WorkKind.Harvest).Every.Should().Be(TimeSpan.FromSeconds(30));
+        Value(await Broker.GetPipelineAsync(declared.Id)).Schedules.Single(row => row.Kind == WorkKind.Harvest).Stage
+            .Should().BeEquivalentTo(new PipelineStageOptions { BatchSize = 500, GapMs = 250, Parallel = 4 });
+    }
+
     /// <summary>Saved filters and cadence can change without replacing a pipeline or its schedule history.</summary>
     [Fact]
     public async Task UpdatePipeline_ShouldKeepIdentityAndDisableOmittedKinds()

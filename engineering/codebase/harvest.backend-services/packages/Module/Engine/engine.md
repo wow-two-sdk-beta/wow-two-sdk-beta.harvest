@@ -13,7 +13,8 @@ calls the adapter's brokers.
   and `auto_off_*`, `harvest_runs`, `harvest_work_item` (the frontier), lane backoff and usage attribution, and the operator's reading pace (`harvest_host_state.min_delay_ms`, `IRunBroker.SetReadingPaceAsync`:
   1000–60000 ms per resolved host; it returns the source's health from `Sources/`). An adapter may declare a
   `SourceUrl` and matching `HostKey` separately from the source identity; legacy host sources use their handle.
-- Rules: claim by `(host_key, lane)` with `FOR UPDATE SKIP LOCKED`; leases, never boot-time interrupts; fenced result
+- Rules: claim by `(host_key, lane)` with `FOR UPDATE SKIP LOCKED` from two pools (the shared pool takes one running item per
+  lane; the parallel pool takes up to a run's own `parallel` items); leases, never boot-time interrupts; fenced result
   writes; no transaction spans network I/O; `UNIQUE (pipeline_id, kind, scheduled_for)` makes scheduling idempotent.
 - A challenge, block or rate limit stays the item's outcome: its lane backs off, and the item waits for the lane, never
   for another route.
@@ -23,6 +24,19 @@ calls the adapter's brokers.
 ## Execution
 
 - `AddHarvestEngine` registers `IRunBroker` and `HarvestEngine`; `AddHarvestWorker` explicitly starts the polling worker.
+- two claim pools, both under the same row locks and lane pause checks: the shared pool claims for runs whose frozen stage has no
+  `parallel` or `parallel` 1, one running item per host lane, counting only those runs' items; the parallel pool claims for runs
+  with `parallel` above 1, while the run has fewer running items than its `parallel`, whatever else runs on the lane. The worker
+  is a dispatcher: one shared slot, plus `Harvest:Worker:ParallelSlots` (default 16, 1–64) slots for parallel claims, each claim
+  a task in its own scope; it claims again when a claim ends or the poll interval passes
+- a run's stage settings are frozen with it: `walk`, `gapMs` and `parallel` read from `frozen.stage`, and a run that sets a gap
+  or parallel fetches freezes `pace` into its work items' plan, which the fetch lane reads (`Capabilities/capabilities.md`)
+- a discover run's walk: `resume` reads from its cursor under the pipeline's page, item and request budgets; `full` and `new`
+  clear the cursor rows, start at the entry page and drop the pipeline's request budget (the byte and time budgets and the
+  engine's own request ceiling still apply), so a `full` run ends `exhausted` at the last page; `new` also stops paging at the
+  first catalog page that saved no new listing (`pending` for the first time, or reset to `pending` by a changed fingerprint)
+- a harvest run takes at most its `BatchSize` pending items (1–500) and is not cut by the pipeline's request budget
+- a scheduled harvest slot with no pending item queues no run and still advances `next_due_at`; a manual harvest records `no_items`
 - the scheduler holds one transaction advisory lock, advances each stored due time past now and coalesces downtime
 - interval/adaptive-minimum and five/six-field cron schedules use their IANA time zone and optional daily window
 - each run freezes its source, pipeline, adapter and steps; query parameters are applied before work is queued

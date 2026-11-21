@@ -15,6 +15,16 @@ detection.
   failures, last challenge and concurrency), `harvest_fetch_validators` (bounded public response validators and body).
   The engine owns lane pause state and request/byte attribution; fetching holds a PostgreSQL session advisory lock
   per IDNA host until each fetch finishes and updates the durable global gate.
+- A request with no `FetchRequest.Pace` holds its host's lock from the permission check through the body it reads (robots and
+  redirects included), so no two requests to a host overlap. A request with one (a pipeline's own `gapMs`, or `parallel`
+  fetches, which the engine freezes into the step's requirements) takes the paced path: under the host lock it checks the
+  permission and any pause, reads robots when they are due and reserves its start, the later of now and the host's
+  `NextAllowedAt`, which moves on by its gap; it releases the lock, waits for its start, sends and reads; then it takes a short
+  fresh lock to record the result. Requests with a gap of their own therefore start one gap apart and overlap in flight. Its gap
+  is its own and replaces the host pace, the reader's gap and the two-second minimum; a robots `Crawl-delay`, a `Retry-After` and
+  a delay a refusal raised above the minimum still raise it, and a paused host refuses it as it refuses any request. A reply that
+  was in flight clears the host's failure state only when no pause began after its start, keeps a sibling's later `Retry-After`,
+  and never moves `NextAllowedAt` back.
 - Provider SDK steps acquire a request lease, send only on `Ok`, complete it with the provider outcome, and dispose
   it after the response. The lease checks host permissions and pauses, saves the pacing reservation before I/O, and
   clears expired host failure state on success. The engine still records usage and applies lane refusal backoff.

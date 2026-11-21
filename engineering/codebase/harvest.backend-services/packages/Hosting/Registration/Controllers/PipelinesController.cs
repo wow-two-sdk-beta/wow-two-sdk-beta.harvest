@@ -37,6 +37,8 @@ public sealed class PipelinesController(IRegistrationBroker broker, CallerResolv
                 return this.ToProblem(RegistrationErrors.ContainerNotFound(declaration.ContainerId));
             if (!caller.CanWrite(container))
                 return this.ToProblem(AppErrorFactory.Forbidden("A tenant declares pipelines in its own private containers; the pool is the operator's."));
+            if (SetsOperatorPacing(declaration.Schedules, []))
+                return this.ToProblem(AppErrorFactory.Forbidden(OperatorPacing));
         }
 
         return (await broker.DeclarePipelineAsync(declaration, ct)).Match<IActionResult>(
@@ -63,6 +65,8 @@ public sealed class PipelinesController(IRegistrationBroker broker, CallerResolv
             return this.ToProblem(AppErrorFactory.Forbidden("A tenant edits pipelines in its own private containers."));
         if (update.Limits is not null && !caller.IsOperator)
             return this.ToProblem(AppErrorFactory.Forbidden("Only the operator sets a pipeline's limits."));
+        if (!caller.IsOperator && SetsOperatorPacing(update.Schedules ?? [], pipeline.Schedules))
+            return this.ToProblem(AppErrorFactory.Forbidden(OperatorPacing));
 
         return (await broker.UpdatePipelineAsync(pipelineId, update, ct)).Match<IActionResult>(
             saved => Ok(ApiResponse<PipelineModel>.Ok(saved)), this.ToProblem);
@@ -125,6 +129,8 @@ public sealed class PipelinesController(IRegistrationBroker broker, CallerResolv
     {
         if (await VisibleAsync(pipelineId, true, ct) is not { } scope)
             return this.ToProblem(RegistrationErrors.PipelineNotFound(pipelineId));
+        if (await callers.ResolveAsync(User, ct) is not { IsOperator: true } && SetsOperatorPacing([schedule], scope.Pipeline.Schedules))
+            return this.ToProblem(AppErrorFactory.Forbidden(OperatorPacing));
         return (await stages.SaveAsync(scope.Pipeline, scope.Source, schedule, seedOnly: false, ct)).Match<IActionResult>(
             saved => Ok(ApiResponse<bool>.Ok(saved)), this.ToProblem);
     }
@@ -141,6 +147,20 @@ public sealed class PipelinesController(IRegistrationBroker broker, CallerResolv
             return this.ToProblem(AppErrorFactory.Validation("Use a known discovery state, a positive page size and a nonnegative offset."));
         return Ok(ApiResponse<IReadOnlyList<PipelineDiscoveryModel>>.Ok(await stages.DiscoveriesAsync(pipelineId, state, offset, limit, ct)));
     }
+
+    /// <summary>Holds the refusal a tenant gets for a stage's request gap or parallel fetches.</summary>
+    private const string OperatorPacing =
+        "Only an operator sets a stage's request gap and parallel fetches; they pace a host every tenant shares.";
+
+    /// <summary>Reads whether any stage in the schedules sets or changes a request gap or parallel fetches, compared with the row of
+    /// the same kind that is stored: a save that keeps the stored values sets neither. A row sent without stage settings keeps the
+    /// stored ones.</summary>
+    private static bool SetsOperatorPacing(IReadOnlyList<ScheduleDeclaration> schedules, IReadOnlyList<ScheduleModel> stored) =>
+        schedules.Any(schedule =>
+        {
+            var current = stored.FirstOrDefault(row => row.Kind == schedule.Kind)?.Stage;
+            return schedule.Stage is { } stage && (stage.GapMs != current?.GapMs || stage.Parallel != current?.Parallel);
+        });
 
     private async Task<(PipelineModel Pipeline, SourceModel Source)?> VisibleAsync(Guid pipelineId, bool write, CancellationToken ct)
     {

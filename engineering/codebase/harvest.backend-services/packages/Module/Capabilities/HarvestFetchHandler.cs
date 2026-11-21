@@ -10,6 +10,11 @@ using WoW.Two.Sdk.Beta.Be.Http.Safety;
 namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Capabilities;
 
 /// <summary>Applies the same durable politeness policy to typed fetches and a step's raw HTTP client.</summary>
+/// <remarks>A request holds its host's lock from the permission check through the body it reads, redirects and robots included,
+/// so no two requests to a host overlap. A request that carries a <see cref="RequestPace"/> (a pipeline's own gap or parallel
+/// fetches) takes the paced path: it holds the lock only to check, read robots when they are due and reserve its start time
+/// (<c>NextAllowedAt</c> + its gap), sends and reads outside the lock, and takes the lock again, briefly, to record the result.
+/// A <c>Crawl-delay</c>, a <c>Retry-After</c>, a pause and a delay a refusal raised bind both paths.</remarks>
 internal sealed class HarvestFetchHandler(
     IFetchTransportFactory transports,
     IHostFetchStore hosts,
@@ -31,6 +36,8 @@ internal sealed class HarvestFetchHandler(
             : new FetchRequest { Uri = uri! };
         if (policy.DestinationPolicy is not null && !policy.DestinationPolicy.Allows(uri!))
             return Synthetic(request, FetchOutcome.NotApproved, HttpStatusCode.BadRequest, "The source does not permit this page route.");
+        if (policy.Pace is { } pace)
+            return await SendPacedAsync(request, policy, pace, uri!, usage, cancellationToken);
         await using var lease = await hosts.AcquireAsync(uri!.IdnHost.TrimEnd('.').ToLowerInvariant(), cancellationToken);
         try
         {
@@ -170,6 +177,277 @@ internal sealed class HarvestFetchHandler(
         }
     }
 
+    /// <summary>Sends a request the pipeline paces itself: under the host lock it checks, reads robots when they are due and
+    /// reserves its start time; outside the lock it waits for that time, sends and reads; under a fresh, short lock it records
+    /// the result. Each redirect hop repeats the three.</summary>
+    private async Task<HttpResponseMessage> SendPacedAsync(HttpRequestMessage request, FetchRequest policy, RequestPace pace, Uri uri,
+        FetchUsageCounters usage, CancellationToken cancellationToken)
+    {
+        string host = uri.IdnHost.TrimEnd('.').ToLowerInvariant();
+        var held = new HeldRoute();
+        try
+        {
+            for (int redirects = 0; ; redirects++)
+            {
+                var reserved = await ReserveAsync(request, policy, pace, uri, host, held, usage, cancellationToken);
+                if (reserved.Failure is { } failure)
+                    return failure;
+                var route = held.Route!;
+                TimeSpan wait = reserved.Start - clock.GetUtcNow();
+                if (wait > TimeSpan.Zero)
+                {
+                    await Task.Delay(wait, clock, cancellationToken);
+                    // A sibling reserved ahead of this request may have been refused while it waited, and the refusal paused the host.
+                    if (await PausedWhileWaitingAsync(request, host, cancellationToken) is { } paused)
+                        return paused;
+                }
+                HttpResponseMessage response = await ReadUnlockedAsync(uri, route, request.Method, request, reserved.Validators, usage, cancellationToken);
+                int status = (int)response.StatusCode;
+                if (IsRedirect(status))
+                {
+                    Uri? location = response.Headers.Location;
+                    Uri? next = location is null ? null : location.IsAbsoluteUri ? location : new Uri(uri, location);
+                    if (redirects >= options.MaximumRedirects || !IsSafeRedirect(uri, next) || !route.Allows(next!)
+                        || policy.DestinationPolicy is not null && !policy.DestinationPolicy.Allows(next!))
+                    {
+                        response.Dispose();
+                        return Synthetic(request, FetchOutcome.InvalidRedirect, HttpStatusCode.BadGateway, "Redirect left the source host or violated its transport policy.");
+                    }
+                    response.Dispose();
+                    uri = next!;
+                    continue;
+                }
+
+                byte[] body = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+                if (status == 304 && reserved.Validators?.Body is { } cachedBody)
+                {
+                    if (cachedBody.Length > options.MaximumResponseBytes)
+                    {
+                        response.Dispose();
+                        throw new ResponseTooLargeException();
+                    }
+                    response.Content.Dispose();
+                    response.Content = new ByteArrayContent(cachedBody);
+                    if (MediaTypeHeaderValue.TryParse(reserved.Validators.ContentType, out var contentType))
+                        response.Content.Headers.ContentType = contentType;
+                    body = cachedBody;
+                }
+                var verdict = Detect(uri, response, body);
+                if (verdict is not null)
+                {
+                    var backoff = await RecordPauseAsync(host, verdict.Outcome, verdict.RetryAfter);
+                    request.Options.Set(HarvestFetchMetadata.ResponseKey, new(verdict.Outcome, verdict.Kind, backoff, verdict.Evidence));
+                    return response;
+                }
+
+                var outcome = status is 404 or 410 ? FetchOutcome.Gone
+                    : status == 304 || response.IsSuccessStatusCode ? FetchOutcome.Ok : FetchOutcome.HttpError;
+                var retryAfter = GenericChallengeDetector.ParseRetryAfter(Headers(response), clock.GetUtcNow());
+                if (outcome == FetchOutcome.HttpError)
+                    retryAfter = await RecordPauseAsync(host, outcome, retryAfter);
+                else
+                    await RecordSuccessAsync(host, uri, request.Method, policy, response, body, retryAfter, reserved);
+                request.Options.Set(HarvestFetchMetadata.ResponseKey, new(outcome, RetryAfter: retryAfter));
+                return response;
+            }
+        }
+        catch (FetchTransportUnavailableException)
+        {
+            return Synthetic(request, FetchOutcome.CapabilityUnavailable, HttpStatusCode.ServiceUnavailable,
+                "The configured route or session is unavailable. Check its provider settings.");
+        }
+        catch (HttpRequestException error) when (BlockedDestination(error))
+        {
+            return Synthetic(request, FetchOutcome.InvalidRedirect, HttpStatusCode.BadRequest, "Destination failed the public-network policy.");
+        }
+        catch (ResponseTooLargeException)
+        {
+            await RecordPauseAsync(host, FetchOutcome.ResponseTooLarge, null);
+            return Synthetic(request, FetchOutcome.ResponseTooLarge, HttpStatusCode.RequestEntityTooLarge, "Response exceeded the configured byte limit.");
+        }
+        catch (HttpRequestException)
+        {
+            var delay = await RecordPauseAsync(host, FetchOutcome.NetworkError, null);
+            return Synthetic(request, FetchOutcome.NetworkError, HttpStatusCode.BadGateway, "Direct connection failed.", delay);
+        }
+        finally
+        {
+            if (held.Route is not null)
+                await held.Route.DisposeAsync();
+        }
+    }
+
+    /// <summary>Takes the host lock, makes the checks the unpaced path makes, reads robots when they are due, and reserves the
+    /// request's start: the later of now and the host's next allowed time, which moves on by the request's gap. The lock is
+    /// released before it returns.</summary>
+    private async Task<Reservation> ReserveAsync(HttpRequestMessage request, FetchRequest policy, RequestPace pace, Uri uri, string host,
+        HeldRoute held, FetchUsageCounters usage, CancellationToken cancellationToken)
+    {
+        await using var lease = await hosts.AcquireAsync(host, cancellationToken);
+        try
+        {
+            if (lease.State.Permission is not ("open" or "granted") || lease.State.PolicyPermission is not ("open" or "granted"))
+                return new(Synthetic(request, FetchOutcome.Restricted, HttpStatusCode.Forbidden, "Operator host policy does not permit this fetch."));
+            var now = clock.GetUtcNow();
+            if (PausedResponse(request, lease.State, now) is { } paused)
+                return new(paused);
+
+            held.Route ??= await transports.AcquireAsync(uri, cookies, cancellationToken);
+            var route = held.Route;
+            if (!route.Allows(uri))
+                return new(Synthetic(request, FetchOutcome.InvalidRedirect, HttpStatusCode.BadRequest, "Configured route does not allow the destination."));
+
+            bool sharedCache = !route.IsPrivate && route.Cookies is null
+                && !request.Headers.Contains("Authorization") && !request.Headers.Contains("Cookie");
+            var robotsState = sharedCache ? lease.State : new HostFetchState();
+            TimeSpan gap;
+            TimeSpan adaptive = TimeSpan.FromMilliseconds(lease.State.AdaptiveDelayMilliseconds);
+            if (pace.Gap is { } own)
+            {
+                // The pipeline's own gap replaces the host's pace, the reader's gap and the fetch minimum; what a host or its robots
+                // file demands, and a delay a refusal raised above the minimum, still bind.
+                gap = own;
+                if (lease.State.CrawlDelaySeconds is { } cachedCrawlDelay && TimeSpan.FromSeconds(cachedCrawlDelay) > gap)
+                    gap = TimeSpan.FromSeconds(cachedCrawlDelay);
+                if (adaptive > options.MinimumDelay && adaptive > gap)
+                    gap = adaptive;
+            }
+            else
+            {
+                gap = options.MinimumDelay;
+                if (TimeSpan.FromMilliseconds(lease.State.MinimumDelayMilliseconds) > gap)
+                    gap = TimeSpan.FromMilliseconds(lease.State.MinimumDelayMilliseconds);
+                if (lease.State.CrawlDelaySeconds is { } cachedCrawlDelay && TimeSpan.FromSeconds(cachedCrawlDelay) > gap)
+                    gap = TimeSpan.FromSeconds(cachedCrawlDelay);
+                if (policy.MinDelay is { } requestedGap && requestedGap > gap)
+                    gap = requestedGap;
+                if (adaptive > gap)
+                    gap = adaptive;
+            }
+
+            if (policy.RobotsPolicy == RobotsPolicy.Obey)
+            {
+                var robots = await EnsureRobotsAsync(uri, route, lease, robotsState, gap, request, usage, cancellationToken);
+                if (robots.Failure is { } failure)
+                    return new(failure);
+                var rules = RobotsRules.Parse(robotsState.RobotsBody ?? string.Empty, options.UserAgent);
+                robotsState.CrawlDelaySeconds = rules.CrawlDelay is { } parsedDelay ? (int)Math.Ceiling(parsedDelay.TotalSeconds) : null;
+                if (rules.CrawlDelay is { } crawlDelay && crawlDelay > gap)
+                    gap = crawlDelay;
+                if (!rules.Allows(uri))
+                    return new(Synthetic(request, FetchOutcome.RobotsDisallowed, HttpStatusCode.Forbidden, "Host robots policy disallows this path."));
+            }
+
+            var validators = sharedCache && policy.CacheResponse ? await lease.GetValidatorsAsync(uri.AbsoluteUri, cancellationToken) : null;
+            var start = clock.GetUtcNow();
+            if (lease.State.NextAllowedAt > start)
+                start = lease.State.NextAllowedAt;
+            lease.State.NextAllowedAt = start + gap;
+            return new(null, start, validators, sharedCache);
+        }
+        finally
+        {
+            // The reservation is durable before the lock goes, even when cancellation arrived while a robots file was read.
+            await lease.SaveAsync(CancellationToken.None);
+        }
+    }
+
+    /// <summary>Takes the host lock briefly, after a request waited for its reserved start, to see whether the host was paused in
+    /// the meantime: a refusal of a sibling that started earlier pauses the host for every request, including one already
+    /// reserved. The fetch lane sees the host's pause, which every refusal sets; the engine's own lane pause follows from the
+    /// refused item's result.</summary>
+    /// <returns>The refusal to return in place of sending, or null when the host is open.</returns>
+    private async Task<HttpResponseMessage?> PausedWhileWaitingAsync(HttpRequestMessage request, string host, CancellationToken cancellationToken)
+    {
+        using var bounded = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        bounded.CancelAfter(options.Timeout);
+        await using var lease = await hosts.AcquireAsync(host, bounded.Token);
+        return PausedResponse(request, lease.State, clock.GetUtcNow());
+    }
+
+    /// <summary>Answers a request the host's pause stops: the outcome that set the pause, for as long as the pause or a
+    /// <c>Retry-After</c> lasts; null when the host is open.</summary>
+    private static HttpResponseMessage? PausedResponse(HttpRequestMessage request, HostFetchState state, DateTimeOffset now)
+    {
+        var pausedUntil = Later(state.PausedUntil, state.RetryAfterUntil);
+        if (pausedUntil is not { } until || until <= now)
+            return null;
+        var outcome = Enum.TryParse<FetchOutcome>(state.PauseReason, out var previous) ? previous : FetchOutcome.RateLimited;
+        return Synthetic(request, outcome, outcome == FetchOutcome.RateLimited ? HttpStatusCode.TooManyRequests : HttpStatusCode.Forbidden,
+            "Host remains paused after its previous response.", until - now);
+    }
+
+    private async Task<HttpResponseMessage> ReadUnlockedAsync(Uri uri, IFetchTransportLease route, HttpMethod method, HttpRequestMessage original,
+        ResponseValidators? validators, FetchUsageCounters usage, CancellationToken cancellationToken)
+    {
+        using var message = CreateMessage(uri, route, method, original, validators);
+        return await SendAndReadAsync(message, uri, route, method, usage, cancellationToken);
+    }
+
+    /// <summary>Takes the host lock briefly to pause the host after a refusal, an HTTP error, a network error or an oversize reply.</summary>
+    /// <returns>How long the host is paused.</returns>
+    private async Task<TimeSpan> RecordPauseAsync(string host, FetchOutcome outcome, TimeSpan? retryAfter)
+    {
+        using var bounded = new CancellationTokenSource(options.Timeout);
+        await using var lease = await hosts.AcquireAsync(host, bounded.Token);
+        try
+        {
+            return Pause(lease.State, outcome, retryAfter);
+        }
+        finally
+        {
+            await lease.SaveAsync(CancellationToken.None);
+        }
+    }
+
+    /// <summary>Takes the host lock briefly to record a reply that was read: it clears the host's failure state unless a pause is
+    /// running that began after this request's start (a sibling's refusal, which a reply in flight never lifts), decays the
+    /// delay a refusal raised, sets <c>Retry-After</c> and saves the validators. It never moves the next allowed time.</summary>
+    private async Task RecordSuccessAsync(string host, Uri uri, HttpMethod method, FetchRequest policy, HttpResponseMessage response,
+        byte[] body, TimeSpan? retryAfter, Reservation reserved)
+    {
+        using var bounded = new CancellationTokenSource(options.Timeout);
+        await using var lease = await hosts.AcquireAsync(host, bounded.Token);
+        try
+        {
+            var state = lease.State;
+            var now = clock.GetUtcNow();
+            if (state.PausedUntil is not { } paused || paused <= reserved.Start)
+            {
+                state.ConsecutiveFailures = 0;
+                state.PauseReason = null;
+                state.PausedUntil = null;
+            }
+            DateTimeOffset? stated = retryAfter is { } wait ? now + wait : null;
+            state.RetryAfterUntil = state.RetryAfterUntil is { } siblings && siblings > reserved.Start ? Later(siblings, stated) : stated;
+            state.AdaptiveDelayMilliseconds = Math.Max((int)options.MinimumDelay.TotalMilliseconds,
+                (int)(state.AdaptiveDelayMilliseconds * 0.9));
+            if (response.IsSuccessStatusCode && method == HttpMethod.Get && reserved.SharedCache && policy.CacheResponse)
+            {
+                bool cacheable = response.Headers.CacheControl?.NoStore != true && response.Headers.CacheControl?.Private != true
+                    && !response.Headers.Vary.Any(value => !value.Equals("Accept-Encoding", StringComparison.OrdinalIgnoreCase))
+                    && (response.Headers.ETag is not null || response.Content.Headers.LastModified is not null);
+                await lease.SaveValidatorsAsync(uri.AbsoluteUri, cacheable
+                    ? new(response.Headers.ETag?.ToString(), response.Content.Headers.LastModified, body, response.Content.Headers.ContentType?.ToString())
+                    : new(null, null), bounded.Token);
+            }
+        }
+        finally
+        {
+            await lease.SaveAsync(CancellationToken.None);
+        }
+    }
+
+    /// <summary>Holds the route a paced request acquired, so it is released when the request ends however it ends.</summary>
+    private sealed class HeldRoute
+    {
+        internal IFetchTransportLease? Route { get; set; }
+    }
+
+    /// <summary>Holds what a paced request's locked step produced: a refusal to return, or the start it reserved.</summary>
+    private sealed record Reservation(HttpResponseMessage? Failure, DateTimeOffset Start = default, ResponseValidators? Validators = null,
+        bool SharedCache = false);
+
     private async Task<(HttpResponseMessage? Failure, bool Loaded)> EnsureRobotsAsync(
         Uri uri, IFetchTransportLease route, IHostFetchLease lease, HostFetchState robotsState, TimeSpan gap, HttpRequestMessage original, FetchUsageCounters usage, CancellationToken cancellationToken)
     {
@@ -225,7 +503,20 @@ internal sealed class HarvestFetchHandler(
         TimeSpan wait = lease.State.NextAllowedAt - clock.GetUtcNow();
         if (wait > TimeSpan.Zero)
             await Task.Delay(wait, clock, cancellationToken);
-        using var message = new HttpRequestMessage(method, uri) { Version = HttpVersion.Version11, VersionPolicy = HttpVersionPolicy.RequestVersionOrLower };
+        using var message = CreateMessage(uri, route, method, original, validators);
+
+        // Advance before connecting so a timed-out or interrupted request also leaves a durable gap.
+        lease.State.NextAllowedAt = clock.GetUtcNow() + gap;
+        await lease.SaveAsync(cancellationToken);
+        HttpResponseMessage response = await SendAndReadAsync(message, uri, route, method, usage, cancellationToken);
+        lease.State.NextAllowedAt = clock.GetUtcNow() + gap;
+        return response;
+    }
+
+    private HttpRequestMessage CreateMessage(Uri uri, IFetchTransportLease route, HttpMethod method, HttpRequestMessage? original,
+        ResponseValidators? validators)
+    {
+        var message = new HttpRequestMessage(method, uri) { Version = HttpVersion.Version11, VersionPolicy = HttpVersionPolicy.RequestVersionOrLower };
         if (original is not null)
         {
             foreach (var header in original.Headers)
@@ -242,10 +533,12 @@ internal sealed class HarvestFetchHandler(
             message.Headers.IfModifiedSince = modified;
         if (route.Cookies?.GetCookieHeader(uri) is { Length: > 0 } cookieHeader)
             message.Headers.TryAddWithoutValidation("Cookie", cookieHeader);
+        return message;
+    }
 
-        // Advance before connecting so a timed-out or interrupted request also leaves a durable gap.
-        lease.State.NextAllowedAt = clock.GetUtcNow() + gap;
-        await lease.SaveAsync(cancellationToken);
+    private async Task<HttpResponseMessage> SendAndReadAsync(HttpRequestMessage message, Uri uri, IFetchTransportLease route, HttpMethod method,
+        FetchUsageCounters usage, CancellationToken cancellationToken)
+    {
         usage.Requests++;
         HttpResponseMessage response = await route.Client.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         try
@@ -277,7 +570,6 @@ internal sealed class HarvestFetchHandler(
             response.Content.Dispose();
             response.Content = content;
             response.RequestMessage = message;
-            lease.State.NextAllowedAt = clock.GetUtcNow() + gap;
             return response;
         }
         catch
