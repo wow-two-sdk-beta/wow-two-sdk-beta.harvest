@@ -197,6 +197,30 @@ only, with the default port and no credentials in the URL. Requests use Harvest'
 declared domain's images keep the adapter's gap per image host. SCFD serves the stored bytes through the source's
 authorized API and uses the source URL while an image copy is pending or unavailable.
 
+The copier records each attempt on the job (migration `020-asset-outcomes`): `outcome` and `finished_at` for every attempt,
+and `bytes`, the bytes uploaded to Files, for a copy. The outcome is one of `copied`; `rejected` (the URL does not parse or
+the destination policy refuses it); `fetch_<outcome>` (the fetch did not return `Ok`: `fetch_gone`,
+`fetch_robots_disallowed`, `fetch_rate_limited` and so on); `redirected_off_policy` (the final URL fails the policy);
+`unsupported_type`, `empty` and `too_large` (the content checks); and `files_declined` (Files refused the upload; the job
+retries in 15 minutes). A copy made before the migration keeps no size or outcome: it reads as unsized and `unrecorded`.
+
+`dotnet HarvestSources.Api.dll assets report [--sources <id,id>]` reads those records through Wheelhouse Run, with no
+database access, listener or operator token. It writes nothing, prints one JSON line and exits `0` (`1` the store could not be
+read, `2` usage). It prints counts only, never an origin URL, file id, contact value or post text; an error names the failing
+argument. The line holds:
+
+- `generatedAt`, `sources` and `totals`; `--sources` limits the output to the named sources. A source is listed when it is
+  active and has any asset job or any linked post.
+- per source `sourceId`, `handle` and `family`, then `images`: `jobs`, `copied`, `due` (not copied, retry time reached),
+  `deferred` (not copied, retry later) and `byOutcome` (a count per outcome, `unrecorded` for a job with none);
+  `bytes` over the copied images: `sized`, `unsized` and, over the sized ones, `total`, `min`, `median` (the lower middle
+  value of an even count) and `max`, all `null` when none is sized; `favicon.copied` (`true`, `false`, or `null` with no
+  job); and `posts` over linked posts that are live (not merged, not `gone`, link not retired): `total`, `withContact`,
+  `withPhone` and `withEmail`, read from the `kind` of each item of the post's `contacts`.
+- `totals`: `sources`, `images`, `bytes` and `posts` over the listed sources, a post linked to several of them counted once.
+
+A result line over 16 KiB is cut by Wheelhouse; the verb says so on stderr, and `--sources` names fewer sources.
+
 ## Provisioning Haven on a target
 
 `dotnet HarvestSources.Api.dll marketplace setup --profile haven [--schedules] [--run] [--model-processing off|manual|auto] [--issue-key]` applies the
@@ -282,6 +306,9 @@ output's `searches[].pipelineId`.
   `2h30m` or `01:00:00`, at least 5 minutes), disabled with `--off`; the other schedules, the name, the scope and the limits stay.
 - `pipelines show --pipeline <id> [--runs <n>]` writes nothing; it reads the pipeline's name, state, limits and schedules and
   its newest runs' counters, with no post text and no URL.
+
+`assets report [--sources <id,id>]` is the read-only form for a source's image copies: copies by state, outcome and bytes, and
+live posts by contact kind, as counts only (§ Private source media).
 
 ## Integrations
 

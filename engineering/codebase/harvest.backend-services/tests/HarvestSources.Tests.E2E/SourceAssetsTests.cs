@@ -17,6 +17,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 using WoW.Two.Sdk.Beta.Be.Files.Store;
 using WoW.Two.Sdk.Beta.Be.Files.Uploads;
+using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Capabilities.Fetching;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
@@ -26,7 +27,7 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 
 namespace HarvestSources.Tests.E2E;
 
-public sealed class SourceAssetsTests
+public sealed partial class SourceAssetsTests
 {
     private const string CdnImage = "https://scontent.example.cdninstagram.com/post.jpg?signature=fixture";
     private const string SecondImage = "https://scontent.example.fbcdn.net/post.jpg?signature=fixture";
@@ -527,9 +528,12 @@ public sealed class SourceAssetsTests
         public string ContentType { get; set; } = "image/png";
         public byte[] Body { get; set; } = Png;
         public Uri? FinalUrl { get; set; }
+        public FetchOutcome Outcome { get; set; } = FetchOutcome.Ok;
         public Task<FetchResponse> FetchAsync(FetchRequest request, CancellationToken cancellationToken = default)
         {
             Requests.Add(request);
+            if (Outcome != FetchOutcome.Ok)
+                return Task.FromResult(new FetchResponse { Outcome = Outcome });
             return Task.FromResult(new FetchResponse { Outcome = FetchOutcome.Ok, Document = new FetchedDocument
             {
                 RequestUrl = request.Uri, FinalUrl = FinalUrl ?? request.Uri, StatusCode = 200, ContentType = ContentType,
@@ -541,9 +545,12 @@ public sealed class SourceAssetsTests
     private sealed class FixtureFiles : IFileUploadsBroker, IFileStoreBroker
     {
         public List<UploadSpec> Uploads { get; } = [];
+        public bool Declines { get; set; }
         private readonly Dictionary<FileId, byte[]> content = [];
         public async Task<Result<FileModel>> UploadAsync(Stream stream, UploadSpec spec, CancellationToken cancellationToken = default)
         {
+            if (Declines)
+                return Result<FileModel>.Fail(AppErrorFactory.Validation("The Files fixture declined the upload."));
             using var bytes = new MemoryStream();
             await stream.CopyToAsync(bytes, cancellationToken);
             var id = new FileId(Guid.NewGuid());

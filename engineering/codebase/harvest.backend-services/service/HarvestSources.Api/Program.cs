@@ -2,6 +2,7 @@ using HarvestSources.Api.Configurations;
 using HarvestSources.Api.Entities;
 using HarvestSources.Api.Extraction;
 using HarvestSources.Api.Marketplace;
+using HarvestSources.Api.Media;
 using HarvestSources.Api.Ocharo;
 using HarvestSources.Api.Pipelines;
 using HarvestSources.Api.Processing;
@@ -31,6 +32,8 @@ return await ServiceHost.RunAsync(args, builder => builder.Configure(), app => a
         .AddHostVerb(PipelinesVerb.Name, (services, verb, ct) =>
             PipelinesVerb.RunAsync(services, verb.Arguments, verb.Output, verb.Error, ct))
         .AddHostVerb(SubscriptionsVerb.Name, (services, verb, ct) =>
-            SubscriptionsVerb.RunAsync(services, verb.Arguments, verb.Output, verb.Error, ct)));
+            SubscriptionsVerb.RunAsync(services, verb.Arguments, verb.Output, verb.Error, ct))
+        .AddHostVerb(AssetsVerb.Name, (services, verb, ct) =>
+            AssetsVerb.RunAsync(services, verb.Arguments, verb.Output, verb.Error, ct)));
 
 public partial class Program;

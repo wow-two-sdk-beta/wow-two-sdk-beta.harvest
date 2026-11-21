@@ -54,7 +54,7 @@ internal sealed class SourceAssetWorker(
         var policy = new SourceAssetDestination(asset.Host, asset.Instagram, rule?.Domains);
         if (!Uri.TryCreate(asset.Url, UriKind.Absolute, out Uri? origin) || !policy.Allows(origin))
         {
-            await store.FinishAsync(asset.Id, null, TimeSpan.FromDays(7), ct);
+            await store.FinishAsync(asset.Id, null, TimeSpan.FromDays(7), SourceAssetOutcomes.Rejected, null, ct);
             return;
         }
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -64,14 +64,21 @@ internal sealed class SourceAssetWorker(
         var result = asset.Favicon
             ? await FaviconAsync(origin, policy, deadline.Token)
             : await ReadAsync(origin, policy, deadline.Token, asset.Instagram ? RobotsPolicy.Ignore : RobotsPolicy.Obey, imageDelay);
-        if (result.Outcome != FetchOutcome.Ok || result.Document is not { } document
-            || !policy.Allows(document.FinalUrl)
-            || SourceImageFormat.From(document.ContentType) is not { } format
-            || document.Body.IsEmpty || document.Body.Length > (asset.Favicon ? 512 * 1024 : 5 * 1024 * 1024))
+        var document = result.Document;
+        var format = SourceImageFormat.From(document?.ContentType);
+        // The first check that fails names the attempt's outcome, in the order the checks run.
+        string? refusal = result.Outcome != FetchOutcome.Ok ? SourceAssetOutcomes.Fetch(result.Outcome)
+            : document is null ? SourceAssetOutcomes.Empty
+            : !policy.Allows(document.FinalUrl) ? SourceAssetOutcomes.RedirectedOffPolicy
+            : format is null ? SourceAssetOutcomes.UnsupportedType
+            : document.Body.IsEmpty ? SourceAssetOutcomes.Empty
+            : document.Body.Length > (asset.Favicon ? 512 * 1024 : 5 * 1024 * 1024) ? SourceAssetOutcomes.TooLarge
+            : null;
+        if (refusal is not null || document is null || format is null)
         {
             var wait = result.Outcome is FetchOutcome.Ok or FetchOutcome.Gone or FetchOutcome.RobotsDisallowed
                 ? TimeSpan.FromDays(1) : result.RetryAfter ?? TimeSpan.FromHours(1);
-            await store.FinishAsync(asset.Id, null, wait, ct);
+            await store.FinishAsync(asset.Id, null, wait, refusal ?? SourceAssetOutcomes.Empty, null, ct);
             return;
         }
 
@@ -84,9 +91,13 @@ internal sealed class SourceAssetWorker(
             IdempotencyKey = asset.Id.ToString("D"),
         }, deadline.Token);
         if (saved is Result<FileModel>.Success success)
-            await store.FinishAsync(asset.Id, success.Value.Id.Value, TimeSpan.Zero, ct);
+            await store.FinishAsync(asset.Id, success.Value.Id.Value, TimeSpan.Zero, SourceAssetOutcomes.Copied, document.Body.Length, ct);
         else if (saved is Result<FileModel>.Failure failure)
+        {
             logger.LogWarning("Files declined source asset {AssetId}: {Reason}", asset.Id, failure.Error.Message);
+            // The claim already set this delay; finishing records why the copy is waiting.
+            await store.FinishAsync(asset.Id, null, TimeSpan.FromMinutes(15), SourceAssetOutcomes.FilesDeclined, null, ct);
+        }
     }
 
     private async Task<FetchResponse> FaviconAsync(Uri home, SourceAssetDestination policy, CancellationToken ct)

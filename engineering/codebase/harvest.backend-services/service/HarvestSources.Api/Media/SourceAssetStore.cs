@@ -1,7 +1,9 @@
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module;
 using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
+using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 
 namespace HarvestSources.Api.Media;
 
@@ -114,15 +116,20 @@ internal sealed class SourceAssetStore([FromKeyedServices(HarvestModuleConstants
         command.Parameters.AddWithValue("rule_limits", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Integer, entries.Select(entry => entry.Limit).ToArray());
     }
 
-    public async Task FinishAsync(Guid id, Guid? fileId, TimeSpan retry, CancellationToken ct)
+    /// <summary>Records how an attempt ended: the retry time, the outcome code (<see cref="SourceAssetOutcomes"/>), when it finished
+    /// and, for a copy, the bytes uploaded.</summary>
+    public async Task FinishAsync(Guid id, Guid? fileId, TimeSpan retry, string outcome, long? bytes, CancellationToken ct)
     {
         await using var connection = await database.OpenConnectionAsync(ct);
         await using var command = new NpgsqlCommand("""
-            UPDATE harvest_source_assets SET file_id=@file,retry_at=now()+@retry WHERE id=@id AND file_id IS NULL
+            UPDATE harvest_source_assets SET file_id=@file,retry_at=now()+@retry,outcome=@outcome,bytes=@bytes,finished_at=now()
+            WHERE id=@id AND file_id IS NULL
             """, connection);
         command.Parameters.AddWithValue("id", id);
         command.Parameters.AddWithValue("file", NpgsqlTypes.NpgsqlDbType.Uuid, (object?)fileId ?? DBNull.Value);
         command.Parameters.AddWithValue("retry", retry);
+        command.Parameters.AddWithValue("outcome", outcome);
+        command.Parameters.AddWithValue("bytes", NpgsqlTypes.NpgsqlDbType.Bigint, (object?)bytes ?? DBNull.Value);
         await command.ExecuteNonQueryAsync(ct);
     }
 
@@ -140,3 +147,32 @@ internal sealed class SourceAssetStore([FromKeyedServices(HarvestModuleConstants
 }
 
 internal sealed record SourceAsset(Guid Id, Guid SourceId, bool Favicon, string Url, string Host, bool Instagram);
+
+/// <summary>The outcome codes a copy attempt records in <c>harvest_source_assets.outcome</c>, one per way <see cref="SourceAssetWorker"/>'s attempt can end.</summary>
+internal static class SourceAssetOutcomes
+{
+    /// <summary>The bytes were uploaded to Files.</summary>
+    public const string Copied = "copied";
+
+    /// <summary>The URL is not parseable or the destination policy refuses it.</summary>
+    public const string Rejected = "rejected";
+
+    /// <summary>The final URL, after redirects, fails the destination policy.</summary>
+    public const string RedirectedOffPolicy = "redirected_off_policy";
+
+    /// <summary>The response is not a supported image type.</summary>
+    public const string UnsupportedType = "unsupported_type";
+
+    /// <summary>The response has no body.</summary>
+    public const string Empty = "empty";
+
+    /// <summary>The body is over the size limit.</summary>
+    public const string TooLarge = "too_large";
+
+    /// <summary>The Files upload failed.</summary>
+    public const string FilesDeclined = "files_declined";
+
+    /// <summary>The fetch did not return <see cref="FetchOutcome.Ok"/>: <c>fetch_</c> and the outcome's name in lower snake case
+    /// (<c>fetch_gone</c>, <c>fetch_robots_disallowed</c>, <c>fetch_rate_limited</c>).</summary>
+    public static string Fetch(FetchOutcome outcome) => "fetch_" + JsonNamingPolicy.SnakeCaseLower.ConvertName(outcome.ToString());
+}
