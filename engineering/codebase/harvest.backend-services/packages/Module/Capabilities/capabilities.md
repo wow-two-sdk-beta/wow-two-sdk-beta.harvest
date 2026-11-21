@@ -34,13 +34,29 @@ detection.
   or rotation, no disguised clients, no solvers, no sign-ins or accounts.
 - Every fetch obeys the source's robots policy and sends conditional requests (`ETag`, `Last-Modified`); no generic HTTP
   resilience on fetch clients.
+- Every request, `robots.txt` and redirect hops included, sends `Accept-Encoding: gzip, br` on both routes and reads the raw
+  stream: no handler sets `AutomaticDecompression`, so the meter sees the wire. `Content-Encoding` `gzip` and `br` decode in the
+  read loop (`ContentDecoder`); absent or `identity` is read as it is. Any other value, a stacked list, a corrupt stream and a
+  stream cut short (a Brotli stream that never reaches its last block, a gzip trailer that disagrees with the decoded length) fail
+  as `FetchOutcome.DecodeError`: a failed fetch, neither a refusal nor a block, so the host is not paused. The returned content
+  holds the decoded bytes with no `Content-Encoding` and no wire `Content-Length`, so robots parsing, challenge detection, the
+  readers, `raw_hash`, `body_inline`, the validator body and the content hash see the bytes an unencoded reply would carry.
 - Register explicitly with `AddHarvestFetching`, then bind `HarvestFetchOptions` in the host. The defaults identify
-  `Harvest/0.1`, require a two-second gap and bound a response to 5 MiB. The configured user agent must name Harvest.
+  `Harvest/0.1`, require a two-second gap and bound a response to 5 MiB of decoded bytes (`MaximumResponseBytes`): the limit
+  is enforced inside the decode loop, so a small compressed body that inflates past it fails as `ResponseTooLarge`, and a
+  `Content-Length` above it still fails before a byte is read. The configured user agent must name Harvest.
+- A private route keeps no robots in the host's durable state. One that reports `IFetchTransportLease.CachesRobotsByRoute`
+  (a fixed proxy exit with no account session and no caller jar) keeps them in memory by host and `RouteKey`
+  (`RouteRobotsCache`) for `RobotsCacheDuration` (five minutes after a 5xx answer), as the direct route does, so only its
+  first fetch to a host reads `robots.txt`; the rules, a `Crawl-delay` and the fetch-time recheck bind as before. Another
+  route key, a session, a caller jar and a request carrying `Authorization` or `Cookie` read their own. Conditional requests
+  stay off on a private route.
 - Core's guarded transport checks every direct connection; redirects stay on the same host, cannot downgrade HTTPS,
   and cannot carry embedded credentials. Cookies stay in the caller's anonymous jar, never in a shared transport.
 - Both host-state permission and the nearest matching operator host policy must allow a request before robots is read.
 - A cached 304 carries its bounded prior body so a worker can replay content after a crash before ingest. Readers
   process that body and normal content hashes suppress unchanged revisions. A cookie jar, authentication, private or
   no-store responses, and varying request headers prevent shared conditional caching.
-- `FetchResponse.Usage` counts transport attempts and bytes actually read, including robots and redirects; replaying
-  a cached 304 adds no network bytes. A paused or disallowed request sends no transport attempt.
+- `FetchResponse.Usage` counts transport attempts and bytes actually read from the wire, including robots and redirects: a
+  `gzip` or `br` body counts its compressed length, which is what `harvest_runs.bytes`, `MaxBytes` and `harvest_usage` meter
+  and what a proxy bills. Replaying a cached 304 adds no network bytes. A paused or disallowed request sends no transport attempt.

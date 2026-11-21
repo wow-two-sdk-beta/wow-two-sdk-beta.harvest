@@ -14,15 +14,20 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Capabilities;
 /// so no two requests to a host overlap. A request that carries a <see cref="RequestPace"/> (a pipeline's own gap or parallel
 /// fetches) takes the paced path: it holds the lock only to check, read robots when they are due and reserve its start time
 /// (<c>NextAllowedAt</c> + its gap), sends and reads outside the lock, and takes the lock again, briefly, to record the result.
-/// A <c>Crawl-delay</c>, a <c>Retry-After</c>, a pause and a delay a refusal raised bind both paths.</remarks>
+/// A <c>Crawl-delay</c>, a <c>Retry-After</c>, a pause and a delay a refusal raised bind both paths. Every request asks for <c>gzip</c>
+/// and <c>br</c> and reads the raw stream: the usage counts the bytes on the wire, the size limit applies to the decoded bytes, and
+/// everything after the read sees the decoded body.</remarks>
 internal sealed class HarvestFetchHandler(
     IFetchTransportFactory transports,
     IHostFetchStore hosts,
     HarvestFetchOptions options,
     IChallengeDetector challenges,
     TimeProvider clock,
-    CookieContainer? cookies = null) : HttpMessageHandler
+    CookieContainer? cookies = null,
+    RouteRobotsCache? robotsByRoute = null) : HttpMessageHandler
 {
+    private RouteRobotsCache RouteRobots { get; } = robotsByRoute ?? new();
+
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         var usage = new FetchUsageCounters();
@@ -58,7 +63,7 @@ internal sealed class HarvestFetchHandler(
 
             bool sharedCache = !route.IsPrivate && route.Cookies is null
                 && !request.Headers.Contains("Authorization") && !request.Headers.Contains("Cookie");
-            var robotsState = sharedCache ? lease.State : new HostFetchState();
+            var robotsState = RobotsState(request, route, sharedCache, lease.State, uri.IdnHost.TrimEnd('.').ToLowerInvariant());
             TimeSpan gap = options.MinimumDelay;
             if (TimeSpan.FromMilliseconds(lease.State.MinimumDelayMilliseconds) > gap)
                 gap = TimeSpan.FromMilliseconds(lease.State.MinimumDelayMilliseconds);
@@ -165,6 +170,10 @@ internal sealed class HarvestFetchHandler(
             Pause(lease.State, FetchOutcome.ResponseTooLarge, null);
             return Synthetic(request, FetchOutcome.ResponseTooLarge, HttpStatusCode.RequestEntityTooLarge, "Response exceeded the configured byte limit.");
         }
+        catch (ResponseDecodeException)
+        {
+            return Synthetic(request, FetchOutcome.DecodeError, HttpStatusCode.BadGateway, DecodeMessage);
+        }
         catch (HttpRequestException)
         {
             var delay = Pause(lease.State, FetchOutcome.NetworkError, null);
@@ -265,6 +274,10 @@ internal sealed class HarvestFetchHandler(
             await RecordPauseAsync(host, FetchOutcome.ResponseTooLarge, null);
             return Synthetic(request, FetchOutcome.ResponseTooLarge, HttpStatusCode.RequestEntityTooLarge, "Response exceeded the configured byte limit.");
         }
+        catch (ResponseDecodeException)
+        {
+            return Synthetic(request, FetchOutcome.DecodeError, HttpStatusCode.BadGateway, DecodeMessage);
+        }
         catch (HttpRequestException)
         {
             var delay = await RecordPauseAsync(host, FetchOutcome.NetworkError, null);
@@ -299,7 +312,7 @@ internal sealed class HarvestFetchHandler(
 
             bool sharedCache = !route.IsPrivate && route.Cookies is null
                 && !request.Headers.Contains("Authorization") && !request.Headers.Contains("Cookie");
-            var robotsState = sharedCache ? lease.State : new HostFetchState();
+            var robotsState = RobotsState(request, route, sharedCache, lease.State, host);
             TimeSpan gap;
             TimeSpan adaptive = TimeSpan.FromMilliseconds(lease.State.AdaptiveDelayMilliseconds);
             if (pace.Gap is { } own)
@@ -448,6 +461,18 @@ internal sealed class HarvestFetchHandler(
     private sealed record Reservation(HttpResponseMessage? Failure, DateTimeOffset Start = default, ResponseValidators? Validators = null,
         bool SharedCache = false);
 
+    /// <summary>Picks where a request's robots are cached: the host's durable state on a shared route, the route's own slot on a
+    /// fixed exit that no session or credential changes (<see cref="IFetchTransportLease.CachesRobotsByRoute"/>), else a slot that
+    /// lasts only this fetch.</summary>
+    private HostFetchState RobotsState(HttpRequestMessage request, IFetchTransportLease route, bool sharedCache, HostFetchState hostState, string host)
+    {
+        if (sharedCache)
+            return hostState;
+        return route.CachesRobotsByRoute && route.Cookies is null
+            && !request.Headers.Contains("Authorization") && !request.Headers.Contains("Cookie")
+            ? RouteRobots.For(host, route.RouteKey) : new HostFetchState();
+    }
+
     private async Task<(HttpResponseMessage? Failure, bool Loaded)> EnsureRobotsAsync(
         Uri uri, IFetchTransportLease route, IHostFetchLease lease, HostFetchState robotsState, TimeSpan gap, HttpRequestMessage original, FetchUsageCounters usage, CancellationToken cancellationToken)
     {
@@ -527,6 +552,8 @@ internal sealed class HarvestFetchHandler(
         }
         message.Headers.UserAgent.ParseAdd(options.UserAgent);
         message.Headers.AcceptEncoding.Clear();
+        foreach (string encoding in ContentDecoder.Requested)
+            message.Headers.AcceptEncoding.Add(new StringWithQualityHeaderValue(encoding));
         if (validators?.ETag is { } etag && !message.Headers.Contains("If-None-Match"))
             message.Headers.TryAddWithoutValidation("If-None-Match", etag);
         if (validators?.LastModified is { } modified && message.Headers.IfModifiedSince is null)
@@ -552,21 +579,53 @@ internal sealed class HarvestFetchHandler(
             if (method != HttpMethod.Head && response.Content.Headers.ContentLength > options.MaximumResponseBytes)
                 throw new ResponseTooLargeException();
             using var buffer = new MemoryStream();
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            await using var wire = new MeteredStream(await response.Content.ReadAsStreamAsync(cancellationToken), usage);
+            // A reply without a body (HEAD, 204, 205, 304) can name an encoding it does not use.
+            bool hasBody = method != HttpMethod.Head
+                && response.StatusCode is not (HttpStatusCode.NoContent or HttpStatusCode.ResetContent or HttpStatusCode.NotModified);
+            ContentDecoder? decoder = null;
+            if (hasBody && !ContentDecoder.TryOpen(response.Content.Headers, wire, out decoder))
+                throw new ResponseDecodeException();
+            Stream source = decoder?.Stream ?? wire;
             byte[] chunk = new byte[8192];
-            while (true)
+            try
             {
-                int read = await stream.ReadAsync(chunk, cancellationToken);
-                if (read == 0)
-                    break;
-                usage.Bytes += read;
-                if (buffer.Length + read > options.MaximumResponseBytes)
-                    throw new ResponseTooLargeException();
-                buffer.Write(chunk, 0, read);
+                while (true)
+                {
+                    int read;
+                    try
+                    {
+                        read = await source.ReadAsync(chunk, cancellationToken);
+                    }
+                    catch (Exception error) when (decoder is not null && (error is InvalidDataException
+                        || error is InvalidOperationException and not ObjectDisposedException))
+                    {
+                        throw new ResponseDecodeException();
+                    }
+                    if (read == 0)
+                        break;
+                    // The limit is on decoded bytes, so a small body that inflates past it stops here.
+                    if (buffer.Length + read > options.MaximumResponseBytes)
+                        throw new ResponseTooLargeException();
+                    buffer.Write(chunk, 0, read);
+                }
+                if (decoder is not null)
+                {
+                    await DrainAsync(wire, chunk, cancellationToken);
+                    if (!decoder.IsComplete(buffer.Length))
+                        throw new ResponseDecodeException();
+                }
+            }
+            finally
+            {
+                if (decoder is not null)
+                    await decoder.DisposeAsync();
             }
             var content = new ByteArrayContent(buffer.ToArray());
             foreach (var header in response.Content.Headers)
-                content.Headers.TryAddWithoutValidation(header.Key, header.Value);
+                if (decoder is null || !header.Key.Equals("Content-Encoding", StringComparison.OrdinalIgnoreCase)
+                    && !header.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase))
+                    content.Headers.TryAddWithoutValidation(header.Key, header.Value);
             response.Content.Dispose();
             response.Content = content;
             response.RequestMessage = message;
@@ -576,6 +635,20 @@ internal sealed class HarvestFetchHandler(
         {
             response.Dispose();
             throw;
+        }
+    }
+
+    /// <summary>Reads what a decoder left on the wire, so every wire byte is metered and a pooled connection is reusable; a
+    /// stream that goes on past the response limit is left for the connection's disposal.</summary>
+    private async Task DrainAsync(MeteredStream wire, byte[] sink, CancellationToken cancellationToken)
+    {
+        long drained = 0;
+        while (drained <= options.MaximumResponseBytes)
+        {
+            int read = await wire.ReadAsync(sink, cancellationToken);
+            if (read == 0)
+                break;
+            drained += read;
         }
     }
 
@@ -647,5 +720,9 @@ internal sealed class HarvestFetchHandler(
         return response;
     }
 
+    private const string DecodeMessage = "The response used a content encoding Harvest cannot decode, or its encoded body was corrupt.";
+
     private sealed class ResponseTooLargeException : Exception;
+
+    private sealed class ResponseDecodeException : Exception;
 }

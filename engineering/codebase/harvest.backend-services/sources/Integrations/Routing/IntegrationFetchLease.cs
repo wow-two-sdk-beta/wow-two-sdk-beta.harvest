@@ -6,6 +6,8 @@ using WoW.Two.Sdk.Beta.Be.Http.Safety;
 namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Integrations.Routing;
 
 /// <summary>Fences one fetch to its selected origin, account and finite IP allocation.</summary>
+/// <remarks>A client the lease does not own is a shared proxy client (<c>SharedProxyClients</c>): disposing the lease leaves it, and
+/// its connections, for the next fetch.</remarks>
 internal sealed class IntegrationFetchLease(
     HttpClient client,
     Uri origin,
@@ -14,13 +16,16 @@ internal sealed class IntegrationFetchLease(
     string routeKey,
     AccountSessionLease? account,
     OutboundProxyLease? proxy,
-    TimeProvider clock) : IFetchTransportLease
+    TimeProvider clock,
+    bool ownsClient = true,
+    bool cachesRobotsByRoute = false) : IFetchTransportLease
 {
     private int disposed;
     public HttpClient Client { get; } = client;
     public CookieContainer? Cookies { get; } = cookies;
     public bool IsPrivate { get; } = isPrivate;
     public string RouteKey { get; } = routeKey;
+    public bool CachesRobotsByRoute { get; } = cachesRobotsByRoute;
 
     public bool Allows(Uri destination)
     {
@@ -35,7 +40,8 @@ internal sealed class IntegrationFetchLease(
             return;
         try
         {
-            Client.Dispose();
+            if (ownsClient)
+                Client.Dispose();
         }
         finally
         {

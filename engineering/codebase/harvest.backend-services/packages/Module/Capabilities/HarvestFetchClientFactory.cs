@@ -11,12 +11,13 @@ internal sealed class HarvestFetchClientFactory(
     IHostFetchStore hosts,
     IOptions<HarvestFetchOptions> options,
     IChallengeDetector challenges,
-    TimeProvider clock) : IFetchClientFactory
+    TimeProvider clock,
+    RouteRobotsCache robotsByRoute) : IFetchClientFactory
 {
     internal const string TransportName = "Harvest.Direct";
 
     public HttpClient CreateClient(CookieContainer? cookies = null) => new(
-        new HarvestFetchHandler(transports, hosts, options.Value, challenges, clock, cookies), disposeHandler: true)
+        new HarvestFetchHandler(transports, hosts, options.Value, challenges, clock, cookies, robotsByRoute), disposeHandler: true)
     {
         Timeout = options.Value.Timeout
     };

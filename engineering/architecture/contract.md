@@ -119,7 +119,9 @@ the step contract. Every type references the BCL and the kernel only.
   proxy/IP and supplied account-session leases, plus a source-aware challenge client. Provider failure never silently
   falls back to direct HTTP. Route secrets do not enter captures or delivery.
 - A lease owns its client and account/IP reservation until disposal, including robots and allowed redirects. Leased
-  sessions do not share cached bodies. The direct factory remains the default.
+  sessions do not share cached bodies. A fixed proxy route's client is the exception: it is shared by the route's fetches and
+  disposed with the factory, and `IFetchTransportLease.CachesRobotsByRoute` lets a route with no session read each host's
+  robots once. The direct factory remains the default.
 - The renderer serves pages that show their content only through JavaScript, never a challenge.
 - The schema in the SQL migrations is the shared seam between lanes: `001-baseline`, `002-drop-escalation` (no
   ladder), `003-fetching`, `004-posts-delivery`, `005-subscription-filter`, `006-source-groups` (source groups, display

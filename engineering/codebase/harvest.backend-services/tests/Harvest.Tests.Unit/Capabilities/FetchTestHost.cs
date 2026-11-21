@@ -11,6 +11,7 @@ internal sealed class FetchTestHost
     internal readonly TestClock Clock = new();
     internal readonly MemoryHosts Hosts = new();
     internal readonly ScriptedTransport Transport = new();
+    internal readonly RouteRobotsCache RouteRobots = new();
     internal IFetchTransportFactory? TransportFactory { get; set; }
     internal HarvestFetchOptions Options { get; } = new() { MinimumDelay = TimeSpan.Zero };
     internal IPageFetcher Fetcher => new PageFetcher(new Factory(this), Clock);
@@ -18,10 +19,21 @@ internal sealed class FetchTestHost
     internal static HttpResponseMessage Response(HttpStatusCode status = HttpStatusCode.OK, string body = "content", string type = "text/html") =>
         new(status) { Content = new StringContent(body, Encoding.UTF8, type) };
 
+    /// <summary>Builds a reply whose body went over the wire encoded, with the header that names the encoding.</summary>
+    internal static HttpResponseMessage Encoded(byte[] wire, params string[] encodings)
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(wire) };
+        response.Content.Headers.ContentType = new("text/html") { CharSet = "utf-8" };
+        foreach (string encoding in encodings)
+            response.Content.Headers.ContentEncoding.Add(encoding);
+        return response;
+    }
+
     private sealed class Factory(FetchTestHost host) : IFetchClientFactory
     {
         public HttpClient CreateClient(CookieContainer? cookies = null) => new(new HarvestFetchHandler(
-            host.TransportFactory ?? new TestTransportFactory(host.Transport), host.Hosts, host.Options, new GenericChallengeDetector(host.Clock), host.Clock, cookies));
+            host.TransportFactory ?? new TestTransportFactory(host.Transport), host.Hosts, host.Options, new GenericChallengeDetector(host.Clock), host.Clock, cookies,
+            host.RouteRobots));
     }
 
     private sealed class TestTransportFactory(HttpMessageHandler handler) : IFetchTransportFactory

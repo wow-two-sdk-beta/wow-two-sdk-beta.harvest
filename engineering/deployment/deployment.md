@@ -386,6 +386,9 @@ Provider setup and protocols: [integration-providers.md](../research/integration
   The route covers `https://olx.uz` and `https://www.olx.uz`. Choose either a profile or the inline
   `HarvestIntegrations:OlxProxy:{Server,Username,Password}`; recreate the service to apply a profile change.
   [Provider comparison](../research/olx-egress-options.md)
+  - Every OLX fetch asks for `gzip` and `br`; `harvest_runs.bytes`, `MaxBytes` and `harvest_usage` count the wire bytes the IP
+    server bills, while the 5 MiB response limit stays on the decoded page.
+  - The route reads `robots.txt` once per host and day, not once per fetch, and keeps its proxy connections for the process.
 - CAPTCHA: `deploy.yml` declares no CAPTCHA key; configuring it on a target requires declaring its credential keys.
 - Instagram: `deploy.yml` declares the connection token, professional account ID, API version and Graph origin.
   Profile URLs, page/run limits, pauses and schedules are table-managed. Follow the [Instagram test procedure](instagram.md);

@@ -71,4 +71,8 @@ public enum FetchOutcome
 
     /// <summary>The host asked to sign in; Harvest never signs in, so the content stays out of reach.</summary>
     LoginRequired,
+
+    /// <summary>The body used a content encoding other than <c>gzip</c>, <c>br</c> or none, or its encoded stream was corrupt.
+    /// It is a failed fetch, not a refusal: the host is not paused.</summary>
+    DecodeError,
 }

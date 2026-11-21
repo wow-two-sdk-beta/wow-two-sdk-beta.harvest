@@ -8,14 +8,23 @@ using WoW.Two.Sdk.Beta.Be.Http.Safety;
 namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Integrations.Routing;
 
 /// <summary>Selects one exact-origin route before fetching and holds it fixed for the whole request.</summary>
+/// <remarks>A fixed proxy route (an inline proxy or a fixed profile) reuses one guarded client, and so one connection pool, for the
+/// process: the lease of each fetch borrows it and every per-fetch check (the enabled switch, the route match, the profile and its
+/// lease, the destination) still runs. A route that leases its IP from a broker builds a client for each lease. Disposing the
+/// factory, which a host does at shutdown, disposes the shared clients.</remarks>
 public sealed class ConfiguredFetchTransportFactory(
     IHttpClientFactory clients,
     IOptions<HarvestIntegrationOptions> options,
     AccountSessionPool sessions,
     IProxyHttpClientFactory proxies,
     OutboundProxyBroker broker,
-    TimeProvider clock) : IFetchTransportFactory
+    TimeProvider clock) : IFetchTransportFactory, IAsyncDisposable
 {
+    private readonly SharedProxyClients shared = new();
+
+    /// <inheritdoc />
+    public ValueTask DisposeAsync() => shared.DisposeAsync();
+
     /// <inheritdoc />
     public async ValueTask<IFetchTransportLease> AcquireAsync(
         Uri destination,
@@ -62,6 +71,7 @@ public sealed class ConfiguredFetchTransportFactory(
         AccountSessionLease? account = null;
         OutboundProxyLease? allocated = null;
         HttpClient? client = null;
+        bool sharedClient = false;
         try
         {
             if (route.SessionIds.Count > 0)
@@ -69,7 +79,31 @@ public sealed class ConfiguredFetchTransportFactory(
             if (profile is not null)
             {
                 allocated = await broker.AcquireAsync(profile, destination, route.Key, cancellationToken);
-                client = proxies.CreateClient(allocated);
+                if (profile.Broker is null)
+                {
+                    OutboundProxyProfileOptions fixedProfile = profile;
+                    string settingsKey = SharedProxyClients.Settings("profile", fixedProfile.Server, fixedProfile.Username, fixedProfile.Password);
+                    client = await shared.GetAsync(destination, route.Key, settingsKey, async () =>
+                    {
+                        // The handler is bound to the lease it is built from, so the shared client keeps a lease of its own, which
+                        // no fetch releases.
+                        OutboundProxyLease owner = await broker.AcquireAsync(fixedProfile, destination, route.Key, cancellationToken);
+                        try
+                        {
+                            return new SharedProxyClients.Entry(settingsKey, proxies.CreateClient(owner), owner);
+                        }
+                        catch
+                        {
+                            await owner.DisposeAsync();
+                            throw;
+                        }
+                    }, cancellationToken);
+                    sharedClient = true;
+                }
+                else
+                {
+                    client = proxies.CreateClient(allocated);
+                }
             }
             else if (route.Mode == FetchRouteMode.Direct)
             {
@@ -77,15 +111,23 @@ public sealed class ConfiguredFetchTransportFactory(
             }
             else
             {
-                client = proxies.CreateClient(destination, route.Proxy
-                    ?? throw new FetchTransportUnavailableException("The source proxy settings are missing."));
+                ProxyConnectionOptions inline = route.Proxy
+                    ?? throw new FetchTransportUnavailableException("The source proxy settings are missing.");
+                string settingsKey = SharedProxyClients.Settings("inline", inline.Server, inline.Username, inline.Password);
+                client = await shared.GetAsync(destination, route.Key, settingsKey,
+                    () => ValueTask.FromResult(new SharedProxyClients.Entry(settingsKey, proxies.CreateClient(destination, inline), null)), cancellationToken);
+                sharedClient = true;
             }
-            return new IntegrationFetchLease(client, destination, account?.Cookies ?? runCookies,
-                route.Mode != FetchRouteMode.Direct || account is not null, route.Key, account, allocated, clock);
+            CookieContainer? jar = account?.Cookies ?? runCookies;
+            // A fixed exit with no session and no caller jar answers robots the same way to every lease of the route.
+            bool robotsByRoute = route.Mode != FetchRouteMode.Direct && account is null && jar is null;
+            return new IntegrationFetchLease(client, destination, jar, route.Mode != FetchRouteMode.Direct || account is not null,
+                route.Key, account, allocated, clock, ownsClient: !sharedClient, cachesRobotsByRoute: robotsByRoute);
         }
         catch (Exception error)
         {
-            client?.Dispose();
+            if (!sharedClient)
+                client?.Dispose();
             account?.Dispose();
             if (allocated is not null)
                 await allocated.DisposeAsync();

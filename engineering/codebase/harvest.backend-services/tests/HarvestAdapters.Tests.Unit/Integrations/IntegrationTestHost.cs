@@ -81,11 +81,18 @@ internal sealed class StubHttpFactory : IHttpClientFactory
 
 internal sealed record ObservedRequest(Uri Uri, HttpMethod Method, IReadOnlyDictionary<string, string> Headers, string? Body);
 
-internal sealed class CallbackHandler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send) : HttpMessageHandler
+internal sealed class CallbackHandler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send, Action? disposed = null) : HttpMessageHandler
 {
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         return send(request, cancellationToken);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+            disposed?.Invoke();
+        base.Dispose(disposing);
     }
 }
 
@@ -94,6 +101,7 @@ internal sealed class StubProxyFactory : IProxyHttpClientFactory
     internal List<Uri> Calls { get; } = [];
     internal List<IReadOnlyDictionary<string, string>> Headers { get; } = [];
     internal int Requests { get; private set; }
+    internal int Disposed { get; private set; }
 
     public HttpClient CreateClient(Uri sourceOrigin, ProxyConnectionOptions proxy) => Create(new Uri(proxy.Server));
 
@@ -107,6 +115,6 @@ internal sealed class StubProxyFactory : IProxyHttpClientFactory
             Requests++;
             Headers.Add(request.Headers.ToDictionary(pair => pair.Key, pair => string.Join(",", pair.Value), StringComparer.OrdinalIgnoreCase));
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Forbidden));
-        }));
+        }, () => Disposed++));
     }
 }

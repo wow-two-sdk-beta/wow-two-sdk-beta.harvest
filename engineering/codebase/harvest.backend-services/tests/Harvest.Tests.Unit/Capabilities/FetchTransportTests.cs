@@ -142,18 +142,121 @@ public sealed class FetchTransportTests
         host.Transport.Responses.Enqueue(FetchTestHost.Response(body: "public"));
         var request = Request() with { RobotsPolicy = RobotsPolicy.Obey };
         await host.Fetcher.FetchAsync(request);
-        factory.IsPrivate = true;
+        factory.IsPrivate = true; factory.CachesRobots = true;
         host.Transport.Responses.Enqueue(FetchTestHost.Response(body: "User-agent: *\nDisallow: /private-only", type: "text/plain"));
         host.Transport.Responses.Enqueue(FetchTestHost.Response(body: "private"));
 
         var privateResponse = await host.Fetcher.FetchAsync(request);
-        factory.IsPrivate = false;
+        factory.IsPrivate = false; factory.CachesRobots = false;
         var publicResponse = await host.Fetcher.FetchAsync(request with { Uri = new Uri("https://example.com/public-only") });
 
-        privateResponse.Outcome.Should().Be(FetchOutcome.Ok); privateResponse.Usage.Requests.Should().Be(2);
+        privateResponse.Outcome.Should().Be(FetchOutcome.Ok); privateResponse.Usage.Requests.Should().Be(2, "the route's first fetch reads its own robots");
         host.Hosts.State.RobotsBody.Should().Be(publicRobots);
         publicResponse.Outcome.Should().Be(FetchOutcome.RobotsDisallowed); publicResponse.Usage.Requests.Should().Be(0);
         host.Transport.Requests.Should().HaveCount(4);
+    }
+
+    [Fact]
+    public async Task Fetch_ShouldReadRobotsOncePerRoute_WhenAFixedProxyRouteFetchesTheSameHostAgain()
+    {
+        var (host, factory) = Create();
+        factory.IsPrivate = true; factory.CachesRobots = true; factory.RouteKey = "olx-ip-server";
+        var request = Request() with { RobotsPolicy = RobotsPolicy.Obey };
+        host.Transport.Responses.Enqueue(FetchTestHost.Response(body: "User-agent: *\nDisallow: /secret", type: "text/plain"));
+        host.Transport.Responses.Enqueue(FetchTestHost.Response(body: "first"));
+        var first = await host.Fetcher.FetchAsync(request);
+        host.Transport.Responses.Enqueue(FetchTestHost.Response(body: "second"));
+        var second = await host.Fetcher.FetchAsync(request with { Uri = new Uri("https://example.com/other") });
+        factory.RouteKey = "other-route";
+        host.Transport.Responses.Enqueue(FetchTestHost.Response(body: "User-agent: *\nAllow: /", type: "text/plain"));
+        host.Transport.Responses.Enqueue(FetchTestHost.Response(body: "third"));
+        var third = await host.Fetcher.FetchAsync(request with { Uri = new Uri("https://example.com/secret") });
+        factory.RouteKey = "olx-ip-server";
+        var fourth = await host.Fetcher.FetchAsync(request with { Uri = new Uri("https://example.com/secret") });
+
+        first.Usage.Requests.Should().Be(2); first.Outcome.Should().Be(FetchOutcome.Ok);
+        second.Usage.Requests.Should().Be(1, "the same host on the same route reads robots from the cache"); second.Outcome.Should().Be(FetchOutcome.Ok);
+        third.Usage.Requests.Should().Be(2, "another route key reads its own robots"); third.Outcome.Should().Be(FetchOutcome.Ok);
+        fourth.Outcome.Should().Be(FetchOutcome.RobotsDisallowed, "the cached rules still bind"); fourth.Usage.Requests.Should().Be(0);
+        host.Transport.Requests.Select(item => item.Uri.AbsolutePath).Should().Equal("/robots.txt", "/event", "/other", "/robots.txt", "/secret");
+        host.Hosts.State.RobotsBody.Should().BeNull("a route's robots never reach the host's own state");
+        factory.Leases.Should().OnlyContain(lease => lease.Disposed);
+    }
+
+    [Fact]
+    public async Task Fetch_ShouldReadRouteRobotsAgain_WhenTheirLifetimeEnded()
+    {
+        var (host, factory) = Create();
+        factory.IsPrivate = true; factory.CachesRobots = true;
+        var request = Request() with { RobotsPolicy = RobotsPolicy.Obey };
+        host.Transport.Responses.Enqueue(FetchTestHost.Response(body: "User-agent: *\nAllow: /", type: "text/plain"));
+        host.Transport.Responses.Enqueue(FetchTestHost.Response(body: "one"));
+        await host.Fetcher.FetchAsync(request);
+        host.Clock.Now = host.Clock.Now.AddHours(23);
+        host.Transport.Responses.Enqueue(FetchTestHost.Response(body: "two"));
+        var cached = await host.Fetcher.FetchAsync(request);
+        host.Clock.Now = host.Clock.Now.AddHours(2);
+        host.Transport.Responses.Enqueue(FetchTestHost.Response(body: "User-agent: *\nDisallow: /event", type: "text/plain"));
+        var expired = await host.Fetcher.FetchAsync(request);
+
+        cached.Usage.Requests.Should().Be(1);
+        expired.Usage.Requests.Should().Be(1, "the expired rules were read again, and they disallow the page");
+        expired.Outcome.Should().Be(FetchOutcome.RobotsDisallowed);
+        host.Transport.Requests.Count(item => item.Uri.AbsolutePath == "/robots.txt").Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Fetch_ShouldKeepARouteCrawlDelayBindingFromTheCache()
+    {
+        var (host, factory) = Create();
+        factory.IsPrivate = true; factory.CachesRobots = true; factory.RouteKey = "olx-ip-server";
+        var cached = host.RouteRobots.For("example.com", "olx-ip-server");
+        cached.RobotsBody = "User-agent: *\nCrawl-delay: 5\nAllow: /"; cached.RobotsOrigin = "https://example.com";
+        cached.RobotsStatus = 200; cached.RobotsCachedAt = host.Clock.Now;
+        host.Transport.Responses.Enqueue(FetchTestHost.Response(body: "page"));
+
+        var result = await host.Fetcher.FetchAsync(Request() with { RobotsPolicy = RobotsPolicy.Obey, Pace = new RequestPace { Gap = TimeSpan.Zero } });
+
+        result.Outcome.Should().Be(FetchOutcome.Ok); result.Usage.Requests.Should().Be(1);
+        (host.Hosts.State.NextAllowedAt - host.Clock.Now).Should().Be(TimeSpan.FromSeconds(5));
+        host.Transport.Requests.Select(item => item.Uri.AbsolutePath).Should().Equal("/event");
+    }
+
+    [Fact]
+    public async Task Fetch_ShouldReadRobotsForEachFetch_WhenTheRouteCarriesASessionJar()
+    {
+        var (host, factory) = Create();
+        factory.IsPrivate = true; factory.CachesRobots = true; factory.SessionCookies = new CookieContainer();
+        var request = Request() with { RobotsPolicy = RobotsPolicy.Obey };
+        for (int read = 0; read < 2; read++)
+        {
+            host.Transport.Responses.Enqueue(FetchTestHost.Response(body: "User-agent: *\nAllow: /", type: "text/plain"));
+            host.Transport.Responses.Enqueue(FetchTestHost.Response(body: "page"));
+            (await host.Fetcher.FetchAsync(request)).Usage.Requests.Should().Be(2);
+        }
+
+        host.Transport.Requests.Count(item => item.Uri.AbsolutePath == "/robots.txt").Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Fetch_ShouldReadRobotsForEachFetch_WhenTheRequestCarriesAuthorization()
+    {
+        var (host, factory) = Create();
+        factory.IsPrivate = true; factory.CachesRobots = true;
+        using var client = new HttpClient(new HarvestFetchHandler(factory, host.Hosts, host.Options, new GenericChallengeDetector(host.Clock),
+            host.Clock, null, host.RouteRobots));
+        for (int read = 0; read < 2; read++)
+        {
+            host.Transport.Responses.Enqueue(FetchTestHost.Response(body: "User-agent: *\nAllow: /", type: "text/plain"));
+            host.Transport.Responses.Enqueue(FetchTestHost.Response(body: "page"));
+            using var message = new HttpRequestMessage(HttpMethod.Get, "https://example.com/event");
+            message.Headers.TryAddWithoutValidation("Authorization", "Bearer test-only");
+            message.Options.Set(HarvestFetchMetadata.RequestKey, Request() with { RobotsPolicy = RobotsPolicy.Obey });
+            using var reply = await client.SendAsync(message);
+            reply.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        host.Transport.Requests.Count(item => item.Uri.AbsolutePath == "/robots.txt").Should().Be(2);
     }
 
     [Fact]
@@ -257,6 +360,8 @@ public sealed class FetchTransportTests
         internal List<Route> Leases { get; } = [];
         internal Exception? AcquisitionFailure { get; set; }
         internal bool IsPrivate { get; set; }
+        internal bool CachesRobots { get; set; }
+        internal string RouteKey { get; set; } = "test-route";
         internal CookieContainer? SessionCookies { get; set; }
         internal Func<Uri, bool>? AllowDestination { get; set; }
 
@@ -264,19 +369,22 @@ public sealed class FetchTransportTests
         {
             Acquisitions++;
             if (AcquisitionFailure is { } failure) throw failure;
-            var route = new Route(new HttpClient(handler, disposeHandler: false), destination, IsPrivate, SessionCookies ?? runCookies, AllowDestination);
+            var route = new Route(new HttpClient(handler, disposeHandler: false), destination, IsPrivate, SessionCookies ?? runCookies, AllowDestination,
+                CachesRobots, RouteKey);
             Leases.Add(route);
             return ValueTask.FromResult<IFetchTransportLease>(route);
         }
     }
 
-    private sealed class Route(HttpClient client, Uri origin, bool isPrivate, CookieContainer? cookies, Func<Uri, bool>? allows) : IFetchTransportLease
+    private sealed class Route(HttpClient client, Uri origin, bool isPrivate, CookieContainer? cookies, Func<Uri, bool>? allows, bool cachesRobots,
+        string routeKey) : IFetchTransportLease
     {
         internal bool Disposed { get; private set; }
         public HttpClient Client => client;
         public CookieContainer? Cookies => cookies;
         public bool IsPrivate => isPrivate;
-        public string RouteKey => "test-route";
+        public string RouteKey => routeKey;
+        public bool CachesRobotsByRoute => cachesRobots;
         public bool Allows(Uri destination) => allows?.Invoke(destination)
             ?? destination.GetLeftPart(UriPartial.Authority).Equals(origin.GetLeftPart(UriPartial.Authority), StringComparison.OrdinalIgnoreCase);
         public ValueTask DisposeAsync() { Disposed = true; Client.Dispose(); return ValueTask.CompletedTask; }

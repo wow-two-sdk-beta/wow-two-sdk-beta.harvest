@@ -40,7 +40,8 @@ Client ──HTTP + token or X-Api-Key──► service/HarvestSources.Api
 - Fetching defaults to direct HTTP in `Module/Capabilities/` over core `Http/Safety`. An explicit
   `IFetchTransportFactory` supplies a request-local route lease for configured proxy/session integrations. Permission,
   pacing, robots and same-origin redirects still run; unavailable routes fail closed. Routed traffic disables shared
-  response caching. Challenges, blocks and rate limits remain outcomes that back off the host.
+  response caching; a fixed proxy route reads each host's robots once and reuses its connections. Every fetch asks for
+  `gzip` and `br` and meters wire bytes. Challenges, blocks and rate limits remain outcomes that back off the host.
 - Generic readers use AngleSharp and bounded XML/JSON parsers; extraction runs without model services. The Layer 1
   `post-tags` pass (`Tagging/`) calls the shared AI runner through the AI contract only, when the host composes the AI
   module, and writes its tags back through the post's resolve. Layer 2 extraction (`PostExtraction/`) calls it the

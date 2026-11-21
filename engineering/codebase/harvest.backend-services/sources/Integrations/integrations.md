@@ -12,6 +12,17 @@ Both `Enabled` and `Captcha.Enabled` default to `false`.
 - Fixed proxies support explicit HTTP, HTTPS, SOCKS4, SOCKS4a and SOCKS5 settings.
   Proxy credentials stay in the proxy handler. The target and proxy must resolve
   to public addresses; the connection pins the validated proxy address.
+- A fixed proxy route (the inline `OlxProxy` or a fixed profile) keeps one guarded client, and so one connection pool,
+  for each source origin for the life of the process (`SharedProxyClients`): later fetches reuse its connections, which
+  core's handler recycles every two minutes, instead of paying a new TCP connection, `CONNECT`, proxy authentication
+  and TLS handshake. The client is keyed by the route and the proxy's effective settings (server, username, a hash of
+  the password): a change builds a new client, and the replaced one is kept until shutdown so a fetch still reading
+  through it is not cut off. The factory disposes every client at host shutdown. A fetch still takes its own lease and
+  checks the enabled switch, the route match, the profile and the destination, so a disabled integration goes direct on
+  its next fetch. A route that leases its IP from a broker builds a client for each lease and disposes it with the lease.
+- A route with no account session and no caller jar reads a host's `robots.txt` once per route key and
+  `RobotsCacheDuration`, not once per fetch (`IFetchTransportLease.CachesRobotsByRoute`); robots are per site, not per exit.
+  See `packages/Module/Capabilities/capabilities.md`.
 - `OutboundProxyBroker` in the backend SDK selects fixed profiles and implements
   the HTTPS lease-bridge contract with an allowlist and finite expiry.
 - `AccountSessionPool` exclusively leases operator-supplied HTTPS cookies in this

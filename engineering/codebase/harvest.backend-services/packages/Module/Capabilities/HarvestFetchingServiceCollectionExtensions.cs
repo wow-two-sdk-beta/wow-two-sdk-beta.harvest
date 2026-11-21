@@ -32,6 +32,7 @@ public static class HarvestFetchingServiceCollectionExtensions
         services.AddHttpClient(HarvestFetchClientFactory.TransportName, client => client.Timeout = System.Threading.Timeout.InfiniteTimeSpan)
             .AddSafeOutboundHttp(policy => policy.RequireHttps = false);
         services.TryAddSingleton<IHostFetchStore, PostgresHostFetchStore>();
+        services.TryAddSingleton<RouteRobotsCache>();
         services.TryAddSingleton<IChallengeDetector, GenericChallengeDetector>();
         services.TryAddSingleton<IFetchTransportFactory, DirectFetchTransportFactory>();
         services.TryAddSingleton<IFetchClientFactory, HarvestFetchClientFactory>();
