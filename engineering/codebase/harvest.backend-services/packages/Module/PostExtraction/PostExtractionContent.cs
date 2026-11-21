@@ -47,6 +47,9 @@ internal static partial class PostExtractionContent
     /// <summary>The source-fields schema of an OLX ad, whose attributes and seller category the listing prompt reads.</summary>
     internal const string OlxSchema = "olx.ad.v1";
 
+    /// <summary>The source-fields schema of a Joymee ad, whose attributes and account type the listing prompt reads.</summary>
+    internal const string JoymeeSchema = "joymee.ad.v1";
+
     private const int MaxPrices = 10;
     private const int MaxAttributes = 40;
     private const int MaxLine = 200;
@@ -111,10 +114,10 @@ internal static partial class PostExtractionContent
     }
 
     /// <summary>Renders the post's own listing attributes, one <c>label: value</c> line each in the source's order and language,
-    /// phone-scrubbed; an OLX ad (<c>olx.ad.v1</c>) carries them, and every other source, or an ad with none, reads empty.</summary>
+    /// phone-scrubbed; an OLX ad (<c>olx.ad.v1</c>) or a Joymee ad (<c>joymee.ad.v1</c>) carries them, and every other source, or an ad with none, reads empty.</summary>
     internal static string Attributes(PostEnvelope envelope)
     {
-        if (OlxFields(envelope) is not { } fields || !fields.TryGetProperty("attributes", out var attributes) || attributes.ValueKind != JsonValueKind.Object)
+        if (AdFields(envelope, OlxSchema, JoymeeSchema) is not { } fields || !fields.TryGetProperty("attributes", out var attributes) || attributes.ValueKind != JsonValueKind.Object)
             return "";
         var lines = new List<string>();
         foreach (var attribute in attributes.EnumerateObject())
@@ -129,13 +132,16 @@ internal static partial class PostExtractionContent
         return PhoneScrub.Apply(string.Join('\n', lines)) ?? "";
     }
 
-    /// <summary>Reads the seller category of an OLX ad: <c>business</c> or <c>private</c> from the ad's own <c>isBusiness</c> flag,
-    /// else from the seller badge among its attributes (<c>Бизнес</c>, <c>Частное лицо</c>, <c>Biznes</c>, <c>Jismoniy shaxs</c>),
-    /// else <c>unknown</c>; any other source reads empty. It names no person: the seller's name and registration date never
-    /// reach a prompt.</summary>
+    /// <summary>Reads the site's own account type of the seller. An OLX ad (<c>olx.ad.v1</c>) reads <c>business</c> or <c>private</c> from
+    /// the ad's <c>isBusiness</c> flag, else from the seller badge among its attributes (<c>Бизнес</c>, <c>Частное лицо</c>,
+    /// <c>Biznes</c>, <c>Jismoniy shaxs</c>), else <c>unknown</c>. A Joymee ad (<c>joymee.ad.v1</c>) reads <c>owner</c> for its
+    /// <c>advertiserType</c> 1, <c>agent</c> for 2, else <c>unknown</c>. Any other source reads empty. It names no person: the seller's
+    /// name and registration date never reach a prompt.</summary>
     internal static string Seller(PostEnvelope envelope)
     {
-        if (OlxFields(envelope) is not { } fields)
+        if (AdFields(envelope, JoymeeSchema) is { } joymee)
+            return joymee.TryGetProperty("advertiserType", out var type) ? AccountType(type) : "unknown";
+        if (AdFields(envelope, OlxSchema) is not { } fields)
             return "";
         if (fields.TryGetProperty("isBusiness", out var flag) && flag.ValueKind is JsonValueKind.True or JsonValueKind.False)
             return flag.ValueKind == JsonValueKind.True ? "business" : "private";
@@ -162,9 +168,16 @@ internal static partial class PostExtractionContent
         _ => "",
     };
 
-    private static JsonElement? OlxFields(PostEnvelope envelope) =>
+    private static string AccountType(JsonElement type) => (type.ValueKind == JsonValueKind.String ? type.GetString()?.Trim() : type.ToString()) switch
+    {
+        "1" => "owner",
+        "2" => "agent",
+        _ => "unknown",
+    };
+
+    private static JsonElement? AdFields(PostEnvelope envelope, params string[] schemas) =>
         envelope.Extras.TryGetValue("source", out var source) && source.ValueKind == JsonValueKind.Object
-        && source.TryGetProperty("schema", out var schema) && schema.ValueKind == JsonValueKind.String && schema.GetString() == OlxSchema
+        && source.TryGetProperty("schema", out var schema) && schema.ValueKind == JsonValueKind.String && schemas.Contains(schema.GetString())
         && source.TryGetProperty("fields", out var fields) && fields.ValueKind == JsonValueKind.Object ? fields : null;
 
     private static string Line(string? text) => text is null ? ""

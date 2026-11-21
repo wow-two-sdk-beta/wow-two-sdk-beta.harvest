@@ -62,14 +62,16 @@ Prompt text lives in the shared AI database; keep drafts outside the repository.
   `{{prices}}`, `{{postedAt}}`, and the post's tags `{{entityType}}`, `{{domains}}` (nodes, primary first), `{{about}}`,
   `{{timeframe}}`, `{{titleEn}}`. Any other placeholder is refused; `{{text}}` belongs in `userTemplate`.
 - `extract-listing` only: `{{attributes}}`, `{{section}}`, `{{seller}}` (an `extract-event` prompt naming one is refused).
-  `{{attributes}}` and `{{seller}}` are OLX-only (`olx.ad.v1`, `olx.md`); `{{section}}` serves every source. They render:
+  `{{attributes}}` and `{{seller}}` come from OLX (`olx.ad.v1`, `olx.md`) and Joymee (`joymee.ad.v1`) ads only;
+  `{{section}}` serves every source. They render:
   - `{{attributes}}`: the ad's attribute lines as `label: value`, a badge such as `Бизнес` (no value, or a value that
     repeats the label) as the label alone, in the stored order, at most 40 lines of 200 characters, phones scrubbed.
   - `{{section}}`: for any source, the section key (`apartments-rent`, `houses-rent`, `daily-rent`) when the pipeline's
     scope address is one of the adapter's sections (`ISourceSectionCatalog`), else the pipeline's name.
-  - `{{seller}}`: `business` or `private` from the ad's own flag, else its `Бизнес` / `Частное лицо` (`Biznes` /
-    `Jismoniy shaxs`) badge, else `unknown`.
-  A post that is not an OLX ad (an Afisha one among them) renders `{{attributes}}` and `{{seller}}` empty, and
+  - `{{seller}}`: the site's own account type. OLX: `business` or `private` from the ad's own flag, else its `Бизнес` /
+    `Частное лицо` (`Biznes` / `Jismoniy shaxs`) badge, else `unknown`. Joymee: `owner` for `advertiserType` 1, `agent`
+    for 2, else `unknown`; its attributes are never scanned for a badge and its seller name never reaches the prompt.
+  A post that is neither an OLX nor a Joymee ad (an Afisha one among them) renders `{{attributes}}` and `{{seller}}` empty, and
   `{{section}}` still names its section or pipeline. Eval subjects resolve all three the same way.
 - Every prompt's `{{title}}` and `{{text}}` (and the attribute lines) carry no phone: a number becomes `[phone]` before
   the prompt is built (`post-tags.md` § Phone scrub). A name or a contact is never an input; the answer has no field for one.

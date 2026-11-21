@@ -152,12 +152,74 @@ public sealed class PostExtractionContentTests
     }
 
     [Fact]
+    public void Attributes_ShouldRenderAJoymeeAdsLinesInOrder_WithPhonesScrubbed()
+    {
+        var joymee = Joymee(2, new Dictionary<string, string>
+        {
+            ["Тип сделки"] = "Аренда", ["Количество комнат"] = "2", ["Общая площадь, м²"] = "54", ["Этаж"] = "3", ["Контакт"] = "+998 90 123 45 67",
+        });
+
+        PostExtractionContent.Attributes(joymee).Should()
+            .Be("Тип сделки: Аренда\nКоличество комнат: 2\nОбщая площадь, м²: 54\nЭтаж: 3\nКонтакт: [phone]");
+    }
+
+    [Theory]
+    [InlineData(1, "owner")]
+    [InlineData("1", "owner")]
+    [InlineData(2, "agent")]
+    [InlineData("2", "agent")]
+    [InlineData(3, "unknown")]
+    [InlineData("x", "unknown")]
+    [InlineData(null, "unknown")]
+    public void Seller_ShouldMapAJoymeeAccountType(object? advertiserType, string expected)
+    {
+        var joymee = Joymee(advertiserType, new Dictionary<string, string> { ["Бизнес"] = "Бизнес" });
+
+        PostExtractionContent.Seller(joymee).Should().Be(expected, "a Joymee badge among the attributes is never read");
+        PostExtractionContent.Seller(joymee).Should().NotContain("Seller Name");
+    }
+
+    [Fact]
+    public void Seller_ShouldReadUnknown_ForAJoymeeAdWithoutAnAccountType()
+    {
+        var joymee = Joymee(null, new Dictionary<string, string>(), includeType: false);
+
+        PostExtractionContent.Seller(joymee).Should().Be("unknown");
+    }
+
+    [Fact]
+    public void VariablesFor_ShouldFillAttributesAndSeller_ForAJoymeeAd()
+    {
+        var joymee = Joymee(2, new Dictionary<string, string> { ["Тип объекта"] = "Квартира", ["Этаж"] = "3" });
+
+        var variables = PostExtractionContent.VariablesFor("extract-listing", joymee, null, Listing, 6000, section: "apartments-rent");
+
+        variables["attributes"].Should().Be("Тип объекта: Квартира\nЭтаж: 3");
+        variables["seller"].Should().Be("agent");
+    }
+
+    [Fact]
     public void Section_ShouldReadEmptyWhenNoneIsKnown()
     {
         PostExtractionContent.Section(null).Should().BeEmpty();
         PostExtractionContent.Section("  ").Should().BeEmpty();
         PostExtractionContent.Section(" daily-rent ").Should().Be("daily-rent");
     }
+
+    private static PostEnvelope Joymee(object? advertiserType, Dictionary<string, string> attributes, bool includeType = true) => new()
+    {
+        Title = "Сдается квартира", Text = "Цена 500 USD в месяц.", Extraction = Stamp,
+        Extras = new Dictionary<string, JsonElement>
+        {
+            ["source"] = JsonSerializer.SerializeToElement(new
+            {
+                schema = "joymee.ad.v1",
+                fields = includeType
+                    ? new Dictionary<string, object?> { ["sellerName"] = "Seller Name", ["attributes"] = attributes, ["advertiserType"] = advertiserType }
+                    : new Dictionary<string, object?> { ["sellerName"] = "Seller Name", ["attributes"] = attributes },
+            }),
+        },
+    };
 
     private static PostEnvelope Olx(Dictionary<string, string> attributes, bool? isBusiness = null) => new()
     {

@@ -79,7 +79,7 @@ printing only use case, version, content hash and ID. It refuses an existing inc
 
 Before any prompt is built, `PhoneScrub` replaces a phone number in the title and text with `[phone]`: for `post-tags`,
 `extract-event` and `extract-listing` alike (`PostTagsContent.Title` / `.Text`, shared with the extraction content), and in
-an OLX ad's `{{attributes}}` lines. The extraction evidence check reads the same scrubbed text, so a quote can never hold
+an OLX or Joymee ad's `{{attributes}}` lines. The extraction evidence check reads the same scrubbed text, so a quote can never hold
 a number the prompt did not.
 
 - It takes a number with a `+` and 7 to 15 digits; a run of 9 to 12 digits with at most two separators (space, dot,

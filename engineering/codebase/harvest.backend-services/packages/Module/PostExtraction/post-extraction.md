@@ -29,8 +29,8 @@ takes only an `extract-event` answer's format, as its classification's kind, and
   (`PostExtractionDefinitions`, the listing types in `ListingAnswer.cs`); variables `title`, `text` (cut to
   `MaxTextChars`), `sourceCategory`, `language`, `dates`, `place`, `prices`, `postedAt`, and the tags `entityType`,
   `domains`, `about`, `timeframe`, `titleEn`; `extract-listing` adds `attributes`, `section` and `seller`
-  (`PostExtractionContent.VariablesFor`, `PostExtractionDefinitions.VariablesOf`): `attributes` (an OLX ad's attribute lines)
-  and `seller` (its seller category) are OLX-only and empty for any other post, while `section` names the section's catalog
+  (`PostExtractionContent.VariablesFor`, `PostExtractionDefinitions.VariablesOf`): `attributes` (an OLX or Joymee ad's attribute lines)
+  and `seller` (the site's own account type) come from OLX and Joymee ads only and are empty for any other post, while `section` names the section's catalog
   key, else the pipeline's name, for any source (`PostSections`). Routes
   come from `Harvest:Processing:Extraction:Models`, default `anthropic/claude-haiku-5-5`; `PromptVersions` pins a
   version per use case.
