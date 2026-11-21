@@ -9,8 +9,8 @@ calls the adapter's brokers.
 | the caller side of `Steps.ISourceAdapter` · `IStepBroker` | plans from `AdapterDescriptor`, layered adapter → source → pipeline → step, frozen into `runs.frozen` |
 | `Runs.*` vocabulary | statuses, triggers, reasons, item states, priorities |
 
-- Owns: `harvest_schedules.next_due_at`, `harvest_runs`, `harvest_work_item` (the frontier), lane backoff and usage
-  attribution, and the operator's reading pace (`harvest_host_state.min_delay_ms`, `IRunBroker.SetReadingPaceAsync`:
+- Owns: `harvest_schedules.next_due_at` and the automatic `harvest_schedules.enabled=false`, `harvest_pipelines.failures_since`
+  and `auto_off_*`, `harvest_runs`, `harvest_work_item` (the frontier), lane backoff and usage attribution, and the operator's reading pace (`harvest_host_state.min_delay_ms`, `IRunBroker.SetReadingPaceAsync`:
   1000–60000 ms per resolved host; it returns the source's health from `Sources/`). An adapter may declare a
   `SourceUrl` and matching `HostKey` separately from the source identity; legacy host sources use their handle.
 - Rules: claim by `(host_key, lane)` with `FOR UPDATE SKIP LOCKED`; leases, never boot-time interrupts; fenced result
@@ -37,6 +37,13 @@ calls the adapter's brokers.
 - a refusal terminates the run as partial and pauses its lane; the same run never changes route or automatically retries it
 - a lane's pause doubles with each refusal in a row (`RefusalBackoff` × 2^n, n capped at 6); a successful network step on
   the lane resets the count, so the next refusal backs off from the first step
+- `PipelineAutoOff` turns a pipeline's capture, check, refresh, discover and harvest schedules off after `AutoOffAfter` failed
+  runs in a row (a pipeline's `auto_off_after` wins; 0 never): the count is read from `harvest_runs`, never stored, as the leading
+  `failed` verdicts of `PipelineAutoOff.Verdict` (`skip` for `completed no_items`, cancelled and still-active runs, and a `partial`
+  run with nothing saved and no failed step; `reset` for anything saved or any other `completed` run) among runs queued at or after
+  `failures_since`; completion only reports its run's verdict, and the check runs after its commit (`AfterFailedRunAsync`, under the
+  scheduler lock) or, for a run that failed at queue time, in the scheduler's own transaction; turning a row back on clears the
+  record and sets `failures_since`
 - a page result's follow-up targets are admitted in groups: details the container has no link for, listings and other
   targets, known details not read within the run's schedule interval (6 h with none), known details read since; each
   group keeps page order except the stale one, which goes least recently read first -- a page-limited run reaches new

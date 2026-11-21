@@ -100,6 +100,9 @@ internal static class RegistrationMapper
         Limits = StoreJson.Read(row.Limits, new PipelineLimits()),
         Steps = StoreJson.Read<IReadOnlyDictionary<string, StepOverride>>(row.StepOverrides, new Dictionary<string, StepOverride>()),
         Schedules = [.. schedules.OrderBy(schedule => schedule.Kind).Select(ToModel)],
+        AutoOff = row.AutoOffAt is { } at && row.AutoOffRunId is { } runId
+            ? new PipelineAutoOffModel { AtUtc = at, RunId = runId, Failures = row.AutoOffFailures ?? 0, Reason = row.AutoOffReason ?? "failed" }
+            : null,
         CreatedAtUtc = row.CreatedAt,
     };
 

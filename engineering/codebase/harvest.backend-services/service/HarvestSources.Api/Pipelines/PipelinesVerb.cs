@@ -12,8 +12,9 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 
 namespace HarvestSources.Api.Pipelines;
 
-/// <summary>Answers <c>pipelines</c>: sets a host's reading pace, queues one pipeline run, sets one schedule's interval and
-/// reads a pipeline's state from the deployed host, so a platform job does each with no operator token — the verb forms of
+/// <summary>Answers <c>pipelines</c>: sets a host's reading pace, queues one pipeline run, sets one schedule's interval, sets
+/// how many failed runs in a row turn a pipeline's harvesting schedules off and reads a pipeline's state from the deployed
+/// host, so a platform job does each with no operator token — the verb forms of
 /// <c>PUT api/sources/{id}/reading</c>, <c>POST api/runs</c>, <c>PUT api/pipelines/{id}</c>, <c>PUT api/pipelines/{id}/stages</c>
 /// and <c>GET api/pipelines/{id}</c>.</summary>
 /// <remarks>
@@ -28,14 +29,22 @@ namespace HarvestSources.Api.Pipelines;
 ///     makes the schedule of that kind an interval schedule (<c>15m</c>, <c>1h</c>, <c>2h30m</c> or <c>01:00:00</c>, at least
 ///     five minutes), disabled with <c>--off</c>; every other schedule, the name, the scope and the limits stay as stored, and
 ///     a pipeline with no schedule of that kind gets one; the last line is
-///     <c>{"pipelineId","schedules":[{"kind","mode","every","cron","enabled","nextDueAtUtc"}]}</c>
+///     <c>{"pipelineId","schedules":[{"kind","mode","every","cron","enabled","nextDueAtUtc"}]}</c>; turning a row on that was
+///     off (or manual, or stage-disabled) clears a pipeline's automatic turn-off and starts its failed-run count again, and the
+///     report line says so
+///   - <c>pipelines auto-off --pipeline &lt;id&gt; --after &lt;0-1000|default&gt;</c> sets how many capture, check, refresh,
+///     discover or harvest runs in a row may fail before the pipeline's schedules of those kinds turn themselves off (a
+///     pipeline's own value wins over <c>Harvest:Worker:AutoOffAfter</c>, 10 by default; <c>0</c> never turns it off;
+///     <c>default</c> returns to the host's); it writes only that value, never turns a row on or off and never starts the
+///     count again; the last line is <c>{"pipelineId","autoOff":{"after","fromDefault","failures","off"}}</c>
 ///   - a <c>discover</c> or <c>harvest</c> row is a stage row: it is saved through <see cref="PipelineStages.SaveAsync"/>, as
 ///     <c>PUT api/pipelines/{id}/stages</c> saves it, with the stage's stored settings (or the defaults a run would use);
 ///     enabling one while the pipeline has an enabled capture schedule is refused and names the
 ///     <c>pipelines schedule --kind capture --every &lt;d&gt; --off</c> that comes first
 ///   - <c>pipelines show --pipeline &lt;id&gt; [--runs &lt;n&gt;]</c> writes nothing; the last line carries the pipeline's name,
-///     state, limits and schedules (the discover and harvest stage rows among them) and its newest <c>n</c> runs (5 by
-///     default, 0–20), with counters only: no post text and no URL
+///     state, limits and schedules (the discover and harvest stage rows among them), its <c>autoOff</c>
+///     (<c>{"after","fromDefault","failures","off":null|{"atUtc","runId","failures","reason"}}</c>) and its newest <c>n</c>
+///     runs (5 by default, 0–20), with counters only: no post text and no URL
 ///   - <c>--tenant</c> narrows <c>--source</c> to one tenant's containers; a <c>family/handle</c> that matches sources of
 ///     several tenants is refused
 ///   - exit codes: <c>0</c> done, <c>1</c> refused or not found, <c>2</c> usage
@@ -53,6 +62,7 @@ public static partial class PipelinesVerb
         Usage: pipelines run --pipeline <id> [--kind <capture|check|refresh|discover|harvest>]
                pipelines pace --source <id|family/handle> --ms <1000-60000> [--tenant <slug>]
                pipelines schedule --pipeline <id> --kind <capture|check|refresh|discover|harvest> --every <15m|1h|2h30m|01:00:00> [--off]
+               pipelines auto-off --pipeline <id> --after <0-1000|default>
                pipelines show --pipeline <id> [--runs <0-20>]
         """;
 
@@ -75,7 +85,8 @@ public static partial class PipelinesVerb
         await using var scope = services.CreateAsyncScope();
         if (scope.ServiceProvider.GetService<IRegistrationBroker>() is not { } registry
             || scope.ServiceProvider.GetService<IRunBroker>() is not { } runs
-            || scope.ServiceProvider.GetService<PipelineStages>() is not { } stages)
+            || scope.ServiceProvider.GetService<PipelineStages>() is not { } stages
+            || scope.ServiceProvider.GetService<PipelineAutoOff>() is not { } autoOff)
         {
             await error.WriteLineAsync($"pipelines {request.Command} runs on the internal source host; HarvestSources:Audience is public.");
             return 1;
@@ -88,7 +99,8 @@ public static partial class PipelinesVerb
                 "run" => await QueueAsync(runs, request, error, ct),
                 "pace" => await PaceAsync(registry, runs, request, error, ct),
                 "schedule" => await ScheduleAsync(registry, stages, request, error, ct),
-                _ => await ShowAsync(registry, runs, request, ct),
+                "auto-off" => await AutoOffAsync(autoOff, request, error, ct),
+                _ => await ShowAsync(registry, runs, autoOff, request, ct),
             };
             await output.WriteLineAsync(JsonSerializer.Serialize(result));
             return 0;
@@ -135,7 +147,9 @@ public static partial class PipelinesVerb
         var saved = kind is WorkKind.Discover or WorkKind.Harvest
             ? await SaveStageAsync(registry, stages, pipeline, kind, every, request.Off, ct)
             : await SaveScheduleAsync(registry, pipeline, kind, every, request.Off, ct);
-        await error.WriteLineAsync($"{Snake(kind)} of pipeline {pipelineId:D} runs every {Duration(every)}{(request.Off ? ", off" : "")}");
+        string cleared = pipeline.AutoOff is not null && saved.AutoOff is null
+            ? "; the automatic turn-off is cleared and its failed-run count starts again" : "";
+        await error.WriteLineAsync($"{Snake(kind)} of pipeline {pipelineId:D} runs every {Duration(every)}{(request.Off ? ", off" : "")}{cleared}");
         return new { pipelineId, schedules = saved.Schedules.OrderBy(schedule => schedule.Kind).Select(Describe).ToArray() };
     }
 
@@ -178,10 +192,29 @@ public static partial class PipelinesVerb
         BatchSize = kind == WorkKind.Harvest ? pipeline.Limits.MaxItems ?? 50 : pipeline.Limits.MaxPages ?? 10,
     };
 
-    private static async Task<object> ShowAsync(IRegistrationBroker registry, IRunBroker runs, Request request, CancellationToken ct)
+    private static async Task<object> AutoOffAsync(PipelineAutoOff autoOff, Request request, TextWriter error, CancellationToken ct)
+    {
+        var pipelineId = request.Pipeline!.Value;
+        var state = Value(await autoOff.SetAfterAsync(pipelineId, request.After, ct));
+        string origin = state.FromDefault ? " (host default)" : "";
+        await error.WriteLineAsync(state.After == 0
+            ? $"pipeline {pipelineId:D} never turns its harvesting schedules off{origin}; {state.Failures} so far"
+            : $"pipeline {pipelineId:D} turns its harvesting schedules off after {state.After} failed runs in a row{origin}; {state.Failures} so far");
+        return new { pipelineId, autoOff = DescribeAutoOff(state) };
+    }
+
+    private static object DescribeAutoOff(PipelineAutoOffState state) => new
+    {
+        after = state.After, fromDefault = state.FromDefault, failures = state.Failures,
+        off = state.Off is { } off ? new { atUtc = off.AtUtc, runId = off.RunId, failures = off.Failures, reason = off.Reason } : null,
+    };
+
+    private static async Task<object> ShowAsync(IRegistrationBroker registry, IRunBroker runs, PipelineAutoOff autoOff, Request request,
+        CancellationToken ct)
     {
         var pipelineId = request.Pipeline!.Value;
         var pipeline = Value(await registry.GetPipelineAsync(pipelineId, ct));
+        var autoOffState = Value(await autoOff.ReadAsync(pipelineId, ct));
         int count = request.Runs ?? DefaultRuns;
         IReadOnlyList<RunModel> recent = count == 0 ? [] : Value(await runs.ListAsync(pipelineId, count, ct));
         var limits = pipeline.Limits;
@@ -197,6 +230,7 @@ public static partial class PipelinesVerb
                 maxBytes = limits.MaxBytes, maxDuration = limits.MaxDuration is { } duration ? Duration(duration) : null, maxProbes = limits.MaxProbes,
             },
             schedules = pipeline.Schedules.OrderBy(schedule => schedule.Kind).Select(Describe).ToArray(),
+            autoOff = DescribeAutoOff(autoOffState),
             runs = recent.OrderByDescending(run => run.QueuedAtUtc).Select(run => new
             {
                 runId = run.Id,
@@ -301,7 +335,7 @@ public static partial class PipelinesVerb
     private static bool TryParse(IReadOnlyList<string> arguments, out Request request)
     {
         request = new();
-        if (arguments is not ["run" or "pace" or "schedule" or "show", ..])
+        if (arguments is not ["run" or "pace" or "schedule" or "auto-off" or "show", ..])
             return false;
         request.Command = arguments[0];
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -340,6 +374,10 @@ public static partial class PipelinesVerb
                 case "--every" when TryParseDuration(next, out var every):
                     request.Every = every;
                     break;
+                case "--after" when TryParseAfter(next, out var after):
+                    request.After = after;
+                    request.AfterGiven = true;
+                    break;
                 case "--runs" when int.TryParse(next, NumberStyles.None, CultureInfo.InvariantCulture, out var runs) && runs <= MaxRuns:
                     request.Runs = runs;
                     break;
@@ -354,8 +392,21 @@ public static partial class PipelinesVerb
             "pace" => seen.IsSubsetOf(["--source", "--ms", "--tenant"]) && request.Source is not null && request.Ms is not null,
             "schedule" => seen.IsSubsetOf(["--pipeline", "--kind", "--every", "--off"])
                 && request.Pipeline is not null && request.Kind is not null && request.Every is not null,
+            "auto-off" => seen.IsSubsetOf(["--pipeline", "--after"]) && request.Pipeline is not null && request.AfterGiven,
             _ => seen.IsSubsetOf(["--pipeline", "--runs"]) && request.Pipeline is not null,
         };
+    }
+
+    /// <summary>Reads <c>--after</c>: a count from 0 to 1000, or <c>default</c>, which is no value of the pipeline's own.</summary>
+    private static bool TryParseAfter(string value, out int? after)
+    {
+        after = null;
+        if (string.Equals(value, "default", StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (!int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var count) || count > PipelineAutoOff.MaxAfter)
+            return false;
+        after = count;
+        return true;
     }
 
     private static bool TryParseKind(string value, out WorkKind kind)
@@ -393,6 +444,8 @@ public static partial class PipelinesVerb
         internal TimeSpan? Every { get; set; }
         internal bool Off { get; set; }
         internal int? Runs { get; set; }
+        internal int? After { get; set; }
+        internal bool AfterGiven { get; set; }
     }
 
     private sealed record Entry(SourceModel Source, string Label);

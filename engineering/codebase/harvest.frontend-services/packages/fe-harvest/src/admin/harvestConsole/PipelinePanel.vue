@@ -8,6 +8,7 @@ import ConsoleLink from './ConsoleLink.vue';
 import { useHarvestConsole, type PipelineTab } from './HarvestConsole';
 import HarvestPill from './HarvestPill.vue';
 import { activeRun, runCounts, RunTones, WorkLabels } from './PipelineActivity';
+import { autoOffWords } from './PipelineSchedule';
 import PipelineDiscoveries from './PipelineDiscoveries.vue';
 import PipelineStageCard from './PipelineStageCard.vue';
 import RunAuditPanel from './RunAuditPanel.vue';
@@ -18,6 +19,7 @@ const props = defineProps<{ pipelineId: string; stage?: PipelineStageKind; runId
 const session = useHarvestConsole();
 const canRead = computed(() => session.can('pipelines:read'));
 const pipeline = computed(() => (canRead.value ? session.pipelineOf(props.pipelineId) : undefined));
+const autoOff = computed(() => (pipeline.value?.autoOff ? autoOffWords(pipeline.value.autoOff) : undefined));
 const { stages, loading, error, refresh } = usePipelineStages(() => pipeline.value?.id ?? '');
 const kind = ref<WorkKind | 'all'>('all');
 const submitted = shallowRef<RunModel>();
@@ -111,6 +113,7 @@ async function togglePipeline() {
         <HarvestPill v-if="pipeline.state !== 'active'" tone="warning" class="capitalize">
           {{ pipeline.state === 'pendingApproval' ? 'Pending approval' : pipeline.state }}
         </HarvestPill>
+        <HarvestPill v-if="autoOff" tone="warning" v-bind="{ title: autoOff.detail }">{{ autoOff.words }}</HarvestPill>
         <Button
           v-if="!stage && canPause"
           size="sm"

@@ -39,4 +39,22 @@ internal sealed class PipelineRow
     public string? CreatedBy { get; set; }
 
     public required DateTimeOffset CreatedAt { get; set; }
+
+    /// <summary>Gets or sets the pipeline's own failed-run threshold; null uses the host's, 0 never turns it off.</summary>
+    public int? AutoOffAfter { get; set; }
+
+    /// <summary>Gets or sets when the failure count starts: runs queued before it never count.</summary>
+    public DateTimeOffset? FailuresSince { get; set; }
+
+    /// <summary>Gets or sets when the harvesting schedules were last turned off automatically.</summary>
+    public DateTimeOffset? AutoOffAt { get; set; }
+
+    /// <summary>Gets or sets the run that reached the count.</summary>
+    public Guid? AutoOffRunId { get; set; }
+
+    /// <summary>Gets or sets the failed runs in a row the turn-off took.</summary>
+    public int? AutoOffFailures { get; set; }
+
+    /// <summary>Gets or sets the fetch outcome, else the status, of the run that reached the count.</summary>
+    public string? AutoOffReason { get; set; }
 }

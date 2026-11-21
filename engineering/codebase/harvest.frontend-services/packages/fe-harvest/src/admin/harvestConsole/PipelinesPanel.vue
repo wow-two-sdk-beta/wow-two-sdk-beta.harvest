@@ -5,7 +5,7 @@ import ConsoleLink from './ConsoleLink.vue';
 import { useHarvestConsole } from './HarvestConsole';
 import HarvestPill from './HarvestPill.vue';
 import { activeRun, needsAttention, runCounts, RunTones, WorkLabels } from './PipelineActivity';
-import { nextAutomaticSchedule } from './PipelineSchedule';
+import { autoOffWords, nextAutomaticSchedule } from './PipelineSchedule';
 import { clockOf, plural, statusWords } from './SourceWords';
 
 const session = useHarvestConsole();
@@ -32,7 +32,8 @@ const pipelines = computed(() => {
         label: session.pipelineLabel(pipeline),
         active,
         run: active ?? last,
-        attention: needsAttention(last),
+        attention: needsAttention(last) || !!pipeline.autoOff,
+        autoOff: pipeline.autoOff ? autoOffWords(pipeline.autoOff) : undefined,
         next: pipeline.state === 'active' ? nextAutomaticSchedule(pipeline.schedules) : undefined,
       };
     })
@@ -148,6 +149,13 @@ const visible = computed(() => {
                 </div>
                 <div v-else-if="row.pipeline.state !== 'active'" class="capitalize text-muted-foreground">
                   {{ row.pipeline.state === 'pendingApproval' ? 'Pending approval' : row.pipeline.state }}
+                </div>
+                <div
+                  v-else-if="row.autoOff"
+                  :title="row.autoOff.detail"
+                  class="font-medium text-warning-soft-foreground"
+                >
+                  {{ row.autoOff.words }}
                 </div>
                 <div v-else class="text-muted-foreground">—</div>
               </td>

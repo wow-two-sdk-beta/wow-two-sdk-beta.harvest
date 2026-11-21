@@ -119,7 +119,10 @@ internal static class RunPlanner
             ("message", available ? null : kind == WorkKind.Discover && catalog is null
                 ? "This pipeline has no published discovery catalog." : "No registered adapter offers this work kind."));
         if (outcome is not null)
+        {
             outcome.Created = inserted == 1;
+            outcome.Failed = inserted == 1 && !available;
+        }
 
         await using (NpgsqlCommand actual = EngineSql.Command(connection, transaction,
             "SELECT id FROM harvest_runs WHERE pipeline_id=@pipeline AND kind=@kind AND scheduled_for=@slot",
@@ -416,5 +419,9 @@ internal static class RunPlanner
     {
         /// <summary>Gets or sets whether the call inserted a new run row; false when it returned a run already active or failed.</summary>
         internal bool Created { get; set; }
+
+        /// <summary>Gets or sets whether the call inserted a run that failed at once, because no adapter offers the kind or the
+        /// pipeline has no published catalog.</summary>
+        internal bool Failed { get; set; }
     }
 }

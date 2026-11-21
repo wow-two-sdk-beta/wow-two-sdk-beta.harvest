@@ -19,4 +19,7 @@ public sealed class HarvestEngineOptions
     public TimeSpan MaxDuration { get; set; } = TimeSpan.FromHours(1);
     /// <summary>Gets or sets the initial host pause following a refusal.</summary>
     public TimeSpan RefusalBackoff { get; set; } = TimeSpan.FromMinutes(15);
+    /// <summary>Gets or sets how many failed runs in a row turn a pipeline's capture, check, refresh, discover and harvest
+    /// schedules off, 0–1000; <c>0</c> never turns a pipeline off, and a pipeline's own value wins.</summary>
+    public int AutoOffAfter { get; set; } = 10;
 }

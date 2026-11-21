@@ -42,6 +42,9 @@ public sealed record PipelineModel
     /// <summary>Gets the cadence rows, ordered by work kind.</summary>
     public required IReadOnlyList<ScheduleModel> Schedules { get; init; }
 
+    /// <summary>Gets the turn-off in force: the schedules a failure streak turned off and what ended it; null when there is none.</summary>
+    public PipelineAutoOffModel? AutoOff { get; init; }
+
     /// <summary>Gets when the pipeline was declared (UTC).</summary>
     public required DateTimeOffset CreatedAtUtc { get; init; }
 }

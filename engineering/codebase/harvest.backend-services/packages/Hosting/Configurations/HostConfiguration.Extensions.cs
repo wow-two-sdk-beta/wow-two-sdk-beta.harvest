@@ -51,7 +51,8 @@ public static partial class HostConfiguration
         builder.Services.AddValidatedSettings<HarvestEngineOptions>(builder.Configuration, "Harvest:Worker", options => options
             .Validate(value => value.LeaseDuration > TimeSpan.Zero && value.PollInterval > TimeSpan.Zero
                 && value.MaxItems > 0 && value.MaxRequests > 0 && value.MaxBytes > 0 && value.MaxDuration > TimeSpan.Zero
-                && value.RefusalBackoff > TimeSpan.Zero, "Harvest:Worker limits and intervals must be positive."));
+                && value.RefusalBackoff > TimeSpan.Zero && value.AutoOffAfter is >= 0 and <= PipelineAutoOff.MaxAfter,
+                "Harvest:Worker limits and intervals must be positive, and AutoOffAfter must be between 0 and 1000."));
         builder.Services.AddHarvestWorker();
         return builder;
     }

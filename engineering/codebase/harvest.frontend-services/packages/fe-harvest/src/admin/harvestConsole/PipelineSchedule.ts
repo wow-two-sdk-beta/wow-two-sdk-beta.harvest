@@ -1,5 +1,5 @@
-import type { ScheduleModel } from '../../contracts';
-import { plural } from './SourceWords';
+import type { PipelineAutoOffModel, ScheduleModel } from '../../contracts';
+import { clockOf, plural } from './SourceWords';
 
 export const Weekdays = [
   { value: 1, label: 'Mon', name: 'Monday' },
@@ -99,6 +99,14 @@ export function scheduleWords(schedule?: ScheduleModel) {
 
 export function isAutomaticSchedule(schedule: ScheduleModel) {
   return schedule.enabled && schedule.mode !== 'manual' && schedule.stage?.disabled !== true;
+}
+
+/** What a turned-off pipeline says: the count it took, and the run that reached it with when. */
+export function autoOffWords(autoOff: PipelineAutoOffModel) {
+  return {
+    words: `Turned off after ${plural(autoOff.failures, 'failed run')}`,
+    detail: `Last run ended ${autoOff.reason.replaceAll('_', ' ')} · ${clockOf(autoOff.atUtc)}`,
+  };
 }
 
 export function postBatchLimit(kind: 'harvest' | 'process', model?: string) {

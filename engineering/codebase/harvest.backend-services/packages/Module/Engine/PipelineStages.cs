@@ -129,6 +129,9 @@ public sealed class PipelineStages(
     {
         if (!Kinds.Contains(schedule.Kind) || schedule.Stage is null)
             return Invalid("Select a stage and provide its settings.");
+        // A startup seed never touches a pipeline whose schedules were turned off automatically.
+        if (seedOnly && pipeline.AutoOff is not null)
+            return Result<bool>.Ok(false);
         if (RegistrationRules.ValidateSchedules([schedule], key => CaptureProcessors.IsRegistered(keyedServices, key)) is { } invalid)
             return Result<bool>.Fail(invalid);
         await using var connection = await database.OpenConnectionAsync(ct);
@@ -183,6 +186,8 @@ public sealed class PipelineStages(
             }
         }
         var now = clock.GetUtcNow();
+        bool tracksLiveness = !seedOnly && schedule.Kind is WorkKind.Discover or WorkKind.Harvest;
+        bool wasLive = tracksLiveness && await IsLiveAsync(connection, transaction, pipeline.Id, kind, ct);
         int changed = await EngineSql.ExecuteAsync(connection, transaction, """
             INSERT INTO harvest_schedules(id,container_id,pipeline_id,kind,mode,every_interval,max_interval,cron,
                 time_zone,window_start,window_end,enabled,created_at,stage_options)
@@ -209,6 +214,9 @@ public sealed class PipelineStages(
             ("every", schedule.Every), ("max", schedule.MaxEvery), ("cron", schedule.Cron?.Trim()), ("zone", schedule.TimeZone),
             ("start", schedule.Window?.Start), ("end", schedule.Window?.End), ("enabled", schedule.Enabled), ("now", now),
             ("stage", StoreJson.Write(schedule.Stage)), ("seed", seedOnly));
+        // A row turned back on starts the failed-run count again and clears the turn-off record; a live row saved as it was does not.
+        if (tracksLiveness && !wasLive && await IsLiveAsync(connection, transaction, pipeline.Id, kind, ct))
+            await PipelineAutoOff.ResumeAsync(connection, transaction, pipeline.Id, now, ct);
         await transaction.CommitAsync(ct);
         return Result<bool>.Ok(changed > 0);
     }
@@ -270,6 +278,17 @@ public sealed class PipelineStages(
                 reader.IsDBNull(9) ? null : reader.GetInt16(9), reader.GetInt32(10)) { Operations = operations });
         }
         return rows;
+    }
+
+    /// <summary>Reads whether the stored row is one the scheduler would run: enabled, not manual and not stage-disabled.</summary>
+    private static async Task<bool> IsLiveAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid pipelineId, string kind,
+        CancellationToken ct)
+    {
+        await using var command = EngineSql.Command(connection, transaction, """
+            SELECT EXISTS (SELECT 1 FROM harvest_schedules WHERE pipeline_id=@pipeline AND kind=@kind AND enabled AND mode<>'manual'
+                AND stage_options->>'disabled' IS DISTINCT FROM 'true')
+            """, ("pipeline", pipelineId), ("kind", kind));
+        return await command.ExecuteScalarAsync(ct) is true;
     }
 
     private static Result<bool> Invalid(string message) => Result<bool>.Fail(AppErrorFactory.Validation(message));

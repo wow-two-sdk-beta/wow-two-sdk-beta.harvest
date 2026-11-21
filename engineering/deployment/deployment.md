@@ -306,9 +306,14 @@ output's `searches[].pipelineId`.
   (`15m`, `1h`, `2h30m` or `01:00:00`, at least 5 minutes), disabled with `--off`; the other schedules, the name, the scope and
   the limits stay. A `discover` or `harvest` row is a stage row, saved as `PUT api/pipelines/{id}/stages` saves it; enabling one
   while the pipeline has an enabled capture schedule is refused with exit `1`, and the message names the command to run first
-  (`pipelines schedule --pipeline <id> --kind capture --every <d> --off`).
+  (`pipelines schedule --pipeline <id> --kind capture --every <d> --off`). Turning a row on that was off clears the pipeline's
+  automatic turn-off and starts its failed-run count again, and the report line says so.
+- `pipelines auto-off --pipeline <id> --after <0-1000|default>` sets how many failed runs in a row turn this pipeline's
+  schedules off: `0` never, `default` the host's value. It writes only that value; it never turns a row on or off and never
+  starts the count again. Exit `2` for a missing or out-of-range `--after` or any other flag.
 - `pipelines show --pipeline <id> [--runs <n>]` writes nothing; it reads the pipeline's name, state, limits and schedules, the
-  discover and harvest stage rows among them, and its newest runs' counters, with no post text and no URL.
+  discover and harvest stage rows among them, its `autoOff` (`after`, `fromDefault`, the `failures` in a row so far and `off`,
+  null or the turn-off's `atUtc`, `runId`, `failures` and `reason`), and its newest runs' counters, with no post text and no URL.
 
 A capture run restarts at catalog page 1 and re-reads the newest ads, so a source with a large catalog (Joymee on harvest-prod)
 is walked with the discover and harvest pair instead: discover lists the catalog's pages into the saved discoveries and resumes
@@ -322,6 +327,24 @@ pipelines schedule --pipeline <id> --kind harvest --every 30m
 ```
 
 `pipelines run --pipeline <id> --kind discover` and `--kind harvest` start either stage at once, before its first due time.
+
+A pipeline stays as it is while its runs fail: each blocked run is data, so nothing stops a source that refuses us. Only a long
+streak does, and only by itself. When 10 capture, check, refresh, discover or harvest runs in a row have failed, the pipeline's
+schedules of those five kinds turn off (`enabled` false, no next due time) and the turn-off is logged and recorded with the time,
+the run that reached the count and what it ended on (`pipelines show`'s `autoOff`; the console's Pipelines pages). A run fails
+when it saved nothing and ended `failed`, or `partial` after a failed step: a block, a challenge, a waiting room, a rate limit,
+a login or robots refusal, a network error, a limit reached with every step failing, or a queue-time failure. A run that
+captured anything, `partial` included, a discover run that saved discoveries and any other `completed` run start the count
+again; a `completed` `no_items` run, a cancelled run and a run with nothing saved and no failed step (a page limit) neither
+count nor reset. Process schedules, the pipeline's state and runs started by hand stay as they are. To turn a row back on, use
+`pipelines schedule … --every <d>`, the console, `PUT api/pipelines/{id}` or `PUT api/pipelines/{id}/stages`: it clears the record
+and starts the count again, and runs queued before it never count. `ocharo setup` and `marketplace setup` with `--schedules`,
+and the startup stage seeds, leave a turned-off pipeline as it is.
+
+The host's value is `Harvest:Worker:AutoOffAfter` (`Harvest__Worker__AutoOffAfter`, 0–1000, default `10`; `0` never turns any
+pipeline off), and a pipeline's own `pipelines auto-off` value wins. Runs from before the release never count, so a pipeline on
+harvest-prod that is blocked on every run turns off about 2.7 days after the release (ten refused hourly captures, each waiting
+out its lane's pause) unless it is given `pipelines auto-off --pipeline <id> --after 0`.
 
 `assets report [--sources <id,id>]` is the read-only form for a source's image copies: copies by state, outcome and bytes, and
 live posts by contact kind, as counts only (§ Private source media).

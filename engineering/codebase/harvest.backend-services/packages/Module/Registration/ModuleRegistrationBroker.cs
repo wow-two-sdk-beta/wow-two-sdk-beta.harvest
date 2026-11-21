@@ -540,9 +540,11 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
                 row.NextDueAt = null;
             }
         }
+        bool turnedOn = false;
         foreach (var spec in update.Schedules)
         {
             var row = schedules.SingleOrDefault(candidate => candidate.Kind == spec.Kind);
+            bool existed = row is not null;
             if (row is null)
             {
                 row = new ScheduleRow
@@ -563,6 +565,11 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
                 || previous.Window != spec.Window || previous.Enabled != spec.Enabled
                 || (stage is not null && (previous.Stage?.StartsOn != stage.StartsOn
                     || (previous.Stage?.Disabled is true) != (stage.Disabled is true)));
+            // A harvesting row the scheduler would not run and now would starts the failed-run count again.
+            if (PipelineAutoOff.IsHarvesting(spec.Kind)
+                && !(existed && previous.Enabled && previous.Mode != ScheduleMode.Manual && previous.Stage?.Disabled is not true)
+                && spec.Enabled && spec.Mode != ScheduleMode.Manual && (stage ?? previous.Stage)?.Disabled is not true)
+                turnedOn = true;
             row.Mode = spec.Mode;
             row.EveryInterval = spec.Every;
             row.MaxInterval = spec.MaxEvery;
@@ -575,6 +582,14 @@ internal sealed class ModuleRegistrationBroker(HarvestDbContext db, TimeProvider
                 row.StageOptions = StoreJson.Write(stage);
             if (changed)
                 row.NextDueAt = null;
+        }
+        if (turnedOn)
+        {
+            pipeline.FailuresSince = Now();
+            pipeline.AutoOffAt = null;
+            pipeline.AutoOffRunId = null;
+            pipeline.AutoOffFailures = null;
+            pipeline.AutoOffReason = null;
         }
         pipeline.Name = update.Name?.Trim();
         pipeline.Scope = StoreJson.Write(update.Scope);

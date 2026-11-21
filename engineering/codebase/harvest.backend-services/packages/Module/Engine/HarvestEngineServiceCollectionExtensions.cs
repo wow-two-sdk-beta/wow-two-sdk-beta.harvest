@@ -15,12 +15,15 @@ public static class HarvestEngineServiceCollectionExtensions
         services.TryAddScoped<IRunBroker, ModuleRunBroker>();
         services.TryAddScoped<HarvestEngine>();
         services.TryAddScoped<PipelineStages>();
+        services.TryAddScoped<PipelineAutoOff>();
         return services.AddOptions<HarvestEngineOptions>()
             .Validate(options => options.LeaseDuration >= TimeSpan.FromSeconds(10), "A lease must last at least ten seconds.")
             .Validate(options => options.PollInterval > TimeSpan.Zero && options.RefusalBackoff > TimeSpan.Zero,
                 "Polling and refusal backoff must be positive.")
             .Validate(options => options.MaxItems > 0 && options.MaxRequests > 0 && options.MaxBytes > 0
-                && options.MaxDuration > TimeSpan.Zero, "Run limits must be positive.");
+                && options.MaxDuration > TimeSpan.Zero, "Run limits must be positive.")
+            .Validate(options => options.AutoOffAfter is >= 0 and <= PipelineAutoOff.MaxAfter,
+                $"AutoOffAfter must be between 0 and {PipelineAutoOff.MaxAfter}.");
     }
 
     /// <summary>Opts into scheduled pipeline work in this host.</summary>

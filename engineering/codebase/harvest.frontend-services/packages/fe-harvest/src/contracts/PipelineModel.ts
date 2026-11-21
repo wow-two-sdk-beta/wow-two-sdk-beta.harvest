@@ -33,6 +33,18 @@ export interface PipelineLimits {
   readonly [key: string]: number | string | undefined;
 }
 
+/** Mirrors `PipelineAutoOffModel`: the turn-off of a pipeline's harvesting schedules after failed runs in a row. */
+export interface PipelineAutoOffModel {
+  /** When the schedules turned off (UTC). */
+  readonly atUtc: string;
+  /** The run that reached the count. */
+  readonly runId: string;
+  /** The failed runs in a row it took. */
+  readonly failures: number;
+  /** That run's fetch outcome (`blocked`, `challenge`, `rate_limited`, `network_error`, ...), else its status. */
+  readonly reason: string;
+}
+
 /** Mirrors `PipelineModel`: a standing harvest of a source, identified by container, source and scope key. */
 export interface PipelineModel {
   readonly id: string;
@@ -53,5 +65,7 @@ export interface PipelineModel {
   readonly limits: PipelineLimits;
   readonly steps: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
   readonly schedules: readonly ScheduleModel[];
+  /** The turn-off in force; absent when none. */
+  readonly autoOff?: PipelineAutoOffModel;
   readonly createdAtUtc: string;
 }

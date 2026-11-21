@@ -5,9 +5,13 @@ namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters;
 internal static class ScheduleProvisioning
 {
     /// <summary>Enables profile cadences while keeping the section's staged path and operator settings.
-    /// An existing capture row on a staged section is kept disabled so it can be reused later.</summary>
+    /// An existing capture row on a staged section is kept disabled so it can be reused later.
+    /// A pipeline whose schedules were turned off automatically (<see cref="PipelineModel.AutoOff"/>) gets none: it returns null
+    /// and stays as it is until an operator turns a row back on.</summary>
     internal static List<ScheduleDeclaration>? EnabledCadence(PipelineModel pipeline, IReadOnlyList<ScheduleDeclaration> defaults)
     {
+        if (pipeline.AutoOff is not null)
+            return null;
         bool staged = pipeline.Schedules.Any(row => row.Kind is WorkKind.Discover or WorkKind.Harvest
             && row.Enabled && row.Mode != ScheduleMode.Manual && row.Stage?.Disabled is not true);
         var missing = defaults.Where(row => row.Enabled && (!staged || row.Kind != WorkKind.Capture))

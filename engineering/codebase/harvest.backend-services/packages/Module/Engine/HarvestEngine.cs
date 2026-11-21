@@ -35,6 +35,7 @@ public sealed class HarvestEngine(
     IPostBroker posts,
     IServiceProvider services,
     IOptions<HarvestEngineOptions> options,
+    PipelineAutoOff autoOff,
     TimeProvider clock,
     ILogger<HarvestEngine> logger)
 {
@@ -73,8 +74,12 @@ public sealed class HarvestEngine(
         }
 
         int queued = 0;
+        var turnedOff = new HashSet<Guid>();
         foreach ((Guid id, Guid pipelineId, DateTimeOffset? storedDue) in candidates)
         {
+            // A pipeline this tick turned off queues nothing more: its other rows were just switched off with it.
+            if (turnedOff.Contains(pipelineId))
+                continue;
             if (await registry.GetPipelineAsync(pipelineId, cancellationToken) is not Result<PipelineModel>.Success { Value: var pipeline }
                 || await registry.GetSourceAsync(pipeline.SourceId, cancellationToken) is not Result<SourceModel>.Success { Value: var source })
                 continue;
@@ -105,6 +110,9 @@ public sealed class HarvestEngine(
             await EngineSql.ExecuteAsync(connection, transaction,
                 "UPDATE harvest_schedules SET next_due_at=@next,last_queued_at=CASE WHEN @ran THEN @now ELSE last_queued_at END WHERE id=@id",
                 cancellationToken, ("id", id), ("next", next), ("ran", outcome.Created), ("now", now));
+            // The scheduler's lock and this pipeline's row are already held; only a run that failed at queue time asks.
+            if (outcome.Failed && await autoOff.TurnOffIfDueAsync(connection, transaction, pipelineId, now, cancellationToken))
+                turnedOff.Add(pipelineId);
         }
         await transaction.CommitAsync(cancellationToken);
         return queued;
@@ -194,7 +202,11 @@ public sealed class HarvestEngine(
         }
         int? httpStatus = result.Outcome is FetchOutcome.NetworkError or FetchOutcome.FetchTimeout
             ? null : context.Signals.LastOrDefault()?.HttpStatus;
-        await CompleteTracedAsync(claim, result, readings, null, httpStatus, trace, cancellationToken);
+        bool failed = await CompleteTracedAsync(claim, result, readings, null, httpStatus, trace, cancellationToken);
+        // After the commit, so the run's own transaction writes no schedule or pipeline row; a throw is logged by the worker
+        // and the next failed run checks again.
+        if (failed)
+            await autoOff.AfterFailedRunAsync(claim.Item.PipelineId, cancellationToken);
         return true;
     }
 
@@ -223,7 +235,8 @@ public sealed class HarvestEngine(
         await CompleteTracedAsync(claim, processed.StepResult, [], processed.Output, null, trace, ct, processed.Retryable);
     }
 
-    private async Task CompleteTracedAsync(WorkClaim claim, StepResult result,
+    /// <returns>True only when this call wrote the run's terminal status and the run's verdict is failed.</returns>
+    private async Task<bool> CompleteTracedAsync(WorkClaim claim, StepResult result,
         IReadOnlyList<(Capture Capture, PostEnvelope Envelope)> readings, JsonElement? processingOutput, int? httpStatus,
         StepTrace trace, CancellationToken ct, bool retryProcessing = true)
     {
@@ -237,7 +250,7 @@ public sealed class HarvestEngine(
         int? index = operation is null ? null : await trace.BeginAsync(operation);
         try
         {
-            await CompleteAsync(claim, result, readings, processingOutput, httpStatus, trace, index, ct, retryProcessing);
+            return await CompleteAsync(claim, result, readings, processingOutput, httpStatus, trace, index, ct, retryProcessing);
         }
         catch (Exception error) when (index.HasValue && !ct.IsCancellationRequested)
         {
@@ -298,7 +311,8 @@ public sealed class HarvestEngine(
         return claim;
     }
 
-    private async Task CompleteAsync(
+    /// <returns>True only when this call wrote the run's terminal status and the run's verdict is failed.</returns>
+    private async Task<bool> CompleteAsync(
         WorkClaim claim,
         StepResult result,
         IReadOnlyList<(Capture Capture, PostEnvelope Envelope)> readings,
@@ -319,7 +333,7 @@ public sealed class HarvestEngine(
             """, ("run", claim.Item.RunId)))
         {
             if (await fence.ExecuteScalarAsync(ct) is not Guid)
-                return;
+                return false;
         }
         await using (NpgsqlCommand fence = EngineSql.Command(connection, transaction,
             """
@@ -328,7 +342,7 @@ public sealed class HarvestEngine(
             """, ("id", claim.Item.WorkItemId), ("owner", claim.Owner), ("now", now)))
         {
             if (await fence.ExecuteScalarAsync(ct) is not Guid)
-                return;
+                return false;
         }
 
         RunReason? limit = await LimitAsync(connection, transaction, claim, now, ct);
@@ -498,28 +512,37 @@ public sealed class HarvestEngine(
             if (await pending.ExecuteScalarAsync(ct) is true)
                 limit ??= await LimitAsync(connection, transaction, claim, now, ct);
         }
+        // The run's verdict comes back with its terminal write, so a run is judged once, by the transaction that finished it.
+        string? verdict;
         if (stopForHost || limit is not null)
         {
             await EngineSql.ExecuteAsync(connection, transaction,
                 """
                 UPDATE harvest_work_item SET state='blocked',finished_at=@now,last_error=@message,lease_owner=NULL,lease_until=NULL
-                  WHERE run_id=@run AND state IN ('queued','running');
-                UPDATE harvest_runs SET status='partial',finished_at=@now,completion_reason=@reason,
-                  enumeration_complete=false WHERE id=@run
-                """, ct, ("run", claim.Item.RunId), ("now", now), ("message", result.Message ?? "Run limit reached."),
+                  WHERE run_id=@run AND state IN ('queued','running')
+                """, ct, ("run", claim.Item.RunId), ("now", now), ("message", result.Message ?? "Run limit reached."));
+            await using NpgsqlCommand finish = EngineSql.Command(connection, transaction,
+                $"""
+                UPDATE harvest_runs r SET status='partial',finished_at=@now,completion_reason=@reason,
+                  enumeration_complete=false WHERE r.id=@run RETURNING {PipelineAutoOff.Verdict}
+                """, ("run", claim.Item.RunId), ("now", now),
                 ("reason", SnakeCaseEnum<RunReason>.ToText(limit ?? RunReason.SourceOutcome)));
+            verdict = await finish.ExecuteScalarAsync(ct) as string;
         }
         else
         {
-            await EngineSql.ExecuteAsync(connection, transaction,
-                """
-                UPDATE harvest_runs SET status=CASE WHEN completion_reason IS NOT NULL THEN 'partial'
+            await using NpgsqlCommand finish = EngineSql.Command(connection, transaction,
+                $"""
+                UPDATE harvest_runs r SET status=CASE WHEN completion_reason IS NOT NULL THEN 'partial'
                     WHEN failed=0 THEN 'completed' WHEN captured+unchanged>0 THEN 'partial' ELSE 'failed' END,
                   completion_reason=coalesce(completion_reason,CASE WHEN failed=0 THEN 'exhausted' ELSE 'detail_failures' END),finished_at=@now
-                WHERE id=@run AND NOT EXISTS(SELECT 1 FROM harvest_work_item WHERE run_id=@run AND state IN ('queued','running'))
-                """, ct, ("run", claim.Item.RunId), ("now", now));
+                WHERE r.id=@run AND NOT EXISTS(SELECT 1 FROM harvest_work_item WHERE run_id=@run AND state IN ('queued','running'))
+                RETURNING {PipelineAutoOff.Verdict}
+                """, ("run", claim.Item.RunId), ("now", now));
+            verdict = await finish.ExecuteScalarAsync(ct) as string;
         }
         await transaction.CommitAsync(ct);
+        return verdict == "failed";
     }
 
     private async Task<RunReason?> LimitAsync(

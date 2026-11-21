@@ -20,9 +20,9 @@ using WoW.Two.Sdk.Beta.Be.Meta;
 
 namespace HarvestSources.Tests.E2E;
 
-/// <summary>The <c>pipelines</c> host verb: it queues a run, sets a host's reading pace and one schedule's interval, and
-/// reads a pipeline, on the deployed host's own services with no operator token; its discover and harvest kinds walk a
-/// whole catalog.</summary>
+/// <summary>The <c>pipelines</c> host verb: it queues a run, sets a host's reading pace and one schedule's interval, sets how
+/// many failed runs turn a pipeline's schedules off and reads a pipeline, on the deployed host's own services with no
+/// operator token; its discover and harvest kinds walk a whole catalog.</summary>
 public sealed class PipelinesVerbTests
 {
     [Fact]
@@ -461,6 +461,118 @@ public sealed class PipelinesVerbTests
         show.Output.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task Auto_off_sets_the_pipelines_own_count_clears_it_back_to_the_hosts_and_prints_the_line()
+    {
+        await using var host = await StartAsync();
+        var pipelineId = await PipelineAsync(host.Services, "--schedules");
+        string id = pipelineId.ToString("D");
+
+        var three = await Run(host.Services, "auto-off", "--pipeline", id, "--after", "3");
+        three.Exit.Should().Be(0, three.Error);
+        var line = LastLine(three.Output);
+        line.GetProperty("pipelineId").GetGuid().Should().Be(pipelineId);
+        line.EnumerateObject().Select(property => property.Name).Should().Equal("pipelineId", "autoOff");
+        var autoOff = line.GetProperty("autoOff");
+        autoOff.EnumerateObject().Select(property => property.Name).Should().Equal("after", "fromDefault", "failures", "off");
+        (autoOff.GetProperty("after").GetInt32(), autoOff.GetProperty("fromDefault").GetBoolean(), autoOff.GetProperty("failures").GetInt32())
+            .Should().Be((3, false, 0));
+        autoOff.GetProperty("off").ValueKind.Should().Be(JsonValueKind.Null);
+        three.Error.Should().Contain($"pipeline {id} turns its harvesting schedules off after 3 failed runs in a row; 0 so far")
+            .And.NotContain("host default");
+        (await ScalarAsync<int?>(host.Services, "SELECT auto_off_after FROM harvest_pipelines WHERE id=@id", ("id", pipelineId))).Should().Be(3);
+
+        var never = await Run(host.Services, "auto-off", "--pipeline", id, "--after", "0");
+        never.Exit.Should().Be(0, never.Error);
+        LastLine(never.Output).GetProperty("autoOff").GetProperty("after").GetInt32().Should().Be(0);
+        never.Error.Should().Contain($"pipeline {id} never turns its harvesting schedules off");
+        (await ScalarAsync<int?>(host.Services, "SELECT auto_off_after FROM harvest_pipelines WHERE id=@id", ("id", pipelineId))).Should().Be(0);
+
+        var fallback = await Run(host.Services, "auto-off", "--pipeline", id, "--after", "default");
+        fallback.Exit.Should().Be(0, fallback.Error);
+        var cleared = LastLine(fallback.Output).GetProperty("autoOff");
+        (cleared.GetProperty("after").GetInt32(), cleared.GetProperty("fromDefault").GetBoolean()).Should().Be((10, true));
+        fallback.Error.Should().Contain("turns its harvesting schedules off after 10 failed runs in a row (host default); 0 so far");
+        (await ScalarAsync<int?>(host.Services, "SELECT auto_off_after FROM harvest_pipelines WHERE id=@id", ("id", pipelineId))).Should().BeNull();
+        (await ReadAsync(host.Services, pipelineId)).Schedules.Should().OnlyContain(schedule => schedule.Enabled || schedule.Kind != WorkKind.Capture,
+            "setting the count never turns a row off");
+    }
+
+    [Fact]
+    public async Task Auto_off_of_a_pipeline_that_does_not_exist_is_refused()
+    {
+        await using var host = await StartAsync();
+
+        var run = await Run(host.Services, "auto-off", "--pipeline", Guid.NewGuid().ToString("D"), "--after", "3");
+
+        run.Exit.Should().Be(1);
+        run.Error.Should().Contain("pipelines auto-off:");
+        run.Output.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Show_prints_the_auto_off_after_the_schedules_with_the_failed_runs_in_a_row()
+    {
+        await using var host = await StartAsync();
+        var pipelineId = await PipelineAsync(host.Services, "--schedules");
+        string id = pipelineId.ToString("D");
+        foreach (var _ in new[] { 1, 2 })
+        {
+            var queued = await Run(host.Services, "run", "--pipeline", id);
+            await SetStatusAsync(host.Services, LastLine(queued.Output).GetProperty("runId").GetGuid().ToString("D"), "failed");
+        }
+        await Run(host.Services, "run", "--pipeline", id);
+
+        var show = await Run(host.Services, "show", "--pipeline", id);
+
+        show.Exit.Should().Be(0, show.Error);
+        var line = LastLine(show.Output);
+        line.EnumerateObject().Select(property => property.Name).Should().Equal("pipelineId", "name", "state", "pauseReason", "limits",
+            "schedules", "autoOff", "runs");
+        var autoOff = line.GetProperty("autoOff");
+        (autoOff.GetProperty("after").GetInt32(), autoOff.GetProperty("fromDefault").GetBoolean(), autoOff.GetProperty("failures").GetInt32())
+            .Should().Be((10, true, 2), "the queued run says nothing yet");
+        autoOff.GetProperty("off").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Theory]
+    [InlineData("capture")]
+    [InlineData("discover")]
+    public async Task Show_prints_a_record_set_by_sql_and_schedule_turning_a_row_on_clears_it_and_says_so(string kind)
+    {
+        await using var host = await StartAsync();
+        var pipelineId = await PipelineAsync(host.Services, "--schedules");
+        string id = pipelineId.ToString("D");
+        var queued = await Run(host.Services, "run", "--pipeline", id);
+        var runId = LastLine(queued.Output).GetProperty("runId").GetGuid();
+        await SetStatusAsync(host.Services, runId.ToString("D"), "failed");
+        await SqlAsync(host.Services,
+            """
+            UPDATE harvest_schedules SET enabled=false,next_due_at=NULL WHERE pipeline_id=@id;
+            UPDATE harvest_pipelines SET auto_off_at=now(),auto_off_run_id=@run,auto_off_failures=10,auto_off_reason='blocked' WHERE id=@id
+            """, ("id", pipelineId), ("run", runId));
+
+        var shown = LastLine((await Run(host.Services, "show", "--pipeline", id)).Output).GetProperty("autoOff");
+        var off = shown.GetProperty("off");
+        off.EnumerateObject().Select(property => property.Name).Should().Equal("atUtc", "runId", "failures", "reason");
+        (off.GetProperty("runId").GetGuid(), off.GetProperty("failures").GetInt32(), off.GetProperty("reason").GetString())
+            .Should().Be((runId, 10, "blocked"));
+        off.GetProperty("atUtc").ValueKind.Should().Be(JsonValueKind.String);
+        shown.GetProperty("failures").GetInt32().Should().Be(1);
+        (await ReadAsync(host.Services, pipelineId)).AutoOff.Should().NotBeNull();
+
+        var schedule = await Run(host.Services, "schedule", "--pipeline", id, "--kind", kind, "--every", "1h");
+
+        schedule.Exit.Should().Be(0, schedule.Error);
+        schedule.Error.Should().EndWith("; the automatic turn-off is cleared and its failed-run count starts again" + Environment.NewLine);
+        (await ReadAsync(host.Services, pipelineId)).AutoOff.Should().BeNull();
+        var after = LastLine((await Run(host.Services, "show", "--pipeline", id)).Output).GetProperty("autoOff");
+        after.GetProperty("off").ValueKind.Should().Be(JsonValueKind.Null);
+        after.GetProperty("failures").GetInt32().Should().Be(0, "the failed run was queued before the row was turned on");
+        var again = await Run(host.Services, "schedule", "--pipeline", id, "--kind", kind, "--every", "2h");
+        again.Error.Should().NotContain("automatic turn-off");
+    }
+
     [Theory]
     [InlineData("1h", 3600)]
     [InlineData("15m", 900)]
@@ -508,6 +620,13 @@ public sealed class PipelinesVerbTests
     [InlineData("schedule --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --kind capture --every 1h --off --off")]
     [InlineData("schedule --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --kind sweep --every 1h")]
     [InlineData("schedule --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --kind process --every 1h")]
+    [InlineData("auto-off")]
+    [InlineData("auto-off --after 3")]
+    [InlineData("auto-off --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11")]
+    [InlineData("auto-off --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --after -1")]
+    [InlineData("auto-off --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --after 1001")]
+    [InlineData("auto-off --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --after many")]
+    [InlineData("auto-off --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --after 3 --kind capture")]
     [InlineData("show")]
     [InlineData("show --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --runs 21")]
     [InlineData("show --pipeline 5b1f3a52-6f5e-4c3e-9c0f-0d6e4a1f7a11 --runs many")]
@@ -608,6 +727,27 @@ public sealed class PipelinesVerbTests
         command.Parameters.AddWithValue("status", status);
         command.Parameters.AddWithValue("id", Guid.Parse(runId));
         (await command.ExecuteNonQueryAsync()).Should().Be(1);
+    }
+
+    private static async Task<int> SqlAsync(IServiceProvider services, string sql, params (string Name, object Value)[] parameters)
+    {
+        await using var connection = new NpgsqlConnection(services.GetRequiredService<IConfiguration>()["DatabaseSettings:ConnectionString"]);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(sql, connection);
+        foreach (var (name, value) in parameters)
+            command.Parameters.AddWithValue(name, value);
+        return await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<T?> ScalarAsync<T>(IServiceProvider services, string sql, params (string Name, object Value)[] parameters)
+    {
+        await using var connection = new NpgsqlConnection(services.GetRequiredService<IConfiguration>()["DatabaseSettings:ConnectionString"]);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(sql, connection);
+        foreach (var (name, value) in parameters)
+            command.Parameters.AddWithValue(name, value);
+        var scalar = await command.ExecuteScalarAsync();
+        return scalar is null or DBNull ? default : (T)scalar;
     }
 
     private static async Task<int> PaceAsync(IServiceProvider services, SourceModel source)
