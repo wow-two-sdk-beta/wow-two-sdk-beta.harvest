@@ -39,7 +39,7 @@ state; refusals never count as deletion evidence. Reviewed merges can be undone 
   These are complementary high-fit sources, not a measured ranking of publishers by volume.
 - OLX supplies marketplace listings from saved category and search URLs, with stable ad IDs.
 - Instagram reads allowlisted professional publishers through Meta's official Business Discovery API; opt-in.
-- The reviewed Ocharo registry ranks 100 publishers and 189 channels; only channels with an installed reader can be
+- The reviewed Ocharo registry ranks 121 publishers and 209 channels; only channels with an installed reader can be
   provisioned. [Registry review](../engineering/research/ocharo-source-registry.md)
 - Named readers keep source text, explicit event and publication dates, locations, application deadlines, access
   evidence and unknown fees. They never infer a new edition from recurrence or take a registration countdown as the

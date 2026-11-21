@@ -17,7 +17,7 @@ will be ever turned on - saved in db"; "we can remove afisha etc from this one -
 
 | Catalog | Entry | Key | 2026-11-21 |
 |---|---|---|---|
-| Ocharo registry (`ocharo-event-sources.json`) | a publisher group with at least one channel in `mode` `harvest` or `provider` | `ocharo.{groupId}`, e.g. `ocharo.afisha` | 36 entries |
+| Ocharo registry (`ocharo-event-sources.json`) | a publisher group with at least one channel in `mode` `harvest` or `provider` | `ocharo.{groupId}`, e.g. `ocharo.afisha` | 57 entries |
 | Marketplace (`MarketplaceProfile` sites) | a site | `marketplace.{siteKey}`, e.g. `marketplace.olx-uz` | 4 entries (BirBir's import and collection sites share `birbir-uz`) |
 
 - An entry is the unit the console and the developer name: a publisher (Afisha, ANONS) or a site (OLX, BirBir). Its

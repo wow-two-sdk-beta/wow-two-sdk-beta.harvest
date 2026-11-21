@@ -3662,6 +3662,589 @@
           "eventFamily": "turkistan-brand-craft-fair"
         }
       ]
+    },
+    {
+      "id": "podium-uz",
+      "name": "Podium Tashkent",
+      "rank": 101,
+      "tier": "P3",
+      "sourceType": "Venue",
+      "coverage": "Uzbekistan",
+      "rationale": "Shopping-mall site with recurring fashion shows.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://podium.uz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "harvest",
+          "method": "index-detail",
+          "plan": "Use public dated event pages and treat forms as routes; do not submit them or infer acceptance.",
+          "checkState": "readable",
+          "note": "Wave 5, reviewed 2026-11-21: generic-site; seed is the sitemap named in the Sitemap line of robots.txt.",
+          "adapterKey": "generic-site",
+          "setup": "default",
+          "seed": "https://podium.uz/sitemap.xml"
+        }
+      ]
+    },
+    {
+      "id": "tashkentdesignweek-uz",
+      "name": "Tashkent Design Week (tashkentdesignweek.uz)",
+      "rank": 102,
+      "tier": "P3",
+      "sourceType": "Organizer",
+      "coverage": "Uzbekistan",
+      "rationale": "Annual design week site with programme and news; the same event as the tashkent-design-week group, read on its own site.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://www.tashkentdesignweek.uz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "harvest",
+          "method": "edition-page",
+          "plan": "Find the current edition on the organizer programme or news page; read explicit dates and follow only published visitor/exhibitor routes as evidence.",
+          "checkState": "readable",
+          "note": "Wave 5, reviewed 2026-11-21: generic-site; seed is the sitemap named in the Sitemap line of robots.txt.",
+          "adapterKey": "generic-site",
+          "setup": "default",
+          "seed": "https://www.tashkentdesignweek.uz/sitemap.xml"
+        }
+      ]
+    },
+    {
+      "id": "jewelryfair-uz",
+      "name": "Global Jewelry Fair",
+      "rank": 103,
+      "tier": "P3",
+      "sourceType": "Organizer",
+      "coverage": "Uzbekistan",
+      "rationale": "Recurring jewelry fair with edition and exhibitor pages.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://jewelryfair.uz/en/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "harvest",
+          "method": "edition-page",
+          "plan": "Find the current edition on the organizer programme or news page; read explicit dates and follow only published visitor/exhibitor routes as evidence.",
+          "checkState": "readable",
+          "note": "Wave 5, reviewed 2026-11-21: generic-site; seed is the sitemap named in the Sitemap line of robots.txt; its RSS feed answered 200 with no items on 2026-11-21.",
+          "adapterKey": "generic-site",
+          "setup": "default",
+          "seed": "https://jewelryfair.uz/wp-sitemap.xml"
+        }
+      ]
+    },
+    {
+      "id": "anhor-uz",
+      "name": "Anhor.uz",
+      "rank": 104,
+      "tier": "P3",
+      "sourceType": "Media",
+      "coverage": "Uzbekistan",
+      "rationale": "Independent news site with a culture section.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://anhor.uz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "harvest",
+          "method": "news-index",
+          "plan": "Use dated articles as discovery; corroborate edition dates, venue and access with the organizer. Exclude recaps from new event candidates.",
+          "checkState": "readable",
+          "note": "Wave 5, reviewed 2026-11-21: generic-site; seed is the sitemap index named first in the Sitemap lines of robots.txt, the second being a news sitemap.",
+          "adapterKey": "generic-site",
+          "setup": "default",
+          "seed": "https://anhor.uz/sitemap-index.xml"
+        }
+      ]
+    },
+    {
+      "id": "art-blog-uz",
+      "name": "Art-blog.uz",
+      "rank": 105,
+      "tier": "P3",
+      "sourceType": "Media",
+      "coverage": "Uzbekistan",
+      "rationale": "Art and culture blog with recurring posts.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://art-blog.uz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "harvest",
+          "method": "news-index",
+          "plan": "Use dated articles as discovery; corroborate edition dates, venue and access with the organizer. Exclude recaps from new event candidates.",
+          "checkState": "readable",
+          "note": "Wave 5, reviewed 2026-11-21: generic-feed; seed is the RSS feed the page links.",
+          "adapterKey": "generic-feed",
+          "setup": "default",
+          "seed": "https://art-blog.uz/feed"
+        }
+      ]
+    },
+    {
+      "id": "myticket-uz",
+      "name": "MyTicket.uz",
+      "rank": 106,
+      "tier": "P3",
+      "sourceType": "Ticketing",
+      "coverage": "Uzbekistan",
+      "rationale": "Ticketing site.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://myticket.uz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "harvest",
+          "method": "ticket-index",
+          "plan": "Use individual public offers for visitor price and availability. Exhibitor and designer access require separate evidence.",
+          "checkState": "readable",
+          "note": "Wave 5, reviewed 2026-11-21: generic-site; seed is the sitemap named in the Sitemap line of robots.txt.",
+          "adapterKey": "generic-site",
+          "setup": "default",
+          "seed": "https://myticket.uz/sitemap.xml"
+        }
+      ]
+    },
+    {
+      "id": "proart-uz",
+      "name": "ProART",
+      "rank": 107,
+      "tier": "P3",
+      "sourceType": "Organizer",
+      "coverage": "Uzbekistan",
+      "rationale": "Event agency (concerts, festivals, exhibitions) with a news feed; its posts may cover only its own productions.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://proart.uz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "harvest",
+          "method": "index-detail",
+          "plan": "Use public dated event pages and treat forms as routes; do not submit them or infer acceptance.",
+          "checkState": "readable",
+          "note": "Wave 5, reviewed 2026-11-21: generic-site; seed is the listing page, as robots.txt names no sitemap and allows the page; its RSS feed answered 200 with no items on 2026-11-21.",
+          "adapterKey": "generic-site",
+          "setup": "default"
+        }
+      ]
+    },
+    {
+      "id": "98mag-kz",
+      "name": "98mag",
+      "rank": 108,
+      "tier": "P3",
+      "sourceType": "Media",
+      "coverage": "Kazakhstan",
+      "rationale": "Kazakh culture, style and city magazine.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://www.98mag.kz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "harvest",
+          "method": "news-index",
+          "plan": "Use dated articles as discovery; corroborate edition dates, venue and access with the organizer. Exclude recaps from new event candidates.",
+          "checkState": "readable",
+          "note": "Wave 5, reviewed 2026-11-21: generic-site; seed is the sitemap named in the Sitemap line of robots.txt.",
+          "adapterKey": "generic-site",
+          "setup": "default",
+          "seed": "https://www.98mag.kz/sitemap_index.xml"
+        }
+      ]
+    },
+    {
+      "id": "elle-com-kz",
+      "name": "ELLE Kazakhstan",
+      "rank": 109,
+      "tier": "P3",
+      "sourceType": "Media",
+      "coverage": "Kazakhstan",
+      "rationale": "Fashion magazine, Kazakhstan edition; the registry's elle-uz is the Uzbekistan edition.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://elle.com.kz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "harvest",
+          "method": "news-index",
+          "plan": "Use dated articles as discovery; corroborate edition dates, venue and access with the organizer. Exclude recaps from new event candidates.",
+          "checkState": "readable",
+          "note": "Wave 5, reviewed 2026-11-21: generic-site; seed is the sitemap named in the Sitemap line of robots.txt.",
+          "adapterKey": "generic-site",
+          "setup": "default",
+          "seed": "https://elle.com.kz/sitemap.xml"
+        }
+      ]
+    },
+    {
+      "id": "esquire-kz",
+      "name": "Esquire Kazakhstan",
+      "rank": 110,
+      "tier": "P3",
+      "sourceType": "Media",
+      "coverage": "Kazakhstan",
+      "rationale": "Lifestyle and fashion magazine, recurring.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://esquire.kz/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "harvest",
+          "method": "news-index",
+          "plan": "Use dated articles as discovery; corroborate edition dates, venue and access with the organizer. Exclude recaps from new event candidates.",
+          "checkState": "readable",
+          "note": "Wave 5, reviewed 2026-11-21: generic-site; seed is the sitemap named in the Sitemap line of robots.txt.",
+          "adapterKey": "generic-site",
+          "setup": "default",
+          "seed": "https://esquire.kz/sitemap.xml"
+        }
+      ]
+    },
+    {
+      "id": "weproject-media",
+      "name": "weproject",
+      "rank": 111,
+      "tier": "P3",
+      "sourceType": "Media",
+      "coverage": "Kazakhstan",
+      "rationale": "Almaty events guide and fashion news, recurring.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://weproject.media/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "harvest",
+          "method": "news-index",
+          "plan": "Use dated articles as discovery; corroborate edition dates, venue and access with the organizer. Exclude recaps from new event candidates.",
+          "checkState": "readable",
+          "note": "Wave 5, reviewed 2026-11-21: generic-site; seed is the sitemap named in the Sitemap line of robots.txt.",
+          "adapterKey": "generic-site",
+          "setup": "default",
+          "seed": "https://weproject.media/sitemap.xml"
+        }
+      ]
+    },
+    {
+      "id": "bishkekft-com",
+      "name": "Bishkek Fashion Textile",
+      "rank": 112,
+      "tier": "P3",
+      "sourceType": "Organizer",
+      "coverage": "Kyrgyzstan",
+      "rationale": "Recurring Bishkek fashion and textile fair.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://bishkekft.com/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "harvest",
+          "method": "edition-page",
+          "plan": "Find the current edition on the organizer programme or news page; read explicit dates and follow only published visitor/exhibitor routes as evidence.",
+          "checkState": "readable",
+          "note": "Wave 5, reviewed 2026-11-21: generic-feed; seed is the RSS feed the page links; its newest dated item is from 2019-03-27.",
+          "adapterKey": "generic-feed",
+          "setup": "default",
+          "seed": "https://bishkekft.com/feed/"
+        }
+      ]
+    },
+    {
+      "id": "ticketon-tj",
+      "name": "Ticketon Tajikistan",
+      "rank": 113,
+      "tier": "P3",
+      "sourceType": "Ticketing",
+      "coverage": "Tajikistan",
+      "rationale": "Ticketing site; the registry's ticketon group holds the .kz and .uz hosts only.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://ticketon.tj/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "harvest",
+          "method": "ticket-index",
+          "plan": "Use individual public offers for visitor price and availability. Exhibitor and designer access require separate evidence.",
+          "checkState": "readable",
+          "note": "Wave 5, reviewed 2026-11-21: generic-site; seed is the sitemap named in the Sitemap line of robots.txt.",
+          "adapterKey": "generic-site",
+          "setup": "default",
+          "seed": "https://ticketon.tj/sitemap.xml"
+        }
+      ]
+    },
+    {
+      "id": "mffrussia-com",
+      "name": "Moscow Fashion Fair",
+      "rank": 114,
+      "tier": "P3",
+      "sourceType": "Organizer",
+      "coverage": "Russia",
+      "rationale": "Moscow fashion festival site.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://www.mffrussia.com/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "harvest",
+          "method": "edition-page",
+          "plan": "Find the current edition on the organizer programme or news page; read explicit dates and follow only published visitor/exhibitor routes as evidence.",
+          "checkState": "readable",
+          "note": "Wave 5, reviewed 2026-11-21: generic-feed; seed is the blog RSS feed the page links.",
+          "adapterKey": "generic-feed",
+          "setup": "default",
+          "seed": "https://www.mffrussia.com/blog-feed.xml"
+        }
+      ]
+    },
+    {
+      "id": "cis-fashion-ru",
+      "name": "CIS Fashion",
+      "rank": 115,
+      "tier": "P3",
+      "sourceType": "Organizer",
+      "coverage": "Russia",
+      "rationale": "Recurring fashion trade show with news.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://cis-fashion.ru/news",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "harvest",
+          "method": "edition-page",
+          "plan": "Find the current edition on the organizer programme or news page; read explicit dates and follow only published visitor/exhibitor routes as evidence.",
+          "checkState": "readable",
+          "note": "Wave 5, reviewed 2026-11-21: generic-site; seed is the sitemap, the https form of the Sitemap line of robots.txt.",
+          "adapterKey": "generic-site",
+          "setup": "default",
+          "seed": "https://cis-fashion.ru/sitemap.xml"
+        }
+      ]
+    },
+    {
+      "id": "designoutlook-ru",
+      "name": "Design-Perspective",
+      "rank": 116,
+      "tier": "P3",
+      "sourceType": "Organizer",
+      "coverage": "Russia",
+      "rationale": "Annual young-designers contest site with news and a sitemap.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://designoutlook.ru/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "harvest",
+          "method": "edition-page",
+          "plan": "Find the current edition on the organizer programme or news page; read explicit dates and follow only published visitor/exhibitor routes as evidence.",
+          "checkState": "readable",
+          "note": "Wave 5, reviewed 2026-11-21: generic-site; seed is the sitemap named in the Sitemap line of robots.txt.",
+          "adapterKey": "generic-site",
+          "setup": "default",
+          "seed": "https://designoutlook.ru/sitemap.xml"
+        }
+      ]
+    },
+    {
+      "id": "riamoda-ru",
+      "name": "RIA Moda",
+      "rank": 117,
+      "tier": "P3",
+      "sourceType": "Media",
+      "coverage": "Russia",
+      "rationale": "Fashion news agency, recurring.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://riamoda.ru/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "harvest",
+          "method": "news-index",
+          "plan": "Use dated articles as discovery; corroborate edition dates, venue and access with the organizer. Exclude recaps from new event candidates.",
+          "checkState": "readable",
+          "note": "Wave 5, reviewed 2026-11-21: generic-feed; seed is the RSS feed the page links.",
+          "adapterKey": "generic-feed",
+          "setup": "default",
+          "seed": "https://riamoda.ru/rss.xml"
+        }
+      ]
+    },
+    {
+      "id": "exponet-ru",
+      "name": "Exponet",
+      "rank": 118,
+      "tier": "P3",
+      "sourceType": "Directory",
+      "coverage": "Russia",
+      "rationale": "Fair directory with fashion and country listings.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://exponet.ru/exhibitions/area/cis/topics/moda/dates/future/index.en.html",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "harvest",
+          "method": "aggregator-index",
+          "plan": "Trace dated listings to named upstreams and use the organizer to resolve conflicting information.",
+          "checkState": "readable",
+          "note": "Wave 5, reviewed 2026-11-21: generic-site; seed is the listing page, as the sitemap robots.txt names is on www.exponet.ru, another host, and robots.txt allows the page.",
+          "adapterKey": "generic-site",
+          "setup": "default"
+        }
+      ]
+    },
+    {
+      "id": "styleofeurasia-com",
+      "name": "Style of Eurasia",
+      "rank": 119,
+      "tier": "P3",
+      "sourceType": "Media",
+      "coverage": "Kazakhstan",
+      "rationale": "Eurasian style and fashion media, recurring.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://www.styleofeurasia.com/",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "harvest",
+          "method": "news-index",
+          "plan": "Use dated articles as discovery; corroborate edition dates, venue and access with the organizer. Exclude recaps from new event candidates.",
+          "checkState": "readable",
+          "note": "Wave 5, reviewed 2026-11-21: generic-site; seed is the listing page, as robots.txt names no sitemap and allows the page; its RSS feed answered 200 with no items on 2026-11-21.",
+          "adapterKey": "generic-site",
+          "setup": "default"
+        }
+      ]
+    },
+    {
+      "id": "aydatuda-tg",
+      "name": "Aydatuda Telegram channel",
+      "rank": 120,
+      "tier": "P3",
+      "sourceType": "Media",
+      "coverage": "Uzbekistan",
+      "rationale": "Recurring Telegram events channel; the screen did not confirm its country or its dated messages.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://t.me/s/aydatuda",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "harvest",
+          "method": "harvest",
+          "plan": "Read dated channel posts through the public preview; a post's time is its publication time, never an event date.",
+          "note": "Wave 5, reviewed 2026-11-21: telegram-preview; seed is the channel's public web preview. t.me was not fetched, so its dated messages are unconfirmed.",
+          "adapterKey": "telegram-preview",
+          "setup": "default",
+          "seed": "https://t.me/s/aydatuda"
+        }
+      ]
+    },
+    {
+      "id": "proartworld-tg",
+      "name": "ProArt World Telegram channel",
+      "rank": 121,
+      "tier": "P3",
+      "sourceType": "Media",
+      "coverage": "Uzbekistan",
+      "rationale": "Recurring Telegram art channel; the screen did not confirm its dated messages.",
+      "eventFamilies": [],
+      "aggregates": [],
+      "channels": [
+        {
+          "id": "primary",
+          "url": "https://t.me/s/proartworld",
+          "role": "primary",
+          "relationship": "owned",
+          "primary": true,
+          "mode": "harvest",
+          "method": "harvest",
+          "plan": "Read dated channel posts through the public preview; a post's time is its publication time, never an event date.",
+          "note": "Wave 5, reviewed 2026-11-21: telegram-preview; seed is the channel's public web preview. t.me was not fetched, so its dated messages are unconfirmed.",
+          "adapterKey": "telegram-preview",
+          "setup": "default",
+          "seed": "https://t.me/s/proartworld"
+        }
+      ]
     }
   ]
 }

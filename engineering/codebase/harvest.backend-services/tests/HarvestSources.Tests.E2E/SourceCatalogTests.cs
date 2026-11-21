@@ -29,7 +29,7 @@ public sealed class SourceCatalogTests
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var entries = (await DataAsync(response)).EnumerateArray().ToArray();
-        entries.Should().HaveCount(40, "36 Ocharo publishers and 4 marketplace sites");
+        entries.Should().HaveCount(61, "57 Ocharo publishers and 4 marketplace sites");
         entries.Should().OnlyContain(entry => entry.GetProperty("state").GetString() == "new", "a fresh instance starts with every entry new");
         var afisha = entries.Single(entry => entry.GetProperty("key").GetString() == "ocharo.afisha");
         afisha.GetProperty("catalog").GetString().Should().Be("ocharo");
@@ -98,7 +98,7 @@ public sealed class SourceCatalogTests
 
         list.Exit.Should().Be(0, list.Error);
         Lines(list.Output).Should().ContainSingle();
-        Parse(list.Output).GetProperty("entries").GetArrayLength().Should().Be(40);
+        Parse(list.Output).GetProperty("entries").GetArrayLength().Should().Be(61);
         off.Exit.Should().Be(0, off.Error);
         var anons = Parse(off.Output).GetProperty("entry");
         (anons.GetProperty("key").GetString(), anons.GetProperty("state").GetString(), anons.GetProperty("changedBy").GetString()).Should().Be(("ocharo.anons", "off", "operator-key"));

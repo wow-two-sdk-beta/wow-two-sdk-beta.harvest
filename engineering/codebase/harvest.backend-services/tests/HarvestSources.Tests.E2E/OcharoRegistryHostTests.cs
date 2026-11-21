@@ -52,7 +52,7 @@ public sealed class OcharoRegistryHostTests
         client.DefaultRequestHeaders.Add("X-Api-Key", operatorKey);
         var registry = await Data(await client.GetAsync("/api/ocharo/sources/registry"));
         registry.GetProperty("format").GetString().Should().Be("ocharo.event-sources.v1");
-        registry.GetProperty("groups").GetArrayLength().Should().Be(100);
+        registry.GetProperty("groups").GetArrayLength().Should().Be(121);
         (await Data(await client.GetAsync("/api/tenants"))).GetArrayLength().Should().Be(0);
 
         var selection = new { groupIds = new[] { "caex" } };

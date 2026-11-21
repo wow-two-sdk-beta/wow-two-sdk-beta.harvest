@@ -22,7 +22,7 @@ public sealed class SourceCatalogTests
 
         var entries = Ocharo().Entries();
 
-        entries.Should().HaveCount(36).And.OnlyContain(entry => entry.Key.StartsWith("ocharo.", StringComparison.Ordinal)
+        entries.Should().HaveCount(57).And.OnlyContain(entry => entry.Key.StartsWith("ocharo.", StringComparison.Ordinal)
             && entry.Catalog == "ocharo" && entry.Kind == CatalogKind.Events && entry.Channels >= 1 && entry.Hosts.Count >= 1);
         entries.Select(entry => entry.Key).Should().Equal(collectible.OrderBy(group => group.Rank).Select(group => "ocharo." + group.Id));
         var planned = registry.Groups.Except(collectible).Select(group => "ocharo." + group.Id);
@@ -115,7 +115,7 @@ public sealed class SourceCatalogTests
         var setup = Value(await new OcharoSourceProvisioner(registry, delivery).EnsureAsync());
 
         setup.Skipped.Should().BeEmpty();
-        setup.Sources.Should().HaveCount(40);
+        setup.Sources.Should().HaveCount(61);
     }
 
     private static OcharoSourceCatalog Ocharo() => new(new FakeRegistrationBroker(), Provisioner(new FakeRecords()));

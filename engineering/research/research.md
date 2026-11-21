@@ -10,7 +10,7 @@ their public/private split no longer exists.
 | Review | Covers | Date |
 |---|---|---|
 | [Ocharo event sources](ocharo-source-review.md) | Afisha plus ANONS, Craftfair/Hunarmand and Uzexpocentre; source and access traps, alternatives | 2026-10-27 |
-| [Ocharo source registry](ocharo-source-registry.md) | the ranked inventory behind `ocharo-event-sources.json`: 100 publishers, 189 channels, collection mode per channel | 2026-11-09 |
+| [Ocharo source registry](ocharo-source-registry.md) | the ranked inventory behind `ocharo-event-sources.json`: 121 publishers, 209 channels, collection mode per channel | 2026-11-09 |
 | [Afisha field audit](afisha-field-audit.md) | extraction correction, native/mapped/AI layers, contacts and availability evidence | 2026-10-27 |
 | [Instagram sources and setup](instagram-source-review.md) | reviewed fashion/craft publishers, official API configuration, coverage limits | 2026-10-27 |
 | [OLX source verification](olx-source-review.md) | ListingShelf port, saved filters, ad identity, availability, bounded live-run evidence | 2026-10-27 |

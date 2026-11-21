@@ -19,7 +19,7 @@ public sealed class OcharoRegistryTests
     public void Group_roles_and_event_families_are_independent_of_host_and_rank()
     {
         var registry = OcharoSourceRegistry.Current;
-        registry.Groups.Should().HaveCount(100);
+        registry.Groups.Should().HaveCount(121);
         var teplo = registry.Groups.Single(group => group.Id == "teplo");
         teplo.Channels.Single(channel => channel.Primary).Mode.Should().Be("reference");
         teplo.Channels.Where(channel => channel.Mode == "provider").Select(channel => channel.EventFamily)
@@ -45,9 +45,9 @@ public sealed class OcharoRegistryTests
 
         registry.Validate();
 
-        registry.Groups.Should().HaveCount(100);
+        registry.Groups.Should().HaveCount(121);
         registry.Groups.SelectMany(group => group.Channels).Count(channel => channel.Mode == "harvest")
-            .Should().Be(41, "the 6 named readers' channels, the 25 Wave 1 generic channels and the 10 Wave 2 Telegram channels");
+            .Should().Be(62, "the 6 named readers' channels, the 25 Wave 1 generic channels, the 10 Wave 2 Telegram channels and the 21 Wave 5 channels");
     }
 
     [Theory]
@@ -272,8 +272,13 @@ public sealed class OcharoRegistryTests
         ("emkp/primary", "generic-site", "https://www.emkp.org/sitemap.xml"),
     ];
 
+    /// <summary>The rank of the last group Waves 1 and 2 know; Wave 5's groups rank above it.</summary>
+    private const int LastEarlierRank = 100;
+
+    /// <summary>The generic routes of Wave 1's groups, ranked 1 to 100; Wave 5's are read apart below.</summary>
     private static IEnumerable<OcharoSourceRegistry.CollectionRoute> GenericRoutes() => OcharoSourceRegistry.Current
-        .Routes(includeInstagram: false).Where(route => route.Profile.Key.StartsWith("generic-", StringComparison.Ordinal));
+        .Routes(includeInstagram: false).Where(route => route.Group.Rank <= LastEarlierRank
+            && route.Profile.Key.StartsWith("generic-", StringComparison.Ordinal));
 
     [Fact]
     public void Wave_1_routes_each_listed_channel_to_its_generic_profile_on_the_cron_capture_cadence()
@@ -360,7 +365,8 @@ public sealed class OcharoRegistryTests
 
         var setup = Value(await provisioner.EnsureAsync(enableSchedules: true));
 
-        var wave = setup.Sources.Where(route => route.SourceKey.StartsWith("generic-", StringComparison.Ordinal)).ToArray();
+        var wave = setup.Sources.Where(route => route.SourceKey.StartsWith("generic-", StringComparison.Ordinal)
+            && !Wave5GroupIds.Contains(route.GroupId)).ToArray();
         wave.Select(route => $"{route.GroupId}/{route.ChannelId} {route.SourceKey} {route.Seed}")
             .Should().BeEquivalentTo(Wave1.Select(row => $"{row.Channel} {row.Route} {row.Seed}"));
         wave.Select(route => route.SourceId).Should().OnlyHaveUniqueItems();
@@ -397,8 +403,10 @@ public sealed class OcharoRegistryTests
         "bukhara-region/regional-tourism-updates", "namangan-region/regional-tourism-updates",
     ];
 
+    /// <summary>The Telegram routes of Wave 2's groups, ranked 1 to 100; Wave 5's two channels are read apart below.</summary>
     private static IEnumerable<OcharoSourceRegistry.CollectionRoute> TelegramRoutes() => OcharoSourceRegistry.Current
-        .Routes(includeInstagram: false).Where(route => route.Profile.Key == TelegramSourceAdapter.AdapterKey);
+        .Routes(includeInstagram: false).Where(route => route.Group.Rank <= LastEarlierRank
+            && route.Profile.Key == TelegramSourceAdapter.AdapterKey);
 
     [Fact]
     public void Wave_2_routes_each_owned_telegram_channel_to_the_preview_reader_on_its_public_preview_page()
@@ -468,11 +476,13 @@ public sealed class OcharoRegistryTests
         var repeat = Value(await provisioner.EnsureAsync(enableSchedules: true));
 
         repeat.Should().BeEquivalentTo(setup);
-        var wave = setup.Sources.Where(route => route.SourceKey == TelegramSourceAdapter.AdapterKey).ToArray();
+        var wave = setup.Sources.Where(route => route.SourceKey == TelegramSourceAdapter.AdapterKey
+            && !Wave5GroupIds.Contains(route.GroupId)).ToArray();
         wave.Select(route => $"{route.GroupId}/{route.ChannelId} {route.Seed}")
             .Should().BeEquivalentTo(Wave2.Select(row => $"{row.Channel} https://t.me/s/{row.Username}"));
         wave.Select(route => route.SourceId).Should().OnlyHaveUniqueItems();
-        var sources = Value(await registry.ListSourcesAsync(setup.ContainerId)).Where(source => source.Family == SourceFamily.Telegram).ToArray();
+        var sources = Value(await registry.ListSourcesAsync(setup.ContainerId)).Where(source => source.Family == SourceFamily.Telegram
+            && Wave2.Any(row => source.Handle == "tg:" + row.Username)).ToArray();
         sources.Select(source => source.Handle).Should().BeEquivalentTo(Wave2.Select(row => "tg:" + row.Username));
         sources.Should().OnlyContain(source => source.ExternalRef == null && source.Posture == SourcePosture.OwnFetch
             && source.Completeness == SourceCompleteness.Window && source.Coverage == SourceCoverage.Filtered
@@ -495,6 +505,105 @@ public sealed class OcharoRegistryTests
         var status = Value(await provisioner.ReadAsync());
         status.Channels.Where(channel => wave.Any(route => route.ChannelId == channel.ChannelId && route.GroupId == channel.GroupId))
             .Should().HaveCount(10).And.OnlyContain(channel => channel.Pipeline != null);
+    }
+
+    /// <summary>Wave 5: the publishers the 2026-11-21 SR02 screen kept and the probes routed to the generic readers or the Telegram
+    /// preview reader, in the screen's order. Each is its own group ranked 101 and up, with one owned primary channel. A feed
+    /// seeds at the feed that answered 200 with dated items, a site at the sitemap its host's robots.txt names on that host or,
+    /// with none, at its listing page, and a Telegram channel at its preview. The rows are in
+    /// <c>engineering/research/ocharo-source-registry.md</c>.</summary>
+    private static readonly (string Group, string Route, string Seed)[] Wave5 =
+    [
+        ("podium-uz", "generic-site", "https://podium.uz/sitemap.xml"),
+        ("tashkentdesignweek-uz", "generic-site", "https://www.tashkentdesignweek.uz/sitemap.xml"),
+        ("jewelryfair-uz", "generic-site", "https://jewelryfair.uz/wp-sitemap.xml"),
+        ("anhor-uz", "generic-site", "https://anhor.uz/sitemap-index.xml"),
+        ("art-blog-uz", "generic-feed", "https://art-blog.uz/feed"),
+        ("myticket-uz", "generic-site", "https://myticket.uz/sitemap.xml"),
+        ("proart-uz", "generic-site", "https://proart.uz/"),
+        ("98mag-kz", "generic-site", "https://www.98mag.kz/sitemap_index.xml"),
+        ("elle-com-kz", "generic-site", "https://elle.com.kz/sitemap.xml"),
+        ("esquire-kz", "generic-site", "https://esquire.kz/sitemap.xml"),
+        ("weproject-media", "generic-site", "https://weproject.media/sitemap.xml"),
+        ("bishkekft-com", "generic-feed", "https://bishkekft.com/feed/"),
+        ("ticketon-tj", "generic-site", "https://ticketon.tj/sitemap.xml"),
+        ("mffrussia-com", "generic-feed", "https://www.mffrussia.com/blog-feed.xml"),
+        ("cis-fashion-ru", "generic-site", "https://cis-fashion.ru/sitemap.xml"),
+        ("designoutlook-ru", "generic-site", "https://designoutlook.ru/sitemap.xml"),
+        ("riamoda-ru", "generic-feed", "https://riamoda.ru/rss.xml"),
+        ("exponet-ru", "generic-site", "https://exponet.ru/exhibitions/area/cis/topics/moda/dates/future/index.en.html"),
+        ("styleofeurasia-com", "generic-site", "https://www.styleofeurasia.com/"),
+        ("aydatuda-tg", "telegram-preview", "https://t.me/s/aydatuda"),
+        ("proartworld-tg", "telegram-preview", "https://t.me/s/proartworld"),
+    ];
+
+    private static readonly HashSet<string> Wave5GroupIds = Wave5.Select(row => row.Group).ToHashSet(StringComparer.Ordinal);
+
+    [Fact]
+    public async Task Wave_5_groups_rank_101_and_up_and_default_setup_provisions_each_as_its_own_source_on_its_route()
+    {
+        var groups = OcharoSourceRegistry.Current.Groups.Where(group => group.Rank > LastEarlierRank).ToArray();
+
+        groups.Select(group => group.Id).Should().Equal(Wave5.Select(row => row.Group), "the groups follow the screen's order");
+        groups.Select(group => group.Rank).Should().Equal(Enumerable.Range(LastEarlierRank + 1, Wave5.Length));
+        groups.Should().OnlyContain(group => group.Tier == "P3" && group.Aggregates.Count == 0 && group.EventFamilies.Count == 0
+            && group.Channels.Count == 1);
+        foreach (var (group, row) in groups.Zip(Wave5))
+        {
+            var channel = group.Channels.Single();
+            (channel.Id, channel.Primary, channel.Relationship, channel.Mode, channel.Setup, channel.AdapterKey)
+                .Should().Be(("primary", true, "owned", "harvest", "default", row.Route), group.Id);
+            channel.Note.Should().StartWith($"Wave 5, reviewed 2026-11-21: {row.Route}; ", group.Id);
+            channel.PipelineUrl.Should().Be(row.Seed, group.Id);
+            switch (row.Route)
+            {
+                case "generic-feed":
+                    channel.Seed.Should().NotBeNull(group.Id + " seeds at its feed, not at the page that links it");
+                    break;
+                case "generic-site":
+                    // A sitemap seed sits on the channel's own host; with none, the seed is the listing page itself.
+                    if (channel.Seed is null)
+                        channel.PipelineUrl.Should().Be(channel.Url, group.Id);
+                    else
+                        new Uri(channel.PipelineUrl).Host.Should().Be(new Uri(channel.Url).Host, group.Id + " reads its own host's sitemap");
+                    break;
+                default:
+                    TelegramChannels.TryReadSeed(channel.PipelineUrl, out _).Should().BeTrue(group.Id);
+                    break;
+            }
+        }
+        OcharoSourceRegistry.Current.Groups.SelectMany(group => group.Channels).Where(channel => channel.Mode == "harvest")
+            .Select(channel => channel.PipelineUrl).Should().OnlyHaveUniqueItems().And.OnlyContain(seed => seed.StartsWith("https://", StringComparison.Ordinal));
+
+        var registry = new FakeRegistrationBroker();
+        var provisioner = new OcharoSourceProvisioner(registry, Delivery(registry));
+        var setup = Value(await provisioner.EnsureAsync(enableSchedules: true));
+        var repeat = Value(await provisioner.EnsureAsync(enableSchedules: true));
+
+        repeat.Should().BeEquivalentTo(setup);
+        var wave = setup.Sources.Where(route => Wave5GroupIds.Contains(route.GroupId)).ToArray();
+        wave.Select(route => $"{route.GroupId}/{route.ChannelId} {route.SourceKey} {route.Seed}")
+            .Should().BeEquivalentTo(Wave5.Select(row => $"{row.Group}/primary {row.Route} {row.Seed}"));
+        wave.Select(route => route.SourceId).Should().OnlyHaveUniqueItems("each channel is its own source");
+        var sources = Value(await registry.ListSourcesAsync(setup.ContainerId));
+        foreach (var route in wave)
+        {
+            var source = sources.Single(item => item.Id == route.SourceId);
+            (source.Family, source.Handle).Should().Be(route.SourceKey switch
+            {
+                "generic-feed" => (SourceFamily.Feed, new Uri(route.Seed).IdnHost),
+                "generic-site" => (SourceFamily.Site, new Uri(route.Seed).IdnHost),
+                _ => (SourceFamily.Telegram, "tg:" + new Uri(route.Seed).AbsolutePath[3..]),
+            }, route.GroupId);
+            var pipeline = Value(await registry.GetPipelineAsync(route.PipelineId));
+            pipeline.Scope.Url.Should().Be(route.Seed);
+            var capture = pipeline.Schedules.Single(row => row.Kind == WorkKind.Capture);
+            (capture.Mode, capture.Cron, capture.TimeZone, capture.Enabled)
+                .Should().Be((ScheduleMode.Cron, "0 1,7,13,19 * * *", "Asia/Tashkent", true), route.GroupId);
+            pipeline.Schedules.Count(row => row.Kind == WorkKind.Check).Should().Be(route.SourceKey == "generic-site" ? 1 : 0, route.GroupId);
+        }
+        var status = Value(await provisioner.ReadAsync());
+        status.Channels.Where(channel => Wave5GroupIds.Contains(channel.GroupId)).Should().HaveCount(21).And.OnlyContain(channel => channel.Pipeline != null);
     }
 
     private static OcharoSourceChannel Channel(string id, string adapterKey, string url, string relationship = "owned",

@@ -3,7 +3,7 @@
 *Last updated: 2026-11-21*
 
 The [registry](../codebase/harvest-adapters.backend-services/packages/Module/Ocharo/ocharo-event-sources.json)
-is the ranked, reviewed collection inventory: 100 publishers and 189 channels. It keeps priority separate from
+is the ranked, reviewed collection inventory: 121 publishers and 209 channels. It keeps priority separate from
 whether a collector can run. Research citations, past editions and non-selected links stay in the business
 event index. A publisher can have several channels; shared social or government hosting does not make them the same publisher.
 
@@ -114,6 +114,58 @@ between requests, `MaxPages` 3 a run, the newest page first.
 - Posts are classified like every other source's: the publication time is the post's, never an event date. No live
   capture ran, and `t.me/robots.txt` answered 404 on 2026-11-21, which means no rules.
 
+### Wave 5: unranked publishers (2026-11-21)
+
+21 channels of 21 new publishers take a generic route or the Telegram preview with `mode` `harvest` and `setup` `default`:
+4 `generic-feed`, 15 `generic-site` and 2 `telegram-preview`. The source screen of 2026-11-21 (`source-screen.md`, wow-two-ws)
+kept 32 of 277 unranked hosts; these are the 21 it routed to a generic reader or a Telegram channel, in its order. Each is
+its own group, ranked 101 to 121, tier `P3`, with one `owned` `primary` channel, so each provisions as one source and
+one catalog entry (`ocharo.{groupId}`) that starts `new` on every instance.
+
+| Channel | Route | Pipeline seed |
+|---|---|---|
+| `podium-uz/primary` | `generic-site` | `https://podium.uz/sitemap.xml` |
+| `tashkentdesignweek-uz/primary` | `generic-site` | `https://www.tashkentdesignweek.uz/sitemap.xml` |
+| `jewelryfair-uz/primary` | `generic-site` | `https://jewelryfair.uz/wp-sitemap.xml` |
+| `anhor-uz/primary` | `generic-site` | `https://anhor.uz/sitemap-index.xml` |
+| `art-blog-uz/primary` | `generic-feed` | `https://art-blog.uz/feed` |
+| `myticket-uz/primary` | `generic-site` | `https://myticket.uz/sitemap.xml` |
+| `proart-uz/primary` | `generic-site` | `https://proart.uz/` |
+| `98mag-kz/primary` | `generic-site` | `https://www.98mag.kz/sitemap_index.xml` |
+| `elle-com-kz/primary` | `generic-site` | `https://elle.com.kz/sitemap.xml` |
+| `esquire-kz/primary` | `generic-site` | `https://esquire.kz/sitemap.xml` |
+| `weproject-media/primary` | `generic-site` | `https://weproject.media/sitemap.xml` |
+| `bishkekft-com/primary` | `generic-feed` | `https://bishkekft.com/feed/` |
+| `ticketon-tj/primary` | `generic-site` | `https://ticketon.tj/sitemap.xml` |
+| `mffrussia-com/primary` | `generic-feed` | `https://www.mffrussia.com/blog-feed.xml` |
+| `cis-fashion-ru/primary` | `generic-site` | `https://cis-fashion.ru/sitemap.xml` |
+| `designoutlook-ru/primary` | `generic-site` | `https://designoutlook.ru/sitemap.xml` |
+| `riamoda-ru/primary` | `generic-feed` | `https://riamoda.ru/rss.xml` |
+| `exponet-ru/primary` | `generic-site` | `https://exponet.ru/exhibitions/area/cis/topics/moda/dates/future/index.en.html` |
+| `styleofeurasia-com/primary` | `generic-site` | `https://www.styleofeurasia.com/` |
+| `aydatuda-tg/primary` | `telegram-preview` | `https://t.me/s/aydatuda` |
+| `proartworld-tg/primary` | `telegram-preview` | `https://t.me/s/proartworld` |
+
+- Feeds: the screen read the 7 feed URLs from alternate links and fetched none. Each was fetched once on 2026-11-21 under
+  the identified agent after its host's `robots.txt` (14 requests, 7 seconds apart, no redirect followed, no retry).
+  4 answered 200 with dated RSS items and are the 4 feed channels: `art-blog.uz` (10 items, newest 2026-10-28),
+  `bishkekft.com` (4 items, newest 2019-03-27, so it may add little), `mffrussia.com` (20, 2026-11-19) and `riamoda.ru`
+  (120, 2026-11-20). 3 answered 200 with an empty channel (`jewelryfair.uz`, `proart.uz`, `styleofeurasia.com`) and took
+  the site route instead.
+- Site seeds: the sitemap named in the host's `robots.txt` when it is on that host, an http to https upgrade allowed
+  (`cis-fashion.ru`). `anhor.uz` names two; the seed is the first, the sitemap index, and the second is a news sitemap.
+  Where no sitemap is on the host, the seed is the listing page, because `robots.txt` allows it: `proart.uz` and
+  `styleofeurasia.com` name none, and `exponet.ru` names one on `www.exponet.ru`, another host. A page seed reads that one page
+  and follows no links. No two channels share a seed. No sitemap was fetched.
+- Telegram: the usernames pass `TelegramChannels`; `t.me` was not fetched, so the channels' dated messages are unconfirmed, and
+  so is `aydatuda`'s country.
+- Left out: 6 `manual` keeps that need a page reader (`tatlerasia.kz`, `kassir.kz`, `kassir.kg`, `tourismboard.az`,
+  `cpm-moscow.com`, `eventseye.com`) and 5 `cannot` keeps (`portalbilet.uz`, `sxodim.uz`, `namangan-tourism.uz`, `echipta.tj`,
+  `moscowfashion.ru`); they have no registry group.
+- `tashkentdesignweek-uz` carries the same event as the P2 group `tashkent-design-week` (`designweek.uz`); it is its own P3
+  group here, with its own source.
+- No capture ran. A feed read is no live capture; the channels run only after `ocharo setup` provisions them.
+
 Other channels have a proposed method and a verification note in the registry. A new reader needs a readable public route,
 stable IDs, date/eligibility evidence, scoped destinations and tests before its mode moves to `harvest`. Reference pages,
 archived editions, application forms, and unverified social feeds never become fetch seeds by being linked.
@@ -122,7 +174,7 @@ archived editions, application forms, and unverified social feeds never become f
 `POST /api/ocharo/sources/setup` with `{"groupIds":["caex"],"enableSchedules":false}` returns the stable source,
 pipeline and subscription IDs. Setup makes no external fetch. Run the returned pipeline through Harvest and pull its
 `wow2.event.v1` deliveries for review. The default setup provisions the five named website scopes, the 25 Wave 1
-channels and the 10 Wave 2 Telegram channels (40 pipelines); CAEx requires explicit selection. Teplo's two provider channels require `groupIds: ["teplo"]` and `includeInstagram: true`; the
+channels, the 10 Wave 2 Telegram channels and the 21 Wave 5 channels (61 pipelines); CAEx requires explicit selection. Teplo's two provider channels require `groupIds: ["teplo"]` and `includeInstagram: true`; the
 provider still needs configuration and publisher access, and setup keeps its schedules disabled.
 
 The registry describes collection. Harvest retains source observations and review candidates. Cross-publisher edition
