@@ -3382,6 +3382,20 @@
           "adapterKey": "generic-site",
           "setup": "default",
           "seed": "https://ichkari.com/sitemap.xml"
+        },
+        {
+          "id": "instagram",
+          "displayName": "ICHKARI Instagram",
+          "url": "https://www.instagram.com/ichkari.tashkent/",
+          "role": "exhibition and programme announcements",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "provider",
+          "method": "official-instagram",
+          "plan": "Collect exhibition and public programme announcements through Business Discovery. Preserve the original post permalink and use the dates stated in the announcement.",
+          "adapterKey": "instagram-business-discovery",
+          "setup": "default",
+          "seed": "https://www.instagram.com/ichkari.tashkent/"
         }
       ]
     },

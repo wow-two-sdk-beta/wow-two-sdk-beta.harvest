@@ -512,6 +512,50 @@ public sealed class PipelinesVerbTests
     }
 
     [Fact]
+    public async Task Show_prints_each_runs_bytes_and_the_last_24_hours_totals_without_the_older_run()
+    {
+        await using var host = await StartAsync();
+        var pipelineId = await PipelineAsync(host.Services, "--schedules");
+        string id = pipelineId.ToString("D");
+        await Run(host.Services, "run", "--pipeline", id, "--kind", "refresh");
+        await Run(host.Services, "run", "--pipeline", id, "--kind", "capture");
+        await SqlAsync(host.Services, "UPDATE harvest_runs SET requests=7,bytes=1500 WHERE pipeline_id=@id AND kind='capture'", ("id", pipelineId));
+        await SqlAsync(host.Services, "UPDATE harvest_runs SET requests=3,bytes=2500000000 WHERE pipeline_id=@id AND kind='refresh'", ("id", pipelineId));
+        await SqlAsync(host.Services,
+            """
+            INSERT INTO harvest_runs (id,container_id,pipeline_id,kind,trigger,scheduled_for,status,requests,bytes,queued_at,started_at,finished_at)
+            SELECT gen_random_uuid(),container_id,pipeline_id,'check','manual',now()-interval '30 hours','completed',100,999999,
+                now()-interval '30 hours',now()-interval '30 hours',now()-interval '29 hours'
+            FROM harvest_runs WHERE pipeline_id=@id AND kind='capture'
+            """, ("id", pipelineId));
+        var before = DateTime.UtcNow;
+
+        var show = await Run(host.Services, "show", "--pipeline", id);
+
+        show.Exit.Should().Be(0, show.Error);
+        var line = LastLine(show.Output);
+        var stored = await RunsAsync(host.Services, pipelineId);
+        stored.Should().HaveCount(3);
+        var rows = line.GetProperty("runs").EnumerateArray().ToArray();
+        rows.Should().HaveCount(3);
+        foreach (var row in rows)
+            row.GetProperty("bytes").GetInt64().Should().Be(stored.Single(item => item.Id == row.GetProperty("runId").GetGuid()).Bytes);
+        rows.Select(row => row.GetProperty("bytes").GetInt64()).Should().BeEquivalentTo([1500L, 2_500_000_000L, 999_999L]);
+        var last = line.GetProperty("last24h");
+        last.GetProperty("since").GetDateTime().ToUniversalTime().Should().BeCloseTo(before.AddHours(-24), TimeSpan.FromMinutes(5));
+        last.GetProperty("runs").GetInt64().Should().Be(2);
+        last.GetProperty("requests").GetInt64().Should().Be(10);
+        last.GetProperty("bytes").GetInt64().Should().Be(2_500_001_500L);
+        var kinds = last.GetProperty("byKind").EnumerateArray().ToDictionary(item => item.GetProperty("kind").GetString()!);
+        kinds.Keys.Should().BeEquivalentTo(["capture", "refresh"]);
+        kinds["capture"].GetProperty("runs").GetInt64().Should().Be(1);
+        kinds["capture"].GetProperty("requests").GetInt64().Should().Be(7);
+        kinds["capture"].GetProperty("bytes").GetInt64().Should().Be(1500);
+        kinds["refresh"].GetProperty("requests").GetInt64().Should().Be(3);
+        kinds["refresh"].GetProperty("bytes").GetInt64().Should().Be(2_500_000_000L);
+    }
+
+    [Fact]
     public async Task Show_prints_one_parseable_line_with_the_state_and_the_newest_runs_and_writes_nothing()
     {
         await using var host = await StartAsync();
@@ -542,7 +586,7 @@ public sealed class PipelinesVerbTests
         runs[1].GetProperty("finishedAtUtc").ValueKind.Should().Be(JsonValueKind.String);
         runs[0].GetProperty("completionReason").ValueKind.Should().Be(JsonValueKind.Null);
         runs[0].EnumerateObject().Select(property => property.Name).Should().Equal("runId", "kind", "status", "fetchOutcome",
-            "completionReason", "requests", "captured", "newPosts", "failed", "startedAtUtc", "finishedAtUtc");
+            "completionReason", "requests", "bytes", "captured", "newPosts", "failed", "startedAtUtc", "finishedAtUtc");
         show.Output.Should().NotContain("http", "no scope URL or address is printed");
         LastLine(newest.Output).GetProperty("runs").GetArrayLength().Should().Be(1);
         LastLine(none.Output).GetProperty("runs").GetArrayLength().Should().Be(0);
@@ -629,7 +673,7 @@ public sealed class PipelinesVerbTests
         show.Exit.Should().Be(0, show.Error);
         var line = LastLine(show.Output);
         line.EnumerateObject().Select(property => property.Name).Should().Equal("pipelineId", "name", "state", "pauseReason", "limits",
-            "schedules", "autoOff", "runs");
+            "schedules", "autoOff", "last24h", "runs");
         var autoOff = line.GetProperty("autoOff");
         (autoOff.GetProperty("after").GetInt32(), autoOff.GetProperty("fromDefault").GetBoolean(), autoOff.GetProperty("failures").GetInt32())
             .Should().Be((10, true, 2), "the queued run says nothing yet");

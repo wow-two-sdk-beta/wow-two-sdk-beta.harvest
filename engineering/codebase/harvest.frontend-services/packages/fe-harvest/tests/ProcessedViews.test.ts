@@ -1,4 +1,4 @@
-import { defineComponent, h, nextTick, type PropType } from 'vue';
+import { defineComponent, h, nextTick, ref, type PropType } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ResultExtensions } from '@wow-two-beta/fe/foundation/results';
@@ -8,6 +8,7 @@ import { createHarvestClient } from '../src/kit';
 import ChoicePicker from '../src/admin/harvestConsole/ChoicePicker.vue';
 import SourceProcessedTab from '../src/admin/harvestConsole/SourceProcessedTab.vue';
 import ProcessedPostCard from '../src/admin/harvestConsole/ProcessedPostCard.vue';
+import ProcessedPostPanel from '../src/admin/harvestConsole/ProcessedPostPanel.vue';
 import ProviderMark from '../src/admin/harvestConsole/ProviderMark.vue';
 import {
   answerLine,
@@ -386,6 +387,7 @@ describe('processed tab', () => {
     expect(card.get('[aria-label="Event extraction"]').text()).toContain('announcement');
     expect(card.get('[data-line="place"]').text()).toBe('Youth Creativity Palace, Tashkent, UZ');
     expect(card.get('[data-line="terms"]').text()).toContain('150,000 UZS');
+    expect(card.get('[data-line="terms"] svg.lucide-runway-show').attributes('aria-hidden')).toBe('true');
     const mark = card.get('header [role="img"][aria-label="Claude Haiku 5.5"]');
     expect(mark.get('[data-ai-brand]').attributes('data-ai-brand')).toBe('claude');
     expect(card.find('footer').exists()).toBe(false);
@@ -401,6 +403,7 @@ describe('processed tab', () => {
     expect(other.get('header [data-ai-brand]').attributes('data-ai-brand')).toBe('openai');
     expect(other.text()).toContain('Irrelevant');
     expect(other.find('[aria-label="Event extraction"]').exists()).toBe(false);
+    expect(other.find('svg.lucide-runway-show').exists()).toBe(false);
     expect(other.find('[aria-label*="unsure"]').exists()).toBe(false);
   });
 
@@ -517,6 +520,21 @@ describe('processed card', () => {
     wrappers.push(wrapper);
     return wrapper;
   };
+
+  it.each([
+    ['trade-fair', 'trade-fair'],
+    ['market', 'market-stall'],
+    ['exhibition', 'exhibition-dress-form'],
+    ['competition', 'competition-trophy'],
+    ['festival', 'festival-bunting'],
+    ['conference', 'conference-lectern'],
+    ['other', 'other-event'],
+  ])('shows the custom icon for the %s event format', (format, glyph) => {
+    const extraction = runway.extraction!;
+    const wrapper = card({ ...runway, extraction: { ...extraction, event: { ...extraction.event!, format } } });
+
+    expect(wrapper.get(`[data-line="terms"] svg.lucide-${glyph}`).attributes('aria-hidden')).toBe('true');
+  });
 
   it('opens with the post image under glass pills and a blur fade, the title over it', () => {
     const wrapper = card(runway);
@@ -840,6 +858,47 @@ describe('processed card', () => {
     await vi.waitFor(() => {
       expect(document.body.textContent).toContain('tags gemini-2.5-flash · $0.0005 · p2');
     });
+  });
+});
+
+describe('processed post kind icons', () => {
+  async function panel(post: SourceProcessedPostModel) {
+    session = {
+      overviewOf: () => source,
+      pageTitle: ref<string>(),
+      readSourceProcessedPost: async () => ResultExtensions.ok({ post, evidence: [], passes: [] }),
+    } as unknown as HarvestConsole;
+    const wrapper = mount(ProcessedPostPanel, {
+      props: { sourceId: source.sourceId, postId: post.postId },
+      global: { stubs: { ConsoleLink: LinkStub } },
+    });
+    wrappers.push(wrapper);
+    await flushPromises();
+    return wrapper;
+  }
+
+  it('uses the classifier kind and the extracted format independently', async () => {
+    const extraction = runway.extraction!;
+    const wrapper = await panel({
+      ...runway,
+      classification: { ...runway.classification!, kind: 'trade-fair' },
+      extraction: { ...extraction, event: { ...extraction.event!, format: 'market' } },
+    });
+
+    expect(wrapper.find('[aria-label="Classification"] svg.lucide-trade-fair').exists()).toBe(true);
+    expect(wrapper.find('[data-field="format"] svg.lucide-market-stall').exists()).toBe(true);
+  });
+
+  it('leaves an unrecognized event format and a non-event Other classification without event glyphs', async () => {
+    const extraction = runway.extraction!;
+    const event = await panel({
+      ...runway,
+      extraction: { ...extraction, event: { ...extraction.event!, format: 'workshop' } },
+    });
+    expect(event.get('[data-field="format"]').find('svg').exists()).toBe(false);
+
+    const listing = await panel({ ...flat, classification: { ...runway.classification!, kind: 'other' } });
+    expect(listing.get('[aria-label="Classification"]').find('svg').exists()).toBe(false);
   });
 });
 

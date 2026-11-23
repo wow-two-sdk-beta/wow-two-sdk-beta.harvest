@@ -1,13 +1,14 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, shallowRef } from 'vue';
+import ChoicePicker from '../src/admin/harvestConsole/ChoicePicker.vue';
 import HarvestConsoleProvider from '../src/admin/harvestConsole/HarvestConsoleProvider.vue';
 import SourceSettingsTab from '../src/admin/harvestConsole/SourceSettingsTab.vue';
 import SourcePipelinesTab from '../src/admin/harvestConsole/SourcePipelinesTab.vue';
 import SourceHeader from '../src/admin/harvestConsole/SourceHeader.vue';
 import SourceProfileForm from '../src/admin/harvestConsole/SourceProfileForm.vue';
 import { profileLimitValue, sourceProfileSchema } from '../src/admin/harvestConsole/SourceProfileSchema';
-import type { PipelineModel, SourceOverviewModel } from '../src/contracts';
+import type { ModelProcessingMode, PipelineModel, SourceOverviewModel } from '../src/contracts';
 import { createHarvestClient } from '../src/kit';
 
 const wrappers: ReturnType<typeof mount>[] = [];
@@ -73,6 +74,7 @@ function mountProfiles(
   initial: readonly PipelineModel[] = [],
   options: {
     ready?: boolean;
+    capabilitiesUnavailable?: boolean;
     sourcePaused?: boolean;
     canRun?: boolean;
     workerEnabled?: boolean;
@@ -82,11 +84,24 @@ function mountProfiles(
   } = {},
 ) {
   let pipelines = [...initial];
+  let modelProcessing: ModelProcessingMode = 'auto';
+  let capabilitiesUnavailable = options.capabilitiesUnavailable;
   const shownSource = {
     ...source,
     ...options.publisher,
     ...(options.sourcePaused ? { sourceState: 'paused' as const } : {}),
     ...(options.permissionDenied ? { permission: 'denied' as const } : {}),
+    sections: initial
+      .filter((pipeline) => pipeline.sourceId === source.sourceId)
+      .map((pipeline) => ({
+        pipelineId: pipeline.id,
+        name: pipeline.name ?? source.name,
+        url: pipeline.scope.url,
+        harvesting: false,
+        paused: pipeline.state === 'paused',
+        posts: 0,
+        subscribers: 0,
+      })),
   };
   const fixedUrl = options.publisher ? `https://www.instagram.com/${options.publisher.handle}/` : undefined;
   const runs: { id: string; pipelineId: string; kind: string; status: string; queuedAtUtc: string }[] = [];
@@ -121,9 +136,17 @@ function mountProfiles(
         runs.push(run);
         return Response.json({ data: run });
       }
+      if (method === 'PUT' && path === '/api/sources/source-ig') {
+        modelProcessing = body.modelProcessing as ModelProcessingMode;
+        return Response.json({ data: { id: source.sourceId, modelProcessing } });
+      }
       throw new Error(`Unexpected write: ${method} ${path}`);
     }
-    if (path.endsWith('/capabilities'))
+    if (path.endsWith('/capabilities')) {
+      if (capabilitiesUnavailable) {
+        capabilitiesUnavailable = false;
+        return new Response(null, { status: 503 });
+      }
       return Response.json({
         data: {
           sourceId: source.sourceId,
@@ -139,6 +162,7 @@ function mountProfiles(
           },
         },
       });
+    }
     const data =
       path === '/api/containers'
         ? [{ id: 'pool-1', kind: 'pool' }]
@@ -150,6 +174,7 @@ function mountProfiles(
                 family: 'instagram',
                 handle: shownSource.handle,
                 name: shownSource.name,
+                modelProcessing,
               },
             ]
           : path === '/api/sources/overview'
@@ -182,7 +207,7 @@ function mountProfiles(
   });
   const wrapper = mount(Root, { attachTo: document.body });
   wrappers.push(wrapper);
-  return { wrapper, writes };
+  return { wrapper, writes, fetch };
 }
 
 describe('stored source profiles', () => {
@@ -318,7 +343,7 @@ describe('stored source profiles', () => {
   it.each([
     { name: 'Teplo Fest', handle: 'teplofest' },
     { name: 'Teplo Store', handle: 'teplostore_2022' },
-  ])('shows $name with its own profile, capture and limits in Pipelines', async (publisher) => {
+  ])('shows Capture and Process for $name with its saved profile limits', async (publisher) => {
     const url = `https://www.instagram.com/${publisher.handle}/`;
     const pipeline = { ...existing, name: publisher.name, scope: { ...existing.scope, url }, schedules: [] };
     const other = { ...existing, id: 'other-pipeline', sourceId: 'another-source', name: 'Another publisher' };
@@ -331,6 +356,8 @@ describe('stored source profiles', () => {
     expect(wrapper.find('form[aria-label="Create pipeline"]').exists()).toBe(false);
     expect(wrapper.text()).not.toContain('Another publisher');
     expect(wrapper.text()).not.toContain('Harvest now');
+    expect(wrapper.findAll('h3').map((heading) => heading.text())).toEqual(['Capture', 'Process']);
+    expect(wrapper.text()).toContain('New posts are queued for tagging automatically.');
     const limits = wrapper.get('form[aria-label="Profile limits"]');
     expect(limits.findAll('input[type="number"]')).toHaveLength(1);
     expect(limits.text()).toContain('Posts per run');
@@ -356,6 +383,33 @@ describe('stored source profiles', () => {
       method: 'POST',
       body: { pipelineId: pipeline.id, kind: 'capture' },
     });
+  });
+
+  it('keeps Capture and Process visible when the Instagram capabilities request fails', async () => {
+    const publisher = { name: 'Teplo Store', handle: 'teplostore_2022' };
+    const pipeline = { ...existing, scope: { ...existing.scope, url: 'https://www.instagram.com/teplostore_2022/' } };
+    const { wrapper, writes, fetch } = mountProfiles([pipeline], {
+      publisher,
+      surface: 'pipelines',
+      capabilitiesUnavailable: true,
+    });
+    await flushPromises();
+
+    expect(wrapper.findAll('h3').map((heading) => heading.text())).toEqual(['Capture', 'Process']);
+    expect(wrapper.text()).toContain('Capture settings are unavailable');
+    expect(fetch.mock.calls.some(([input]) => String(input).includes('/stages'))).toBe(false);
+
+    const retry = wrapper.findAll('button').find((button) => button.text() === 'Retry capture settings')!;
+    await retry.trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[aria-label="Capture Saved publisher now"]').attributes('disabled')).toBeUndefined();
+
+    const picker = wrapper
+      .findAllComponents(ChoicePicker)
+      .find((item) => (item.props() as { label: string }).label === 'Model processing for Teplo Store')!;
+    picker.vm.$emit('update:modelValue', 'manual');
+    await flushPromises();
+    expect(writes).toEqual([{ path: '/api/sources/source-ig', method: 'PUT', body: { modelProcessing: 'manual' } }]);
   });
 
   it('creates only the bound publisher pipeline when no pipeline exists', async () => {

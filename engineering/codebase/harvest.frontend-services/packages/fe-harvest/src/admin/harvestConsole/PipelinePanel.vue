@@ -12,6 +12,7 @@ import { autoOffWords } from './PipelineSchedule';
 import PipelineDiscoveries from './PipelineDiscoveries.vue';
 import PipelineStageCard from './PipelineStageCard.vue';
 import RunAuditPanel from './RunAuditPanel.vue';
+import SourcePipelinesTab from './SourcePipelinesTab.vue';
 import { clockOf, statusWords } from './SourceWords';
 import { usePipelineStages } from './UsePipelineStages';
 
@@ -19,22 +20,34 @@ const props = defineProps<{ pipelineId: string; stage?: PipelineStageKind; runId
 const session = useHarvestConsole();
 const canRead = computed(() => session.can('pipelines:read'));
 const pipeline = computed(() => (canRead.value ? session.pipelineOf(props.pipelineId) : undefined));
+const source = computed(() => (pipeline.value ? session.overviewOf(pipeline.value.sourceId) : undefined));
+const isInstagram = computed(() => {
+  const sourceId = pipeline.value?.sourceId;
+  return !!sourceId && (source.value?.family ?? session.sourceOf(sourceId)?.family) === 'instagram';
+});
+const stage = computed(() => (isInstagram.value ? undefined : props.stage));
 const autoOff = computed(() => (pipeline.value?.autoOff ? autoOffWords(pipeline.value.autoOff) : undefined));
-const { stages, loading, error, refresh } = usePipelineStages(() => pipeline.value?.id ?? '');
+const { stages, loading, error, refresh } = usePipelineStages(() =>
+  isInstagram.value ? '' : (pipeline.value?.id ?? ''),
+);
 const kind = ref<WorkKind | 'all'>('all');
 const submitted = shallowRef<RunModel>();
 const changingPipeline = ref(false);
-const tab = computed(() => (props.runId ? 'logs' : (props.tab ?? 'overview')));
+const tab = computed(() => {
+  if (props.runId) return 'logs';
+  return isInstagram.value && props.tab === 'discoveries' ? 'overview' : (props.tab ?? 'overview');
+});
 const place = computed(() => ({
   kind: 'pipeline' as const,
   id: props.pipelineId,
-  ...(props.stage ? { stage: props.stage } : {}),
+  ...(stage.value ? { stage: stage.value } : {}),
 }));
-const tabs = [
+const allTabs = [
   { id: 'overview', label: 'Overview' },
   { id: 'logs', label: 'Logs' },
   { id: 'discoveries', label: 'Discoveries' },
 ] as const;
+const tabs = computed(() => (isInstagram.value ? allTabs.filter(({ id }) => id !== 'discoveries') : allTabs));
 const canPause = computed(
   () =>
     session.canOperate.value &&
@@ -64,14 +77,18 @@ const kinds = computed(() => [
 ]);
 const historyChoices = computed(() => [
   { value: 'all' as const, label: 'All stages' },
-  ...kinds.value.map((value) => ({ value, label: WorkLabels[value] })),
+  ...kinds.value.map((value) => ({ value, label: workLabel(value) })),
 ]);
-const filter = computed(() => props.stage ?? (tab.value === 'logs' ? kind.value : 'all'));
+const filter = computed(() => stage.value ?? (tab.value === 'logs' ? kind.value : 'all'));
 const history = computed(() => recent.value.filter((run) => filter.value === 'all' || run.kind === filter.value));
 const current = computed(() => activeRun(history.value));
 const selectedId = computed(() => props.runId ?? current.value?.id ?? history.value[0]?.id);
 const selectedRun = computed(() => recent.value.find((run) => run.id === selectedId.value));
-const selectedStage = computed(() => stages.value.find((stage) => stage.kind === props.stage));
+const selectedStage = computed(() => stages.value.find((item) => item.kind === stage.value));
+
+function workLabel(kind: WorkKind) {
+  return kind === 'capture' && isInstagram.value ? 'Capture' : WorkLabels[kind];
+}
 
 function stageChanged(run?: RunModel) {
   if (run) submitted.value = run;
@@ -150,7 +167,11 @@ async function togglePipeline() {
         {{ view.label }}
       </ConsoleLink>
     </nav>
-    <template v-if="tab === 'overview'">
+    <template v-if="tab === 'overview' && isInstagram">
+      <SourcePipelinesTab v-if="source" :source="source" :profile-pipeline-id="pipeline.id" />
+      <p v-else role="status" class="text-sm text-muted-foreground">Source details are unavailable.</p>
+    </template>
+    <template v-else-if="tab === 'overview'">
       <p v-if="error" role="alert" class="text-sm text-muted-foreground">Pipeline status could not be refreshed.</p>
       <p v-else-if="loading" role="status" class="text-sm text-muted-foreground">Loading pipelines…</p>
       <template v-if="selectedStage">
@@ -228,7 +249,7 @@ async function togglePipeline() {
               :class="{ 'bg-primary/10': run.id === selectedId }"
             >
               <div class="flex flex-wrap items-center justify-between gap-1.5">
-                <span class="text-sm font-medium">{{ WorkLabels[run.kind] }}</span>
+                <span class="text-sm font-medium">{{ workLabel(run.kind) }}</span>
                 <HarvestPill :tone="RunTones[run.status]" class="capitalize">
                   {{ statusWords(run.status) }}
                 </HarvestPill>

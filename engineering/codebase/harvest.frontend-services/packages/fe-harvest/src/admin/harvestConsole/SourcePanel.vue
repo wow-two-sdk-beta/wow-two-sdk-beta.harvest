@@ -49,7 +49,9 @@ const tabs = computed(() => [
   ...(session.canReadProcessed.value
     ? [{ value: 'processed' as const, label: 'Processed', count: source.value?.processedCount }]
     : []),
-  ...(session.client.value?.pipelineStages ? [{ value: 'pipelines' as const, label: 'Pipelines' }] : []),
+  ...(source.value?.family === 'instagram' || session.client.value?.pipelineStages
+    ? [{ value: 'pipelines' as const, label: 'Pipelines' }]
+    : []),
   { value: 'activity' as const, label: 'Activity' },
   ...(canSet.value ? [{ value: 'settings' as const, label: 'Settings' }] : []),
 ]);

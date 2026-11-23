@@ -2,8 +2,10 @@
 import { computed } from 'vue';
 import { MapPin } from 'lucide-vue-next';
 import { MapLinks } from '@wow-two-beta/fe/domain/maps';
+import { Icon } from '@wow-two-beta/fe/foundation/icons';
 import { Tooltip } from '@wow-two-beta/fe/presentation/overlays';
 import type { SourceOverviewModel, SourceProcessedPostModel } from '../../contracts';
+import { eventKindIconOf } from './EventKindIcons';
 import HarvestPill from './HarvestPill.vue';
 import PillIcon from './PillIcon.vue';
 import ProcessedPostHeader from './ProcessedPostHeader.vue';
@@ -31,6 +33,7 @@ const DomainLimit = 2;
 const TopicLimit = 4;
 const tags = computed(() => props.post.tags);
 const extraction = computed(() => props.post.extraction);
+const formatIcon = computed(() => eventKindIconOf(extraction.value?.event?.format));
 const primary = computed(() => tags.value.domains.find((domain) => domain.primary));
 const others = computed(() => tags.value.domains.filter((domain) => !domain.primary));
 const shownDomains = computed(() => others.value.slice(0, DomainLimit));
@@ -181,7 +184,13 @@ const LineGlyphs: Record<string, GlyphName | 'place'> = {
           class="flex min-w-0 items-center gap-1.5"
           v-bind="{ 'data-line': line.key }"
         >
-          <MapPin v-if="LineGlyphs[line.key] === 'place'" :size="13" class="shrink-0 text-muted-foreground" />
+          <Icon
+            v-if="line.key === 'terms' && formatIcon"
+            :icon="formatIcon"
+            :size="13"
+            class="shrink-0 text-muted-foreground"
+          />
+          <MapPin v-else-if="LineGlyphs[line.key] === 'place'" :size="13" class="shrink-0 text-muted-foreground" />
           <PillIcon
             v-else-if="LineGlyphs[line.key]"
             :name="LineGlyphs[line.key] as GlyphName"

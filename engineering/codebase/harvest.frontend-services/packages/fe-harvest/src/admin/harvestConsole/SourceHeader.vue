@@ -100,7 +100,9 @@ const nextHint = computed(() => {
 const fixedPublisher = computed(
   () => sourceProfileSchema(session.capabilities.value[props.source.sourceId]?.configuration.scopeSchema)?.fixedUrl,
 );
-const canHarvest = computed(() => canOperate.value && canWrite('pipelines:run') && !fixedPublisher.value);
+const canHarvest = computed(
+  () => canOperate.value && canWrite('pipelines:run') && props.source.family !== 'instagram' && !fixedPublisher.value,
+);
 const harvestReason = computed(() => {
   if (!readingActive.value) return 'Enable this source to run a harvest. Section choices are preserved.';
   if (sourceState.value && sourceState.value !== 'active')

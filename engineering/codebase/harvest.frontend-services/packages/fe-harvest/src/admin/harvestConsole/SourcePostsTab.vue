@@ -21,6 +21,7 @@ import FilterToggleGroup from './FilterToggleGroup.vue';
 import HarvestPill from './HarvestPill.vue';
 import ListingCardFacts from './ListingCardFacts.vue';
 import PillIcon from './PillIcon.vue';
+import { postGalleryGridClass } from './PostGalleryStyles';
 import PostPills from './PostPills.vue';
 import { kindGlyphOf, sectionGlyphOf } from './PostGlyphs';
 import { labelsStatedBy } from './PostLabels';
@@ -38,7 +39,7 @@ import { ageOf, agoOf, eventDatesOf, imageSrcOf, timingOf, webUrlOf, type Galler
  * the controls reads how many posts match (`12 of 88`), and a source whose posts share one language names it in a pill
  * after the filters. A card is filled edge to edge by the post's first image, its text at the bottom where the blur
  * fades into the image. The dates and publication age share a line when they fit. Missing images show the source icon
- * and failed images show an unavailable-image icon. The grid fits as many columns of 17rem or more as the page allows. The pool
+ * and failed images show an unavailable-image icon. The grid shares its card width with the Processed tab. The pool
  * keeps posts of every kind; a subscriber receives only its matches. A post opens on its own page, with its facts and
  * revisions — revisions never show in the list. This is the raw view: only what the source gave and its reader mapped,
  * no AI tag, verdict or extraction; those show on the Processed tab.
@@ -383,7 +384,7 @@ function sectionOf(post: SourcePostModel) {
       <ul
         v-else
         ref="post-list"
-        class="grid grid-cols-[repeat(auto-fill,minmax(min(100%,17rem),1fr))] gap-3"
+        :class="postGalleryGridClass"
         aria-label="Posts"
         :style="padding"
       >

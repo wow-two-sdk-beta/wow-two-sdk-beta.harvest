@@ -107,8 +107,8 @@ internal sealed partial class ModuleSourceOverviewBroker
                 : null,
         };
 
-    /// <summary>Selects the source's surviving posts with a tags answer: the done answer about the current title and
-    /// text, else the newest done one, else the newest attempt, as the post's own resolve picks; and the extraction of
+    /// <summary>Selects the source's surviving posts with a completed tags answer: the answer about the current title
+    /// and text, else the newest completed one; and the extraction of
     /// the tagged type about that answer's content. The total row (all nulls but the count) comes last.</summary>
     private static readonly string ProcessedSql = $"""
         WITH candidates AS (
@@ -148,8 +148,8 @@ internal sealed partial class ModuleSourceOverviewBroker
                 e.revision AS e_revision
             FROM candidates c
             JOIN LATERAL (
-                SELECT * FROM harvest_post_tags t WHERE t.post_id=c.id
-                ORDER BY t.status='done' DESC,t.content_hash=c.hash DESC,t.created_at DESC LIMIT 1
+                SELECT * FROM harvest_post_tags t WHERE t.post_id=c.id AND t.status='done'
+                ORDER BY t.content_hash=c.hash DESC,t.created_at DESC LIMIT 1
             ) t ON true
             LEFT JOIN LATERAL (
                 SELECT * FROM harvest_post_extractions e WHERE e.post_id=c.id AND e.content_hash=t.content_hash

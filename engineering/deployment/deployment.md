@@ -332,7 +332,10 @@ output's `searches[].pipelineId`.
   starts the count again. Exit `2` for a missing or out-of-range `--after` or any other flag.
 - `pipelines show --pipeline <id> [--runs <n>]` writes nothing; it reads the pipeline's name, state, limits and schedules, the
   discover and harvest stage rows among them, its `autoOff` (`after`, `fromDefault`, the `failures` in a row so far and `off`,
-  null or the turn-off's `atUtc`, `runId`, `failures` and `reason`), and its newest runs' counters, with no post text and no URL.
+  null or the turn-off's `atUtc`, `runId`, `failures` and `reason`), and its newest runs' counters, with no post text and no URL. Each run row has `bytes`, the metered wire bytes (gzip/br as
+  received) since v0.2.67 and the decoded bytes for a run before it; `last24h` (`since`, `runs`, `requests`, `bytes` and `byKind`
+  with the same three sums per kind) totals the pipeline's runs that started, or never started and were queued, in the last 24
+  hours, so the OLX IP server's per-GB bill reads without the SCFD console.
 
 A capture run restarts at catalog page 1 and re-reads the newest ads, so a source with a large catalog (Joymee on harvest-prod)
 is walked with the discover and harvest pair instead: discover lists the catalog's pages into the saved discoveries (from its

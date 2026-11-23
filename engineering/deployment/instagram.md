@@ -146,11 +146,10 @@ Separate subscriptions per publisher are not a product requirement. The current 
 initial source-wide replay does not make it follow future captures from other pipelines. Shared delivery must
 apply the subscription's declared scope consistently to both paths.
 
-One collector-console task remains: expose Capture and its cadence in the generic pipeline view. Its current
-Discover/Harvest/Process cards omit Capture; Instagram supplies neither the discovery catalog nor the Detail step
-needed by the first two cards. Use the source's Pipelines > Capture now for manual collection. The engine supports
-`kind=capture` schedules through ordinary pipeline updates, but the stage-settings API/UI does not expose them.
-Process runs against saved captures and does not fetch Instagram posts.
+An Instagram source's Pipelines tab shows **Capture** and **Process**. Capture pages through the publisher's posts and
+saves the details returned with each page. Use **Capture now** to collect within the saved post limit. Process shows the
+source's model-processing mode and links to posts with completed tags. The engine supports `kind=capture` schedules
+through ordinary pipeline updates.
 
 The shared Ocharo work precedes further Instagram acceptance:
 

@@ -1,9 +1,13 @@
+using System.Data;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Engine;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Registration;
@@ -56,7 +60,10 @@ namespace HarvestSources.Api.Pipelines;
 ///   - <c>pipelines show --pipeline &lt;id&gt; [--runs &lt;n&gt;]</c> writes nothing; the last line carries the pipeline's name,
 ///     state, limits and schedules (the discover and harvest stage rows among them), its <c>autoOff</c>
 ///     (<c>{"after","fromDefault","failures","off":null|{"atUtc","runId","failures","reason"}}</c>) and its newest <c>n</c>
-///     runs (5 by default, 0–20), with counters only: no post text and no URL
+///     runs (5 by default, 0–20), with counters only: no post text and no URL; each run row carries <c>bytes</c>, the metered wire
+///     bytes (gzip/br as received) of a run since v0.2.67, the decoded bytes of an earlier one; <c>last24h</c> is
+///     <c>{"since","runs","requests","bytes","byKind":[{"kind","runs","requests","bytes"}]}</c> over the pipeline's runs that
+///     started (or, never started, were queued) since the UTC cutoff <c>since</c>, read in one read-only query
 ///   - <c>--tenant</c> narrows <c>--source</c> to one tenant's containers; a <c>family/handle</c> that matches sources of
 ///     several tenants is refused
 ///   - exit codes: <c>0</c> done, <c>1</c> refused or not found, <c>2</c> usage
@@ -113,7 +120,7 @@ public static partial class PipelinesVerb
                 "pace" => await PaceAsync(registry, runs, request, error, ct),
                 "schedule" => await ScheduleAsync(registry, stages, request, error, ct),
                 "auto-off" => await AutoOffAsync(autoOff, request, error, ct),
-                _ => await ShowAsync(registry, runs, autoOff, request, ct),
+                _ => await ShowAsync(registry, runs, autoOff, scope.ServiceProvider, request, ct),
             };
             await output.WriteLineAsync(JsonSerializer.Serialize(result));
             return 0;
@@ -247,8 +254,8 @@ public static partial class PipelinesVerb
         off = state.Off is { } off ? new { atUtc = off.AtUtc, runId = off.RunId, failures = off.Failures, reason = off.Reason } : null,
     };
 
-    private static async Task<object> ShowAsync(IRegistrationBroker registry, IRunBroker runs, PipelineAutoOff autoOff, Request request,
-        CancellationToken ct)
+    private static async Task<object> ShowAsync(IRegistrationBroker registry, IRunBroker runs, PipelineAutoOff autoOff,
+        IServiceProvider services, Request request, CancellationToken ct)
     {
         var pipelineId = request.Pipeline!.Value;
         var pipeline = Value(await registry.GetPipelineAsync(pipelineId, ct));
@@ -256,6 +263,7 @@ public static partial class PipelinesVerb
         int count = request.Runs ?? DefaultRuns;
         IReadOnlyList<RunModel> recent = count == 0 ? [] : Value(await runs.ListAsync(pipelineId, count, ct));
         var limits = pipeline.Limits;
+        var last24h = await ReadLast24hAsync(services, pipelineId, ct);
         return new
         {
             pipelineId,
@@ -269,6 +277,7 @@ public static partial class PipelinesVerb
             },
             schedules = pipeline.Schedules.OrderBy(schedule => schedule.Kind).Select(Describe).ToArray(),
             autoOff = DescribeAutoOff(autoOffState),
+            last24h,
             runs = recent.OrderByDescending(run => run.QueuedAtUtc).Select(run => new
             {
                 runId = run.Id,
@@ -277,11 +286,49 @@ public static partial class PipelinesVerb
                 fetchOutcome = run.FetchOutcome is { } outcome ? Snake(outcome) : null,
                 completionReason = run.CompletionReason is { } completion ? Snake(completion) : null,
                 requests = run.Requests,
+                bytes = run.Bytes,
                 captured = run.Captured,
                 newPosts = run.NewPosts,
                 failed = run.Failed,
                 startedAtUtc = run.StartedAtUtc,
                 finishedAtUtc = run.FinishedAtUtc,
+            }).ToArray(),
+        };
+    }
+
+    private const string Last24hSql = """
+        SELECT kind,count(*),COALESCE(sum(requests),0)::bigint,COALESCE(sum(bytes),0)::bigint
+        FROM harvest_runs WHERE pipeline_id=@pipeline AND COALESCE(started_at,queued_at)>=@since
+        GROUP BY kind ORDER BY kind
+        """;
+
+    /// <summary>Reads the pipeline's runs of the last 24 hours (by start, or by queueing when never started) in one read-only query.</summary>
+    private static async Task<object> ReadLast24hAsync(IServiceProvider services, Guid pipelineId, CancellationToken ct)
+    {
+        var since = (services.GetService<TimeProvider>() ?? TimeProvider.System).GetUtcNow().UtcDateTime.AddHours(-24);
+        var dataSource = services.GetRequiredKeyedService<NpgsqlDataSource>(HarvestModuleConstants.ServiceKey);
+        var kinds = new List<(string Kind, long Runs, long Requests, long Bytes)>();
+        await using (var connection = await dataSource.OpenConnectionAsync(ct))
+        await using (var transaction = await connection.BeginTransactionAsync(IsolationLevel.RepeatableRead, ct))
+        {
+            await using (var readOnly = new NpgsqlCommand("SET TRANSACTION READ ONLY", connection, transaction))
+                await readOnly.ExecuteNonQueryAsync(ct);
+            await using var command = new NpgsqlCommand(Last24hSql, connection, transaction);
+            command.Parameters.AddWithValue("pipeline", pipelineId);
+            command.Parameters.Add(new NpgsqlParameter("since", NpgsqlTypes.NpgsqlDbType.TimestampTz) { Value = since });
+            await using var reader = await command.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+                kinds.Add((reader.GetString(0), reader.GetInt64(1), reader.GetInt64(2), reader.GetInt64(3)));
+        }
+
+        return new
+        {
+            since,
+            runs = kinds.Sum(item => item.Runs), requests = kinds.Sum(item => item.Requests), bytes = kinds.Sum(item => item.Bytes),
+            byKind = kinds.Select(item => new
+            {
+                kind = Enum.TryParse<WorkKind>(item.Kind, true, out var kind) ? Snake(kind) : item.Kind,
+                runs = item.Runs, requests = item.Requests, bytes = item.Bytes,
             }).ToArray(),
         };
     }

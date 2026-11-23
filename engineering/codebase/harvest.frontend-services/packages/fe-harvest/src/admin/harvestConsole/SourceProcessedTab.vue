@@ -11,6 +11,7 @@ import type {
 import { SourceProcessedLimits } from '../../contracts/ProcessedModels';
 import ChoicePicker from './ChoicePicker.vue';
 import HarvestPill from './HarvestPill.vue';
+import { postGalleryGridClass } from './PostGalleryStyles';
 import ProcessedPostCard from './ProcessedPostCard.vue';
 import { useHarvestConsole } from './HarvestConsole';
 
@@ -148,7 +149,7 @@ onScopeDispose(() => read?.abort());
     >
       {{ filtered ? 'No processed post matches.' : 'No processed posts yet. Posts appear here once the AI tags them.' }}
     </p>
-    <div v-else class="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(min(100%,24rem),1fr))]">
+    <div v-else :class="postGalleryGridClass">
       <ProcessedPostCard v-for="post in items" :key="post.postId" :source="props.source" :post="post" />
     </div>
 

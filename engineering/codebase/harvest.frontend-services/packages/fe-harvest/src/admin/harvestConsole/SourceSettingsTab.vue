@@ -20,6 +20,7 @@ import PillIcon from './PillIcon.vue';
 import SourceProfilePipelines from './SourceProfilePipelines.vue';
 import { sourceProfileSchema } from './SourceProfileSchema';
 import { useHarvestConsole, type SectionCheck } from './HarvestConsole';
+import { ModelProcessingChoices, useSourceModelProcessing } from './UseSourceModelProcessing';
 import { sameSection, type SourceSection } from './SourceSections';
 import { sourcePauseReason, sourceStateLabel } from './SourcePresentation';
 import { checkChoiceOf, hoursOf, intervalWords, paceWords, plural } from './SourceWords';
@@ -128,29 +129,17 @@ function setSourceReading(on: boolean) {
   if (!canManageSource.value || pending.value || readingReason.value) return;
   void session.setSourcePaused(props.source.sourceId, !on);
 }
-/* Model processing: off sends nothing, manual only what an operator runs by name, auto every new post. A host before
-   the mode reports only aiAllowed, read as auto or off. */
-const modelProcessing = computed<ModelProcessingMode | undefined>(() => {
-  const model = sourceModel.value;
-  if (!model) return undefined;
-  if (model.modelProcessing) return model.modelProcessing;
-  return model.aiAllowed === true ? 'auto' : model.aiAllowed === false ? 'off' : undefined;
-});
-const modelChoices: readonly { readonly value: ModelProcessingMode; readonly label: string }[] = [
-  { value: 'off', label: 'Off' },
-  { value: 'manual', label: 'Manual' },
-  { value: 'auto', label: 'Automatic' },
-];
+const {
+  mode: modelProcessing,
+  canChange: canChangeModelProcessing,
+  setMode: setModelProcessing,
+} = useSourceModelProcessing(() => props.source.sourceId);
 const modelNotes: Readonly<Record<ModelProcessingMode, string>> = {
   off: 'Nothing from this source is sent to a model, not even on an operator run.',
   manual:
     'Nothing queues on its own; operator runs that name its posts or list this source, and Process stages started by hand, may use a model.',
   auto: 'New posts queue model processing, and scheduled Process stages send saved text to their configured model.',
 };
-function setModelProcessing(mode: ModelProcessingMode) {
-  if (!canManageSource.value || pending.value || !modelProcessing.value || modelProcessing.value === mode) return;
-  void session.updateSource(props.source.sourceId, { modelProcessing: mode });
-}
 const pace = computed(() => String(Math.round(props.source.health.minDelayMs / 1000)));
 const paceChoices = computed(() =>
   [...new Set([...PaceSeconds, Number(pace.value)])]
@@ -424,9 +413,9 @@ function saveName() {
           <dd>
             <ChoicePicker
               :model-value="modelProcessing ?? 'off'"
-              :choices="modelChoices"
+              :choices="ModelProcessingChoices"
               :label="`Model processing for ${props.source.name}`"
-              :is-disabled="pending || !modelProcessing"
+              :is-disabled="!canChangeModelProcessing"
               placeholder="Unavailable"
               @update:model-value="setModelProcessing"
             />

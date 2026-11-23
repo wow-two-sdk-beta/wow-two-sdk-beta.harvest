@@ -166,6 +166,10 @@ internal sealed partial class ModulePostBroker
                 "SELECT base=CAST(@base AS jsonb) FROM harvest_posts WHERE container_id=@container AND id=@post", ct,
                 ("base", StoreJson.Write(resolved)), ("container", containerId), ("post", postId)) is true)
             return false;
+        string normalizedText = NormalizeText(resolved);
+        int matchLength = Math.Min(1000, normalizedText.Length);
+        if (matchLength < normalizedText.Length && char.IsHighSurrogate(normalizedText[matchLength - 1]))
+            matchLength--;
         await PostSql.ExecuteAsync(connection, transaction, """
             WITH rollup AS (SELECT CASE
                 WHEN NOT EXISTS(SELECT 1 FROM harvest_post_links WHERE post_id=@post AND retired_at IS NULL AND check_capability<>'none') THEN 'live'
@@ -186,8 +190,8 @@ internal sealed partial class ModulePostBroker
             """, ct, ("base", StoreJson.Write(resolved)), ("prov", StoreJson.Write(provenance)), ("kind", Kind(resolved)), ("bump", increment ? 1 : 0),
             ("now", now), ("container", containerId), ("post", postId), ("locale", resolved.Language?.Code),
             ("textLocale", resolved.Language?.Code ?? "und"), ("title", resolved.Title), ("text", resolved.Text),
-            ("match", NormalizeText(resolved)[..Math.Min(1000, NormalizeText(resolved).Length)]),
-            ("hash", MD5.HashData(Encoding.UTF8.GetBytes(NormalizeText(resolved)))), ("signature", signature), ("link", readings[0].LinkId));
+            ("match", normalizedText[..matchLength]),
+            ("hash", MD5.HashData(Encoding.UTF8.GetBytes(normalizedText))), ("signature", signature), ("link", readings[0].LinkId));
         await PostRevisionLog.RecordAsync(connection, transaction, containerId, postId, previous, now, ct);
         await QueueTagsAsync(connection, transaction, containerId, postId, resolved, contentHash, now, ct);
         await QueueExtractionAsync(connection, transaction, containerId, postId, contentHash, now, ct);

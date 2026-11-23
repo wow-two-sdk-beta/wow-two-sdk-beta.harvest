@@ -31,7 +31,7 @@ public interface ISourceOverviewBroker
     Task<Result<SourcePostPage>> QuerySourcePostsAsync(Guid sourceId, SourcePostQuery query, CancellationToken cancellationToken = default);
 
     /// <summary>Lists one page of the source's posts the AI passes processed — every surviving post with a
-    /// <c>post-tags</c> answer — with its tags, verdict and extraction summary, newest first seen first.</summary>
+    /// completed <c>post-tags</c> answer — with its tags, verdict and extraction summary, newest first seen first.</summary>
     /// <param name="sourceId">The source.</param>
     /// <param name="query">The filters, page size and cursor (<see cref="SourceProcessedQueryRules"/>).</param>
     /// <param name="cancellationToken">The token that cancels the call.</param>
@@ -45,7 +45,7 @@ public interface ISourceOverviewBroker
     /// <param name="postId">The post.</param>
     /// <param name="cancellationToken">The token that cancels the call.</param>
     /// <returns>The post's details; <c>NotFound</c> for an unknown source, and for a post the source does not show or the
-    /// AI passes have not tagged (the processed list's own rule).</returns>
+    /// tags pass has not completed successfully (the processed list's own rule).</returns>
     Task<Result<SourceProcessedPostDetailsModel>> GetSourceProcessedPostAsync(Guid sourceId, Guid postId, CancellationToken cancellationToken = default);
 
     /// <summary>Lists a post's revisions, newest first; a post from before revisions were kept has none.</summary>

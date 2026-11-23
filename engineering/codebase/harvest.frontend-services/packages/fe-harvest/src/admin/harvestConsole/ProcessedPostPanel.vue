@@ -2,10 +2,12 @@
 import { computed, onScopeDispose, shallowRef, watch } from 'vue';
 import { AiBrandMark } from '@wow-two-beta/fe/domain/aiBrands';
 import { MapLinks } from '@wow-two-beta/fe/domain/maps';
+import { Icon } from '@wow-two-beta/fe/foundation/icons';
 import { Button } from '@wow-two-beta/fe/presentation/actions';
 import { EmptyState } from '@wow-two-beta/fe/presentation/display';
 import type { ProcessedPassModel, SourceProcessedPostDetailsModel } from '../../contracts';
 import ConsoleLink from './ConsoleLink.vue';
+import { eventKindIconOf } from './EventKindIcons';
 import HarvestPill from './HarvestPill.vue';
 import ProcessedPostHeader from './ProcessedPostHeader.vue';
 import { useHarvestConsole } from './HarvestConsole';
@@ -66,6 +68,12 @@ const post = computed(() => details.value?.post);
 const tags = computed(() => post.value?.tags);
 const classification = computed(() => post.value?.classification);
 const extraction = computed(() => post.value?.extraction);
+const classificationKindIcon = computed(() => {
+  const isEvent =
+    tags.value?.entityType === 'event' || post.value?.kind === 'event' || extraction.value?.useCase === 'extract-event';
+  return isEvent ? eventKindIconOf(classification.value?.kind) : undefined;
+});
+const formatIcon = computed(() => eventKindIconOf(extraction.value?.event?.format));
 const primary = computed(() => tags.value?.domains.find((domain) => domain.primary));
 const otherDomains = computed(() => tags.value?.domains.filter((domain) => !domain.primary) ?? []);
 const extracted = computed(() =>
@@ -160,7 +168,10 @@ const LinkClass =
             </template>
             <template v-if="classification.kind">
               <dt class="text-muted-foreground">Kind</dt>
-              <dd>{{ classification.kind }}</dd>
+              <dd class="flex items-center gap-1.5">
+                <Icon v-if="classificationKindIcon" :icon="classificationKindIcon" :size="13" class="shrink-0" />
+                {{ classification.kind }}
+              </dd>
             </template>
             <dt class="text-muted-foreground">Classifier</dt>
             <dd class="font-mono text-[13px] leading-5 break-all">{{ classification.classifier }}</dd>
@@ -258,6 +269,7 @@ const LinkClass =
             <span class="text-sm text-muted-foreground">{{ row.label }}</span>
             <div class="grid min-w-0 gap-1.5">
               <p class="flex flex-wrap items-center gap-2 text-[15px] font-semibold">
+                <Icon v-if="row.key === 'format' && formatIcon" :icon="formatIcon" :size="13" class="shrink-0" />
                 <span class="min-w-0 break-words">{{ row.value }}</span>
                 <MapLinks v-if="row.key === 'place' || row.key === 'location'" :query="row.value" />
                 <HarvestPill

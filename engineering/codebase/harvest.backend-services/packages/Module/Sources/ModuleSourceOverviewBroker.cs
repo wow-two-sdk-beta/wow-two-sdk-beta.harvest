@@ -409,14 +409,14 @@ internal sealed partial class ModuleSourceOverviewBroker(
     }
 
     /// <summary>Counts each source's processed posts by the rule the processed list's unfiltered total uses: the source's
-    /// non-merged posts with at least one <c>harvest_post_tags</c> row, whatever its status.</summary>
+    /// non-merged posts with a completed <c>harvest_post_tags</c> row.</summary>
     private static async Task<Dictionary<Guid, int>> ProcessedCountsAsync(NpgsqlConnection connection, Guid containerId, CancellationToken ct)
     {
         await using var command = PostSql.Command(connection, null, """
             SELECT l.source_id,count(DISTINCT l.post_id)::int
             FROM harvest_post_links l
             JOIN harvest_posts p ON p.container_id=@container AND p.id=l.post_id AND p.merged_into IS NULL
-            WHERE l.container_id=@container AND EXISTS (SELECT 1 FROM harvest_post_tags t WHERE t.post_id=l.post_id)
+            WHERE l.container_id=@container AND EXISTS (SELECT 1 FROM harvest_post_tags t WHERE t.post_id=l.post_id AND t.status='done')
             GROUP BY l.source_id
             """, ("container", containerId));
         return await CountsAsync(command, ct);
