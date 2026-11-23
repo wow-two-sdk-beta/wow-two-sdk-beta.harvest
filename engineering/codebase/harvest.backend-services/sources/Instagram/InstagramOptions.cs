@@ -11,4 +11,6 @@ public sealed class InstagramOptions
     public string ProfessionalAccountId { get; set; } = string.Empty;
     /// <summary>Gets or sets the supported Graph API version, including the v prefix. No version is inferred.</summary>
     public string ApiVersion { get; set; } = string.Empty;
+    /// <summary>Gets or sets SCFD's requests per rolling hour for the shared Meta connection, from 1 to 720.</summary>
+    public int RequestsPerHour { get; set; } = InstagramCollectionLimits.DefaultRequestsPerHour;
 }

@@ -351,13 +351,13 @@ internal sealed partial class ModuleSourceOverviewBroker(
         return harvests;
     }
 
-    /// <summary>Reads the sources with a queued or running run.</summary>
+    /// <summary>Reads the sources with a queued, running or temporarily paused run.</summary>
     private static async Task<HashSet<Guid>> ActiveSourcesAsync(NpgsqlConnection connection, Guid containerId, CancellationToken ct)
     {
         var sources = new HashSet<Guid>();
         await using var command = PostSql.Command(connection, null, """
             SELECT DISTINCT p.source_id FROM harvest_runs r JOIN harvest_pipelines p ON p.id=r.pipeline_id
-            WHERE r.container_id=@container AND r.status IN ('queued','running')
+            WHERE r.container_id=@container AND r.status IN ('queued','running','paused')
             """, ("container", containerId));
         await using var reader = await command.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))

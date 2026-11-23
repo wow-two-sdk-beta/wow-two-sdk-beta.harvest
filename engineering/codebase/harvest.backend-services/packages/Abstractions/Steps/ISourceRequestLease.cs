@@ -13,4 +13,8 @@ public interface ISourceRequestLease : IAsyncDisposable
     /// <param name="outcome">The mapped provider outcome; the engine handles refusal backoff.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     Task CompleteAsync(FetchOutcome outcome, CancellationToken cancellationToken = default);
+
+    /// <summary>Records a provider response and a requested cooldown shared by every request to the host.</summary>
+    Task CompleteAsync(FetchOutcome outcome, TimeSpan? cooldown, CancellationToken cancellationToken)
+        => CompleteAsync(outcome, cancellationToken);
 }

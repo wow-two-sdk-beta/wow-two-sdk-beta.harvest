@@ -45,17 +45,21 @@ public sealed class OcharoSourceProvisioner(IRegistrationBroker registry, IDeliv
     /// set-up does.</remarks>
     public async Task<Result<OcharoSetup>> EnsureAsync(bool enableSchedules = false, CancellationToken cancellationToken = default,
         bool includeInstagram = false, IReadOnlyList<string>? groupIds = null, string tenantSlug = DefaultTenantSlug,
-        ModelProcessingMode? modelProcessing = null, bool selector = false, bool selectorReset = false, bool recordCatalog = true)
+        ModelProcessingMode? modelProcessing = null, bool selector = false, bool selectorReset = false, bool recordCatalog = true,
+        bool? instagramHourly = null)
     {
         if (selectorReset && !selector)
             return Invalid("A selector reset needs the selector: ask for both.");
+        if (instagramHourly.HasValue && (groupIds is null || enableSchedules))
+            return Invalid("Select named publisher groups for Instagram checks and use the Instagram cadence alone.");
         OcharoSourceRegistry catalog = OcharoSourceRegistry.Current;
         var selection = groupIds?.ToHashSet(StringComparer.Ordinal);
         if (selection is not null && (selection.Count == 0 || selection.Count != groupIds!.Count
             || selection.Any(id => !catalog.Groups.Any(group => group.Id == id))))
             return Invalid("Select one or more distinct publisher IDs from the Ocharo source registry.");
 
-        var routes = catalog.Routes(includeInstagram, selection).ToArray();
+        var routes = catalog.Routes(includeInstagram || instagramHourly.HasValue, selection)
+            .Where(route => instagramHourly is null || route.Profile.Family == SourceFamily.Instagram).ToArray();
         List<string> skipped = [];
         if (selection is null && records is not null && recordCatalog)
         {
@@ -149,11 +153,21 @@ public sealed class OcharoSourceProvisioner(IRegistrationBroker registry, IDeliv
                 PipelineModel? pipeline = pipelines.SingleOrDefault(item => item.SourceId == source.Id && item.Scope.Url == seed);
                 var schedules = new List<ScheduleDeclaration>
                 {
-                    profile.Cadence.Declare(enableSchedules && !instagram),
+                    instagramHourly is { } hourly ? InstagramCapture(group, channel, hourly) : profile.Cadence.Declare(enableSchedules && !instagram),
                 };
                 if (profile.CheckPolicy == "web-direct")
                     schedules.Add(new() { Kind = WorkKind.Check, Mode = ScheduleMode.Interval, Every = TimeSpan.FromHours(24), TimeZone = "Asia/Tashkent", Enabled = enableSchedules });
-                if (pipeline is not null && enableSchedules && ScheduleProvisioning.EnabledCadence(pipeline, schedules) is { } cadence)
+                if (pipeline is not null && instagramHourly is { } instagramEnabled)
+                {
+                    pipeline = Value(await registry.UpdatePipelineAsync(pipeline.Id, new()
+                    {
+                        Name = pipeline.Name, Scope = pipeline.Scope,
+                        Schedules = InstagramSchedules(pipeline, schedules[0]),
+                        Limits = instagramEnabled ? new() { MaxItems = Math.Min(pipeline.Limits.MaxItems ?? 50, 50) } : null,
+                    }, cancellationToken));
+                    pipelines[pipelines.FindIndex(item => item.Id == pipeline.Id)] = pipeline;
+                }
+                else if (pipeline is not null && enableSchedules && ScheduleProvisioning.EnabledCadence(pipeline, schedules) is { } cadence)
                 {
                     pipeline = Value(await registry.UpdatePipelineAsync(pipeline.Id, new()
                     {
@@ -169,7 +183,8 @@ public sealed class OcharoSourceProvisioner(IRegistrationBroker registry, IDeliv
                         Name = profile.Name + (instagram ? " · @" + uri.AbsolutePath.Trim('/')
                             : telegram ? " · @" + handle[SourceConstants.TelegramHandlePrefix.Length..] : "") + " · Ocharo",
                         Ai = AiMode.Off, Pinned = false, Schedules = schedules,
-                        Limits = new() { MaxPages = profile.MaxPages, MaxItems = 150, MaxRequests = 180, MaxBytes = 30_000_000, MaxDuration = TimeSpan.FromMinutes(10), MaxProbes = 100 },
+                        Limits = new() { MaxPages = profile.MaxPages, MaxItems = instagramHourly is true ? 50 : 150, MaxRequests = 180,
+                            MaxBytes = 30_000_000, MaxDuration = TimeSpan.FromMinutes(10), MaxProbes = 100 },
                     }, cancellationToken));
                     pipelines.Add(pipeline);
                 }
@@ -206,7 +221,8 @@ public sealed class OcharoSourceProvisioner(IRegistrationBroker registry, IDeliv
                 foreach (var entry in rows.GroupBy(row => row.GroupId, StringComparer.Ordinal))
                     await records.RecordSetUpAsync(OcharoSourceCatalog.EntryKey(entry.Key), [.. entry.Select(row => row.SourceId).Distinct()],
                         overrideOff: selection is not null, cancellationToken);
-            SubscriptionModel? selected = selector ? await EnsureSelectorAsync(tenant, container, subscriptions, selectorReset, cancellationToken) : null;
+            SubscriptionModel? selected = selector ? await EnsureSelectorAsync(tenant, container, subscriptions, selectorReset,
+                instagramHourly.HasValue ? selection : null, cancellationToken) : null;
             return Result<OcharoSetup>.Ok(new(tenant.Id, container.Id, rows)
             {
                 SelectorSubscriptionId = selected?.Id, SelectorVersion = selected?.SelectorVersion, Skipped = skipped,
@@ -216,10 +232,34 @@ public sealed class OcharoSourceProvisioner(IRegistrationBroker registry, IDeliv
         finally { SetupGate.Release(); }
     }
 
+    private static ScheduleDeclaration InstagramCapture(OcharoSourceGroup group, OcharoSourceChannel channel, bool enabled)
+    {
+        int index = group.Channels.TakeWhile(row => row.Id != channel.Id).Count();
+        int minute = (group.Rank * 7 + index) % 60;
+        return new()
+        {
+            Kind = WorkKind.Capture, Mode = ScheduleMode.Cron, Cron = $"{minute} * * * *",
+            TimeZone = "Asia/Tashkent", Enabled = enabled,
+        };
+    }
+
+    private static IReadOnlyList<ScheduleDeclaration> InstagramSchedules(PipelineModel pipeline, ScheduleDeclaration capture)
+    {
+        var retained = pipeline.Schedules.Where(row => !capture.Enabled || row.Kind != WorkKind.Capture)
+            .Select(row => new ScheduleDeclaration
+            {
+                Kind = row.Kind, Mode = row.Mode, Every = row.Every, MaxEvery = row.MaxEvery, Cron = row.Cron,
+                TimeZone = row.TimeZone, Window = row.Window, Enabled = capture.Enabled && row.Enabled, Stage = row.Stage,
+            }).ToList();
+        if (capture.Enabled || !retained.Any(row => row.Kind == WorkKind.Capture))
+            retained.Add(capture);
+        return retained;
+    }
+
     /// <summary>Binds the shipped selector to the container's source groups, then creates the tenant's selector subscription
     /// or, on a reset, puts the file's selector on the one that exists.</summary>
     private async Task<SubscriptionModel> EnsureSelectorAsync(TenantModel tenant, ContainerModel container,
-        IReadOnlyList<SubscriptionModel> subscriptions, bool reset, CancellationToken cancellationToken)
+        IReadOnlyList<SubscriptionModel> subscriptions, bool reset, IReadOnlySet<string>? extendGroups, CancellationToken cancellationToken)
     {
         OcharoSelector file = OcharoSelector.Current;
         var groups = Value(await registry.ListSourceGroupsAsync(container.Id, cancellationToken));
@@ -232,9 +272,19 @@ public sealed class OcharoSourceProvisioner(IRegistrationBroker registry, IDeliv
                 TenantId = tenant.Id, ContainerId = container.Id, Name = file.Name, Selector = resolved, Schema = file.Schema,
                 Context = file.Context, Backfill = BackfillMode.Live,
             }, cancellationToken));
-        if (!reset)
+        if (reset)
+            return Value(await delivery.SetSelectorAsync(existing.Id,
+                new() { Selector = resolved, ChangedBy = "ocharo setup" }, cancellationToken)).Subscription;
+        if (extendGroups is null || existing.Selector is not { Sources.Include.Count: > 0 } selector)
             return existing;
-        return Value(await delivery.SetSelectorAsync(existing.Id, new() { Selector = resolved, ChangedBy = "ocharo setup" }, cancellationToken)).Subscription;
+        var included = selector.Sources.Include.Select(source => source.GroupId).ToHashSet();
+        var newGroups = resolved.Sources.Include.Where(source => source.Context.TryGetValue("sourceGroup", out string? key)
+            && extendGroups.Contains(key) && !included.Contains(source.GroupId)).ToArray();
+        if (newGroups.Length == 0)
+            return existing;
+        var updated = selector with { Sources = selector.Sources with { Include = [.. selector.Sources.Include, .. newGroups] } };
+        return Value(await delivery.SetSelectorAsync(existing.Id,
+            new() { Selector = updated, ChangedBy = "ocharo setup" }, cancellationToken)).Subscription;
     }
 
     /// <summary>Reads what setup owns on this target, writing nothing: the tenant, its container and each selected channel's

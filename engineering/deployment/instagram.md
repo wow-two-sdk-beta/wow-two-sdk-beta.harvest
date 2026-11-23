@@ -12,11 +12,17 @@ HarvestInstagram__AccessToken=<secret>
 HarvestInstagram__ProfessionalAccountId=<querying-professional-account-id>
 HarvestInstagram__ApiVersion=<supported-vN.0>
 HarvestInstagram__BaseAddress=https://graph.facebook.com/
+HarvestInstagram__RequestsPerHour=120
 ```
 
 `AccessToken` is secret/write-only in Wheelhouse. Account ID and API version describe the connection. Never use a
 Facebook Page ID in place of the professional Instagram account ID. An absent or invalid connection reports
 configuration required; registration itself makes no network requests.
+
+`RequestsPerHour` is an optional SCFD budget from 1 to 720. It applies to all Instagram publishers and workers sharing
+this SCFD database. Business Discovery's provider limit also depends on app usage, token limits and query cost.
+Separate deployments that use the same Meta app need a divided budget or a shared collection worker because their
+databases hold separate request gates. [Meta Graph API rate limits](https://developers.facebook.com/docs/graph-api/overview/rate-limiting/)
 
 The previous `Enabled`, `AllowedUsernames`, `PageSize`, `MaximumPages`, `MaximumResponseBytes` and `Timeout` host
 settings no longer control collection. Remove them from old target/local settings. Collection policy is persisted
@@ -167,3 +173,12 @@ grant renewal.
 Historical backfill is deferred in the shared engine backlog. It has an admin-selected history boundary, a
 three-month initial default when enabled, and no hardcoded history-duration ceiling. An external service owns
 cross-feed prioritization and small background batches. Event-date extraction and recurrence belong to AI.
+
+## Hourly Ocharo collection
+
+`ocharo setup --group <publisher-id> --instagram-hourly --model-processing auto --selector` provisions the selected
+Instagram channels, assigns each an hourly capture in Asia/Tashkent, and adds the groups to Ocharo's current
+selector. Each capture checks up to 50 recent posts. Existing lower post limits and selector filters still apply.
+
+On DevQA use `--instagram-manual --model-processing manual` for the same groups. The pipelines support named
+capture and processing runs with their schedules off. Local captures and prompt evaluations use the test Meta connection.

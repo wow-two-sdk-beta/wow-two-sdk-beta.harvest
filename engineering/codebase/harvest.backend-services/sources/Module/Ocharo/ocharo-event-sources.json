@@ -1,6 +1,6 @@
 {
   "format": "ocharo.event-sources.v1",
-  "reviewedOn": "2026-11-21",
+  "reviewedOn": "2026-11-24",
   "groups": [
     {
       "id": "hunarmand",
@@ -275,6 +275,21 @@
           "method": "reference",
           "plan": "Retain as evidence or an access route. No polling or form submission.",
           "note": "Committee lists the National PR-centre as a subordinate institution."
+        },
+        {
+          "id": "instagram",
+          "url": "https://www.instagram.com/uzb_travel/",
+          "role": "Instagram publisher",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "provider",
+          "method": "official-instagram",
+          "plan": "National festival and fair programmes, including attendable activities within TITF.",
+          "checkState": "verified",
+          "note": "Returned valid public posts through the local Business Discovery connection.",
+          "displayName": "Uzbekistan Travel",
+          "adapterKey": "instagram-business-discovery",
+          "setup": "selected"
         }
       ]
     },
@@ -325,6 +340,21 @@
           "plan": "Discover localized event permalinks and read embedded Event data; keep editorial articles and visitor routes distinct.",
           "adapterKey": "afisha-uz",
           "setup": "default"
+        },
+        {
+          "id": "instagram",
+          "url": "https://www.instagram.com/afishauzb/",
+          "role": "Instagram publisher",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "provider",
+          "method": "official-instagram",
+          "plan": "Editorial discovery for dated design fairs, exhibitions and performances.",
+          "checkState": "verified",
+          "note": "Returned valid public posts through the local Business Discovery connection.",
+          "displayName": "Afisha.uz",
+          "adapterKey": "instagram-business-discovery",
+          "setup": "selected"
         }
       ]
     },
@@ -437,11 +467,15 @@
           "role": "Baraka Instagram",
           "relationship": "owned",
           "primary": false,
-          "mode": "manual",
-          "method": "manual-social",
-          "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
-          "note": "Edition marketing and updates.",
-          "eventFamily": "caex-baraka"
+          "mode": "provider",
+          "method": "official-instagram",
+          "plan": "First-party dates and maker notices for the retail fair.",
+          "note": "Returned valid public posts through the local Business Discovery connection.",
+          "eventFamily": "caex-baraka",
+          "checkState": "verified",
+          "displayName": "CAEx Baraka Friday",
+          "adapterKey": "instagram-business-discovery",
+          "setup": "selected"
         }
       ]
     },
@@ -605,10 +639,14 @@
           "role": "primary",
           "relationship": "owned",
           "primary": true,
-          "mode": "manual",
-          "method": "manual-social",
-          "plan": "Review the organizer posts or dated Afisha and ANONS coverage for each Art Bazaar edition; seller acceptance needs organizer evidence.",
-          "checkState": "unavailable"
+          "mode": "provider",
+          "method": "official-instagram",
+          "plan": "Organizer announcements and dates for recurring artisan markets.",
+          "checkState": "verified",
+          "note": "Returned valid public posts through the local Business Discovery connection.",
+          "displayName": "Art Time and Art Bazaar",
+          "adapterKey": "instagram-business-discovery",
+          "setup": "selected"
         },
         {
           "id": "facebook-account",
@@ -902,6 +940,21 @@
           "plan": "Retain as evidence or an access route. No polling or form submission.",
           "note": "Stand enquiry, separate from buyer badges.",
           "eventFamily": "tft-expo"
+        },
+        {
+          "id": "instagram",
+          "url": "https://www.instagram.com/fashionexpouz/",
+          "role": "Instagram publisher",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "provider",
+          "method": "official-instagram",
+          "plan": "Organizer schedules, fashion and textile exhibitions and exhibitor notices.",
+          "checkState": "verified",
+          "note": "Returned valid public posts through the local Business Discovery connection.",
+          "displayName": "Tashkent Fashion and Textile Expo",
+          "adapterKey": "instagram-business-discovery",
+          "setup": "selected"
         }
       ]
     },
@@ -1055,6 +1108,21 @@
           "plan": "Review dated listing entries and verify event facts on each original announcement.",
           "note": "Distinct edition, call and location stream within the ACDF network.",
           "eventFamily": "bukhara-biennial"
+        },
+        {
+          "id": "instagram",
+          "url": "https://www.instagram.com/acdfuz/",
+          "role": "Instagram publisher",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "provider",
+          "method": "official-instagram",
+          "plan": "First-party festival and exhibition programmes, including craft and textile projects.",
+          "checkState": "verified",
+          "note": "Returned valid public posts through the local Business Discovery connection.",
+          "displayName": "Art and Culture Development Foundation",
+          "adapterKey": "instagram-business-discovery",
+          "setup": "selected"
         }
       ]
     },
@@ -1088,11 +1156,15 @@
           "role": "organizer Instagram",
           "relationship": "owned",
           "primary": false,
-          "mode": "manual",
-          "method": "manual-social",
-          "plan": "Check the publisher channel manually. Record only dated evidence and verify the issuer before recommending access.",
-          "note": "Monitor dated residency and lab announcements when available.",
-          "eventFamily": "art-station-lab"
+          "mode": "provider",
+          "method": "official-instagram",
+          "plan": "Organizer notices for exhibitions, talks and workshops.",
+          "note": "Returned valid public posts through the local Business Discovery connection.",
+          "eventFamily": "art-station-lab",
+          "checkState": "verified",
+          "displayName": "Art Station",
+          "adapterKey": "instagram-business-discovery",
+          "setup": "selected"
         }
       ]
     },
@@ -1696,6 +1768,21 @@
           "adapterKey": "telegram-preview",
           "setup": "default",
           "seed": "https://t.me/s/navoitourism"
+        },
+        {
+          "id": "instagram",
+          "url": "https://www.instagram.com/navoi_tourism_official/",
+          "role": "Instagram publisher",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "provider",
+          "method": "official-instagram",
+          "plan": "Regional festival notices and Uzbek Gift design calls with local details.",
+          "checkState": "verified",
+          "note": "Returned valid public posts through the local Business Discovery connection.",
+          "displayName": "Navoiy Tourism",
+          "adapterKey": "instagram-business-discovery",
+          "setup": "selected"
         }
       ]
     },
@@ -2113,6 +2200,21 @@
           "method": "reference",
           "plan": "Retain as evidence or an access route. No polling or form submission.",
           "note": "Example of Goethe's original exhibition notices."
+        },
+        {
+          "id": "instagram",
+          "url": "https://www.instagram.com/goetheinstitut_usbekistan/",
+          "role": "Instagram publisher",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "provider",
+          "method": "official-instagram",
+          "plan": "First-party arts programmes and design workshops alongside language and institutional posts.",
+          "checkState": "verified",
+          "note": "Returned valid public posts through the local Business Discovery connection.",
+          "displayName": "Goethe-Institut Uzbekistan",
+          "adapterKey": "instagram-business-discovery",
+          "setup": "selected"
         }
       ]
     },
@@ -2137,6 +2239,21 @@
           "method": "manual-review",
           "plan": "Verify readable public event evidence and confirm this route before enabling any reader.",
           "checkState": "indexed"
+        },
+        {
+          "id": "instagram",
+          "url": "https://www.instagram.com/designweekuz/",
+          "role": "Instagram publisher",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "provider",
+          "method": "official-instagram",
+          "plan": "Organizer announcements for design fairs, talks and maker programmes.",
+          "checkState": "verified",
+          "note": "Returned valid public posts through the local Business Discovery connection.",
+          "displayName": "Tashkent Design Week",
+          "adapterKey": "instagram-business-discovery",
+          "setup": "selected"
         }
       ]
     },
@@ -3264,6 +3381,21 @@
           "plan": "Retain as evidence or an access route. No polling or form submission.",
           "note": "Dated Afisha reporting, independent of the organizer's current link hub.",
           "eventFamily": "uzbekistan-fashion-week"
+        },
+        {
+          "id": "instagram",
+          "url": "https://www.instagram.com/ufw.official/",
+          "role": "Instagram publisher",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "provider",
+          "method": "official-instagram",
+          "plan": "Organizer schedules, runway announcements and edition programmes.",
+          "checkState": "verified",
+          "note": "Returned valid public posts through the local Business Discovery connection.",
+          "displayName": "Uzbekistan Fashion Week",
+          "adapterKey": "instagram-business-discovery",
+          "setup": "selected"
         }
       ]
     },
@@ -3758,6 +3890,21 @@
           "adapterKey": "generic-site",
           "setup": "default",
           "seed": "https://jewelryfair.uz/wp-sitemap.xml"
+        },
+        {
+          "id": "instagram",
+          "url": "https://www.instagram.com/jewelryfair.uz/",
+          "role": "Instagram publisher",
+          "relationship": "owned",
+          "primary": false,
+          "mode": "provider",
+          "method": "official-instagram",
+          "plan": "Organizer dates, exhibitor notices and jewellery showcases.",
+          "checkState": "verified",
+          "note": "Returned valid public posts through the local Business Discovery connection.",
+          "displayName": "Global Jewelry Fair",
+          "adapterKey": "instagram-business-discovery",
+          "setup": "selected"
         }
       ]
     },

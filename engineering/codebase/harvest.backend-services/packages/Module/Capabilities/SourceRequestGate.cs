@@ -6,7 +6,7 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Capabilities;
 internal static class SourceRequestGate
 {
     internal static async Task<ISourceRequestLease> AcquireAsync(IHostFetchStore hosts, string host, TimeProvider clock,
-        CancellationToken cancellationToken, TimeSpan? minimumDelay = null)
+        CancellationToken cancellationToken, TimeSpan? minimumDelay = null, bool queueAtHostPace = false)
     {
         var lease = await hosts.AcquireAsync(host, cancellationToken);
         try
@@ -23,6 +23,8 @@ internal static class SourceRequestGate
                 return new RequestLease(lease, clock, TimeSpan.Zero, outcome, until - now);
             }
             TimeSpan wait = state.NextAllowedAt - now;
+            if (queueAtHostPace && wait > TimeSpan.Zero)
+                return new RequestLease(lease, clock, TimeSpan.Zero, FetchOutcome.RateLimited, wait);
             if (wait > TimeSpan.Zero)
                 await Task.Delay(wait, clock, cancellationToken);
             var gap = TimeSpan.FromMilliseconds(Math.Max(state.MinimumDelayMilliseconds, state.AdaptiveDelayMilliseconds));
@@ -47,7 +49,10 @@ internal static class SourceRequestGate
         public FetchOutcome Outcome { get; } = outcome;
         public TimeSpan? RetryAfter { get; } = retryAfter;
 
-        public async Task CompleteAsync(FetchOutcome result, CancellationToken cancellationToken = default)
+        public Task CompleteAsync(FetchOutcome result, CancellationToken cancellationToken = default)
+            => CompleteAsync(result, null, cancellationToken);
+
+        public async Task CompleteAsync(FetchOutcome result, TimeSpan? cooldown, CancellationToken cancellationToken)
         {
             if (Outcome != FetchOutcome.Ok)
                 return;
@@ -58,7 +63,15 @@ internal static class SourceRequestGate
                 lease.State.PausedUntil = null;
                 lease.State.RetryAfterUntil = null;
             }
-            lease.State.NextAllowedAt = clock.GetUtcNow() + gap;
+            var now = clock.GetUtcNow();
+            if (cooldown is { } delay && delay > TimeSpan.Zero)
+            {
+                var until = now + delay;
+                if (lease.State.RetryAfterUntil is null || lease.State.RetryAfterUntil < until)
+                    lease.State.RetryAfterUntil = until;
+                lease.State.PauseReason = nameof(FetchOutcome.RateLimited);
+            }
+            lease.State.NextAllowedAt = now + gap;
             await lease.SaveAsync(cancellationToken);
         }
 

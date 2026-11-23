@@ -46,6 +46,10 @@ public interface IStepContext
     Task<ISourceRequestLease> AcquireRequestAsync(CancellationToken cancellationToken = default)
         => throw new NotSupportedException("This step context does not provide durable request pacing.");
 
+    /// <summary>Reserves a provider request with a current minimum gap. Returns a retry delay if the gate is waiting.</summary>
+    Task<ISourceRequestLease> AcquireRequestAsync(TimeSpan minimumDelay, CancellationToken cancellationToken)
+        => AcquireRequestAsync(cancellationToken);
+
     /// <summary>Runs a named operation and lets the host record its timing and result.</summary>
     /// <typeparam name="T">The value returned by the operation.</typeparam>
     /// <param name="key">A stable statement of the operation, such as fetch or deserialize.</param>

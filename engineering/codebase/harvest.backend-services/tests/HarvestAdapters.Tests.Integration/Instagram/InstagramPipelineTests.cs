@@ -91,21 +91,19 @@ public sealed class InstagramPipelineTests
         await fixture.AssertSanitizedAsync();
     }
 
-    [Theory]
-    [InlineData(190, FetchOutcome.LoginRequired)]
-    [InlineData(4, FetchOutcome.RateLimited)]
-    public async Task Provider_refusal_keeps_existing_posts_and_defers_the_host_without_an_immediate_retry(int code, FetchOutcome outcome)
+    [Fact]
+    public async Task Login_refusal_keeps_existing_posts_and_ends_the_run()
     {
         await using var fixture = await Fixture.CreateAsync();
         (await fixture.CaptureAsync()).Status.Should().Be(RunStatus.Completed);
         var before = await fixture.PostsAsync();
-        fixture.Http.ErrorCode = code;
+        fixture.Http.ErrorCode = 190;
 
         RunModel refused = await fixture.CaptureAsync();
 
         refused.Status.Should().Be(RunStatus.Partial);
         refused.CompletionReason.Should().Be(RunReason.SourceOutcome);
-        refused.FetchOutcome.Should().Be(outcome);
+        refused.FetchOutcome.Should().Be(FetchOutcome.LoginRequired);
         refused.Requests.Should().Be(1);
         refused.Failed.Should().Be(1);
         fixture.Http.Calls.Should().HaveCount(4, "the provider refusal must not trigger transport retries");
@@ -117,13 +115,147 @@ public sealed class InstagramPipelineTests
         after.Select(post => (post.Id, post.Revision)).Should().BeEquivalentTo(before.Select(post => (post.Id, post.Revision)));
         var health = Value(await fixture.Services.GetRequiredService<IRunBroker>().HostsAsync(fixture.ContainerId));
         health.Should().ContainSingle().Which.PausedUntilUtc.Should().BeAfter(refused.FinishedAtUtc!.Value);
-        if (code == 4)
-            health.Single().PausedUntilUtc.Should().BeOnOrAfter(refused.FinishedAtUtc.Value.AddMinutes(20));
         await using var connection = new NpgsqlConnection(fixture.Database);
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand("SELECT retry_at FROM harvest_step_attempts WHERE run_id=@run", connection);
         command.Parameters.AddWithValue("run", refused.Id);
         (await command.ExecuteScalarAsync()).Should().BeOfType<DateTime>();
+        await fixture.AssertSanitizedAsync();
+    }
+
+    [Fact]
+    public async Task Rate_limited_page_resumes_its_saved_cursor_after_cooldown()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.UpdateLimitsAsync(new() { MaxDuration = TimeSpan.FromMinutes(2) });
+        fixture.Http.ErrorCode = 4;
+        fixture.Http.ErrorCursor = CursorA;
+        fixture.Http.AppUsage = """{"call_count":77,"total_cputime":33,"total_time":66,"ignored":"private-header-value"}""";
+
+        RunModel waiting = await fixture.CaptureAsync();
+
+        waiting.Status.Should().Be(RunStatus.Paused);
+        waiting.FetchOutcome.Should().Be(FetchOutcome.RateLimited);
+        waiting.CompletionReason.Should().BeNull();
+        waiting.FinishedAtUtc.Should().BeNull();
+        waiting.Captured.Should().Be(1);
+        waiting.Requests.Should().Be(2);
+        waiting.Pages.Should().Be(1);
+        waiting.Failed.Should().Be(0);
+        fixture.Http.Calls.Should().HaveCount(2);
+
+        var audit = await fixture.Services.GetRequiredService<PipelineStages>()
+            .AuditAsync(waiting.Id, 0, 20, CancellationToken.None);
+        var throttled = audit.Single(row => row.Outcome == "rate_limited");
+        throttled.RetryAtUtc.Should().Be(throttled.FinishedAtUtc!.Value.AddMinutes(20));
+        throttled.HttpStatus.Should().Be((short)400);
+        throttled.Operations.Single(row => row.Key == "fetch").Result!.Message.Should().Contain("Meta error code 4");
+        fixture.LogMessages.Should().Contain(line => line.Contains("calls 77, CPU 33, total time 66", StringComparison.Ordinal));
+        fixture.LogMessages.Should().NotContain(line => line.Contains("private-header-value", StringComparison.Ordinal));
+
+        fixture.Clock.Advance(TimeSpan.FromMinutes(19));
+        (await fixture.Services.GetRequiredService<HarvestEngine>().ProcessNextAsync()).Should().BeFalse();
+        fixture.Http.Calls.Should().HaveCount(2);
+        fixture.Http.ErrorCode = null;
+        fixture.Http.AppUsage = "{invalid";
+        fixture.Clock.Advance(TimeSpan.FromMinutes(1));
+
+        RunModel completed = await fixture.DrainAsync(waiting.Id);
+
+        completed.Status.Should().Be(RunStatus.Completed);
+        completed.FetchOutcome.Should().BeNull();
+        completed.Captured.Should().Be(2);
+        completed.NewPosts.Should().Be(2);
+        completed.Pages.Should().Be(3);
+        completed.Requests.Should().Be(4);
+        completed.Failed.Should().Be(0);
+        fixture.Http.Calls.Should().HaveCount(4);
+        fixture.Http.Calls[2].Uri.Should().Be(fixture.Http.Calls[1].Uri);
+        (await fixture.PostsAsync()).Should().HaveCount(2);
+        await fixture.AssertSanitizedAsync();
+    }
+
+    [Theory]
+    [InlineData(null, 30, false)]
+    [InlineData("""{"call_count":1,"total_cputime":80,"total_time":2}""", 300, false)]
+    [InlineData(null, 30, true)]
+    public async Task Publisher_pages_share_the_hourly_budget_and_quota_cooldown(string? appUsage, int waitSeconds, bool olderQueuedPlan)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var other = await fixture.DeclarePublisherAsync("secondpublisher");
+        var engine = fixture.Services.GetRequiredService<HarvestEngine>();
+        var runs = fixture.Services.GetRequiredService<IRunBroker>();
+        Guid first = Value(await runs.StartAsync(fixture.PipelineId)).Id;
+        fixture.Clock.Advance(TimeSpan.FromSeconds(1));
+        Guid second = Value(await runs.StartAsync(other)).Id;
+        if (olderQueuedPlan)
+        {
+            await using var connection = new NpgsqlConnection(fixture.Database);
+            await connection.OpenAsync();
+            await using var command = new NpgsqlCommand("""
+                UPDATE harvest_work_item SET plan_ref=plan_ref #- '{requirements,queueAtHostPace}' WHERE run_id=@run
+                """, connection);
+            command.Parameters.AddWithValue("run", second);
+            await command.ExecuteNonQueryAsync();
+        }
+        fixture.Http.AppUsage = appUsage;
+        fixture.Clock.Advance(TimeSpan.FromSeconds(1));
+
+        (await engine.ProcessNextAsync()).Should().BeTrue();
+        fixture.Http.Calls.Should().ContainSingle();
+        var audit = await fixture.Services.GetRequiredService<PipelineStages>().AuditAsync(first, 0, 20, CancellationToken.None);
+        var attempt = audit.Should().ContainSingle().Subject;
+        if (appUsage is not null)
+        {
+            attempt.RetryAtUtc.Should().Be(attempt.FinishedAtUtc!.Value.AddSeconds(waitSeconds));
+            attempt.Operations.Single(row => row.Key == "fetch").Result!.Message.Should().Contain("80%");
+        }
+
+        fixture.Clock.Advance(TimeSpan.FromSeconds(waitSeconds - 1));
+        await using var nextWorker = fixture.OpenWorker();
+        var nextEngine = nextWorker.ServiceProvider.GetRequiredService<HarvestEngine>();
+        (await nextEngine.ProcessNextAsync()).Should().Be(olderQueuedPlan);
+        var waiting = Value(await runs.GetAsync(second));
+        waiting.Status.Should().Be(olderQueuedPlan ? RunStatus.Paused : RunStatus.Queued);
+        waiting.Requests.Should().Be(0);
+        fixture.Http.Calls.Should().ContainSingle();
+
+        fixture.Http.AppUsage = "{invalid";
+        fixture.Clock.Advance(TimeSpan.FromSeconds(1));
+        (await nextEngine.ProcessNextAsync()).Should().BeTrue();
+        fixture.Http.Calls.Should().HaveCount(2);
+        Uri.UnescapeDataString(fixture.Http.Calls[1].Uri.Query).Should().Contain(".username(secondpublisher)");
+
+        fixture.Clock.Advance(TimeSpan.FromSeconds(30));
+        (await engine.ProcessNextAsync()).Should().BeTrue();
+        fixture.Http.Calls.Should().HaveCount(3);
+        Uri.UnescapeDataString(fixture.Http.Calls[2].Uri.Query).Should().Contain($".after({CursorA})");
+    }
+
+    [Theory]
+    [InlineData(2, 0, RunReason.RequestLimit)]
+    [InlineData(null, 3, RunReason.SourceOutcome)]
+    public async Task Rate_limit_resumes_stop_at_the_request_or_retry_budget(int? maximumRequests, int resumptions, RunReason reason)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.UpdateLimitsAsync(new() { MaxRequests = maximumRequests });
+        fixture.Http.ErrorCode = 4;
+        fixture.Http.ErrorCursor = CursorA;
+
+        RunModel run = await fixture.CaptureAsync();
+        for (int attempt = 0; attempt < resumptions; attempt++)
+        {
+            run.Status.Should().Be(RunStatus.Paused);
+            fixture.Clock.Advance(TimeSpan.FromHours(2));
+            run = await fixture.DrainAsync(run.Id);
+        }
+
+        run.Status.Should().Be(RunStatus.Partial);
+        run.CompletionReason.Should().Be(reason);
+        run.FetchOutcome.Should().Be(FetchOutcome.RateLimited);
+        run.Captured.Should().Be(1);
+        run.Requests.Should().Be(2 + resumptions);
+        fixture.Http.Calls.Should().HaveCount(2 + resumptions);
         await fixture.AssertSanitizedAsync();
     }
 
@@ -286,10 +418,13 @@ public sealed class InstagramPipelineTests
     {
         public IServiceProvider Services => scope.ServiceProvider;
         public string Database => database;
+        public FakeTimeProvider Clock => clock;
         public ProviderHandler Http => http;
+        public IEnumerable<string> LogMessages => logs.Messages;
         public Guid ContainerId => containerId;
         public Guid PipelineId => pipelineId;
         public Guid SubscriptionId => subscriptionId;
+        public AsyncServiceScope OpenWorker() => provider.CreateAsyncScope();
 
         public static async Task<Fixture> CreateAsync()
         {
@@ -342,6 +477,16 @@ public sealed class InstagramPipelineTests
         public async Task<RunModel> CaptureAsync()
             => await DrainAsync(await QueueAsync());
 
+        public async Task UpdateLimitsAsync(PipelineLimits limits)
+        {
+            var registry = Services.GetRequiredService<IRegistrationBroker>();
+            var pipeline = Value(await registry.GetPipelineAsync(PipelineId));
+            Value(await registry.UpdatePipelineAsync(PipelineId, new()
+            {
+                Scope = pipeline.Scope, Schedules = [], Limits = limits,
+            }));
+        }
+
         public async Task<Guid> QueueAsync()
         {
             clock.Advance(TimeSpan.FromHours(1));
@@ -349,11 +494,27 @@ public sealed class InstagramPipelineTests
             return Value(await runs.StartAsync(pipelineId)).Id;
         }
 
+        public async Task<Guid> DeclarePublisherAsync(string username)
+        {
+            var registry = Services.GetRequiredService<IRegistrationBroker>();
+            var source = Value(await registry.RegisterSourceAsync(new()
+            {
+                ContainerId = containerId, Family = SourceFamily.Instagram, Handle = username,
+                Coverage = SourceCoverage.Filtered, Completeness = SourceCompleteness.Window, Posture = SourcePosture.Official,
+                AiAllowed = false, CheckPolicy = "none",
+            }));
+            return Value(await registry.DeclarePipelineAsync(new()
+            {
+                ContainerId = containerId, SourceId = source.Id, Name = username,
+                Scope = new() { Url = $"https://www.instagram.com/{username}/" }, Limits = new() { MaxItems = 1 },
+            })).Id;
+        }
+
         public async Task<RunModel> DrainAsync(Guid run)
         {
             for (int item = 0; item < 8; item++)
             {
-                clock.Advance(TimeSpan.FromSeconds(6));
+                clock.Advance(TimeSpan.FromSeconds(31));
                 if (!await Services.GetRequiredService<HarvestEngine>().ProcessNextAsync())
                     break;
             }
@@ -399,6 +560,8 @@ public sealed class InstagramPipelineTests
         public string FirstCaption { get; set; } = "Fixture publisher note one.";
         public string MediaSignature { get; set; } = "first-fetch";
         public int? ErrorCode { get; set; }
+        public string? ErrorCursor { get; set; }
+        public string? AppUsage { get; set; }
         public bool IncludeMalformedFirstRecord { get; set; }
         public bool RepeatFirstRecord { get; set; }
         public bool OnlyMalformedFirstPage { get; set; }
@@ -408,14 +571,14 @@ public sealed class InstagramPipelineTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             Calls.Add((request.RequestUri!, request.Headers.Authorization?.ToString()));
-            if (ErrorCode is { } code)
+            string query = Uri.UnescapeDataString(request.RequestUri!.Query);
+            if (ErrorCode is { } code && (ErrorCursor is null || query.Contains($".after({ErrorCursor})", StringComparison.Ordinal)))
             {
                 var response = Response(JsonSerializer.Serialize(new { error = new { code, message = FakeToken + " " + CursorA } }), HttpStatusCode.BadRequest);
                 if (code == 4)
                     response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromMinutes(20));
                 return Task.FromResult(response);
             }
-            string query = Uri.UnescapeDataString(request.RequestUri!.Query);
             if (query.Contains($".after({CursorB})", StringComparison.Ordinal))
                 return Task.FromResult(Response("""{"business_discovery":{"username":"genericpublisher","media":{"data":[]}}}"""));
             bool second = query.Contains($".after({CursorA})", StringComparison.Ordinal);
@@ -447,8 +610,13 @@ public sealed class InstagramPipelineTests
             return Task.FromResult(Response(body));
         }
 
-        private static HttpResponseMessage Response(string body, HttpStatusCode status = HttpStatusCode.OK) =>
-            new(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+        private HttpResponseMessage Response(string body, HttpStatusCode status = HttpStatusCode.OK)
+        {
+            var response = new HttpResponseMessage(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+            if (AppUsage is not null)
+                response.Headers.TryAddWithoutValidation("X-App-Usage", AppUsage);
+            return response;
+        }
     }
 
     private sealed class CapturedLogs : ILoggerProvider

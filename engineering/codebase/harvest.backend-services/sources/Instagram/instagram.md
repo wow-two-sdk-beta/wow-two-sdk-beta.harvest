@@ -31,14 +31,19 @@ pages are internal. Existing page-based limits resolve to their effective post b
 replaces that legacy budget. The final request shrinks to the remaining posts and emits no continuation at the limit.
 
 The adapter declares its canonical profile URL separately from the source handle and uses a shared
-`www.instagram.com` host key. Publisher sources retain common provider pacing and backoff. Existing legacy
+`www.instagram.com` host key. Every publisher in the same SCFD database uses one PostgreSQL request gate. Each page
+goes through the gate, so queued publishers get a turn before a later continuation. `HarvestInstagram:RequestsPerHour`
+defaults to 120 and sets a 30-second minimum gap. A stricter host pace still applies. Existing legacy
 domain sources remain readable until an operator explicitly splits their publisher records; they are not the
 identity used by new registry provisioning.
 
 Pipeline settings are frozen when a run starts. Targets must match that saved profile; a later settings edit affects
 subsequent runs. Cursor-only pages continue without `paging.next`; an empty page ends pagination. Page/request/item,
 byte and duration budgets use the generic engine. Provider transport retains fixed defensive byte/depth/time bounds.
-The client performs one transport attempt; explicit authentication/rate-limit failures feed the engine's backoff.
+The client performs one transport attempt. A successful response reporting at least 80% in any `X-App-Usage` field
+pauses the shared connection for at least five minutes. A throttle uses Meta's retry delay or a 15-minute fallback,
+and the run resumes its saved cursor after the host cooldown. The run audit records retry times, HTTP status and
+numeric Meta error codes. The host log and request trace record the reported percentages.
 
 Capture/sweep are supported; refresh, deletion checking, stories, hashtags, personal and private accounts
 are not. An account's public visibility alone does not establish Business Discovery eligibility. Ocharo is an optional

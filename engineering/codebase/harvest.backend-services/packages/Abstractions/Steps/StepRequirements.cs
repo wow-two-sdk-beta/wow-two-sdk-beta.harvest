@@ -15,6 +15,9 @@ public sealed record StepRequirements
     /// longer of the two wins.</summary>
     public TimeSpan? MinDelay { get; init; }
 
+    /// <summary>Gets whether the worker leaves the step queued until the shared host can admit the next request.</summary>
+    public bool QueueAtHostPace { get; init; }
+
     /// <summary>Gets the pipeline's own request pacing, set by the engine from the stage's gap and parallel fetches; null keeps
     /// the host's pacing.</summary>
     public RequestPace? Pace { get; init; }

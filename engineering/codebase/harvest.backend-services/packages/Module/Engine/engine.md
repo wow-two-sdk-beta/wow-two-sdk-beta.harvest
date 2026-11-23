@@ -48,7 +48,10 @@ calls the adapter's brokers.
   finish within the other budgets and the run ends `page_limit`; a refresh or staged harvest counts listing pages only
 - request/byte budgets are evaluated at step boundaries; one fetch includes robots and redirect transport attempts
 - cancellation fences running claims; a late result cannot overwrite cancellation or a replacement owner's result
-- a refusal terminates the run as partial and pauses its lane; the same run never changes route or automatically retries it
+- a refusal pauses its lane and normally terminates the run as partial
+- an opt-in serial capture keeps the same work item and cursor on a rate limit for up to three resumptions per page
+- a resumable capture counts processing attempts toward its duration budget and actual requests toward its request budget.
+  Its run audit records the retry boundary, and cancellation still blocks the queued page
 - a lane's pause doubles with each refusal in a row (`RefusalBackoff` × 2^n, n capped at 6); a successful network step on
   the lane resets the count, so the next refusal backs off from the first step
 - `PipelineAutoOff` turns a pipeline's capture, check, refresh, discover and harvest schedules off after `AutoOffAfter` failed

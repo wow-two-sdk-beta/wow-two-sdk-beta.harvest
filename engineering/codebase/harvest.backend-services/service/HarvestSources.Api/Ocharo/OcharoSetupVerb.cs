@@ -44,6 +44,7 @@ public static class OcharoSetupVerb
     public const string Name = "ocharo";
 
     private const string Usage = "Usage: ocharo setup [--group <id>]... [--tenant <slug>] [--instagram] [--schedules] [--model-processing <off|manual|auto>] [--selector [--selector-reset]] [--run] [--refresh]\n"
+        + "       ocharo setup --group <id> [--group <id>]... --instagram-hourly|--instagram-manual [--model-processing <off|manual|auto>] [--selector] [--run]\n"
         + "       ocharo status [--group <id>]... [--tenant <slug>]";
 
     /// <summary>Runs the verb over the host's services.</summary>
@@ -59,7 +60,7 @@ public static class OcharoSetupVerb
         if (arguments is ["status", ..])
             return await StatusAsync(services, arguments, output, error, ct);
         if (!TryParse(arguments, out var groups, out var tenant, out var schedules, out var includeInstagram, out var kinds, out var modelProcessing,
-                out var selector, out var selectorReset))
+                out var selector, out var selectorReset, out var instagramHourly))
         {
             await error.WriteLineAsync(Usage);
             return 2;
@@ -78,7 +79,7 @@ public static class OcharoSetupVerb
         }
 
         var setup = await provisioner.EnsureAsync(schedules, ct, includeInstagram, groups.Count == 0 ? null : groups, tenant, modelProcessing,
-            selector, selectorReset);
+            selector, selectorReset, instagramHourly: instagramHourly);
         if (setup is not Result<OcharoSetup>.Success { Value: var value })
         {
             await error.WriteLineAsync("ocharo setup refused: " + ((Result<OcharoSetup>.Failure)setup).Error.Message);
@@ -211,7 +212,8 @@ public static class OcharoSetupVerb
     private static string Snake<TEnum>(TEnum value) where TEnum : struct, Enum => JsonNamingPolicy.SnakeCaseLower.ConvertName(value.ToString());
 
     private static bool TryParse(IReadOnlyList<string> arguments, out List<string> groups, out string tenant, out bool schedules,
-        out bool includeInstagram, out List<WorkKind> kinds, out ModelProcessingMode? modelProcessing, out bool selector, out bool selectorReset)
+        out bool includeInstagram, out List<WorkKind> kinds, out ModelProcessingMode? modelProcessing, out bool selector, out bool selectorReset,
+        out bool? instagramHourly)
     {
         groups = [];
         tenant = OcharoSourceProvisioner.DefaultTenantSlug;
@@ -221,6 +223,7 @@ public static class OcharoSetupVerb
         modelProcessing = null;
         selector = false;
         selectorReset = false;
+        instagramHourly = null;
         if (arguments is not ["setup", ..])
             return false;
         for (var index = 1; index < arguments.Count; index++)
@@ -243,6 +246,10 @@ public static class OcharoSetupVerb
                     break;
                 case "--instagram":
                     includeInstagram = true;
+                    break;
+                case "--instagram-hourly" or "--instagram-manual" when instagramHourly is null:
+                    includeInstagram = true;
+                    instagramHourly = arguments[index] == "--instagram-hourly";
                     break;
                 case "--selector":
                     selector = true;

@@ -14,6 +14,10 @@ public interface IStepBroker
     /// <summary>Gets the operations this broker may perform, in execution order.</summary>
     IReadOnlyList<string> OperationKeys => [];
 
+    /// <summary>Gets whether a serial capture may resume this work item after the host's rate-limit cooldown.
+    /// The run's duration budget then counts work attempts, excluding time queued between them.</summary>
+    bool ResumeAfterRateLimit => false;
+
     /// <summary>Executes the step for one claimed item.</summary>
     /// <param name="item">The claimed item.</param>
     /// <param name="context">The client, renderer and detectors for the claim.</param>

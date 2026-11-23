@@ -2,7 +2,7 @@ import type { RunModel } from '../../contracts';
 
 /** Whether a run is still waiting or working. */
 export function isActiveRun(run: RunModel) {
-  return run.status === 'queued' || run.status === 'running';
+  return run.status === 'queued' || run.status === 'running' || run.status === 'paused';
 }
 
 /** The partial endings that are a run's own budget running out, not something going wrong. */

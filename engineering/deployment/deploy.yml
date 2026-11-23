@@ -69,6 +69,7 @@ services:
         HarvestInstagram:ProfessionalAccountId: {}
         HarvestInstagram:ApiVersion: {}
         HarvestInstagram:BaseAddress: { type: url, default: "https://graph.facebook.com/" }
+        HarvestInstagram:RequestsPerHour: { type: number, default: 120 }
         # AI processing, all off by default (development/post-tags.md, extraction.md, entities.md); the provider key is
         # entered privately, and a route without a key leaves the list. Tags:Models:0 and :1 are routes tried in order.
         Harvest:Processing:Ai:Enabled: { type: boolean, default: false }

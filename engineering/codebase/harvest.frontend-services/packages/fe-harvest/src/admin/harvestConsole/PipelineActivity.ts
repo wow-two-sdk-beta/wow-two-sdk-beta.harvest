@@ -28,7 +28,11 @@ export const RunTones = {
 
 /** Prefer work already started over a newer run waiting in the queue. */
 export function activeRun(runs: readonly RunModel[]) {
-  return runs.find((run) => run.status === 'running') ?? runs.find((run) => run.status === 'queued');
+  return (
+    runs.find((run) => run.status === 'running') ??
+    runs.find((run) => run.status === 'paused') ??
+    runs.find((run) => run.status === 'queued')
+  );
 }
 
 export function needsAttention(run?: RunModel) {

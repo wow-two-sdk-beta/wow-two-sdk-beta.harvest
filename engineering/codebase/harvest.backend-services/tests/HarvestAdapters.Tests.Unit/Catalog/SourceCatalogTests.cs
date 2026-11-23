@@ -22,15 +22,18 @@ public sealed class SourceCatalogTests
 
         var entries = Ocharo().Entries();
 
-        entries.Should().HaveCount(57).And.OnlyContain(entry => entry.Key.StartsWith("ocharo.", StringComparison.Ordinal)
+        entries.Should().HaveCount(63).And.OnlyContain(entry => entry.Key.StartsWith("ocharo.", StringComparison.Ordinal)
             && entry.Catalog == "ocharo" && entry.Kind == CatalogKind.Events && entry.Channels >= 1 && entry.Hosts.Count >= 1);
         entries.Select(entry => entry.Key).Should().Equal(collectible.OrderBy(group => group.Rank).Select(group => "ocharo." + group.Id));
         var planned = registry.Groups.Except(collectible).Select(group => "ocharo." + group.Id);
         planned.Should().NotBeEmpty("the registry holds groups nothing of which could run").And.NotIntersectWith(entries.Select(entry => entry.Key));
         var afisha = entries.Single(entry => entry.Key == "ocharo.afisha");
         afisha.Name.Should().Be("Afisha Uzbekistan");
-        afisha.Channels.Should().Be(2);
-        afisha.Hosts.Should().Equal([new CatalogHost(SourceFamily.Site, "www.afisha.uz")], "two channels, one host, one source");
+        afisha.Channels.Should().Be(3);
+        afisha.Hosts.Should().BeEquivalentTo(new[]
+        {
+            new CatalogHost(SourceFamily.Site, "www.afisha.uz"), new CatalogHost(SourceFamily.Instagram, "afishauzb"),
+        });
         entries.Where(entry => entry.Hosts.Any(host => host.Family == SourceFamily.Instagram)).Should().NotBeEmpty("an Instagram publisher is an entry too");
     }
 

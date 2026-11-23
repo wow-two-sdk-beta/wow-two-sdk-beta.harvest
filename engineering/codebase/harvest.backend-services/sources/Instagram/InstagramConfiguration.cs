@@ -11,7 +11,8 @@ internal static partial class InstagramConfiguration
         && Uri.TryCreate(options.BaseAddress, UriKind.Absolute, out var address)
         && address.Scheme == "https" && address.IsDefaultPort && address.IdnHost == "graph.facebook.com"
         && address.UserInfo.Length == 0 && address.AbsolutePath == "/" && address.Query.Length == 0 && address.Fragment.Length == 0
-        && NumericId().IsMatch(options.ProfessionalAccountId ?? string.Empty) && Version().IsMatch(options.ApiVersion ?? string.Empty);
+        && NumericId().IsMatch(options.ProfessionalAccountId ?? string.Empty) && Version().IsMatch(options.ApiVersion ?? string.Empty)
+        && options.RequestsPerHour is >= 1 and <= InstagramCollectionLimits.MaximumRequestsPerHour;
 
     internal static string? Text(JsonElement node, string key) => node.ValueKind == JsonValueKind.Object
         && node.TryGetProperty(key, out JsonElement value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;

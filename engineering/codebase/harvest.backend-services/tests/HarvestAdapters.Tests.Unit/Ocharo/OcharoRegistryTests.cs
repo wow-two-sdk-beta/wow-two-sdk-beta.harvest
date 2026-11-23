@@ -547,10 +547,10 @@ public sealed class OcharoRegistryTests
         groups.Select(group => group.Id).Should().Equal(Wave5.Select(row => row.Group), "the groups follow the screen's order");
         groups.Select(group => group.Rank).Should().Equal(Enumerable.Range(LastEarlierRank + 1, Wave5.Length));
         groups.Should().OnlyContain(group => group.Tier == "P3" && group.Aggregates.Count == 0 && group.EventFamilies.Count == 0
-            && group.Channels.Count == 1);
+            && group.Channels.Count(channel => channel.Setup == "default") == 1);
         foreach (var (group, row) in groups.Zip(Wave5))
         {
-            var channel = group.Channels.Single();
+            var channel = group.Channels.Single(channel => channel.Setup == "default");
             (channel.Id, channel.Primary, channel.Relationship, channel.Mode, channel.Setup, channel.AdapterKey)
                 .Should().Be(("primary", true, "owned", "harvest", "default", row.Route), group.Id);
             channel.Note.Should().StartWith($"Wave 5, reviewed 2026-11-21: {row.Route}; ", group.Id);

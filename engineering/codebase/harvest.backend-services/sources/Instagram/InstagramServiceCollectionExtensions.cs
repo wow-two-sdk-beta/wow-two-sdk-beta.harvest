@@ -15,7 +15,9 @@ public static class InstagramServiceCollectionExtensions
     public static OptionsBuilder<InstagramOptions> AddHarvestInstagram(this IServiceCollection services)
     {
         services.TryAddSingleton(TimeProvider.System);
-        services.AddInstagramIntegration(provider => new InstagramAccessTokenService(provider.GetRequiredService<IOptionsMonitor<InstagramOptions>>()));
+        services.TryAddTransient<InstagramQuotaHandler>();
+        services.AddInstagramIntegration(provider => new InstagramAccessTokenService(provider.GetRequiredService<IOptionsMonitor<InstagramOptions>>()))
+            .AddHttpMessageHandler<InstagramQuotaHandler>();
         services.AddOptions<InstagramIntegrationOptions>().Configure<IOptions<InstagramOptions>>((target, source) =>
         {
             // Unconfigured connections must not prevent unrelated registries from starting.

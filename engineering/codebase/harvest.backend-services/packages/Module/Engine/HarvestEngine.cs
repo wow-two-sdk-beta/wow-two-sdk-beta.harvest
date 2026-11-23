@@ -39,6 +39,8 @@ public sealed class HarvestEngine(
     TimeProvider clock,
     ILogger<HarvestEngine> logger)
 {
+    private const int MaxRateLimitResumesPerItem = 3;
+
     /// <summary>Coalesces missed schedule ticks into one current execution per pipeline and work kind.</summary>
     public async Task<int> QueueDueAsync(CancellationToken cancellationToken = default)
     {
@@ -148,11 +150,14 @@ public sealed class HarvestEngine(
             HostRequests = services.GetService<IHostFetchStore>(),
         };
         StepResult result;
+        bool resumableCapture = false;
         var readings = new List<(Capture Capture, PostEnvelope Envelope)>();
         try
         {
             IStepBroker? broker = brokers.LastOrDefault(candidate => candidate.AdapterKey == claim.Frozen.AdapterKey
                 && candidate.StepKey == claim.Item.StepKey);
+            resumableCapture = (claim.Frozen.Kind is WorkKind.Capture or WorkKind.Sweep) && claim.Frozen.Stage?.Parallel is not > 1
+                && broker?.ResumeAfterRateLimit is true;
             if (claim.Plan.Requirements.Render == RenderNeed.Required && context.Browser is null)
                 result = new StepResult { Outcome = FetchOutcome.CapabilityUnavailable, Message = "No browser renderer is registered." };
             else if (broker is null)
@@ -210,7 +215,8 @@ public sealed class HarvestEngine(
         }
         int? httpStatus = result.Outcome is FetchOutcome.NetworkError or FetchOutcome.FetchTimeout
             ? null : context.Signals.LastOrDefault()?.HttpStatus;
-        bool failed = await CompleteTracedAsync(claim, result, readings, null, httpStatus, trace, cancellationToken);
+        bool failed = await CompleteTracedAsync(claim, result, readings, null, httpStatus, trace, cancellationToken,
+            resumableCapture: resumableCapture);
         // After the commit, so the run's own transaction writes no schedule or pipeline row; a throw is logged by the worker
         // and the next failed run checks again.
         if (failed)
@@ -245,7 +251,7 @@ public sealed class HarvestEngine(
     /// <returns>True only when this call wrote the run's terminal status and the run's verdict is failed.</returns>
     private async Task<bool> CompleteTracedAsync(WorkClaim claim, StepResult result,
         IReadOnlyList<(Capture Capture, PostEnvelope Envelope)> readings, JsonElement? processingOutput, int? httpStatus,
-        StepTrace trace, CancellationToken ct, bool retryProcessing = true)
+        StepTrace trace, CancellationToken ct, bool retryProcessing = true, bool resumableCapture = false)
     {
         string? operation = result.Outcome is FetchOutcome.Ok or FetchOutcome.Gone ? claim.Frozen.Kind switch
         {
@@ -257,7 +263,8 @@ public sealed class HarvestEngine(
         int? index = operation is null ? null : await trace.BeginAsync(operation);
         try
         {
-            return await CompleteAsync(claim, result, readings, processingOutput, httpStatus, trace, index, ct, retryProcessing);
+            return await CompleteAsync(claim, result, readings, processingOutput, httpStatus, trace, index, ct, retryProcessing,
+                resumableCapture);
         }
         catch (Exception error) when (index.HasValue && !ct.IsCancellationRequested)
         {
@@ -297,11 +304,14 @@ public sealed class HarvestEngine(
             JOIN harvest_host_lane h ON h.host_key=w.host_key AND h.lane=w.lane
             JOIN harvest_host_state hs ON hs.host_key=w.host_key
             WHERE (w.state='queued' OR (w.state='running' AND w.lease_until<=@now))
-              AND w.due_at<=@now AND w.not_before<=@now AND r.status IN ('queued','running')
+              AND w.due_at<=@now AND w.not_before<=@now
+              AND (r.status IN ('queued','running') OR (r.status='paused' AND r.kind IN ('capture','sweep')
+                AND r.fetch_outcome='rate_limited' AND w.state='queued' AND w.outcome='rate_limited'))
               AND NOT r.cancellation_requested AND p.state='active' AND s.state='active' AND s.permission IN ('open','granted')
               AND NOT {CatalogGate.SourceOff}
               AND (h.paused_until IS NULL OR h.paused_until<=@now)
               AND (r.kind='process' OR COALESCE(GREATEST(hs.paused_until,hs.retry_after_until),@now)<=@now)
+              AND (w.plan_ref->'requirements'->>'queueAtHostPace' IS DISTINCT FROM 'true' OR hs.next_allowed_at<=@now)
               {poolRule}
             ORDER BY w.priority DESC,w.due_at,w.id LIMIT 1 FOR UPDATE OF r,w,h SKIP LOCKED
             """, ("now", now));
@@ -323,8 +333,11 @@ public sealed class HarvestEngine(
         }
         await EngineSql.ExecuteAsync(connection, transaction,
             """
-            UPDATE harvest_work_item SET state='running',attempts=attempts+1,lease_owner=@owner,lease_until=@until WHERE id=@id;
-            UPDATE harvest_runs SET status='running',started_at=coalesce(started_at,@now),stage=@step WHERE id=@run;
+            UPDATE harvest_work_item SET state='running',attempts=attempts+1,lease_owner=@owner,lease_until=@until,
+              outcome=NULL,last_error=NULL WHERE id=@id;
+            UPDATE harvest_runs SET status='running',started_at=coalesce(started_at,@now),stage=@step,
+              fetch_outcome=CASE WHEN status='paused' THEN NULL ELSE fetch_outcome END,
+              message=CASE WHEN status='paused' THEN NULL ELSE message END WHERE id=@run;
             UPDATE harvest_step_attempts SET finished_at=@now,outcome='interrupted',message='Worker lease expired.'
               WHERE work_item_id=@id AND finished_at IS NULL;
             INSERT INTO harvest_step_attempts(run_id,work_item_id,attempt,started_at) VALUES(@run,@id,@attempt,@now)
@@ -343,7 +356,7 @@ public sealed class HarvestEngine(
         int? httpStatus,
         StepTrace trace,
         int? storeOperation,
-        CancellationToken ct, bool retryProcessing)
+        CancellationToken ct, bool retryProcessing, bool resumableCapture)
     {
         DateTimeOffset now = clock.GetUtcNow();
         await using NpgsqlConnection connection = await database.OpenConnectionAsync(ct);
@@ -368,7 +381,7 @@ public sealed class HarvestEngine(
                 return false;
         }
 
-        RunReason? limit = await LimitAsync(connection, transaction, claim, now, ct);
+        RunReason? limit = await LimitAsync(connection, transaction, claim, now, ct, resumableCapture);
         bool withinLimits = limit is null;
         int captured = 0;
         int created = 0;
@@ -475,11 +488,19 @@ public sealed class HarvestEngine(
 
         bool ok = result.Outcome is FetchOutcome.Ok or FetchOutcome.Gone;
         bool refused = IsRefusal(result.Outcome);
-        bool stopForHost = refused || result.Outcome == FetchOutcome.NetworkError;
-        if (refused)
+        if (resumableCapture)
+            now = clock.GetUtcNow();
+        bool rateLimitedCapture = resumableCapture && result.Outcome == FetchOutcome.RateLimited;
+        bool gatedByExistingCooldown = rateLimitedCapture && result.Usage.Requests == 0 && result.RetryAfter is not null;
+        if (refused && !gatedByExistingCooldown)
             await BackoffAsync(connection, transaction, claim, result, now, ct);
         else if (ok && claim.Frozen.Kind != WorkKind.Process)
             await ClearBackoffAsync(connection, transaction, claim, now, ct);
+        DateTimeOffset? resumeAt = rateLimitedCapture && limit is null
+            ? await RateLimitedCaptureResumeAtAsync(connection, transaction, claim, result.RetryAfter, gatedByExistingCooldown, now, ct)
+            : null;
+        bool deferred = resumeAt is not null;
+        bool stopForHost = refused && !deferred || result.Outcome == FetchOutcome.NetworkError;
         if (storeOperation is int index)
         {
             var measurement = claim.Frozen.Kind switch
@@ -494,8 +515,9 @@ public sealed class HarvestEngine(
         }
         await EngineSql.ExecuteAsync(connection, transaction,
             """
-            UPDATE harvest_work_item SET state=@state,outcome=@outcome,last_error=@message,finished_at=@now,
-              lease_owner=NULL,lease_until=NULL WHERE id=@id;
+            UPDATE harvest_work_item SET state=@state,outcome=@outcome,last_error=@message,
+              finished_at=CASE WHEN @deferred THEN NULL ELSE @now END,
+              not_before=COALESCE(@resume::timestamptz,not_before),lease_owner=NULL,lease_until=NULL WHERE id=@id;
             UPDATE harvest_step_attempts SET finished_at=@now,outcome=@outcome,message=@message,
               retry_at=GREATEST(@retry::timestamptz,(
                 SELECT GREATEST(s.paused_until,s.retry_after_until,l.paused_until)
@@ -503,17 +525,19 @@ public sealed class HarvestEngine(
                 WHERE s.host_key=@host AND l.lane=@lane AND NOT @ok AND @network)),
               http_status=@http,discovered=@discovered,operations=@operations::jsonb
               WHERE work_item_id=@id AND attempt=@attempt;
-            UPDATE harvest_runs SET pages=pages+1,captured=captured+@captured,new_posts=new_posts+@created,unchanged=unchanged+@unchanged,
+            UPDATE harvest_runs SET pages=pages+CASE WHEN @deferred THEN 0 ELSE 1 END,
+              captured=captured+@captured,new_posts=new_posts+@created,unchanged=unchanged+@unchanged,
               discovered=discovered+@discovered,failed=failed+@failed,requests=requests+@requests,bytes=bytes+@bytes,
               cost_usd_est=cost_usd_est+@cost,enumeration_complete=(enumeration_complete OR @complete) AND completion_reason IS NULL,
               fetch_outcome=CASE WHEN @ok THEN fetch_outcome ELSE @outcome END,message=@message WHERE id=@run
             """, ct, ("id", claim.Item.WorkItemId), ("run", claim.Item.RunId), ("now", now),
-            ("state", ok ? "done" : refused ? "blocked" : "failed"), ("outcome", SnakeCaseEnum<FetchOutcome>.ToText(result.Outcome)),
+            ("state", deferred ? "queued" : ok ? "done" : refused ? "blocked" : "failed"),
+            ("outcome", SnakeCaseEnum<FetchOutcome>.ToText(result.Outcome)), ("deferred", deferred), ("resume", resumeAt),
             ("message", result.Message), ("captured", captured), ("created", created), ("unchanged", unchanged), ("discovered", discovered),
             ("retry", result.RetryAfter is { } retry ? now + retry : null), ("http", httpStatus is { } status ? (short)status : null),
             ("host", claim.Item.HostKey), ("lane", claim.Item.Lane), ("network", claim.Frozen.Kind != WorkKind.Process),
             ("attempt", claim.Item.Attempt+1), ("operations", trace.Snapshot()),
-            ("failed", ok ? 0 : 1), ("requests", checked((int)Math.Min(result.Usage.Requests, int.MaxValue))),
+            ("failed", ok || deferred ? 0 : 1), ("requests", checked((int)Math.Min(result.Usage.Requests, int.MaxValue))),
             ("bytes", result.Usage.Bytes), ("cost", result.Usage.EstimatedUsd), ("complete", result.EnumerationComplete && limit is null), ("ok", ok));
         foreach ((string meter, long units) in new[] { ("requests", result.Usage.Requests), ("bytes", result.Usage.Bytes) })
         {
@@ -533,7 +557,7 @@ public sealed class HarvestEngine(
             "SELECT EXISTS(SELECT 1 FROM harvest_work_item WHERE run_id=@run AND state IN ('queued','running'))", ("run", claim.Item.RunId)))
         {
             if (await pending.ExecuteScalarAsync(ct) is true)
-                limit ??= await LimitAsync(connection, transaction, claim, now, ct);
+                limit ??= await LimitAsync(connection, transaction, claim, now, ct, resumableCapture);
         }
         // The run's verdict comes back with its terminal write, so a run is judged once, by the transaction that finished it.
         string? verdict;
@@ -551,6 +575,14 @@ public sealed class HarvestEngine(
                 """, ("run", claim.Item.RunId), ("now", now),
                 ("reason", SnakeCaseEnum<RunReason>.ToText(limit ?? RunReason.SourceOutcome)));
             verdict = await finish.ExecuteScalarAsync(ct) as string;
+        }
+        else if (deferred)
+        {
+            await EngineSql.ExecuteAsync(connection, transaction,
+                """
+                UPDATE harvest_runs SET status='paused',message='Capture resumes after the provider cooldown.' WHERE id=@id
+                """, ct, ("id", claim.Item.RunId));
+            verdict = null;
         }
         else
         {
@@ -573,11 +605,19 @@ public sealed class HarvestEngine(
         NpgsqlTransaction transaction,
         WorkClaim claim,
         DateTimeOffset now,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool resumableCapture)
     {
         await using NpgsqlCommand command = EngineSql.Command(connection, transaction,
-            "SELECT captured+unchanged,requests,bytes,coalesce(started_at,queued_at) FROM harvest_runs WHERE id=@id",
-            ("id", claim.Item.RunId));
+            """
+            SELECT captured+unchanged,requests,bytes,
+              CASE WHEN @resumable THEN COALESCE((
+                SELECT sum(GREATEST(interval '0',LEAST(COALESCE(a.finished_at,@now),
+                  CASE WHEN a.outcome='interrupted' THEN a.started_at+@lease ELSE @now END)-a.started_at))
+                FROM harvest_step_attempts a WHERE a.run_id=r.id
+              ),interval '0') ELSE @now-coalesce(started_at,queued_at) END
+            FROM harvest_runs r WHERE id=@id
+            """, ("id", claim.Item.RunId), ("now", now), ("resumable", resumableCapture), ("lease", options.Value.LeaseDuration));
         await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(ct);
         await reader.ReadAsync(ct);
         PipelineLimits limits = claim.Frozen.Pipeline.Limits;
@@ -588,9 +628,27 @@ public sealed class HarvestEngine(
             return RunReason.RequestLimit;
         if (reader.GetInt64(2) >= (limits.MaxBytes ?? options.Value.MaxBytes))
             return RunReason.ByteLimit;
-        if (now - reader.GetFieldValue<DateTimeOffset>(3) >= (limits.MaxDuration ?? options.Value.MaxDuration))
+        if (reader.GetFieldValue<TimeSpan>(3) >= (limits.MaxDuration ?? options.Value.MaxDuration))
             return RunReason.TimeLimit;
         return null;
+    }
+
+    private static async Task<DateTimeOffset?> RateLimitedCaptureResumeAtAsync(NpgsqlConnection connection,
+        NpgsqlTransaction transaction, WorkClaim claim, TimeSpan? delay, bool gated, DateTimeOffset now, CancellationToken ct)
+    {
+        await using var command = EngineSql.Command(connection, transaction, """
+            SELECT GREATEST(h.paused_until,h.retry_after_until,l.paused_until,@retry::timestamptz)
+            FROM harvest_host_state h JOIN harvest_host_lane l ON l.host_key=h.host_key
+            WHERE h.host_key=@host AND l.lane=@lane AND (@gated OR (
+              SELECT count(*) FROM harvest_step_attempts
+              WHERE work_item_id=@item AND outcome='rate_limited' AND http_status IS NOT NULL) < @limit)
+            """, ("host", claim.Item.HostKey), ("lane", claim.Item.Lane), ("item", claim.Item.WorkItemId),
+            ("retry", delay is { } wait ? now + wait : null), ("limit", MaxRateLimitResumesPerItem), ("gated", gated));
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct) || reader.IsDBNull(0))
+            return null;
+        DateTimeOffset until = reader.GetFieldValue<DateTimeOffset>(0);
+        return until > now ? until : null;
     }
 
     private async Task BackoffAsync(

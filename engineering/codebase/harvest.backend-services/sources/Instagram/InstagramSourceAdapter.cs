@@ -22,7 +22,7 @@ public sealed class InstagramSourceAdapter(IOptions<InstagramOptions>? options =
             DisplayName = "Instagram professional publishers",
             Readiness = configured ? SourceReadiness.Ready : SourceReadiness.ConfigurationRequired,
             Message = configured ? "Local API configuration is present; publisher access is checked during execution."
-                : "An operator must configure the Meta connection's token, professional account ID and API version.",
+                : "Configure the Meta token, professional account ID, API version and a request budget from 1 to 720 per hour.",
             ScopeSchema = JsonSerializer.SerializeToElement(new
             {
                 schema = "harvest.scope.v1", type = "object",
@@ -77,7 +77,11 @@ public sealed class InstagramSourceAdapter(IOptions<InstagramOptions>? options =
     {
         SourceUrl = InstagramPublishers.TryReadSourceProfile(source.Handle, out _, out string profile) ? profile : null,
         HostKey = InstagramPublishers.IsLegacyDomain(source.Handle) ? null : "www.instagram.com",
-        Steps = [new() { Key = "enumerate", Role = StepRole.Enumerate, Requires = new() { MinDelay = TimeSpan.FromSeconds(5) } }],
+        Steps = [new()
+        {
+            Key = "enumerate", Role = StepRole.Enumerate,
+            Requires = new() { QueueAtHostPace = true },
+        }],
         Plans = new Dictionary<WorkKind, IReadOnlyList<string>>
         {
             [WorkKind.Capture] = ["enumerate"], [WorkKind.Sweep] = ["enumerate"],

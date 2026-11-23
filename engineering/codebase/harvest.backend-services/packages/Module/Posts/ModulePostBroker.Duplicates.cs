@@ -75,20 +75,31 @@ internal sealed partial class ModulePostBroker
         string prefix = normalized[..chars];
         var candidates = new List<(Guid Id, PostEnvelope Envelope, bool ExactProjection)>();
         await using (var command = PostSql.Command(connection, transaction, """
-            WITH text_matches AS (
+            WITH incoming AS MATERIALIZED (
+                SELECT id,container_id,url_key,post_id,latest_content_hash
+                FROM harvest_post_links WHERE container_id=@container AND id=@link
+            ), text_matches AS MATERIALIZED (
                 SELECT t.post_id,max(similarity(t.match_text,@text)) AS score FROM harvest_post_texts t
                 WHERE t.container_id=@container AND @rich AND t.match_text % @text
                 GROUP BY t.post_id
+            ), candidate_ids AS (
+                SELECT l.id FROM incoming a JOIN harvest_post_links l
+                  ON l.container_id=a.container_id AND l.latest_content_hash=a.latest_content_hash
+                WHERE l.retired_at IS NULL AND l.role IN ('primary','alternate','copy')
+                UNION
+                SELECT l.id FROM text_matches t JOIN harvest_post_links l
+                  ON l.container_id=@container AND l.post_id=t.post_id
+                WHERE t.score>=@floor AND l.retired_at IS NULL AND l.role IN ('primary','alternate','copy')
             )
             SELECT l.id,r.fields::text,l.latest_content_hash=a.latest_content_hash
-            FROM harvest_post_links a JOIN harvest_post_links l ON l.container_id=a.container_id AND l.url_key<>a.url_key
+            FROM incoming a CROSS JOIN candidate_ids c
+            JOIN harvest_post_links l ON l.id=c.id
             JOIN harvest_posts p ON p.container_id=l.container_id AND p.id=l.post_id
             JOIN harvest_link_readings r ON r.container_id=l.container_id AND r.link_id=l.id
             LEFT JOIN text_matches t ON t.post_id=p.id
-            WHERE a.container_id=@container AND a.id=@link AND l.retired_at IS NULL AND l.role IN ('primary','alternate','copy')
+            WHERE l.url_key<>a.url_key
               AND NOT EXISTS (SELECT 1 FROM harvest_post_duplicates d WHERE d.container_id=a.container_id AND d.reference_link_id=a.id)
               AND p.merged_into IS NULL AND p.purged_at IS NULL AND l.latest_content_hash IS NOT NULL
-              AND (l.latest_content_hash=a.latest_content_hash OR t.score>=@floor)
               AND NOT EXISTS (SELECT 1 FROM harvest_post_duplicates d WHERE d.link_id=l.id)
               AND NOT EXISTS (SELECT 1 FROM harvest_post_keep_apart ka WHERE ka.container_id=a.container_id
                 AND ka.left_post_id=LEAST(a.post_id,p.id) AND ka.right_post_id=GREATEST(a.post_id,p.id))

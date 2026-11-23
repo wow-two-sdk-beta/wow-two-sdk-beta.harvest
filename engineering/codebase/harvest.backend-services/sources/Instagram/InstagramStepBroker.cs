@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Options;
 using WoW.Two.Sdk.Beta.Be.Harvest.Pipelines;
 using WoW.Two.Sdk.Beta.Be.Harvest.Readers;
 using WoW.Two.Sdk.Beta.Be.Harvest.Runs;
@@ -9,7 +10,7 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Instagram;
 
 /// <summary>Enumerates approved profile media. Continuation targets are internal work identifiers, never fetched web URLs.</summary>
-public sealed class InstagramStepBroker(IInstagramMediaBroker broker) : IStepBroker
+public sealed class InstagramStepBroker(IInstagramMediaBroker broker, IOptions<InstagramOptions>? options = null) : IStepBroker
 {
     /// <inheritdoc />
     public string AdapterKey => InstagramSourceAdapter.AdapterKey;
@@ -17,6 +18,9 @@ public sealed class InstagramStepBroker(IInstagramMediaBroker broker) : IStepBro
     public string StepKey => "enumerate";
     /// <inheritdoc />
     public IReadOnlyList<string> OperationKeys => ["prepare-authentication", "fetch", "map-response", "paginate"];
+    /// <inheritdoc />
+    public bool ResumeAfterRateLimit => true;
+
     /// <inheritdoc />
     public async Task<StepResult> ExecuteAsync(StepItem item, IStepContext context, CancellationToken cancellationToken = default)
     {
@@ -50,14 +54,19 @@ public sealed class InstagramStepBroker(IInstagramMediaBroker broker) : IStepBro
         int remaining = maximumPosts - scanned;
         int pageSize = Math.Min(InstagramCollectionLimits.RequestSize, remaining);
         InstagramMediaPage result;
-        await using (var lease = await context.AcquireRequestAsync(cancellationToken))
+        TimeSpan gap = InstagramCollectionLimits.RequestGap(options?.Value.RequestsPerHour ?? InstagramCollectionLimits.DefaultRequestsPerHour);
+        await using (var lease = await context.AcquireRequestAsync(gap, cancellationToken))
         {
             if (lease.Outcome != FetchOutcome.Ok)
                 return new() { Outcome = lease.Outcome, RetryAfter = lease.RetryAfter, Message = "The provider request gate did not admit this request." };
             result = await broker.ReadTracedAsync(username, pageSize, after, context, cancellationToken);
-            await lease.CompleteAsync(result.Outcome, cancellationToken);
+            await lease.CompleteAsync(result.Outcome, result.RetryAfter, cancellationToken);
         }
-        context.Observe(new() { Outcome = result.Outcome, Bytes = result.Usage.Bytes, RetryAfter = result.RetryAfter });
+        context.Observe(new()
+        {
+            Outcome = result.Outcome, HttpStatus = result.HttpStatus,
+            Bytes = result.Usage.Bytes, RetryAfter = result.RetryAfter,
+        });
         if (result.Outcome != FetchOutcome.Ok)
             return new() { Outcome = result.Outcome, Usage = result.Usage, RetryAfter = result.RetryAfter, Message = result.Message };
         JsonElement[] media = [.. result.Media.Take(remaining)];
@@ -89,7 +98,7 @@ public sealed class InstagramStepBroker(IInstagramMediaBroker broker) : IStepBro
         {
             Outcome = next.Length == 0 && captures.Length == 0 && (media.Length > 0 || scanned > 0 && recognized == 0)
                 ? FetchOutcome.Unrecognized : FetchOutcome.Ok,
-            Captures = captures, Next = next, Usage = result.Usage, EnumerationComplete = false,
+            Captures = captures, Next = next, Usage = result.Usage, RetryAfter = result.RetryAfter, EnumerationComplete = false,
             CompletionReason = postLimit ? RunReason.ItemLimit : pageLimit ? RunReason.PageLimit : null,
             Message = limitMessage ?? (captures.Length != result.Media.Count
                 ? "Some malformed media records were skipped; review the source response." : null),

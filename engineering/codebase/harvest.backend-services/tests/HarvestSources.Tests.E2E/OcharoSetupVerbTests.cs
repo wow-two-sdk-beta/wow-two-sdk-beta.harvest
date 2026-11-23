@@ -73,6 +73,43 @@ public sealed class OcharoSetupVerbTests
     }
 
     [Fact]
+    public async Task Selected_Instagram_publishers_switch_between_hourly_collection_and_manual_tests()
+    {
+        await using var host = await StartAsync();
+        var original = await Run(host.Services, ["setup", "--group", "afisha", "--schedules", "--selector"]);
+        original.Exit.Should().Be(0, original.Error);
+        var hourly = await Run(host.Services,
+            ["setup", "--group", "afisha", "--group", "art-time", "--instagram-hourly", "--model-processing", "auto", "--selector"]);
+        hourly.Exit.Should().Be(0, hourly.Error);
+        using var json = JsonDocument.Parse(hourly.Output.TrimEnd().Split('\n')[^1]);
+        var registered = json.RootElement.GetProperty("subscriptions").EnumerateArray().ToArray();
+        registered.Should().HaveCount(2);
+        json.RootElement.GetProperty("selectorVersion").GetInt32().Should().Be(2);
+
+        using var scope = host.Services.CreateScope();
+        var registry = scope.ServiceProvider.GetRequiredService<IRegistrationBroker>();
+        Guid pipelineId = registered.Single(row => row.GetProperty("groupId").GetString() == "art-time").GetProperty("pipelineId").GetGuid();
+        var pipeline = Assert.IsType<Result<PipelineModel>.Success>(await registry.GetPipelineAsync(pipelineId)).Value;
+        pipeline.Limits.MaxItems.Should().Be(50);
+        pipeline.Schedules.Should().ContainSingle().Which.Should().Match<ScheduleModel>(schedule =>
+            schedule.Kind == WorkKind.Capture && schedule.Enabled && schedule.Cron == "3 * * * *" && schedule.TimeZone == "Asia/Tashkent");
+        Assert.IsType<Result<SourceModel>.Success>(await registry.GetSourceAsync(pipeline.SourceId)).Value.ModelProcessing
+            .Should().Be(ModelProcessingMode.Auto);
+
+        var manual = await Run(host.Services,
+            ["setup", "--group", "art-time", "--instagram-manual", "--model-processing", "manual"]);
+        manual.Exit.Should().Be(0, manual.Error);
+        Assert.IsType<Result<PipelineModel>.Success>(await registry.GetPipelineAsync(pipelineId)).Value.Schedules
+            .Should().OnlyContain(schedule => !schedule.Enabled);
+        Assert.IsType<Result<SourceModel>.Success>(await registry.GetSourceAsync(pipeline.SourceId)).Value.ModelProcessing
+            .Should().Be(ModelProcessingMode.Manual);
+        var sourceRows = Assert.IsType<Result<IReadOnlyList<SourceModel>>.Success>(
+            await registry.ListSourcesAsync(pipeline.ContainerId)).Value;
+        sourceRows.Where(source => source.Family != SourceFamily.Instagram)
+            .Should().OnlyContain(source => source.ModelProcessing == ModelProcessingMode.Off);
+    }
+
+    [Fact]
     public async Task Instagram_refresh_is_rejected_before_resolving_or_mutating_services()
     {
         await using var services = new ServiceCollection().BuildServiceProvider();
@@ -115,7 +152,8 @@ public sealed class OcharoSetupVerbTests
         var result = JsonDocument.Parse(last).RootElement;
         result.GetProperty("tenant").GetString().Should().Be("ocharo");
         var lines = result.GetProperty("pipelines").EnumerateArray().Select(item => item.GetString()!).ToArray();
-        lines.Should().NotBeEmpty().And.OnlyContain(line => line.StartsWith("afisha/") && line.Contains("capture cron due ")
+        lines.Should().Contain("afisha/instagram none");
+        lines.Where(line => line != "afisha/instagram none").Should().NotBeEmpty().And.OnlyContain(line => line.StartsWith("afisha/") && line.Contains("capture cron due ")
             && line.Contains("check 1d due "));
         again.Output.Should().Be(status.Output, "status reads and never queues or writes");
         (await Run(host.Services, ["status", "--force"])).Exit.Should().Be(2);

@@ -35,7 +35,12 @@ internal sealed class EngineStepContext(
 
     public Task<ISourceRequestLease> AcquireRequestAsync(CancellationToken cancellationToken = default) =>
         SourceRequestGate.AcquireAsync(HostRequests ?? throw new InvalidOperationException("Durable request pacing is not registered."),
-            Plan.HostKey, Clock, cancellationToken, Plan.Requirements.MinDelay);
+            Plan.HostKey, Clock, cancellationToken, Plan.Requirements.MinDelay, Plan.Requirements.QueueAtHostPace);
+
+    public Task<ISourceRequestLease> AcquireRequestAsync(TimeSpan minimumDelay, CancellationToken cancellationToken) =>
+        SourceRequestGate.AcquireAsync(HostRequests ?? throw new InvalidOperationException("Durable request pacing is not registered."),
+            Plan.HostKey, Clock, cancellationToken, Plan.Requirements.MinDelay > minimumDelay ? Plan.Requirements.MinDelay : minimumDelay,
+            queueAtHostPace: true);
 
     public Task<T> RunOperationAsync<T>(string key, Func<Task<T>> execute, Func<T, StepOperationResult>? describe = null)
         => trace.RunAsync(key, execute, describe);

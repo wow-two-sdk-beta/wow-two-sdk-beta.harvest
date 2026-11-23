@@ -1,11 +1,35 @@
 # Ocharo source registry and collection review
 
-*Last updated: 2026-11-21*
+*Last updated: 2026-11-24*
 
-The [registry](../codebase/harvest-adapters.backend-services/packages/Module/Ocharo/ocharo-event-sources.json)
-is the ranked, reviewed collection inventory: 121 publishers and 209 channels. It keeps priority separate from
+The [registry](../codebase/harvest.backend-services/sources/Module/Ocharo/ocharo-event-sources.json)
+holds 121 publishers and 219 reviewed channels. It keeps priority separate from
 whether a collector can run. Research citations, past editions and non-selected links stay in the business
 event index. A publisher can have several channels; shared social or government hosting does not make them the same publisher.
+
+## Instagram additions
+
+The existing collection study verified Business Discovery for these publishers. Each route needs an explicit
+publisher-group selection.
+
+| Publisher | Handle | Coverage |
+|---|---|---|
+| Art Time | `art_time_uz` | Art Bazaar and maker markets |
+| Art Station | `artstationuz` | Exhibitions, talks and workshops |
+| CAEx Baraka Friday | `caex_baraka_friday` | Retail fair and exhibitor notices |
+| Tashkent Fashion and Textile Expo | `fashionexpouz` | Trade fairs and exhibitor programmes |
+| Art and Culture Development Foundation | `acdfuz` | Exhibitions, festivals and craft programmes |
+| Uzbekistan Fashion Week | `ufw.official` | Runways and fashion-week programmes |
+| Tashkent Design Week | `designweekuz` | Design fairs and talks |
+| Global Jewelry Fair | `jewelryfair.uz` | Jewellery exhibitions and exhibitor notices |
+| Afisha.uz | `afishauzb` | Editorial discovery of design fairs and exhibitions |
+
+Fresh local captures returned 12 public posts each from Goethe-Institut Uzbekistan, Navoiy Tourism and Uzbekistan
+Travel. Goethe adds arts programmes, Navoiy adds regional festivals and design calls, and Uzbekistan Travel adds
+TITF programmes. [Goethe calendar](https://www.goethe.de/ins/uz/de/m/ver.cfm) · [Official regional channels](https://api-portal.gov.uz/uploads/146/2025/12/30/b892229e-d050-2c7f-5c4b-167fc4d13c79_media_29997.pdf) · [Uzbekistan Travel](https://uzbekistan.travel/en/o/take-part-actions-promoting-tourism-potential-uzbekistan/)
+
+Meta refused the Qashqadaryo Tourism, Iteca and Textile Association probes. The sampled Craft & Culture handle
+returned a different publisher, so the registry omits it.
 
 | Source | Collection decision | Evidence limit |
 |---|---|---|

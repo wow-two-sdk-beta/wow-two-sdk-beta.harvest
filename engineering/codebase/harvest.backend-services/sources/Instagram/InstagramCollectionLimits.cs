@@ -14,6 +14,15 @@ public static class InstagramCollectionLimits
     /// <summary>The internal page guard when short provider pages cannot satisfy the post budget.</summary>
     public const int MaximumPages = PipelineConstants.MaxPagesCap;
 
+    internal const int DefaultRequestsPerHour = 120;
+    internal const int MaximumRequestsPerHour = 720;
+
+    internal static TimeSpan RequestGap(int requestsPerHour)
+    {
+        int allowed = requestsPerHour is >= 1 and <= MaximumRequestsPerHour ? requestsPerHour : DefaultRequestsPerHour;
+        return TimeSpan.FromMilliseconds((3_600_000 + allowed - 1) / allowed);
+    }
+
     /// <summary>Reads the saved post budget or preserves an older pipeline's effective page-based bound.</summary>
     /// <param name="limits">The stored or frozen pipeline limits.</param>
     /// <returns>The explicit post budget, or the legacy page-size product capped by the engine's item maximum.</returns>

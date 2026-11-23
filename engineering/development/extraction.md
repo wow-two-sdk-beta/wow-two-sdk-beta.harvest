@@ -78,6 +78,8 @@ Prompt text lives in the shared AI database; keep drafts outside the repository.
 - `{{postedAt}}` renders as for tagging (`post-tags.md`): an unknown publication date reads the post's first capture.
 - The prompt asks for quotes copied exactly from the title, the text or the attribute lines: the check is verbatim, on
   whole tokens, and on the same scrubbed text.
+- Quote the calendar date for each stated event occurrence. Minute precision needs a contiguous quote that also
+  contains the time. If those cues cannot fit in one exact quote of up to 300 characters, ask for day precision.
 
 ```sh
 dotnet HarvestSources.Api.dll extract prompt --use-case event --file /private/path/extract-event-draft.json --by operator
