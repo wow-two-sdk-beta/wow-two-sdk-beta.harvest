@@ -44,6 +44,18 @@ public sealed class OlxSellerPhonesTests
         post.FieldSources.Should().NotContainKey("contacts");
     }
 
+    [Theory]
+    [InlineData("<a href='tel:+998937654321'>Call</a>")]
+    [InlineData("Call")]
+    public async Task Read_ShouldChangeTheContentProjection_WhenThePublishedPhoneLinkChanges(string newContact)
+    {
+        var reader = new OlxCaptureReader();
+        Capture original = Value(await reader.ReadAsync(Document(Page("Rustam", "", "<a href='tel:+998901234567'>Call</a>")))).Captures.Single();
+        Capture updated = Value(await reader.ReadAsync(Document(Page("Rustam", "", newContact)))).Captures.Single();
+
+        updated.ContentProjection.Should().NotBe(original.ContentProjection);
+    }
+
     private static string Page(string seller, string parameters, string description) =>
         "<html lang='ru'><div data-testid='offer_title'><h4>Oak desk</h4></div>"
         + "<div data-testid='ad_description'><h3>Description</h3><div>" + description + "</div></div>"

@@ -209,7 +209,7 @@ public sealed partial class BirBirCaptureReader : ICaptureReader, IFetchDestinat
         var image = Property(product, "image");
         var entries = image.ValueKind == JsonValueKind.Array ? image.EnumerateArray().ToArray() : [image];
         return entries.Where(item => item.ValueKind == JsonValueKind.String).Select(item => item.GetString()).OfType<string>()
-            .Where(BirBirListingUrls.IsImage).Distinct(StringComparer.Ordinal).Take(BirBirSourceFields.ImageLimit).ToArray();
+            .Where(BirBirListingUrls.IsImage).Distinct(StringComparer.Ordinal).ToArray();
     }
 
     private static string? ElementText(IDocument document, string id, string? child = null)

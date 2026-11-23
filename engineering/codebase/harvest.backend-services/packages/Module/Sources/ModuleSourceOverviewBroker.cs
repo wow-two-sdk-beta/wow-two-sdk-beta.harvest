@@ -171,7 +171,8 @@ internal sealed partial class ModuleSourceOverviewBroker(
                         ELSE @asset_prefix || a.id::text END FROM jsonb_array_elements(CASE WHEN jsonb_typeof(p.base->'media')='array'
                         THEN p.base->'media' ELSE '[]'::jsonb END) WITH ORDINALITY m(value,position)
                     LEFT JOIN harvest_source_assets a ON a.source_id=@source AND a.kind='image' AND a.origin_url=m.value->>'url'
-                    WHERE m.value->>'kind'='image' AND m.value->>'url' IS NOT NULL ORDER BY m.position LIMIT @images)) ELSE ARRAY[]::text[] END,
+                    WHERE m.value->>'kind'='image' AND m.value->>'url' IS NOT NULL
+                    ORDER BY m.position LIMIT CASE WHEN p.kind='listing' THEN NULL ELSE @images END)) ELSE ARRAY[]::text[] END,
                 coalesce(nullif(fl.locale, ''), nullif(p.base->'language'->>'code', 'und')),
                 CASE WHEN @listing AND p.kind='listing' THEN COALESCE(reading.fields,p.base)::text END,
                 dr.id,dr.post_id,dr.url,d.match,d.similarity

@@ -294,7 +294,8 @@ public sealed class FakeSourceOverviewBroker(
                     EndsAt = post.Base.Dates.FirstOrDefault(date => date.Role == DateRole.End)?.Value,
                     PostedAt = post.Base.PostedAt?.Value,
                     Language = post.Base.Language is { Code: var code } && code != "und" ? code : null,
-                    ImageUrls = [.. post.Base.Media.Where(media => media.Kind == MediaKind.Image).Select(media => media.Url).Take(SourceConstants.MaxPostImages)],
+                    ImageUrls = [.. post.Base.Media.Where(media => media.Kind == MediaKind.Image).Select(media => media.Url)
+                        .Take(post.Base.Kind == PostKind.Listing ? int.MaxValue : SourceConstants.MaxPostImages)],
                     Url = first.Url,
                     ImageUrl = post.Base.Media.FirstOrDefault(media => media.Kind == MediaKind.Image)?.Url,
                 });

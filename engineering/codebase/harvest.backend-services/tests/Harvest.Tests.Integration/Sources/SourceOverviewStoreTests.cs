@@ -104,6 +104,24 @@ public sealed class SourceOverviewStoreTests
     }
 
     [Fact]
+    public async Task ListSourcePosts_ShouldKeepTheFullListingGallery()
+    {
+        await using var host = await SourceHost.StartAsync(DayOne);
+        var source = await RegisterAsync(host);
+        var images = Enumerable.Range(1, SourceConstants.MaxPostImages + 4)
+            .Select(index => new PostMedia { Kind = MediaKind.Image, Url = $"https://{Handle}/photo-{index}.jpg" }).ToArray();
+        SourceHost.Value(await host.Posts.SaveCaptureAsync(host.ContainerId, source, null, host.Capture(Handle, "listing", "A listing"),
+            SourceHost.Envelope("Listing", "A listing") with { Kind = PostKind.Listing, Media = images }));
+        SourceHost.Value(await host.Posts.SaveCaptureAsync(host.ContainerId, source, null, host.Capture(Handle, "event", "An event"),
+            SourceHost.Envelope("Event", "An event") with { Media = images }));
+
+        var posts = SourceHost.Value(await host.Overview.ListSourcePostsAsync(source));
+
+        posts.Single(post => post.Kind == PostKind.Listing).ImageUrls.Should().Equal(images.Select(image => image.Url));
+        posts.Single(post => post.Kind == PostKind.Event).ImageUrls.Should().Equal(images.Take(SourceConstants.MaxPostImages).Select(image => image.Url));
+    }
+
+    [Fact]
     public async Task ListSourcePosts_ShouldListNewestFirst_WithTheSectionThatFirstCapturedEach()
     {
         await using var host = await SourceHost.StartAsync(DayOne);

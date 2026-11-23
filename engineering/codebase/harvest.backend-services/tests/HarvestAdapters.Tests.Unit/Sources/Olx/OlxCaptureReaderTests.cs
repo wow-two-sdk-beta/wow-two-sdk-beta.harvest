@@ -183,6 +183,27 @@ public sealed class OlxCaptureReaderTests
     }
 
     [Fact]
+    public async Task Read_ShouldKeepTheFullNativeGallery_WhenThePageShowsOnlyItsCover()
+    {
+        const string cover = "https://frankfurt.apollo.olxcdn.com/v1/files/cover-UZ/image";
+        const string second = "https://frankfurt.apollo.olxcdn.com/v1/files/second-UZ/image;s=1000x750";
+        const string third = "https://frankfurt.apollo.olxcdn.com/v1/files/third-UZ/image;s=1000x750";
+        string state = JsonSerializer.Serialize(new
+        {
+            ad = new { ad = new { id = 1234, url = Ad, photos = new[] { cover + ";s=1000x750", second, third, "https://evil.test/photo.jpg" } } },
+        });
+        string html = Visible() + $"<img data-testid='swiper-image' src='{cover}'>"
+            + "<script>window.__PRERENDERED_STATE__=" + JsonSerializer.Serialize(state) + ";</script>";
+
+        Capture capture = Value(await new OlxCaptureReader().ReadAsync(Document(html))).Captures.Single();
+        PostEnvelope post = Value(await new RulesPostExtractor().ExtractAsync(capture, new() { Family = SourceFamily.Site }));
+
+        capture.Media.Select(photo => photo.Url).Should().Equal(cover, second, third);
+        capture.Media.Select(photo => photo.Position).Should().Equal(0, 1, 2);
+        post.Media.Select(photo => photo.Url).Should().Equal(cover, second, third);
+    }
+
+    [Fact]
     public async Task Read_ShouldPreservePartialDataAndLeaveRelativePublicationTimeUnknown()
     {
         Capture capture = Value(await new OlxCaptureReader().ReadAsync(Document("<div data-testid='offer_title'><h4>Desk</h4></div><span data-testid='ad-posted-at'>Today 10:00</span>"))).Captures.Single();

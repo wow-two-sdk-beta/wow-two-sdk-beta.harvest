@@ -52,8 +52,8 @@ public sealed record SourcePostModel
     /// <summary>Gets the first image address, using the private stored copy when available.</summary>
     public string? ImageUrl { get; init; }
 
-    /// <summary>Gets the post's image addresses in order, at most
-    /// <see cref="SourceConstants.MaxPostImages"/>; empty when it has none. The first is <see cref="ImageUrl"/>.</summary>
+    /// <summary>Gets the post's image addresses in order. Listings include their full gallery. Other posts include at most
+    /// <see cref="SourceConstants.MaxPostImages"/>. The first address is <see cref="ImageUrl"/>.</summary>
     public IReadOnlyList<string> ImageUrls { get; init; } = [];
 
     /// <summary>Gets the essential housing facts for a card, when a housing projection exists.</summary>

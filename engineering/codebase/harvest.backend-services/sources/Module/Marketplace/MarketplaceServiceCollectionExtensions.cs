@@ -6,6 +6,7 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 using WoW.Two.Sdk.Beta.Be.Harvest.Steps;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.BirBir;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Domtut;
+using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Hata;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Joymee;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Olx;
 
@@ -21,6 +22,7 @@ public static class MarketplaceServiceCollectionExtensions
         services.AddHarvestWebBroker<OlxSourceAdapter, OlxCaptureReader>();
         services.AddHarvestWebBroker<BirBirSourceAdapter, BirBirCaptureReader>();
         services.AddHarvestWebBroker<DomtutSourceAdapter, DomtutCaptureReader>();
+        services.AddHarvestWebBroker<HataSourceAdapter, HataCaptureReader>();
         services.AddHarvestWebBroker<JoymeeSourceAdapter, JoymeeCaptureReader>();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IDeliveryPostFilter, MarketplaceListingFilter>());
         services.TryAddKeyedScoped<ICaptureProcessor, RentalTermsProcessor>(RentalTermsProcessor.ProcessorKey);

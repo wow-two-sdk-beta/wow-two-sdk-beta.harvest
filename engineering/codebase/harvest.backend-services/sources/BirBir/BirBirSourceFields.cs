@@ -19,7 +19,6 @@ public sealed record BirBirSourceFields
     internal const int LabelLimit = 256;
     internal const int PriceTextLimit = 128;
     internal const int DateTextLimit = 80;
-    internal const int ImageLimit = 30;
     internal const int AttributeLimit = 40;
     internal const int AttributeNameLimit = 100;
     internal const int AttributeValueLimit = 500;
@@ -77,7 +76,7 @@ public sealed record BirBirSourceFields
     /// <summary>Gets the date on which the structured offer says it became valid.</summary>
     public DateOnly? OfferValidFrom { get; init; }
     /// <summary>Gets the distinct public listing image URLs.</summary>
-    [MaxLength(ImageLimit)] public required IReadOnlyList<string> ImageUrls { get; init; }
+    public required IReadOnlyList<string> ImageUrls { get; init; }
     /// <summary>Gets published feature labels and values, including labels whose meanings have yet to be reviewed.</summary>
     public required IReadOnlyDictionary<string, string> Attributes { get; init; }
 

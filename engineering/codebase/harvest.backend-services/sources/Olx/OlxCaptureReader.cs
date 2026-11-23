@@ -85,7 +85,8 @@ public sealed partial class OlxCaptureReader : ICaptureReader, ILinkAvailability
         string? postedRaw = First(html, "[data-testid='ad-posted-at'], time[datetime]");
         DateTimeOffset? published = Timestamp(matchedNative ? OlxEmbeddedData.Text(native, "createdTime") : OlxEmbeddedData.Text(original, "datePosted"));
         Dictionary<string, string> attributes = Attributes(html);
-        CaptureMedia[] media = Images(html, original, document.FinalUrl);
+        JsonElement? identifiedNative = matchedNative ? native : null;
+        CaptureMedia[] media = Images(html, original, identifiedNative, document.FinalUrl);
         CaptureLink[] links = body?.QuerySelectorAll("a[href]").Select(anchor => new { anchor, url = Web(document.FinalUrl, anchor.GetAttribute("href")) })
             .Where(item => item.url is not null).Select(item => new CaptureLink { Url = item.url!, Text = Clean(item.anchor.TextContent) })
             .DistinctBy(link => link.Url).ToArray() ?? [];
@@ -94,7 +95,6 @@ public sealed partial class OlxCaptureReader : ICaptureReader, ILinkAvailability
             .Select(href => Uri.UnescapeDataString(href[(href.IndexOf(':') + 1)..].Split('?')[0])).ToArray() ?? [];
         Uri? declared = OlxUrls.Resolve(document.FinalUrl, html.QuerySelector("link[rel='canonical']")?.GetAttribute("href"));
         string canonical = OlxUrls.DetailUrl(declared is not null && OlxUrls.AdKey(declared) == key ? declared : document.FinalUrl);
-        JsonElement? identifiedNative = matchedNative ? native : null;
         JsonElement normalized = Product(original, title, text, canonical, seller, priceText, identifiedNative, media);
         string locale = html.DocumentElement?.GetAttribute("lang") ?? (document.FinalUrl.AbsolutePath.Contains("/oz/", StringComparison.Ordinal) ? "uz" : "ru");
         string? categoryPath = CategoryPath(html, document.FinalUrl, identifiedNative);
@@ -130,6 +130,8 @@ public sealed partial class OlxCaptureReader : ICaptureReader, ILinkAvailability
             {
                 parserVersion = ParserVersion, key, normalized = StableValue(normalized), attributes, published, links,
                 categoryPath, priceText, facts = StableFacts(identifiedNative),
+                contacts = contacts.Where(contact => !string.IsNullOrWhiteSpace(contact))
+                    .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal),
             }),
         };
         return Result<CaptureReadResult>.Ok(new() { Captures = [capture], Complete = false });
@@ -314,13 +316,11 @@ public sealed partial class OlxCaptureReader : ICaptureReader, ILinkAvailability
         return fields;
     }
 
-    private static CaptureMedia[] Images(IDocument html, JsonElement? original, Uri basis)
+    private static CaptureMedia[] Images(IDocument html, JsonElement? original, JsonElement? native, Uri basis)
     {
-        var candidates = html.QuerySelectorAll("[data-testid='swiper-image'], .swiper img, meta[property='og:image']")
-            .Select(node => node.GetAttribute("content") ?? node.GetAttribute("data-src") ?? node.GetAttribute("src")).ToList();
-        if (original is { } node && node.TryGetProperty("image", out JsonElement image))
-            candidates.AddRange((image.ValueKind == JsonValueKind.Array ? image.EnumerateArray().ToArray() : [image])
-                .Select(value => value.ValueKind == JsonValueKind.String ? value.GetString() : OlxEmbeddedData.Text(value, "url")));
+        var candidates = PhotoUrls(native, "photos").Concat(PhotoUrls(original, "image"))
+            .Concat(html.QuerySelectorAll("[data-testid='swiper-image'], .swiper img, meta[property='og:image']")
+                .Select(node => node.GetAttribute("content") ?? node.GetAttribute("data-src") ?? node.GetAttribute("src")));
         var urls = new Dictionary<string, Uri>(StringComparer.Ordinal);
         foreach (string? raw in candidates)
         {
@@ -330,6 +330,14 @@ public sealed partial class OlxCaptureReader : ICaptureReader, ILinkAvailability
             if (!urls.TryGetValue(key, out Uri? current) || current.AbsoluteUri.Contains(";s=", StringComparison.Ordinal) && !uri.AbsoluteUri.Contains(";s=", StringComparison.Ordinal)) urls[key] = uri;
         }
         return urls.Values.Select((uri, index) => new CaptureMedia { Url = uri.AbsoluteUri, Kind = MediaKind.Image, Position = index }).ToArray();
+    }
+
+    private static IEnumerable<string?> PhotoUrls(JsonElement? owner, string field)
+    {
+        if (owner is not { ValueKind: JsonValueKind.Object } node || !node.TryGetProperty(field, out var photos))
+            return [];
+        return (photos.ValueKind == JsonValueKind.Array ? photos.EnumerateArray().ToArray() : [photos])
+            .Select(photo => photo.ValueKind == JsonValueKind.String ? photo.GetString() : OlxEmbeddedData.Text(photo, "url"));
     }
 
     private static string? First(IDocument html, string selectors)
