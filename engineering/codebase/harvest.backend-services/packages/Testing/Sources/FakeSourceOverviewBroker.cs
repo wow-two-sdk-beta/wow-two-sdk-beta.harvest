@@ -53,7 +53,8 @@ public sealed class FakeSourceOverviewBroker(
         {
             links = posts.Links(containerId);
             firstPipelines = FirstPipelines(links.Where(link => posts.Find(link.PostId) is { MergedInto: null }));
-            processed = links.Where(link => answers.ContainsKey(link.PostId) && posts.Find(link.PostId) is { MergedInto: null })
+            processed = links.Where(link => answers.GetValueOrDefault(link.PostId) is { Status: "done" }
+                && posts.Find(link.PostId) is { MergedInto: null })
                 .GroupBy(link => link.SourceId).ToDictionary(group => group.Key, group => group.Select(link => link.PostId).Distinct().Count());
         }
 
@@ -157,7 +158,7 @@ public sealed class FakeSourceOverviewBroker(
                 seed = answers.GetValueOrDefault(listed.PostId);
                 classification = posts.Find(listed.PostId)?.Base.Classification;
             }
-            if (seed is null)
+            if (seed is not { Status: "done" })
                 continue;
             var post = Processed(listed, seed, classification);
             if ((query.EntityType is null || post.Tags.EntityType == query.EntityType)
@@ -186,7 +187,7 @@ public sealed class FakeSourceOverviewBroker(
             seed = answers.GetValueOrDefault(postId);
             classification = posts.Find(postId)?.Base.Classification;
         }
-        if (listed is null || seed is null)
+        if (listed is null || seed is not { Status: "done" })
             return Result<SourceProcessedPostDetailsModel>.Fail(SourceProcessedQueryRules.PostNotFound(sourceId, postId));
 
         var post = Processed(listed, seed, classification);

@@ -344,8 +344,8 @@ public abstract class SourceOverviewBrokerConformance
         Single(await Overview.ListOverviewAsync(context.Container)).ProcessedCount.Should().Be(all.Total);
     }
 
-    /// <summary>A source's processed count is the total of its unfiltered processed list: its non-merged posts with a tags
-    /// answer of any status, never another source's posts or a post still untagged.</summary>
+    /// <summary>A source's processed count is the total of its unfiltered processed list: its non-merged posts with a
+    /// completed tags answer.</summary>
     [Fact]
     public async Task ListOverview_ShouldCountProcessedPostsPerSource_ByTheProcessedListsRule()
     {
@@ -364,8 +364,9 @@ public abstract class SourceOverviewBrokerConformance
 
         var own = overviews.Single(overview => overview.SourceId == context.Source.Id);
         own.PostCount.Should().Be(3);
-        own.ProcessedCount.Should().Be(2);
+        own.ProcessedCount.Should().Be(1);
         overviews.Single(overview => overview.SourceId == other.Id).ProcessedCount.Should().Be(1);
+        Error(await Overview.GetSourceProcessedPostAsync(context.Source.Id, failed)).Type.Should().Be(AppErrorType.NotFound);
         foreach (var overview in overviews)
             overview.ProcessedCount.Should().Be(Value(await Overview.QuerySourceProcessedAsync(overview.SourceId, new())).Total);
         var none = await SourceAsync(context.Container, "d-" + Unique() + ".example");
