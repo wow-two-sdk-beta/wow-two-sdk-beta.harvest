@@ -7,21 +7,28 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Capabilities;
 internal sealed class DirectFetchTransportFactory(IHttpClientFactory clients) : IFetchTransportFactory
 {
     public ValueTask<IFetchTransportLease> AcquireAsync(
+        Uri destination, CookieContainer? runCookies = null, CancellationToken cancellationToken = default) =>
+        AcquireAsync(destination, runCookies, allowPrefix: false, cancellationToken);
+
+    public ValueTask<IFetchTransportLease> AcquireAsync(
         Uri destination,
-        CookieContainer? runCookies = null,
-        CancellationToken cancellationToken = default)
+        CookieContainer? runCookies,
+        bool allowPrefix,
+        CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        IFetchTransportLease lease = new DirectLease(clients.CreateClient(HarvestFetchClientFactory.TransportName), destination, runCookies);
+        string transport = allowPrefix ? HarvestFetchClientFactory.PrefixTransportName : HarvestFetchClientFactory.TransportName;
+        IFetchTransportLease lease = new DirectLease(clients.CreateClient(transport), destination, runCookies, allowPrefix);
         return ValueTask.FromResult(lease);
     }
 
-    private sealed class DirectLease(HttpClient client, Uri origin, CookieContainer? cookies) : IFetchTransportLease
+    private sealed class DirectLease(HttpClient client, Uri origin, CookieContainer? cookies, bool allowPrefix) : IFetchTransportLease
     {
         public HttpClient Client { get; } = client;
         public CookieContainer? Cookies { get; } = cookies;
         public bool IsPrivate => Cookies is not null;
         public string RouteKey => "direct";
+        public bool SupportsEarlyBodyStop => allowPrefix;
 
         public bool Allows(Uri destination)
         {

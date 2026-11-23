@@ -18,7 +18,8 @@ internal sealed class IntegrationFetchLease(
     OutboundProxyLease? proxy,
     TimeProvider clock,
     bool ownsClient = true,
-    bool cachesRobotsByRoute = false) : IFetchTransportLease
+    bool cachesRobotsByRoute = false,
+    bool supportsEarlyBodyStop = false) : IFetchTransportLease
 {
     private int disposed;
     public HttpClient Client { get; } = client;
@@ -26,6 +27,7 @@ internal sealed class IntegrationFetchLease(
     public bool IsPrivate { get; } = isPrivate;
     public string RouteKey { get; } = routeKey;
     public bool CachesRobotsByRoute { get; } = cachesRobotsByRoute;
+    public bool SupportsEarlyBodyStop { get; } = supportsEarlyBodyStop;
 
     public bool Allows(Uri destination)
     {

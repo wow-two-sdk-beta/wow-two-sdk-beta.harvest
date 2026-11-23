@@ -16,6 +16,52 @@ public sealed class OlxCaptureReaderTests
 {
     private const string Ad = "https://www.olx.uz/d/oz/obyavlenie/desk-IDAb12.html";
     private const string Search = "https://www.olx.uz/oz/nedvizhimost/kvartiry/tashkent/?search%5Bfilter_float_price%3Ato%5D=10000000&q=desk";
+    private const string CatalogPrefix = """
+        <form data-testid="listing-filters-form">
+          <div data-testid="listing-grid"><div><a href="/d/obyavlenie/desk-IDAb12.html">Desk</a></div>
+            <a href="/d/obyavlenie/chair-IDCd34.html">Chair</a>
+          </div>
+          <section><div data-testid="pagination-wrapper"><ul data-testid="pagination-list">
+            <a data-testid="pagination-forward" href="?page=2">Next</a>
+          </ul></div>
+        """;
+
+    [Fact]
+    public async Task CatalogPrefix_ShouldPreserveTheWholePageDiscovery_AndContinuation()
+    {
+        var reader = new OlxCaptureReader();
+        var body = Encoding.UTF8.GetBytes(CatalogPrefix);
+        reader.AllowsPrefix(new Uri(Search)).Should().BeTrue();
+        reader.AllowsPrefix(new Uri(Ad)).Should().BeFalse();
+        reader.ShouldStopReading(new Uri(Search), body, body.Length - 3).Should().BeTrue("the wrapper close can span reads");
+
+        var prefix = Value(await reader.ReadAsync(Document(CatalogPrefix, Search)));
+        var full = Value(await reader.ReadAsync(Document(CatalogPrefix + """
+            </section></form><script>window.__PRERENDERED_STATE__ = {"other":"hydration"};</script>
+            """, Search)));
+
+        prefix.Discovered.Should().Equal(full.Discovered);
+        prefix.Discovered.Where(item => !item.IsListing).Should().HaveCount(2);
+        prefix.Discovered.Single(item => item.IsListing).Url.Should().EndWith("&page=2");
+        prefix.Complete.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("</ul></div>", "</ul>")]
+    [InlineData("</ul></div>", "</ul><script>let text = '</ul></div>';</script>")]
+    [InlineData("</div>\n  <section>", "<section>")]
+    [InlineData("data-testid=\"pagination-forward\"", "data-testid=\"pagination-forward\" aria-disabled=\"true\"")]
+    [InlineData("href=\"?page=2\"", "href=\"?page=1\"")]
+    [InlineData("data-testid=\"listing-filters-form\"", "data-testid=\"different-form\"")]
+    [InlineData("<form", "<div data-testid=\"no-results\"></div><form")]
+    public void CatalogPrefix_ShouldContinueReading_WhenItsMarkupIsInconclusive(string before, string after)
+    {
+        string changed = CatalogPrefix.Replace(before, after, StringComparison.Ordinal);
+        changed.Should().NotBe(CatalogPrefix);
+        var reader = new OlxCaptureReader();
+
+        reader.ShouldStopReading(new Uri(Search), Encoding.UTF8.GetBytes(changed), 0).Should().BeFalse();
+    }
 
     [Theory]
     [InlineData("http://www.olx.uz/oz/")]

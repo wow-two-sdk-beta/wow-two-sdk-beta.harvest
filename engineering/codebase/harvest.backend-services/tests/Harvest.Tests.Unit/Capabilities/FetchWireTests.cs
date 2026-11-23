@@ -81,6 +81,56 @@ public sealed class FetchWireTests
         good.Document!.Body.ToArray().Should().Equal(Page);
     }
 
+    [Fact]
+    public async Task Fetch_ShouldAbandonTheUnreadGzipTail_AndStillReadDetailsInFull()
+    {
+        byte[] prefix = [.. Page, .. "</catalog-prefix>"u8];
+        using var compressed = new MemoryStream();
+        int prefixWireBytes;
+        using (var gzip = new GZipStream(compressed, CompressionLevel.Fastest, leaveOpen: true))
+        {
+            gzip.Write(prefix);
+            gzip.Flush();
+            prefixWireBytes = (int)compressed.Length;
+            gzip.Write(Page);
+        }
+        byte[] gzipBody = compressed.ToArray();
+        byte[] full = Reply(gzipBody, "gzip");
+        byte[] stalled = full[..(full.Length - gzipBody.Length + prefixWireBytes)];
+
+        // Leave the advertised tail unsent. Ending the prefix read must close the socket without waiting for it.
+        await using var server = new WireServer(path => path == "/catalog" ? stalled : full);
+        var host = new FetchTestHost();
+        using var client = new HttpClient(new SocketsHttpHandler
+        {
+            UseCookies = false, AllowAutoRedirect = false, UseProxy = false,
+            MaxResponseDrainSize = 0, ResponseDrainTimeout = TimeSpan.Zero,
+        }) { Timeout = Timeout.InfiniteTimeSpan };
+        host.TransportFactory = new SharedClientRoutes(client, supportsEarlyBodyStop: true);
+        var prefixPolicy = new CatalogPrefixPolicy();
+
+        var catalog = await host.Fetcher.FetchAsync(Request(server, "/catalog") with { HtmlPrefixPolicy = prefixPolicy });
+        catalog.Outcome.Should().Be(FetchOutcome.Ok);
+        catalog.Document!.IsBodyPrefix.Should().BeTrue();
+        catalog.Document.Body.ToArray().Should().Equal(prefix);
+        catalog.Usage.Bytes.Should().Be(prefixWireBytes).And.BeLessThan(gzipBody.Length);
+        await server.Disconnected.WaitAsync(TimeSpan.FromSeconds(1.5));
+
+        var detail = await host.Fetcher.FetchAsync(Request(server, "/detail") with { HtmlPrefixPolicy = prefixPolicy });
+        detail.Outcome.Should().Be(FetchOutcome.Ok);
+        detail.Document!.IsBodyPrefix.Should().BeFalse();
+        detail.Document.Body.ToArray().Should().Equal([.. prefix, .. Page]);
+        detail.Usage.Bytes.Should().Be(gzipBody.Length);
+        server.Requests.Select(request => request.Path).Should().Equal("/catalog", "/detail");
+    }
+
+    private sealed class CatalogPrefixPolicy : IFetchHtmlPrefixPolicy
+    {
+        public bool AllowsPrefix(Uri destination) => destination.AbsolutePath == "/catalog";
+        public bool ShouldStopReading(Uri destination, ReadOnlySpan<byte> prefix, int previousLength) =>
+            prefix.IndexOf("</catalog-prefix>"u8) >= 0;
+    }
+
     private static FetchRequest Request(WireServer server, string path) =>
         new() { Uri = new Uri($"http://127.0.0.1:{server.Port}{path}"), RobotsPolicy = RobotsPolicy.Ignore };
 
@@ -123,18 +173,19 @@ public sealed class FetchWireTests
     }
 
     /// <summary>Reaches a loopback server through one client that outlives each fetch's lease, as a shared proxy client does.</summary>
-    private sealed class SharedClientRoutes(HttpClient client) : IFetchTransportFactory
+    private sealed class SharedClientRoutes(HttpClient client, bool supportsEarlyBodyStop = false) : IFetchTransportFactory
     {
         public ValueTask<IFetchTransportLease> AcquireAsync(Uri destination, CookieContainer? runCookies = null, CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<IFetchTransportLease>(new Route(client, destination));
+            ValueTask.FromResult<IFetchTransportLease>(new Route(client, destination, supportsEarlyBodyStop));
     }
 
-    private sealed class Route(HttpClient client, Uri origin) : IFetchTransportLease
+    private sealed class Route(HttpClient client, Uri origin, bool supportsEarlyBodyStop) : IFetchTransportLease
     {
         public HttpClient Client => client;
         public CookieContainer? Cookies => null;
         public bool IsPrivate => true;
         public string RouteKey => "wire";
+        public bool SupportsEarlyBodyStop => supportsEarlyBodyStop;
         public bool Allows(Uri destination) => destination.Authority == origin.Authority;
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
@@ -146,6 +197,7 @@ public sealed class FetchWireTests
         private readonly CancellationTokenSource stop = new();
         private readonly Func<string, byte[]> respond;
         private readonly Task accepting;
+        private readonly TaskCompletionSource disconnected = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int connections;
 
         internal WireServer(Func<string, byte[]> respond)
@@ -157,6 +209,7 @@ public sealed class FetchWireTests
 
         internal int Port => ((IPEndPoint)listener.LocalEndpoint).Port;
         internal int Connections => Volatile.Read(ref connections);
+        internal Task Disconnected => disconnected.Task;
         internal ConcurrentQueue<(string Path, string? AcceptEncoding)> Requests { get; } = [];
 
         private async Task AcceptAsync()
@@ -188,7 +241,10 @@ public sealed class FetchWireTests
                     {
                         int read = await stream.ReadAsync(chunk, stop.Token);
                         if (read == 0)
+                        {
+                            disconnected.TrySetResult();
                             return;
+                        }
                         head.AddRange(chunk.AsSpan(0, read).ToArray());
                         string text = Encoding.ASCII.GetString([.. head]);
                         int end;

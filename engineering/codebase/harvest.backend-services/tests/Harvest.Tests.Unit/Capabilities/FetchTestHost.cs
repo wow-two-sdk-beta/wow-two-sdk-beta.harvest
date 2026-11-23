@@ -13,6 +13,7 @@ internal sealed class FetchTestHost
     internal readonly ScriptedTransport Transport = new();
     internal readonly RouteRobotsCache RouteRobots = new();
     internal IFetchTransportFactory? TransportFactory { get; set; }
+    internal bool SupportsEarlyBodyStop { get; set; }
     internal HarvestFetchOptions Options { get; } = new() { MinimumDelay = TimeSpan.Zero };
     internal IPageFetcher Fetcher => new PageFetcher(new Factory(this), Clock);
 
@@ -32,23 +33,24 @@ internal sealed class FetchTestHost
     private sealed class Factory(FetchTestHost host) : IFetchClientFactory
     {
         public HttpClient CreateClient(CookieContainer? cookies = null) => new(new HarvestFetchHandler(
-            host.TransportFactory ?? new TestTransportFactory(host.Transport), host.Hosts, host.Options, new GenericChallengeDetector(host.Clock), host.Clock, cookies,
+            host.TransportFactory ?? new TestTransportFactory(host.Transport, host.SupportsEarlyBodyStop), host.Hosts, host.Options, new GenericChallengeDetector(host.Clock), host.Clock, cookies,
             host.RouteRobots));
     }
 
-    private sealed class TestTransportFactory(HttpMessageHandler handler) : IFetchTransportFactory
+    private sealed class TestTransportFactory(HttpMessageHandler handler, bool supportsEarlyBodyStop) : IFetchTransportFactory
     {
         public ValueTask<IFetchTransportLease> AcquireAsync(Uri destination, CookieContainer? runCookies = null, CancellationToken cancellationToken = default)
         {
-            return ValueTask.FromResult<IFetchTransportLease>(new Lease(new HttpClient(handler, disposeHandler: false), destination, runCookies));
+            return ValueTask.FromResult<IFetchTransportLease>(new Lease(new HttpClient(handler, disposeHandler: false), destination, runCookies, supportsEarlyBodyStop));
         }
 
-        private sealed class Lease(HttpClient client, Uri origin, CookieContainer? cookies) : IFetchTransportLease
+        private sealed class Lease(HttpClient client, Uri origin, CookieContainer? cookies, bool supportsEarlyBodyStop) : IFetchTransportLease
         {
             public HttpClient Client => client;
             public CookieContainer? Cookies => cookies;
             public bool IsPrivate => Cookies is not null;
             public string RouteKey => "test";
+            public bool SupportsEarlyBodyStop => supportsEarlyBodyStop;
             public bool Allows(Uri destination) => destination.IdnHost == origin.IdnHost;
             public ValueTask DisposeAsync()
             {

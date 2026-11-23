@@ -5,12 +5,68 @@ using WoW.Two.Sdk.Beta.Be.Harvest.Capabilities.Fetching;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Integrations.Proxy;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Integrations.Routing;
 using WoW.Two.Sdk.Beta.Be.HarvestAdapters.Integrations.Sessions;
+using WoW.Two.Sdk.Beta.Be.Http.Safety;
 
 namespace HarvestAdapters.Tests.Unit.Integrations;
 
 public sealed class ConfiguredFetchTransportTests
 {
     private static readonly Uri Source = new("https://source.example.test/event");
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Acquire_ShouldKeepSeparateGuardedPoolsForFullAndPrefixTraffic(bool profile)
+    {
+        var host = new IntegrationTestHost();
+        host.Options.Enabled = true;
+        if (profile)
+        {
+            host.Options.ProxyProfilesJson = """{"fixed":{"server":"https://proxy.example.test:443"}}""";
+            host.Options.LoadProxyProfiles();
+            host.Options.OlxProxyProfile = "fixed";
+        }
+        else
+            host.Options.OlxProxy = new ProxyConnectionOptions { Server = "https://proxy.example.test:443" };
+
+        await using var factory = new ConfiguredFetchTransportFactory(host.Http, Microsoft.Extensions.Options.Options.Create(host.Options),
+            host.Sessions, new GuardedProxyClientFactory(new NoNetworkResolver()), new OutboundProxyBroker(host.Http, host.Clock), host.Clock);
+        var catalog = new Uri("https://www.olx.uz/nedvizhimost/");
+        await using var full = await factory.AcquireAsync(catalog);
+        await using var prefix = await factory.AcquireAsync(catalog, runCookies: null, allowPrefix: true, cancellationToken: default);
+        await using var fullAgain = await factory.AcquireAsync(catalog);
+        await using var prefixAgain = await factory.AcquireAsync(catalog, runCookies: null, allowPrefix: true, cancellationToken: default);
+
+        prefix.SupportsEarlyBodyStop.Should().BeTrue();
+        full.SupportsEarlyBodyStop.Should().BeFalse();
+        prefix.Client.Should().BeSameAs(prefixAgain.Client).And.NotBeSameAs(full.Client);
+        full.Client.Should().BeSameAs(fullAgain.Client);
+        prefix.RouteKey.Should().Be(full.RouteKey);
+        prefix.CachesRobotsByRoute.Should().BeTrue();
+        prefix.Allows(Source).Should().BeFalse();
+        await Assert.ThrowsAnyAsync<HttpRequestException>(async () => await prefix.Client.GetAsync(Source));
+    }
+
+    [Fact]
+    public async Task Acquire_ShouldKeepFullTrafficOnALegacyProxy_WhenAPrefixIsRequested()
+    {
+        var host = new IntegrationTestHost();
+        host.Options.Enabled = true;
+        host.Options.OlxProxy = new ProxyConnectionOptions { Server = "https://proxy.example.test:443" };
+        var catalog = new Uri("https://www.olx.uz/nedvizhimost/");
+        await using var first = await host.Routes.AcquireAsync(catalog);
+        await using var second = await host.Routes.AcquireAsync(catalog, runCookies: null, allowPrefix: true, cancellationToken: default);
+
+        second.SupportsEarlyBodyStop.Should().BeFalse();
+        second.Client.Should().BeSameAs(first.Client);
+        host.Proxies.Calls.Should().ContainSingle();
+    }
+
+    private sealed class NoNetworkResolver : IOutboundAddressResolver
+    {
+        public Task<IPAddress[]> ResolveAsync(string host, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("The guard should reject the destination before resolving it.");
+    }
 
     [Theory]
     [InlineData("https://www.olx.uz")]

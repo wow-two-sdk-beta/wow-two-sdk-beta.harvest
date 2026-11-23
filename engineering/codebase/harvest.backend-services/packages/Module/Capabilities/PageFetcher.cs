@@ -37,6 +37,7 @@ internal sealed class PageFetcher(IFetchClientFactory factory, TimeProvider cloc
                     Headers = response.Headers.Concat(response.Content.Headers)
                         .SelectMany(header => header.Value.Select(value => new KeyValuePair<string, string>(header.Key, value))).ToArray(),
                     Body = body,
+                    IsBodyPrefix = HarvestFetchMetadata.IsBodyPrefix(response),
                     FetchedAtUtc = clock.GetUtcNow()
                 }
             };

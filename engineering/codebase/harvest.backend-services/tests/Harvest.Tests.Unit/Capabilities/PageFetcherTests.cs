@@ -13,6 +13,86 @@ namespace Harvest.Tests.Unit.Capabilities;
 public sealed class PageFetcherTests
 {
     [Fact]
+    public async Task Fetch_ShouldKeepTheGuardAndUseANoDrainClientOnlyForOptedInRequests()
+    {
+        var services = new ServiceCollection();
+        services.AddHarvestFetching();
+        using var provider = services.BuildServiceProvider();
+        var transports = provider.GetRequiredService<IFetchTransportFactory>();
+        var address = new Uri("https://example.com/catalog");
+        await using var full = await transports.AcquireAsync(address);
+        await using var prefix = await transports.AcquireAsync(address, runCookies: null, allowPrefix: true, cancellationToken: default);
+        full.SupportsEarlyBodyStop.Should().BeFalse();
+        prefix.SupportsEarlyBodyStop.Should().BeTrue();
+
+        var handlers = provider.GetRequiredService<IHttpMessageHandlerFactory>();
+        HttpMessageHandler prefixHandler = handlers.CreateHandler(HarvestFetchClientFactory.PrefixTransportName);
+        HttpMessageHandler fullHandler = handlers.CreateHandler(HarvestFetchClientFactory.TransportName);
+        SocketsTransport(prefixHandler).MaxResponseDrainSize.Should().Be(0);
+        SocketsTransport(fullHandler).MaxResponseDrainSize.Should().BeGreaterThan(0);
+
+        // The guarded client refuses a disallowed destination without opening a socket.
+        using var request = new HttpRequestMessage(HttpMethod.Get, "http://127.0.0.1/private");
+        await Assert.ThrowsAnyAsync<HttpRequestException>(async () => await prefix.Client.SendAsync(request));
+
+        static SocketsHttpHandler SocketsTransport(HttpMessageHandler handler)
+        {
+            while (handler is DelegatingHandler { InnerHandler: { } inner })
+                handler = inner;
+            return Assert.IsType<SocketsHttpHandler>(handler);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Fetch_ShouldUseTheFullResponseOnFallback_AndNeverCacheAnEarlyPrefix(bool paced)
+    {
+        var host = new FetchTestHost { SupportsEarlyBodyStop = true };
+        string tail = new string('b', 90000);
+        var catalog = FetchTestHost.Response(body: new string('a', 70000) + "catalog-end" + tail);
+        catalog.Headers.ETag = new EntityTagHeaderValue("\"prefix-v1\"");
+        host.Transport.Responses.Enqueue(catalog);
+        var fallback = FetchTestHost.Response(body: tail);
+        fallback.Headers.ETag = new EntityTagHeaderValue("\"whole-v2\"");
+        host.Transport.Responses.Enqueue(fallback);
+        host.Transport.Responses.Enqueue(FetchTestHost.Response(HttpStatusCode.NotModified, string.Empty));
+        var request = new FetchRequest
+        {
+            Uri = new Uri("https://example.com/catalog"),
+            RobotsPolicy = RobotsPolicy.Ignore,
+            HtmlPrefixPolicy = new MarkerPrefixPolicy(),
+            Pace = paced ? new RequestPace { Gap = TimeSpan.Zero } : null,
+        };
+
+        var prefix = await host.Fetcher.FetchAsync(request);
+        prefix.Outcome.Should().Be(FetchOutcome.Ok);
+        prefix.Document!.IsBodyPrefix.Should().BeTrue();
+        prefix.Usage.Bytes.Should().BeLessThan(160011);
+        prefix.Document.Headers.Should().NotContain(header => header.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)
+            && header.Value != prefix.Document.Body.Length.ToString());
+
+        var whole = await host.Fetcher.FetchAsync(request);
+        whole.Outcome.Should().Be(FetchOutcome.Ok);
+        whole.Document!.IsBodyPrefix.Should().BeFalse();
+        whole.Usage.Bytes.Should().Be(tail.Length);
+        host.Transport.Requests[1].Headers.Should().NotContainKey("If-None-Match");
+
+        var unchanged = await host.Fetcher.FetchAsync(request);
+        unchanged.NotModified.Should().BeTrue();
+        unchanged.Document!.IsBodyPrefix.Should().BeFalse();
+        unchanged.Document.Body.Length.Should().Be(tail.Length);
+        host.Transport.Requests[2].Headers["If-None-Match"].Should().Be("\"whole-v2\"");
+    }
+
+    private sealed class MarkerPrefixPolicy : IFetchHtmlPrefixPolicy
+    {
+        public bool AllowsPrefix(Uri destination) => destination.AbsolutePath == "/catalog";
+        public bool ShouldStopReading(Uri destination, ReadOnlySpan<byte> prefix, int previousLength) =>
+            prefix.IndexOf("catalog-end"u8) >= 0;
+    }
+
+    [Fact]
     public async Task Fetch_ShouldApplyTheSourceRouteRestrictionBeforeTransport()
     {
         var host = new FetchTestHost();

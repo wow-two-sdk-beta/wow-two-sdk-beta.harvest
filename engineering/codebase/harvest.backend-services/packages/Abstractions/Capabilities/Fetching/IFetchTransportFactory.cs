@@ -13,4 +13,16 @@ public interface IFetchTransportFactory
         Uri destination,
         CookieContainer? runCookies = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Acquires a route that can abandon an unread response body when supported.</summary>
+    /// <param name="destination">The initial public page URL.</param>
+    /// <param name="runCookies">The caller's anonymous cookie jar, when supplied.</param>
+    /// <param name="allowPrefix">Whether the request can use a client that skips response draining.</param>
+    /// <param name="cancellationToken">The token that cancels acquisition.</param>
+    ValueTask<IFetchTransportLease> AcquireAsync(
+        Uri destination,
+        CookieContainer? runCookies,
+        bool allowPrefix,
+        CancellationToken cancellationToken) =>
+        AcquireAsync(destination, runCookies, cancellationToken);
 }

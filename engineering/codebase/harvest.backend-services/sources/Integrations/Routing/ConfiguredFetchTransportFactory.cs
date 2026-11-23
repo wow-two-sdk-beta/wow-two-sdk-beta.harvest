@@ -26,17 +26,23 @@ public sealed class ConfiguredFetchTransportFactory(
     public ValueTask DisposeAsync() => shared.DisposeAsync();
 
     /// <inheritdoc />
+    public ValueTask<IFetchTransportLease> AcquireAsync(
+        Uri destination, CookieContainer? runCookies = null, CancellationToken cancellationToken = default) =>
+        AcquireAsync(destination, runCookies, allowPrefix: false, cancellationToken);
+
+    /// <inheritdoc />
     public async ValueTask<IFetchTransportLease> AcquireAsync(
         Uri destination,
-        CookieContainer? runCookies = null,
-        CancellationToken cancellationToken = default)
+        CookieContainer? runCookies,
+        bool allowPrefix,
+        CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (!IntegrationValidation.IsWeb(destination))
             throw new FetchTransportUnavailableException("The source destination is invalid.");
         HarvestIntegrationOptions settings = options.Value;
         if (!settings.Enabled)
-            return Direct(destination, runCookies);
+            return Direct(destination, runCookies, allowPrefix);
         if (settings.Routes is null || settings.Routes.Any(route => route is null
             || !IntegrationValidation.TryOrigin(route.Origin, out _) || route.SessionIds is null))
             throw new FetchTransportUnavailableException("Integration route origins and session lists must be valid.");
@@ -53,7 +59,7 @@ public sealed class ConfiguredFetchTransportFactory(
             });
         }
         if (routes.Count == 0)
-            return Direct(destination, runCookies);
+            return Direct(destination, runCookies, allowPrefix);
         if (routes.Count != 1)
             throw new FetchTransportUnavailableException("Exactly one integration route may match a source origin.");
         FetchRouteOptions route = routes[0];
@@ -72,6 +78,9 @@ public sealed class ConfiguredFetchTransportFactory(
         OutboundProxyLease? allocated = null;
         HttpClient? client = null;
         bool sharedClient = false;
+        bool stopEarly = allowPrefix && (route.Mode == FetchRouteMode.Direct || proxies.SupportsEarlyBodyStop);
+        // Keep the two connection pools distinct. The lease retains the route key for robots and pacing.
+        string poolKey = stopEarly ? route.Key + "/prefix" : route.Key;
         try
         {
             if (route.SessionIds.Count > 0)
@@ -83,14 +92,14 @@ public sealed class ConfiguredFetchTransportFactory(
                 {
                     OutboundProxyProfileOptions fixedProfile = profile;
                     string settingsKey = SharedProxyClients.Settings("profile", fixedProfile.Server, fixedProfile.Username, fixedProfile.Password);
-                    client = await shared.GetAsync(destination, route.Key, settingsKey, async () =>
+                    client = await shared.GetAsync(destination, poolKey, settingsKey, async () =>
                     {
                         // The handler is bound to the lease it is built from, so the shared client keeps a lease of its own, which
                         // no fetch releases.
                         OutboundProxyLease owner = await broker.AcquireAsync(fixedProfile, destination, route.Key, cancellationToken);
                         try
                         {
-                            return new SharedProxyClients.Entry(settingsKey, proxies.CreateClient(owner), owner);
+                            return new SharedProxyClients.Entry(settingsKey, proxies.CreateClient(owner, stopEarly), owner);
                         }
                         catch
                         {
@@ -102,27 +111,27 @@ public sealed class ConfiguredFetchTransportFactory(
                 }
                 else
                 {
-                    client = proxies.CreateClient(allocated);
+                    client = proxies.CreateClient(allocated, stopEarly);
                 }
             }
             else if (route.Mode == FetchRouteMode.Direct)
             {
-                client = clients.CreateClient("Harvest.Direct");
+                client = clients.CreateClient(stopEarly ? "Harvest.Direct.Prefix" : "Harvest.Direct");
             }
             else
             {
                 ProxyConnectionOptions inline = route.Proxy
                     ?? throw new FetchTransportUnavailableException("The source proxy settings are missing.");
                 string settingsKey = SharedProxyClients.Settings("inline", inline.Server, inline.Username, inline.Password);
-                client = await shared.GetAsync(destination, route.Key, settingsKey,
-                    () => ValueTask.FromResult(new SharedProxyClients.Entry(settingsKey, proxies.CreateClient(destination, inline), null)), cancellationToken);
+                client = await shared.GetAsync(destination, poolKey, settingsKey,
+                    () => ValueTask.FromResult(new SharedProxyClients.Entry(settingsKey, proxies.CreateClient(destination, inline, stopEarly), null)), cancellationToken);
                 sharedClient = true;
             }
             CookieContainer? jar = account?.Cookies ?? runCookies;
             // A fixed exit with no session and no caller jar answers robots the same way to every lease of the route.
             bool robotsByRoute = route.Mode != FetchRouteMode.Direct && account is null && jar is null;
             return new IntegrationFetchLease(client, destination, jar, route.Mode != FetchRouteMode.Direct || account is not null,
-                route.Key, account, allocated, clock, ownsClient: !sharedClient, cachesRobotsByRoute: robotsByRoute);
+                route.Key, account, allocated, clock, ownsClient: !sharedClient, cachesRobotsByRoute: robotsByRoute, supportsEarlyBodyStop: stopEarly);
         }
         catch (Exception error)
         {
@@ -137,9 +146,9 @@ public sealed class ConfiguredFetchTransportFactory(
         }
     }
 
-    private IFetchTransportLease Direct(Uri source, CookieContainer? runCookies)
+    private IFetchTransportLease Direct(Uri source, CookieContainer? runCookies, bool allowPrefix)
     {
-        return new IntegrationFetchLease(clients.CreateClient("Harvest.Direct"), source, runCookies,
-            runCookies is not null, "direct", null, null, clock);
+        return new IntegrationFetchLease(clients.CreateClient(allowPrefix ? "Harvest.Direct.Prefix" : "Harvest.Direct"), source, runCookies,
+            runCookies is not null, "direct", null, null, clock, supportsEarlyBodyStop: allowPrefix);
     }
 }

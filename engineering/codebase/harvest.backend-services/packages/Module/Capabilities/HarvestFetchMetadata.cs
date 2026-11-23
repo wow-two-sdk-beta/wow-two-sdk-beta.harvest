@@ -9,4 +9,8 @@ internal sealed record HarvestFetchMetadata(FetchOutcome Outcome, ChallengeKind?
 {
     internal static readonly HttpRequestOptionsKey<FetchRequest> RequestKey = new("Harvest.FetchRequest");
     internal static readonly HttpRequestOptionsKey<HarvestFetchMetadata> ResponseKey = new("Harvest.FetchResponse");
+    internal static readonly HttpRequestOptionsKey<bool> BodyPrefixKey = new("Harvest.BodyPrefix");
+
+    internal static bool IsBodyPrefix(HttpResponseMessage response) =>
+        response.RequestMessage?.Options.TryGetValue(BodyPrefixKey, out bool prefix) == true && prefix;
 }

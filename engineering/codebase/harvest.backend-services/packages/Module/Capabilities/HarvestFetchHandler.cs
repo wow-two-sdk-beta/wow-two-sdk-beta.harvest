@@ -26,6 +26,7 @@ internal sealed class HarvestFetchHandler(
     CookieContainer? cookies = null,
     RouteRobotsCache? robotsByRoute = null) : HttpMessageHandler
 {
+    private const int ChallengeBodyBytes = 65536;
     private RouteRobotsCache RouteRobots { get; } = robotsByRoute ?? new();
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -57,7 +58,7 @@ internal sealed class HarvestFetchHandler(
                     "Host remains paused after its previous response.", pausedUntil - now);
             }
 
-            await using var route = await transports.AcquireAsync(uri, cookies, cancellationToken);
+            await using var route = await transports.AcquireAsync(uri, cookies, PrefixPolicy(request, uri) is not null, cancellationToken);
             if (!route.Allows(uri))
                 return Synthetic(request, FetchOutcome.InvalidRedirect, HttpStatusCode.BadRequest, "Configured route does not allow the destination.");
 
@@ -144,7 +145,8 @@ internal sealed class HarvestFetchHandler(
                         (int)(lease.State.AdaptiveDelayMilliseconds * 0.9));
                     if (response.IsSuccessStatusCode && request.Method == HttpMethod.Get && sharedCache && policy.CacheResponse)
                     {
-                        bool cacheable = response.Headers.CacheControl?.NoStore != true && response.Headers.CacheControl?.Private != true
+                        bool cacheable = !HarvestFetchMetadata.IsBodyPrefix(response)
+                            && response.Headers.CacheControl?.NoStore != true && response.Headers.CacheControl?.Private != true
                             && !response.Headers.Vary.Any(value => !value.Equals("Accept-Encoding", StringComparison.OrdinalIgnoreCase))
                             && (response.Headers.ETag is not null || response.Content.Headers.LastModified is not null);
                         await lease.SaveValidatorsAsync(uri.AbsoluteUri, cacheable
@@ -305,7 +307,7 @@ internal sealed class HarvestFetchHandler(
             if (PausedResponse(request, lease.State, now) is { } paused)
                 return new(paused);
 
-            held.Route ??= await transports.AcquireAsync(uri, cookies, cancellationToken);
+            held.Route ??= await transports.AcquireAsync(uri, cookies, PrefixPolicy(request, uri) is not null, cancellationToken);
             var route = held.Route;
             if (!route.Allows(uri))
                 return new(Synthetic(request, FetchOutcome.InvalidRedirect, HttpStatusCode.BadRequest, "Configured route does not allow the destination."));
@@ -394,7 +396,7 @@ internal sealed class HarvestFetchHandler(
         ResponseValidators? validators, FetchUsageCounters usage, CancellationToken cancellationToken)
     {
         using var message = CreateMessage(uri, route, method, original, validators);
-        return await SendAndReadAsync(message, uri, route, method, usage, cancellationToken);
+        return await SendAndReadAsync(message, uri, route, method, PrefixPolicy(original, uri), usage, cancellationToken);
     }
 
     /// <summary>Takes the host lock briefly to pause the host after a refusal, an HTTP error, a network error or an oversize reply.</summary>
@@ -437,7 +439,8 @@ internal sealed class HarvestFetchHandler(
                 (int)(state.AdaptiveDelayMilliseconds * 0.9));
             if (response.IsSuccessStatusCode && method == HttpMethod.Get && reserved.SharedCache && policy.CacheResponse)
             {
-                bool cacheable = response.Headers.CacheControl?.NoStore != true && response.Headers.CacheControl?.Private != true
+                bool cacheable = !HarvestFetchMetadata.IsBodyPrefix(response)
+                    && response.Headers.CacheControl?.NoStore != true && response.Headers.CacheControl?.Private != true
                     && !response.Headers.Vary.Any(value => !value.Equals("Accept-Encoding", StringComparison.OrdinalIgnoreCase))
                     && (response.Headers.ETag is not null || response.Content.Headers.LastModified is not null);
                 await lease.SaveValidatorsAsync(uri.AbsoluteUri, cacheable
@@ -533,7 +536,7 @@ internal sealed class HarvestFetchHandler(
         // Advance before connecting so a timed-out or interrupted request also leaves a durable gap.
         lease.State.NextAllowedAt = clock.GetUtcNow() + gap;
         await lease.SaveAsync(cancellationToken);
-        HttpResponseMessage response = await SendAndReadAsync(message, uri, route, method, usage, cancellationToken);
+        HttpResponseMessage response = await SendAndReadAsync(message, uri, route, method, PrefixPolicy(original, uri), usage, cancellationToken);
         lease.State.NextAllowedAt = clock.GetUtcNow() + gap;
         return response;
     }
@@ -563,8 +566,12 @@ internal sealed class HarvestFetchHandler(
         return message;
     }
 
+    private static IFetchHtmlPrefixPolicy? PrefixPolicy(HttpRequestMessage? request, Uri uri) =>
+        request?.Method == HttpMethod.Get && request.Options.TryGetValue(HarvestFetchMetadata.RequestKey, out var policy)
+        && policy.HtmlPrefixPolicy is { } prefix && prefix.AllowsPrefix(uri) ? prefix : null;
+
     private async Task<HttpResponseMessage> SendAndReadAsync(HttpRequestMessage message, Uri uri, IFetchTransportLease route, HttpMethod method,
-        FetchUsageCounters usage, CancellationToken cancellationToken)
+        IFetchHtmlPrefixPolicy? prefixPolicy, FetchUsageCounters usage, CancellationToken cancellationToken)
     {
         usage.Requests++;
         HttpResponseMessage response = await route.Client.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
@@ -578,6 +585,13 @@ internal sealed class HarvestFetchHandler(
                 }
             if (method != HttpMethod.Head && response.Content.Headers.ContentLength > options.MaximumResponseBytes)
                 throw new ResponseTooLargeException();
+
+            MediaTypeHeaderValue? contentType = response.Content.Headers.ContentType;
+            string? charset = contentType?.CharSet?.Trim('"');
+            IFetchHtmlPrefixPolicy? htmlPrefix = route.SupportsEarlyBodyStop && response.StatusCode == HttpStatusCode.OK
+                && string.Equals(contentType?.MediaType, "text/html", StringComparison.OrdinalIgnoreCase)
+                && (charset is null || charset.Equals("utf-8", StringComparison.OrdinalIgnoreCase)) ? prefixPolicy : null;
+
             using var buffer = new MemoryStream();
             await using var wire = new MeteredStream(await response.Content.ReadAsStreamAsync(cancellationToken), usage);
             // A reply without a body (HEAD, 204, 205, 304) can name an encoding it does not use.
@@ -588,6 +602,7 @@ internal sealed class HarvestFetchHandler(
                 throw new ResponseDecodeException();
             Stream source = decoder?.Stream ?? wire;
             byte[] chunk = new byte[8192];
+            bool stoppedEarly = false;
             try
             {
                 while (true)
@@ -607,9 +622,19 @@ internal sealed class HarvestFetchHandler(
                     // The limit is on decoded bytes, so a small body that inflates past it stops here.
                     if (buffer.Length + read > options.MaximumResponseBytes)
                         throw new ResponseTooLargeException();
+                    int previousLength = (int)buffer.Length;
                     buffer.Write(chunk, 0, read);
+                    // Leave the full challenge probe available. Continue normally if the declared wire length has arrived.
+                    if (htmlPrefix is not null && buffer.Length >= ChallengeBodyBytes
+                        && (response.Content.Headers.ContentLength is not { } wireLength || wire.Total < wireLength)
+                        && htmlPrefix.ShouldStopReading(uri, buffer.GetBuffer().AsSpan(0, (int)buffer.Length),
+                            previousLength < ChallengeBodyBytes ? 0 : previousLength))
+                    {
+                        stoppedEarly = true;
+                        break;
+                    }
                 }
-                if (decoder is not null)
+                if (decoder is not null && !stoppedEarly)
                 {
                     await DrainAsync(wire, chunk, cancellationToken);
                     if (!decoder.IsComplete(buffer.Length))
@@ -623,12 +648,14 @@ internal sealed class HarvestFetchHandler(
             }
             var content = new ByteArrayContent(buffer.ToArray());
             foreach (var header in response.Content.Headers)
-                if (decoder is null || !header.Key.Equals("Content-Encoding", StringComparison.OrdinalIgnoreCase)
+                if (decoder is null && !stoppedEarly || !header.Key.Equals("Content-Encoding", StringComparison.OrdinalIgnoreCase)
                     && !header.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase))
                     content.Headers.TryAddWithoutValidation(header.Key, header.Value);
             response.Content.Dispose();
             response.Content = content;
             response.RequestMessage = message;
+            if (stoppedEarly)
+                message.Options.Set(HarvestFetchMetadata.BodyPrefixKey, true);
             return response;
         }
         catch
@@ -659,7 +686,7 @@ internal sealed class HarvestFetchHandler(
         StatusCode = (int)response.StatusCode,
         ContentType = response.Content.Headers.ContentType?.MediaType,
         Headers = Headers(response),
-        Body = Decode(body.AsSpan(0, Math.Min(body.Length, 65536)).ToArray(), response.Content.Headers.ContentType?.CharSet)
+        Body = Decode(body.AsSpan(0, Math.Min(body.Length, ChallengeBodyBytes)).ToArray(), response.Content.Headers.ContentType?.CharSet)
     });
 
     private TimeSpan Pause(HostFetchState state, FetchOutcome outcome, TimeSpan? retryAfter)

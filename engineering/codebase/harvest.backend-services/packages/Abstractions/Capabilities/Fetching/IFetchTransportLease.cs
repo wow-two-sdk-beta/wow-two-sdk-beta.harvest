@@ -17,6 +17,8 @@ public interface IFetchTransportLease : IAsyncDisposable
     /// and reused by every later lease of the route: true only for a fixed exit with no account session and no caller jar, where
     /// the rules do not depend on who holds the lease. The default is false: a private route reads robots for each fetch.</summary>
     bool CachesRobotsByRoute => false;
+    /// <summary>Gets whether disposing an unread response abandons the body without draining it.</summary>
+    bool SupportsEarlyBodyStop => false;
     /// <summary>Checks each robots, content and redirect URL before the client receives it.</summary>
     bool Allows(Uri destination);
 }

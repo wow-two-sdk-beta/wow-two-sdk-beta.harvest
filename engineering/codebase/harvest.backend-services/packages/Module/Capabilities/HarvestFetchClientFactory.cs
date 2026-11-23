@@ -15,6 +15,7 @@ internal sealed class HarvestFetchClientFactory(
     RouteRobotsCache robotsByRoute) : IFetchClientFactory
 {
     internal const string TransportName = "Harvest.Direct";
+    internal const string PrefixTransportName = "Harvest.Direct.Prefix";
 
     public HttpClient CreateClient(CookieContainer? cookies = null) => new(
         new HarvestFetchHandler(transports, hosts, options.Value, challenges, clock, cookies, robotsByRoute), disposeHandler: true)

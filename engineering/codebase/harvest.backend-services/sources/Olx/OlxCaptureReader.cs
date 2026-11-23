@@ -14,7 +14,7 @@ using Capture = WoW.Two.Sdk.Beta.Be.Harvest.Readers.Capture;
 namespace WoW.Two.Sdk.Beta.Be.HarvestAdapters.Olx;
 
 /// <summary>Ports ListingShelf's OLX extraction into pure Harvest reading and source-aware availability evidence.</summary>
-public sealed partial class OlxCaptureReader : ICaptureReader, ILinkAvailabilityReader, IFetchDestinationPolicy
+public sealed partial class OlxCaptureReader : ICaptureReader, ILinkAvailabilityReader, IFetchDestinationPolicy, IFetchHtmlPrefixPolicy
 {
     private const string ParserVersion = "olx-html@2";
     private static readonly string[] NativeFields =
@@ -175,13 +175,22 @@ public sealed partial class OlxCaptureReader : ICaptureReader, ILinkAvailability
         }
         if (ads.Count == 0 && !empty) return Invalid("The catalog exposed no recognizable ads or explicit empty state.");
         var targets = ads.Values.ToList();
-        if (!empty)
-            foreach (IElement anchor in html.QuerySelectorAll("a[data-testid='pagination-forward'], a[rel='next']"))
-            {
-                if (anchor.HasAttribute("disabled") || anchor.GetAttribute("aria-disabled") == "true" || anchor.ParentElement?.ClassList.Contains("disabled") == true) continue;
-                if (OlxUrls.NextPage(basis, anchor.GetAttribute("href")) is { } next) { targets.Add(new() { Url = next.AbsoluteUri, IsListing = true }); break; }
-            }
+        if (FindContinuation(html, basis) is { } continuation)
+            targets.Add(new() { Url = continuation.Target.AbsoluteUri, IsListing = true });
         return Result<CaptureReadResult>.Ok(new() { Discovered = targets, Complete = false });
+    }
+
+    private static (IElement Anchor, Uri Target)? FindContinuation(IDocument html, Uri basis)
+    {
+        foreach (IElement anchor in html.QuerySelectorAll("a[data-testid='pagination-forward'], a[rel='next']"))
+        {
+            if (anchor.HasAttribute("disabled") || anchor.GetAttribute("aria-disabled") == "true"
+                || anchor.ParentElement?.ClassList.Contains("disabled") == true)
+                continue;
+            if (OlxUrls.NextPage(basis, anchor.GetAttribute("href")) is { } next)
+                return (anchor, next);
+        }
+        return null;
     }
 
     private static JsonElement Product(

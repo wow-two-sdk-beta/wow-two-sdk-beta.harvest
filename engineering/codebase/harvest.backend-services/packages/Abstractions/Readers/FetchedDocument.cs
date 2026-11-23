@@ -24,6 +24,9 @@ public sealed record FetchedDocument
     /// <summary>Gets the body as received.</summary>
     public required ReadOnlyMemory<byte> Body { get; init; }
 
+    /// <summary>Gets whether the reader intentionally stopped at a sufficient prefix of the body.</summary>
+    public bool IsBodyPrefix { get; init; }
+
     /// <summary>Gets when the response arrived (UTC).</summary>
     public required DateTimeOffset FetchedAtUtc { get; init; }
 }
