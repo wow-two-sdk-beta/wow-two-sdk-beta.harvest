@@ -103,19 +103,22 @@ public sealed class SourceCatalogSetupTests
     {
         await using var host = await StartAsync();
         var broker = host.Scoped<SourceCatalogBroker>();
-        (await broker.ListAsync()).Should().HaveCount(57 + 4).And.OnlyContain(entry => entry.State == CatalogState.New, "a fresh instance starts with every entry new");
+        (await broker.ListAsync()).Should().HaveCount(63 + 4).And.OnlyContain(entry => entry.State == CatalogState.New, "a fresh instance starts with every entry new");
 
         var on = Value(await broker.SwitchAsync("ocharo.afisha", true, "subject-1"));
 
         on.State.Should().Be(CatalogState.On);
-        (on.ChangedBy, on.Sources.Count).Should().Be(("subject-1", 1));
+        (on.ChangedBy, on.Sources.Count).Should().Be(("subject-1", 2));
         var registry = host.Scoped<IRegistrationBroker>();
-        var source = Value(await registry.GetSourceAsync(on.Sources[0].SourceId));
-        (source.CatalogKey, source.TurnedOn, source.ModelProcessing, source.Name).Should().Be(("ocharo.afisha", true, ModelProcessingMode.Off, "afisha.uz"));
-        var pipelines = Value(await registry.ListPipelinesAsync(source.ContainerId)).Where(pipeline => pipeline.SourceId == source.Id).ToArray();
+        Guid containerId = on.Sources.Select(source => source.ContainerId).Distinct().Single();
+        var sources = Value(await registry.ListSourcesAsync(containerId));
+        sources.Select(source => source.Handle).Should().BeEquivalentTo(new[] { "www.afisha.uz", "afishauzb" });
+        sources.Should().OnlyContain(source => source.CatalogKey == "ocharo.afisha" && source.TurnedOn
+            && source.ModelProcessing == ModelProcessingMode.Off);
+        var pipelines = Value(await registry.ListPipelinesAsync(containerId));
         pipelines.Should().NotBeEmpty();
         pipelines.SelectMany(pipeline => pipeline.Schedules).Should().OnlyContain(schedule => !schedule.Enabled, "the source reads Manual until its schedules are switched on");
-        (await host.ScalarAsync<long>("SELECT count(*) FROM harvest_sources")).Should().Be(1, "only the entry's own host is set up");
+        (await host.ScalarAsync<long>("SELECT count(*) FROM harvest_sources")).Should().Be(2, "only the entry's own hosts are set up");
     }
 
     [Fact]

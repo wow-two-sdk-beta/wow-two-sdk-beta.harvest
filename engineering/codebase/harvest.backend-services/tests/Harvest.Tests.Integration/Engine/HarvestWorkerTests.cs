@@ -118,8 +118,8 @@ public sealed class HarvestWorkerTests
         await worker.StartAsync(CancellationToken.None);
         try
         {
-            await WaitForAsync(async () => EngineHost.Data(await runs.GetAsync(harvest.Id)).Status != RunStatus.Running
-                && EngineHost.Data(await runs.GetAsync(harvest.Id)).Status != RunStatus.Queued, "the harvest run to end");
+            await WaitForAsync(async () => EngineHost.Data(await runs.GetAsync(harvest.Id)).Status
+                is not (RunStatus.Queued or RunStatus.Running), "the harvest run to end");
         }
         finally
         {

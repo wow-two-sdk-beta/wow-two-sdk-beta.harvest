@@ -29,14 +29,15 @@ public sealed class SourceCatalogTests
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var entries = (await DataAsync(response)).EnumerateArray().ToArray();
-        entries.Should().HaveCount(61, "57 Ocharo publishers and 4 marketplace sites");
+        entries.Should().HaveCount(67, "63 Ocharo publishers and 4 marketplace sites");
         entries.Should().OnlyContain(entry => entry.GetProperty("state").GetString() == "new", "a fresh instance starts with every entry new");
         var afisha = entries.Single(entry => entry.GetProperty("key").GetString() == "ocharo.afisha");
         afisha.GetProperty("catalog").GetString().Should().Be("ocharo");
         afisha.GetProperty("name").GetString().Should().Be("Afisha Uzbekistan");
         afisha.GetProperty("kind").GetString().Should().Be("events");
-        afisha.GetProperty("channels").GetInt32().Should().Be(2);
-        afisha.GetProperty("hosts")[0].GetProperty("handle").GetString().Should().Be("www.afisha.uz");
+        afisha.GetProperty("channels").GetInt32().Should().Be(3);
+        afisha.GetProperty("hosts").EnumerateArray().Select(host => host.GetProperty("handle").GetString())
+            .Should().Contain("www.afisha.uz").And.Contain("afishauzb");
         afisha.GetProperty("sources").GetArrayLength().Should().Be(0);
         (await tenant.GetAsync("/api/sources/catalog")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await anonymous.GetAsync("/api/sources/catalog")).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
@@ -63,23 +64,30 @@ public sealed class SourceCatalogTests
         on.StatusCode.Should().Be(HttpStatusCode.OK);
         var afisha = await DataAsync(on);
         afisha.GetProperty("state").GetString().Should().Be("on");
-        var source = afisha.GetProperty("sources").EnumerateArray().Should().ContainSingle().Subject;
-        string sourceId = source.GetProperty("sourceId").GetString()!, containerId = source.GetProperty("containerId").GetString()!;
-        (await DataAsync(await client.GetAsync($"/api/sources/overview?containerId={containerId}"))).EnumerateArray()
-            .Should().ContainSingle(item => item.GetProperty("sourceId").GetString() == sourceId && item.GetProperty("catalogKey").GetString() == "ocharo.afisha");
+        var sources = afisha.GetProperty("sources").EnumerateArray().ToArray();
+        sources.Should().HaveCount(2, "Afisha has a website and Instagram source");
+        string containerId = sources.Select(source => source.GetProperty("containerId").GetString()).Distinct().Single()!;
+        var overview = await DataAsync(await client.GetAsync($"/api/sources/overview?containerId={containerId}"));
+        overview.EnumerateArray().Where(item => item.GetProperty("catalogKey").GetString() == "ocharo.afisha")
+            .Select(item => item.GetProperty("sourceId").GetString())
+            .Should().BeEquivalentTo(sources.Select(source => source.GetProperty("sourceId").GetString()));
 
         var disable = await client.PutAsJsonAsync("/api/sources/catalog/ocharo.afisha", new { turnedOn = false });
         (await DataAsync(disable)).GetProperty("state").GetString().Should().Be("off");
 
         (await DataAsync(await client.GetAsync($"/api/sources/overview?containerId={containerId}"))).GetArrayLength().Should().Be(0, "the Sources page lists turned-on sources only");
-        var byId = await DataAsync(await client.GetAsync($"/api/sources/{sourceId}"));
-        (byId.GetProperty("turnedOn").GetBoolean(), byId.GetProperty("catalogKey").GetString()).Should().Be((false, "ocharo.afisha"));
+        foreach (var source in sources)
+        {
+            string sourceId = source.GetProperty("sourceId").GetString()!;
+            var byId = await DataAsync(await client.GetAsync($"/api/sources/{sourceId}"));
+            (byId.GetProperty("turnedOn").GetBoolean(), byId.GetProperty("catalogKey").GetString()).Should().Be((false, "ocharo.afisha"));
+        }
         (await DataAsync(await client.PostAsJsonAsync("/api/ocharo/sources/setup", new { }))).GetProperty("skipped").EnumerateArray()
             .Select(item => item.GetString()).Should().Equal("ocharo.afisha", "ocharo.anons");
         var listed = (await DataAsync(await client.GetAsync("/api/sources/catalog"))).EnumerateArray()
             .Single(entry => entry.GetProperty("key").GetString() == "ocharo.afisha");
         listed.GetProperty("state").GetString().Should().Be("off");
-        listed.GetProperty("sources").GetArrayLength().Should().Be(1, "the entry still names its source");
+        listed.GetProperty("sources").GetArrayLength().Should().Be(2, "the entry still names both sources");
         (await DataAsync(await client.PutAsJsonAsync("/api/sources/catalog/ocharo.afisha", new { turnedOn = true }))).GetProperty("state").GetString().Should().Be("on");
     }
 
@@ -98,7 +106,7 @@ public sealed class SourceCatalogTests
 
         list.Exit.Should().Be(0, list.Error);
         Lines(list.Output).Should().ContainSingle();
-        Parse(list.Output).GetProperty("entries").GetArrayLength().Should().Be(61);
+        Parse(list.Output).GetProperty("entries").GetArrayLength().Should().Be(67);
         off.Exit.Should().Be(0, off.Error);
         var anons = Parse(off.Output).GetProperty("entry");
         (anons.GetProperty("key").GetString(), anons.GetProperty("state").GetString(), anons.GetProperty("changedBy").GetString()).Should().Be(("ocharo.anons", "off", "operator-key"));
@@ -106,7 +114,7 @@ public sealed class SourceCatalogTests
         on.Exit.Should().Be(0, on.Error);
         var afisha = Parse(on.Output).GetProperty("entry");
         afisha.GetProperty("state").GetString().Should().Be("on");
-        afisha.GetProperty("sources").GetArrayLength().Should().Be(1, "a new entry turned on is set up");
+        afisha.GetProperty("sources").GetArrayLength().Should().Be(2, "turning on a new entry sets up both sources");
         Parse(onOnly.Output).GetProperty("entries").EnumerateArray().Select(entry => entry.GetProperty("key").GetString()).Should().Equal("ocharo.afisha");
         unknown.Exit.Should().Be(1);
         unknown.Error.Should().Contain("No catalog entry has the key 'ocharo.nothing'");
