@@ -33,6 +33,7 @@ import type {
 import { createEntitiesClient, type EntitiesClient } from './CreateEntitiesClient';
 import { createRegistryClient, type RegistryClient, type RegistryClientOptions } from './CreateRegistryClient';
 import type { ScheduleModel } from '../contracts/PipelineModel';
+import type { SourceImagePolicy, SourceImagePreset } from '../contracts/SourceImagePolicy';
 import type {
   DiscoveryState,
   PipelineDiscoveryModel,
@@ -71,7 +72,17 @@ export interface HarvestClient extends RegistryClient {
   /** Reads the entities posts are about; absent on a client that predates the entity reads. */
   readonly entities?: EntitiesClient;
   /** Reads private source bytes with the same credentials and session lifetime as other API calls. */
-  getSourceAsset?(sourceId: string, assetId: string, signal?: AbortSignal): Promise<Result<Blob, ApiFailure>>;
+  getSourceAsset?(
+    sourceId: string,
+    assetId: string,
+    signal?: AbortSignal,
+    preset?: SourceImagePreset,
+  ): Promise<Result<Blob, ApiFailure>>;
+  getSourceImagePolicy?(signal?: AbortSignal): Promise<Result<SourceImagePolicy, ApiFailure>>;
+  saveSourceImagePolicy?(
+    postPresets: readonly SourceImagePreset[],
+    signal?: AbortSignal,
+  ): Promise<Result<SourceImagePolicy, ApiFailure>>;
   getSourceCapabilities(id: string, signal?: AbortSignal): Promise<Result<SourceCapabilitiesModel, ApiFailure>>;
   listTenants(signal?: AbortSignal): Promise<Result<readonly TenantModel[], ApiFailure>>;
   registerTenant(body: { slug: string; name: string }, signal?: AbortSignal): Promise<Result<TenantModel, ApiFailure>>;
@@ -371,10 +382,19 @@ export function createHarvestClient(options: RegistryClientOptions = {}): Harves
   return {
     ...createRegistryClient(options),
     entities: createEntitiesClient(options),
-    getSourceAsset: (sourceId, assetId, signal) =>
+    getSourceAsset: (sourceId, assetId, signal, preset) =>
       api.get(`/api/sources/${encodeURIComponent(sourceId)}/assets/${encodeURIComponent(assetId)}`, {
         ...signalOf(signal),
+        ...(preset ? { query: { preset } } : {}),
         response: 'blob',
+      }),
+    getSourceImagePolicy: (signal) =>
+      api.get('/api/settings/source-images', { ...signalOf(signal), decode: object<SourceImagePolicy> }),
+    saveSourceImagePolicy: (postPresets, signal) =>
+      api.put('/api/settings/source-images', {
+        body: { postPresets },
+        ...signalOf(signal),
+        decode: object<SourceImagePolicy>,
       }),
     pipelineStages: {
       list: (id, signal) =>

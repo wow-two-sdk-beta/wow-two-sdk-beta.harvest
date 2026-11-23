@@ -1,3 +1,8 @@
+export const postCardAspectClass = 'aspect-[4/5]';
+
+/** Brings the WoW2 glass badge tint to the console's current SDK pin. */
+export const imagePillTintClass = 'bg-black/60';
+
 /** The Posts and Processed grids share a minimum card width and gain a column when the sidebar collapses. */
 export const postGalleryGridClass = [
   'grid gap-3',

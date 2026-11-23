@@ -5,143 +5,131 @@ import type { SourceOverviewModel, SourceProcessedPostModel } from '../../contra
 import type { ConsolePlace } from './HarvestConsole';
 import ConsoleLink from './ConsoleLink.vue';
 import HarvestPill from './HarvestPill.vue';
+import PhotoGallery from './PhotoGallery.vue';
 import PillIcon from './PillIcon.vue';
+import PostAgePill from './PostAgePill.vue';
+import { postCardAspectClass } from './PostGalleryStyles';
+import PostLanguagePill from './PostLanguagePill.vue';
 import ProviderMark from './ProviderMark.vue';
 import SourceIcon from './SourceIcon.vue';
 import SourceImage from './SourceImage.vue';
 import { kindGlyphOf } from './PostGlyphs';
-import { cardModel, cardProvider, entityTypeWords, provenanceLines, VerdictWords, verdictTone } from './ProcessedWords';
+import { cardModel, cardProvider, entityTypeWords, provenanceLines } from './ProcessedWords';
 import { languageName } from './SourceSections';
-import { agoOf, imageSrcOf, webUrlOf, type PillTone } from './SourceWords';
+import { imageSrcOf, webUrlOf } from './SourceWords';
 
 /**
- * The media header of a processed post, shared by its card and its page: the post's first image (a tile with the source
- * icon when it has none), the entity type, relevance verdict and language as glass pills with the answering AI's brand
- * mark as the last pill, the ↗ open-the-original button top right, and the title with its English title and when the
- * post was first seen over a blurred fade anchored to that block (the `mediaCard` content-blur rule). With `to` the title
- * is the card's link, stretched over the whole card by its `::after`; without it the title is the page's `h1`. `wide`
- * gives the page's broader ratio.
+ * The Processed gallery uses the Posts card ratio for the image or source tile and links from the processed title.
+ * The detail page keeps the photo gallery in a bounded frame above the title.
  */
 defineOptions({ name: 'ProcessedPostHeader' });
 const props = withDefaults(
   defineProps<{
     source: Pick<SourceOverviewModel, 'sourceId' | 'family' | 'faviconUrl'>;
     post: SourceProcessedPostModel;
+    /** The source's images in capture order, including private copies when available. */
+    imageUrls?: readonly string[];
     /** Where the title links, stretched over the card; omitted, the title is the page heading. */
     to?: ConsolePlace;
-    wide?: boolean;
   }>(),
-  { to: undefined, wide: false },
+  { imageUrls: undefined, to: undefined },
 );
 
 const tags = computed(() => props.post.tags);
 const extraction = computed(() => props.post.extraction);
 const failedImage = ref(false);
 const image = computed(() => (failedImage.value ? undefined : imageSrcOf(props.post.imageUrl)));
+const photos = computed(() => {
+  const urls = props.imageUrls?.map(imageSrcOf).filter((url): url is string => !!url);
+  const first = imageSrcOf(props.post.imageUrl);
+  return urls?.length ? urls : first ? [first] : [];
+});
 const lines = computed(() => provenanceLines(tags.value, extraction.value));
 const titleEn = computed(() =>
   tags.value.titleEn && tags.value.titleEn.trim().toLowerCase() !== props.post.title.trim().toLowerCase()
     ? tags.value.titleEn
     : undefined,
 );
-const subline = computed(() =>
-  [titleEn.value, `first seen ${agoOf(props.post.firstSeenAt)}`].filter(Boolean).join(' · '),
+const processedTitle = computed(
+  () =>
+    tags.value.about?.trim() ||
+    tags.value.titleEn?.trim() ||
+    extraction.value?.event?.name?.trim() ||
+    'Untitled processed post',
 );
-const classification = computed(() => props.post.classification);
-const verdictTip = computed(() => {
-  const value = classification.value;
-  if (!value) return [];
-  return [
-    value.reason,
-    typeof value.confidence === 'number' ? `${Math.round(value.confidence * 100)}% confident` : undefined,
-    value.classifier,
-  ].filter((line): line is string => !!line);
+const postLanguage = computed(() => (props.post.language !== 'und' ? props.post.language : undefined));
+const entityHelp = computed(() => {
+  if (tags.value.status !== 'done')
+    return [`Tagging ${tags.value.status}`, tags.value.error].filter(Boolean).join(' · ');
+  return tags.value.entityType === 'none' ? 'The tagging pass found no event or listing in this post.' : undefined;
 });
-const verdictPillTone = computed<PillTone>(() => {
-  const verdict = classification.value?.verdict;
-  if (!verdict) return 'neutral';
-  if (!image.value) return verdictTone(verdict);
-  return verdict === 'relevant' ? 'glassSuccess' : 'glass';
-});
+const entityLabel = computed(() =>
+  props.to && tags.value.status !== 'done' ? `Tagging ${tags.value.status}` : entityTypeWords(tags.value.entityType),
+);
 const removed = computed(() => props.post.state === 'gone');
 const original = computed(() => (removed.value ? undefined : webUrlOf(props.post.url)));
-/** The header's fill and ratio: the image at 16:9 (wider on the page), else a tinted tile as tall as its content needs. */
-const headerClass = computed(() => {
-  if (image.value)
-    return ['justify-between bg-muted text-white', props.wide ? 'aspect-[16/9] md:aspect-[21/8]' : 'aspect-[16/9]'];
-  return [
-    'bg-gradient-to-br from-primary-soft to-muted text-foreground',
-    props.wide ? 'min-h-32 justify-between' : 'min-h-20',
-  ];
-});
+const cover = computed(() => !!props.to && !!image.value);
+const tone = computed(() => (cover.value ? 'glass' : 'outline'));
 </script>
 
 <template>
-  <header class="relative isolate flex min-w-0 flex-col gap-3 p-4" :class="headerClass">
+  <header
+    class="relative isolate flex min-w-0 flex-col gap-3 p-4"
+    :class="[
+      props.to ? [postCardAspectClass, 'shrink-0 justify-between'] : 'min-h-32',
+      cover
+        ? 'bg-muted text-white'
+        : !props.to && photos.length
+          ? 'bg-card'
+          : 'bg-gradient-to-br from-primary-soft to-muted',
+    ]"
+  >
+    <ul
+      class="z-10 flex min-w-0 flex-wrap items-center gap-1.5 pe-10"
+      :aria-label="props.to ? 'Processed post badges' : 'Entity type and AI provider'"
+    >
+      <li class="min-w-0">
+        <Tooltip :content="entityHelp" :is-disabled="!entityHelp" :open-delay="150">
+          <HarvestPill :tone="tone" class="max-w-full" v-bind="{ tabindex: entityHelp ? 0 : undefined }">
+            <PillIcon :name="kindGlyphOf(tags.entityType ?? 'other')" class="shrink-0" />
+            <span class="truncate">{{ entityLabel.toLowerCase() }}</span>
+          </HarvestPill>
+        </Tooltip>
+      </li>
+      <li v-if="props.to && postLanguage" class="shrink-0">
+        <PostLanguagePill :language="postLanguage" :tone="tone" compact />
+      </li>
+      <li class="shrink-0">
+        <ProviderMark
+          :provider="cardProvider(tags, extraction)"
+          :model="cardModel(tags, extraction)"
+          :lines="lines"
+          :on-image="cover"
+          pill
+          placement="bottom-start"
+        />
+      </li>
+    </ul>
     <SourceImage
-      v-if="image"
+      v-if="props.to && image"
       :src="image"
+      preset="s3"
       alt=""
-      class="absolute inset-0 -z-20 size-full object-cover"
-      :class="removed ? 'grayscale' : ''"
+      class="absolute inset-0 -z-20 size-full object-cover object-center"
+      :class="{ grayscale: removed }"
       loading="lazy"
       decoding="async"
       referrerpolicy="no-referrer"
       v-bind="{ 'data-post-image': '' }"
       @error="failedImage = true"
     />
+    <PhotoGallery v-else-if="!props.to && photos.length" :images="photos" :is-muted="removed" fixed-height />
     <div v-else class="absolute end-4 top-1/2 -z-10 -translate-y-1/2 opacity-35" aria-hidden="true">
       <SourceIcon :family="props.source.family" :favicon-url="props.source.faviconUrl" size="lg" bare decorative />
     </div>
-    <ul
-      class="z-10 flex min-w-0 flex-wrap items-center gap-1.5 pe-10"
-      aria-label="Entity type, verdict, language and AI provider"
-    >
-      <li>
-        <HarvestPill :tone="image ? 'glass' : 'info'">
-          <PillIcon :name="kindGlyphOf(tags.entityType ?? 'other')" />
-          {{ entityTypeWords(tags.entityType) }}
-        </HarvestPill>
-      </li>
-      <li v-if="classification">
-        <Tooltip v-if="verdictTip.length" :open-delay="150">
-          <HarvestPill :tone="verdictPillTone" v-bind="{ tabindex: 0 }">
-            {{ VerdictWords[classification.verdict] }}
-          </HarvestPill>
-          <template #content>
-            <span class="grid max-w-64 gap-0.5 text-xs leading-4">
-              <span v-for="line in verdictTip" :key="line">{{ line }}</span>
-            </span>
-          </template>
-        </Tooltip>
-        <HarvestPill v-else :tone="verdictPillTone">{{ VerdictWords[classification.verdict] }}</HarvestPill>
-      </li>
-      <li v-if="props.post.language">
-        <HarvestPill :tone="image ? 'glass' : 'outline'">
-          <PillIcon name="language" />
-          {{ languageName(props.post.language) }}
-        </HarvestPill>
-      </li>
-      <li v-if="removed">
-        <HarvestPill :tone="image ? 'glass' : 'outline'">
-          <PillIcon name="unlink" />
-          removed
-        </HarvestPill>
-      </li>
-      <li>
-        <ProviderMark
-          :provider="cardProvider(tags, extraction)"
-          :model="cardModel(tags, extraction)"
-          :lines="lines"
-          :on-image="!!image"
-          pill
-          placement="bottom-start"
-        />
-      </li>
-    </ul>
-    <div class="relative isolate grid min-w-0 gap-0.5">
+    <div class="relative isolate grid min-w-0" :class="props.to ? 'gap-2' : 'gap-0.5'">
       <div
-        v-if="image"
+        v-if="cover"
         class="pointer-events-none absolute -inset-x-4 -top-8 -bottom-4 -z-10 bg-gradient-to-t from-black/80 via-black/45 to-transparent backdrop-blur-xl [-webkit-mask-image:linear-gradient(to_top,black_calc(100%_-_2rem),transparent)] [mask-image:linear-gradient(to_top,black_calc(100%_-_2rem),transparent)]"
         aria-hidden="true"
       ></div>
@@ -151,12 +139,29 @@ const headerClass = computed(() => {
         class="line-clamp-2 text-start text-[15px] leading-snug font-semibold outline-none after:absolute after:-inset-[100rem] after:content-['']"
         v-bind="{ 'data-processed-link': '' }"
       >
-        {{ props.post.title }}
+        {{ processedTitle }}
       </ConsoleLink>
       <h1 v-else class="text-xl leading-snug font-semibold tracking-tight md:text-2xl">{{ props.post.title }}</h1>
-      <p class="line-clamp-2 text-[13px] leading-5" :class="image ? 'text-white/75' : 'text-muted-foreground'">
-        {{ subline }}
-      </p>
+      <p v-if="!props.to && titleEn" class="text-[13px] leading-5 text-muted-foreground">{{ titleEn }}</p>
+      <div
+        class="flex flex-wrap items-center gap-1.5 text-[13px] leading-5 text-muted-foreground"
+        v-bind="{ 'data-post-metadata': '' }"
+      >
+        <PostAgePill v-if="props.post.postedAt" :at="props.post.postedAt" kind="posted" :tone="tone" />
+        <PostAgePill :at="props.post.firstSeenAt" kind="harvested" :tone="tone" />
+        <span
+          v-if="!props.to && postLanguage"
+          class="inline-flex items-center gap-1"
+          v-bind="{ 'data-post-language': '' }"
+        >
+          <PillIcon name="language" />
+          Post language · {{ languageName(postLanguage) }}
+        </span>
+        <HarvestPill v-if="removed" :tone="tone" v-bind="{ 'data-post-removed': '' }">
+          <PillIcon name="unlink" />
+          removed
+        </HarvestPill>
+      </div>
     </div>
     <Tooltip
       v-if="original"
@@ -172,7 +177,7 @@ const headerClass = computed(() => {
         target="_blank"
         rel="noopener noreferrer"
         class="absolute top-3 right-3 z-20 inline-flex size-8 items-center justify-center rounded-full border border-white/20 bg-black/35 text-white backdrop-blur-md transition-colors hover:bg-black/55 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-        :aria-label="`Open the original of ${props.post.title ?? 'this post'}`"
+        :aria-label="props.to ? 'Open the original post' : `Open the original of ${props.post.title ?? 'this post'}`"
       >
         <svg
           width="15"

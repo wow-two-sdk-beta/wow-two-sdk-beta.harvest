@@ -1,4 +1,5 @@
 import { computed, inject, onScopeDispose, shallowRef, watch } from 'vue';
+import type { SourceImagePreset } from '../../contracts/SourceImagePolicy';
 import { HarvestConsoleKey } from './HarvestConsole';
 
 const AssetPath = /^\/api\/sources\/([a-f0-9-]{36})\/assets\/([a-f0-9-]{36})$/i;
@@ -14,7 +15,10 @@ const ImageTypes = new Set([
 
 /** Resolves only private source-asset paths through the authenticated client. Public images keep their URLs.
  * Object URLs belong to this view and are revoked when its images, client or lifetime changes. */
-export function useSourceImages(images: () => readonly string[]) {
+export function useSourceImages(
+  images: () => readonly string[],
+  preset: () => SourceImagePreset | undefined = () => undefined,
+) {
   const session = inject(HarvestConsoleKey, null);
   const copies = shallowRef<Readonly<Record<string, string>>>({});
   const failed = shallowRef<ReadonlySet<string>>(new Set());
@@ -28,18 +32,21 @@ export function useSourceImages(images: () => readonly string[]) {
     failed.value = new Set();
   }
   watch(
-    [() => images().join('\n'), () => session?.client.value],
+    [() => images().join('\n'), () => session?.client.value, preset],
     async () => {
       clear();
       const controller = new AbortController();
       request = controller;
       const api = session?.client.value;
+      const requested = preset();
       const privateUrls = [...new Set(images())].filter((url) => AssetPath.test(url));
       const results = await Promise.all(
         privateUrls.map(async (url) => {
           const match = AssetPath.exec(url)!;
           if (!api?.getSourceAsset) return { url };
-          const result = await api.getSourceAsset(match[1]!, match[2]!, controller.signal);
+          const result = requested
+            ? await api.getSourceAsset(match[1]!, match[2]!, controller.signal, requested)
+            : await api.getSourceAsset(match[1]!, match[2]!, controller.signal);
           return result.ok && result.value.size <= 5 * 1024 * 1024 && ImageTypes.has(result.value.type.toLowerCase())
             ? { url, blob: result.value }
             : { url };
@@ -63,12 +70,17 @@ export function useSourceImages(images: () => readonly string[]) {
     { immediate: true },
   );
   onScopeDispose(clear);
+  function srcFor(url: string): string | undefined {
+    return AssetPath.test(url) ? copies.value[url] : url;
+  }
+
   return {
     urls: computed(() =>
       images()
-        .map((url) => (AssetPath.test(url) ? copies.value[url] : url))
+        .map(srcFor)
         .filter((url): url is string => !!url),
     ),
+    srcFor,
     failed,
   };
 }

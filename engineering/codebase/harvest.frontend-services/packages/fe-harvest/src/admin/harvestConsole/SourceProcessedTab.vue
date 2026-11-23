@@ -50,7 +50,7 @@ const EntityChoices = [
   { value: '', label: 'Any type' },
   { value: 'event', label: 'Events' },
   { value: 'listing', label: 'Listings' },
-  { value: 'none', label: 'Neither' },
+  { value: 'none', label: 'Other posts' },
   { value: 'unsure', label: 'Unsure' },
 ] as const;
 const VerdictChoices = [
@@ -149,7 +149,7 @@ onScopeDispose(() => read?.abort());
     >
       {{ filtered ? 'No processed post matches.' : 'No processed posts yet. Posts appear here once the AI tags them.' }}
     </p>
-    <div v-else :class="postGalleryGridClass">
+    <div v-else :class="postGalleryGridClass" class="items-start">
       <ProcessedPostCard v-for="post in items" :key="post.postId" :source="props.source" :post="post" />
     </div>
 

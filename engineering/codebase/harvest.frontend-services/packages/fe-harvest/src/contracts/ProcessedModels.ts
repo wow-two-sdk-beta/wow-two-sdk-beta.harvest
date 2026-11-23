@@ -99,6 +99,8 @@ export interface ProcessedEventSummary {
   readonly access?: string;
   readonly prices: readonly ProcessedPriceModel[];
   readonly status?: string;
+  /** Language tags stated for the event itself. */
+  readonly languages?: readonly string[];
 }
 
 /** Mirrors `ProcessedListingSummary`: the parts of an `extract-listing` answer a card shows. */

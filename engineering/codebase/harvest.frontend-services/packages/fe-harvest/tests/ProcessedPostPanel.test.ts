@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ResultExtensions } from '@wow-two-beta/fe/foundation/results';
 import type { HarvestConsole } from '../src/admin/harvestConsole/HarvestConsole';
 import type { SourceOverviewModel, SourceProcessedPostDetailsModel, SourceProcessedPostModel } from '../src/contracts';
+import PhotoGallery from '../src/admin/harvestConsole/PhotoGallery.vue';
 import ProcessedPostPanel from '../src/admin/harvestConsole/ProcessedPostPanel.vue';
 import { createHarvestClient } from '../src/kit';
 
@@ -80,6 +81,7 @@ const runway: SourceProcessedPostModel = {
     event: {
       name: 'The Fashion Show Line',
       editionLabel: '2026',
+      languages: ['uz', 'en'],
       occurrences: [{ starts: '2026-11-21', ends: '2026-11-23', precision: 'day', certainty: 'stated' }],
       venue: 'Youth Creativity Palace',
       city: 'Tashkent',
@@ -108,6 +110,7 @@ const runwayDetails: SourceProcessedPostDetailsModel = {
     { field: 'occurrences[0]', certainty: 'stated', quotes: ['The show runs on 21–23 November'] },
     { field: 'prices[0]', quotes: ["Tickets from 150 000 so'm"] },
     { field: 'registration.deadline', value: '2026-11-10', quotes: ['Register by 10 November'] },
+    { field: 'languages', certainty: 'stated', quotes: ['The show is in Uzbek and English'] },
   ],
   passes: [
     { pass: 'post-tags', status: 'done', inferenceId: RunId, answer: runway.tags.answer },
@@ -139,40 +142,57 @@ const bare: SourceProcessedPostDetailsModel = {
   ],
 };
 
-function open(details: SourceProcessedPostDetailsModel) {
+function open(details: SourceProcessedPostDetailsModel, imageUrls: readonly string[] = []) {
   const read = vi.fn(async () => ResultExtensions.ok(details));
+  const photos = vi.fn(async () =>
+    ResultExtensions.ok({ items: [{ postId: details.post.postId, imageUrls }], total: 1 }),
+  );
   const pageTitle = shallowRef<string>();
-  session = { overviewOf: () => source, readSourceProcessedPost: read, pageTitle } as unknown as HarvestConsole;
+  session = {
+    overviewOf: () => source,
+    readSourceProcessedPost: read,
+    querySourcePosts: photos,
+    pageTitle,
+  } as unknown as HarvestConsole;
   const wrapper = mount(ProcessedPostPanel, {
     props: { sourceId: 'afisha', postId: 'runway' },
     global: { stubs: { ConsoleLink: LinkStub } },
   });
   wrappers.push(wrapper);
-  return { wrapper, read, pageTitle };
+  return { wrapper, read, photos, pageTitle };
 }
 
 const sectionNames = (wrapper: ReturnType<typeof mount>) =>
   wrapper.findAll('section').map((section) => section.attributes('aria-label'));
 
 describe('processed post page', () => {
-  it('reads the post of its source and shows every section, the wide media header first', async () => {
+  it('shows the centered uncropped photo before the post metadata and sections', async () => {
     const { wrapper, read, pageTitle } = open(runwayDetails);
     expect(wrapper.text()).toContain('Reading the processed post…');
     await flushPromises();
 
     expect(read).toHaveBeenCalledWith('afisha', 'runway', expect.any(AbortSignal));
     expect(wrapper.text()).not.toContain('Reading the processed post…');
-    expect(sectionNames(wrapper)).toEqual(['Classification', 'Tags', 'Event extraction', 'AI passes', 'Links']);
+    expect(sectionNames(wrapper)).toEqual([
+      'Photos',
+      'Classification',
+      'Tags',
+      'Event extraction',
+      'AI passes',
+      'Links',
+    ]);
     const header = wrapper.get('header');
     expect(header.get('h1').text()).toBe(runway.title);
-    expect(header.classes()).toEqual(expect.arrayContaining(['aspect-[16/9]', 'md:aspect-[21/8]']));
     expect(header.find('a[data-to]').exists()).toBe(false);
     expect(header.get('img').attributes('src')).toBe('https://www.afisha.uz/media/runway.jpg');
-    expect(header.get('ul[aria-label="Entity type, verdict, language and AI provider"]').text()).toContain('Relevant');
-    expect(header.get('p').text()).toContain('Fashion show: The Fashion Show Line 2026 · first seen');
+    expect(header.get('img').classes()).toContain('object-contain');
+    expect(header.getComponent(PhotoGallery).props('fixedHeight')).toBe(true);
+    expect(header.get('ul[aria-label="Entity type and AI provider"]').text()).toBe('event');
+    expect(header.get('p').text()).toBe('Fashion show: The Fashion Show Line 2026');
+    expect(header.get('[data-post-language]').text()).toBe('Post language · Russian');
     expect(header.get('a[target="_blank"]').attributes('href')).toBe('https://www.afisha.uz/ru/fashion/1');
     expect(header.get('[data-provider-pill]').attributes('aria-label')).toBe('Claude Haiku 5.5');
-    expect(header.find('[class*="backdrop-blur-xl"]').exists()).toBe(true);
+    expect(header.find('[class*="backdrop-blur-xl"]').exists()).toBe(false);
     expect(pageTitle.value).toBe(runway.title);
     expect(JSON.parse(wrapper.get('a[data-to]').attributes('data-to')!)).toEqual({
       kind: 'source',
@@ -180,6 +200,17 @@ describe('processed post page', () => {
       tab: 'processed',
     });
     expect(wrapper.get('a[data-to]').text()).toContain('Processed posts of Afisha.uz');
+  });
+
+  it('uses every image from the captured post in its original order', async () => {
+    const images = Array.from({ length: 6 }, (_, index) => `https://www.afisha.uz/media/runway-${index + 1}.jpg`);
+    const { wrapper, photos } = open(runwayDetails, images);
+    await flushPromises();
+
+    expect(photos).toHaveBeenCalledWith('afisha', { postId: 'runway', limit: 1 }, expect.any(AbortSignal));
+    const gallery = wrapper.get('[data-post-images="6"]');
+    expect(gallery.findAll('img').map((image) => image.attributes('src'))).toEqual(images.slice(0, 5));
+    expect(gallery.get('button[aria-label="View all 6 photos"]').text()).toBe('+1');
   });
 
   it('shows the classification: the verdict, its reason, confidence and classifier', async () => {
@@ -237,6 +268,7 @@ describe('processed post page', () => {
       'access',
       'prices[0]',
       'registration.deadline',
+      'languages',
     ]);
     const dates = section.get('li[data-field="occurrences[0]"]');
     expect(dates.text()).toContain('Dates');
@@ -254,6 +286,8 @@ describe('processed post page', () => {
     );
     expect(section.get('li[data-field="place"]').text()).toContain('Youth Creativity Palace, Tashkent, UZ');
     expect(section.get('li[data-field="place"]').find('blockquote').exists()).toBe(false);
+    expect(section.get('li[data-field="languages"]').text()).toContain('Uzbek, English');
+    expect(section.get('li[data-field="languages"] blockquote').text()).toBe('“The show is in Uzbek and English”');
   });
 
   it('lists each AI pass with its brand mark, model, cost, time, tokens in and out, answer time and run', async () => {
@@ -385,6 +419,7 @@ describe('processed post page', () => {
     session = {
       overviewOf: () => source,
       readSourceProcessedPost: read,
+      querySourcePosts: vi.fn(async () => ResultExtensions.fail({ kind: 'offline' })),
       pageTitle: shallowRef<string>(),
     } as unknown as HarvestConsole;
     const wrapper = mount(ProcessedPostPanel, {

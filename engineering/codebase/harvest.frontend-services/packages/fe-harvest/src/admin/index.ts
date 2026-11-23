@@ -26,6 +26,7 @@ export {
 } from './harvestConsole/SourceWords';
 export { OtherGroupKey, groupElementId, type GalleryGroup } from './harvestConsole/SourceGroups';
 export { default as HarvestConsoleProvider } from './harvestConsole/HarvestConsoleProvider.vue';
+export { default as SourceImagePolicyPanel } from './harvestConsole/SourceImagePolicyPanel.vue';
 export { default as HarvestConnectPanel } from './harvestConsole/HarvestConnectPanel.vue';
 export { default as ContainerSwitch } from './harvestConsole/ContainerSwitch.vue';
 export { default as ConsoleNotices } from './harvestConsole/ConsoleNotices.vue';

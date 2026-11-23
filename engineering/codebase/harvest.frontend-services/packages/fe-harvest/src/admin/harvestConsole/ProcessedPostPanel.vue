@@ -5,7 +5,7 @@ import { MapLinks } from '@wow-two-beta/fe/domain/maps';
 import { Icon } from '@wow-two-beta/fe/foundation/icons';
 import { Button } from '@wow-two-beta/fe/presentation/actions';
 import { EmptyState } from '@wow-two-beta/fe/presentation/display';
-import type { ProcessedPassModel, SourceProcessedPostDetailsModel } from '../../contracts';
+import type { ProcessedPassModel, SourcePostModel, SourceProcessedPostDetailsModel } from '../../contracts';
 import ConsoleLink from './ConsoleLink.vue';
 import { eventKindIconOf } from './EventKindIcons';
 import HarvestPill from './HarvestPill.vue';
@@ -28,7 +28,7 @@ import {
 import { agoOf, dateTimeOf, webUrlOf } from './SourceWords';
 
 /**
- * One post as the AI passes read it, in full: the card's media header at a wider ratio, then the classification with
+ * One post as the AI passes read it, in full: the photo gallery, then the classification with
  * its verdict, reason and confidence; every tag; the extraction with each field's value, how sure the answer is, its
  * quotes from the post and its unsure flags; each AI pass with its model, cost, time, tokens, answer time and run; and
  * the links to the captured post and the original. A section the post has no data for does not show. The card in the
@@ -40,6 +40,7 @@ const session = useHarvestConsole();
 const source = computed(() => session.overviewOf(props.sourceId));
 const headerSource = computed(() => source.value ?? { sourceId: props.sourceId, family: 'site' as const });
 const details = shallowRef<SourceProcessedPostDetailsModel>();
+const captured = shallowRef<SourcePostModel>();
 const state = shallowRef<'loading' | 'ready' | 'unavailable'>('loading');
 let read: AbortController | null = null;
 
@@ -49,11 +50,17 @@ async function load() {
   read = controller;
   state.value = 'loading';
   details.value = undefined;
+  captured.value = undefined;
   session.pageTitle.value = undefined;
-  const result = await session.readSourceProcessedPost(props.sourceId, props.postId, controller.signal);
+  const { sourceId, postId } = props;
+  const [result, posts] = await Promise.all([
+    session.readSourceProcessedPost(sourceId, postId, controller.signal),
+    session.querySourcePosts(sourceId, { postId, limit: 1 }, controller.signal),
+  ]);
   if (controller.signal.aborted) return;
   state.value = result.ok ? 'ready' : 'unavailable';
   if (result.ok) {
+    if (posts.ok) captured.value = posts.value.items.find((item) => item.postId === postId);
     details.value = result.value;
     session.pageTitle.value = result.value.post.title;
   }
@@ -65,6 +72,13 @@ onScopeDispose(() => {
 });
 
 const post = computed(() => details.value?.post);
+const imageUrls = computed(() =>
+  captured.value?.imageUrls?.length
+    ? captured.value.imageUrls
+    : captured.value?.imageUrl
+      ? [captured.value.imageUrl]
+      : undefined,
+);
 const tags = computed(() => post.value?.tags);
 const classification = computed(() => post.value?.classification);
 const extraction = computed(() => post.value?.extraction);
@@ -145,7 +159,7 @@ const LinkClass =
     </div>
     <template v-else-if="post && tags">
       <div class="overflow-hidden rounded-2xl border border-border bg-card" aria-label="Post header" role="group">
-        <ProcessedPostHeader :source="headerSource" :post="post" wide />
+        <ProcessedPostHeader :source="headerSource" :post="post" :image-urls="imageUrls" />
       </div>
 
       <div class="grid gap-5 lg:grid-cols-[repeat(auto-fit,minmax(min(100%,24rem),1fr))]">

@@ -10,10 +10,14 @@ Defer to `wow-two-ws/conventions/development/frontend/`.
   version; `check:package` enforces it and fails when one of the three exports is missing.
 - `apps/web` is `@harvest/web`, private: the console, one route per page (Home; Sources and a source with its
   Overview, Posts, Processed, Pipelines, Activity and Settings tabs; Pipelines; Entities and one entity; Subscribers;
-  Access) inside the fe sdk `AppFrame`. Posts shows what the source gave, untouched; Processed shows what the AI passes
-  made of it — a card in the Posts card's look with tags, verdict, extraction summary and the answering AI's brand mark
-  (`@wow-two-beta/fe/domain/aiBrands`, resolved from the model id first, the provider key next) whose tooltip names the
-  model, cost, latency, tokens and prompt version, and a link to the processed post's own page (`/sources/{id}/processed/{postId}`: classification, every tag, the extraction with each field's quote, certainty and unsure flag, and each AI pass); the Posts and Processed tab labels carry the source's totals
+  Access) inside the fe sdk `AppFrame`. Posts shows the original post. Processed uses the Posts card's media proportions
+  and puts the model's summary on the media. Processed cards show the tagged entity type, abbreviated post language
+  and AI brand mark above the photo. Both galleries show the time since publication and first harvest below the
+  title. Event dates and stated event languages sit in the extraction summary. The AI brand mark
+  (`@wow-two-beta/fe/domain/aiBrands`) has a tooltip with the model, cost,
+  latency, tokens and prompt version.
+  The processed post page (`/sources/{id}/processed/{postId}`) centers the full photo and shows the original title,
+  classification, tags, extraction evidence and AI passes. The Posts and Processed tab labels carry the source's totals
   (`Posts 88`) and a pill first in the filter row reads the match count (`12 of 88`) only while a search or filter
   narrows; hosted pages join as consumers forward to them. On screen it says source, group, section, harvest and subscriber, never pipeline, host
   lane, tenant, container or scope names. It takes

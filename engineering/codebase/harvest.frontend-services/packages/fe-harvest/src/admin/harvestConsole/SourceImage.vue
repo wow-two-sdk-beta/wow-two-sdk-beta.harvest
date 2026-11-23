@@ -1,16 +1,21 @@
 <script setup lang="ts">
 import { watch, type ImgHTMLAttributes } from 'vue';
+import type { SourceImagePreset } from '../../contracts/SourceImagePolicy';
 import { useSourceImages } from './UseSourceImages';
 
 const props = defineProps<{
   src: string;
   alt?: string;
+  preset?: SourceImagePreset;
   loading?: 'lazy' | 'eager';
   decoding?: 'async' | 'sync' | 'auto';
   referrerpolicy?: ImgHTMLAttributes['referrerpolicy'];
 }>();
 const emit = defineEmits<{ error: [] }>();
-const images = useSourceImages(() => [props.src]);
+const images = useSourceImages(
+  () => [props.src],
+  () => props.preset,
+);
 watch(
   () => images.failed.value.has(props.src),
   (failed) => {

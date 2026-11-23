@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { badgeVariants, BadgeVariant } from '@wow-two-beta/fe/presentation/display';
+import { imagePillTintClass } from './PostGalleryStyles';
 import type { PillTone } from './SourceWords';
 
 /**
@@ -22,8 +24,8 @@ const ToneClass: Record<PillTone, string> = {
   neutral: 'border-transparent bg-muted text-muted-foreground',
   dashed: 'border-dashed border-border-strong bg-transparent text-muted-foreground',
   outline: 'border-border bg-card text-foreground',
-  glass: 'border-white/20 bg-white/15 text-white',
-  glassSuccess: 'border-emerald-300/30 bg-emerald-400/25 text-emerald-50',
+  glass: badgeVariants({ variant: BadgeVariant.Glass, isOutlined: true, class: `h-auto gap-1 ${imagePillTintClass}` }),
+  glassSuccess: badgeVariants({ variant: BadgeVariant.GlassSuccess, isOutlined: true, class: 'h-auto gap-1' }),
 };
 const sizeClass = computed(() => (props.size === 'md' ? 'min-h-7 px-3 text-[13px]' : 'min-h-6 px-2.5 text-xs'));
 </script>

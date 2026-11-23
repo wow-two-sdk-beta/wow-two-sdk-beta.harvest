@@ -56,7 +56,13 @@ export const ConsoleSections: readonly ConsoleSection[] = [
     ],
   },
   { label: 'Deliver', destinations: [{ label: 'Subscribers', route: 'subscribers', icon: 'subscribers' }] },
-  { label: 'System', destinations: [{ label: 'Access', route: 'access', icon: 'access' }] },
+  {
+    label: 'System',
+    destinations: [
+      { label: 'Access', route: 'access', icon: 'access' },
+      { label: 'Media', route: 'media', icon: 'media', operatorOnly: true },
+    ],
+  },
 ];
 
 /** Finds the section and destination a route belongs to. */

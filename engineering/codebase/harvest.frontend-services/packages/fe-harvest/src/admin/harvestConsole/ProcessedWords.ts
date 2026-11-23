@@ -11,6 +11,7 @@ import type {
   ProcessedPriceModel,
   ProcessedTagsModel,
 } from '../../contracts';
+import { languageName } from './SourceSections';
 import { agoOf, eventDatesOf, type PillTone } from './SourceWords';
 
 /** A brand's name as people write it: `Claude` for a Claude model, else the provider key as given. */
@@ -138,7 +139,7 @@ export function verdictTone(verdict: ClassificationVerdict): PillTone {
 
 /** The words of a tags answer's entity type. */
 export function entityTypeWords(type?: string) {
-  const words: Record<string, string> = { event: 'Event', listing: 'Listing', none: 'Neither', unsure: 'Unsure' };
+  const words: Record<string, string> = { event: 'Event', listing: 'Listing', none: 'Other post', unsure: 'Unsure' };
   return type ? (words[type] ?? type) : 'No type';
 }
 
@@ -193,6 +194,7 @@ export function eventLines(event: ProcessedEventSummary, now = new Date()) {
     event.access && event.access !== 'unknown' ? event.access : undefined,
     ...event.prices.map((price) => [priceText(price), price.label].filter(Boolean).join(' ')),
   ].filter(Boolean);
+  const languages = event.languages?.map(languageName).join(', ');
   return [
     ...(name ? [{ key: 'name', text: name }] : []),
     ...(dates.length ? [{ key: 'dates', text: dates.join('; ') }] : []),
@@ -200,6 +202,7 @@ export function eventLines(event: ProcessedEventSummary, now = new Date()) {
       ? [{ key: 'place', text: placeText(event.venue, event.city, event.country)! }]
       : []),
     ...(terms.length ? [{ key: 'terms', text: terms.join(' · ') }] : []),
+    ...(languages ? [{ key: 'languages', text: `Event language · ${languages}` }] : []),
   ];
 }
 
@@ -295,6 +298,7 @@ export function extractionRows(
     add('registration.opens', 'Registration opens', quoted.get('registration.opens')?.value);
     add('registration.deadline', 'Registration deadline', quoted.get('registration.deadline')?.value);
     add('status', 'Status', event.status);
+    add('languages', 'Event language', event.languages?.map(languageName).join(', '));
   }
   const listing = extraction.status === 'done' ? extraction.listing : undefined;
   if (listing) {

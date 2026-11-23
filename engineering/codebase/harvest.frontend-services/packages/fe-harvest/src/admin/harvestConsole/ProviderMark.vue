@@ -2,6 +2,8 @@
 import { computed } from 'vue';
 import { AiBrandMark } from '@wow-two-beta/fe/domain/aiBrands';
 import { Tooltip } from '@wow-two-beta/fe/presentation/overlays';
+import { badgeVariants, BadgeVariant } from '@wow-two-beta/fe/presentation/display';
+import { imagePillTintClass } from './PostGalleryStyles';
 import { markLabel } from './ProcessedWords';
 
 /**
@@ -23,6 +25,11 @@ const props = withDefaults(
   { provider: undefined, model: undefined, onImage: false, pill: false, placement: 'top-end' },
 );
 const label = computed(() => markLabel(props.provider, props.model));
+const glassPill = badgeVariants({
+  variant: BadgeVariant.Glass,
+  isOutlined: true,
+  class: `inline-grid size-6 place-items-center px-0 ${imagePillTintClass}`,
+});
 </script>
 
 <template>
@@ -33,7 +40,7 @@ const label = computed(() => markLabel(props.provider, props.model));
         props.pill ? 'size-6' : 'size-8 backdrop-blur-md',
         props.onImage
           ? props.pill
-            ? 'border-white/20 bg-white/15 text-white'
+            ? glassPill
             : 'border-white/20 bg-black/35 text-white'
           : 'border-border bg-card text-foreground',
       ]"

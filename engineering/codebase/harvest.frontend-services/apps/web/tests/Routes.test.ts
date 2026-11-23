@@ -23,6 +23,8 @@ const Afisha = '/sources/00000000-0000-4000-8000-000000000200';
 const FashionPipeline = '/pipelines/00000000-0000-4000-8000-000000000005';
 /** The demo's Tashkent Fashion Week entity. */
 const FashionWeek = '00000000-0000-4000-8000-000000000900';
+const FashionShowTitle = 'Показ мод The Fashion Show Line 2026';
+const FashionShowSummary = 'a runway show of Tashkent designers’ autumn collections';
 
 /** Mounts the demo console at `path`, routed as in the browser but over memory history. */
 async function renderAt(path: string) {
@@ -97,11 +99,17 @@ describe('console routes', () => {
 
   it('shows what the AI made of a post, and links an entity post to its post page', async () => {
     const { router, wrapper } = await renderAt(`${Afisha}/processed`);
-    await vi.waitFor(() => expect(wrapper.findAll('article[aria-label]').length).toBeGreaterThan(0));
-    const show = wrapper.get('article[aria-label="Показ мод The Fashion Show Line 2026"]');
-    expect(show.text()).toContain('Relevant');
+    const showCard = () =>
+      wrapper.findAll('article').find((card) => {
+        const link = card.find('a[data-processed-link]');
+        return link.exists() && link.text() === FashionShowSummary;
+      });
+    await vi.waitFor(() => expect(showCard()).toBeDefined());
+    const show = showCard()!;
+    expect(show.get('ul[aria-label="Processed post badges"] li:first-child').text()).toBe('event');
+    expect(show.get('[data-post-age="harvested"]').attributes('aria-label')).toMatch(/^Harvested /);
     expect(show.get('header [data-ai-brand]').attributes('data-ai-brand')).toBe('claude');
-    expect(show.get('header [role="img"]').attributes('aria-label')).toBe('Claude Haiku 5.5');
+    expect(show.get('header [data-provider-pill]').attributes('aria-label')).toBe('Claude Haiku 5.5');
     expect(show.find('footer').exists()).toBe(false);
     expect(show.get('[aria-label="Event extraction"]').text()).toContain('Youth Creativity Palace');
     const href = show.get('a[data-processed-link]').attributes('href')!;
@@ -110,29 +118,29 @@ describe('console routes', () => {
     await router.push(`/entities/${FashionWeek}`);
     await vi.waitFor(() => expect(wrapper.find('[aria-label="Entity"]').exists()).toBe(true));
     const postHref = href.replace('/processed/', '/posts/');
-    expect(wrapper.get(`a[href="${postHref}"]`).text()).toContain('Показ мод The Fashion Show Line 2026');
+    expect(wrapper.get(`a[href="${postHref}"]`).text()).toContain(FashionShowTitle);
   });
 
   it('opens a processed card on its own page, in the frame, with the trail ending in the post and its links', async () => {
     const { router, wrapper } = await renderAt(`${Afisha}/processed`);
-    await vi.waitFor(() => expect(wrapper.findAll('article[aria-label]').length).toBeGreaterThan(0));
-    const title = 'Показ мод The Fashion Show Line 2026';
-    const link = wrapper.get(`article[aria-label="${title}"] a[data-processed-link]`);
+    const showLink = () => wrapper.findAll('a[data-processed-link]').find((link) => link.text() === FashionShowSummary);
+    await vi.waitFor(() => expect(showLink()).toBeDefined());
+    const link = showLink()!;
     const postId = link.attributes('href')!.split('/').at(-1)!;
     await link.trigger('click');
     await vi.waitFor(() => expect(router.currentRoute.value.path).toBe(`${Afisha}/processed/${postId}`));
     expect(router.currentRoute.value.name).toBe('source-processed-post');
     await vi.waitFor(() => expect(wrapper.find('[aria-label="Processed post"] h1').exists()).toBe(true));
     expect(wrapper.findAll('h1')).toHaveLength(1);
-    expect(wrapper.get('h1').text()).toBe(title);
+    expect(wrapper.get('h1').text()).toBe(FashionShowTitle);
     expect(wrapper.get('nav[aria-label="Console"] [aria-current="page"]').text()).toContain('Afisha.uz');
 
     const bar = wrapper.get('[data-app-frame-bar]');
-    await vi.waitFor(() => expect(bar.text()).toContain(title));
+    await vi.waitFor(() => expect(bar.text()).toContain(FashionShowTitle));
     const trail = bar.text();
     expect(trail.indexOf('Collect')).toBeLessThan(trail.indexOf('Sources'));
     expect(trail.indexOf('Afisha.uz')).toBeLessThan(trail.indexOf('Processed'));
-    expect(trail.indexOf('Processed')).toBeLessThan(trail.indexOf(title));
+    expect(trail.indexOf('Processed')).toBeLessThan(trail.indexOf(FashionShowTitle));
     expect(bar.find(`a[href="${Afisha}/processed"]`).exists()).toBe(true);
 
     for (const section of ['Classification', 'Tags', 'Event extraction', 'AI passes', 'Links'])

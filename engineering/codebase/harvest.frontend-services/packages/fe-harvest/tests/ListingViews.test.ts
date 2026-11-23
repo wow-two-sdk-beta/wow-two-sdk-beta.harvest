@@ -61,11 +61,36 @@ describe('apartment listing views', () => {
 });
 
 describe('captured post photos', () => {
-  it('opens a tinted overflow tile at its photo and reaches the remaining photos', async () => {
+  it('sizes the lead column from portrait, square and landscape images', async () => {
+    const gallery = mount(PhotoGallery, { props: { images: ['/lead.jpg', '/second.jpg', '/third.jpg'] } });
+    try {
+      const lead = gallery.get('button[aria-label="Open photo 1"] img');
+      const mosaic = gallery.get<HTMLElement>('[style*="--mosaic-columns"]');
+      for (const [width, height, aspect] of [
+        [800, 1000, 0.8],
+        [800, 800, 1],
+        [1200, 800, 1.5],
+      ]) {
+        Object.defineProperties(lead.element, {
+          naturalWidth: { value: width, configurable: true },
+          naturalHeight: { value: height, configurable: true },
+        });
+        await lead.trigger('load');
+        expect(mosaic.element.style.getPropertyValue('--mosaic-columns')).toBe(
+          `minmax(0, ${aspect}fr) minmax(0, 0.4fr)`,
+        );
+      }
+    } finally {
+      gallery.unmount();
+    }
+  });
+
+  it('shows whole previews and opens the overflow tile at its photo', async () => {
     const images = Array.from({ length: 6 }, (_, index) => `/test/photos/${index + 1}.png`);
     const gallery = mount(PhotoGallery, { props: { images }, attachTo: document.body });
     try {
       expect(gallery.findAll('button')).toHaveLength(5);
+      expect(gallery.findAll('img').every((image) => image.classes().includes('object-contain'))).toBe(true);
       const last = gallery.get('button[aria-label="View all 6 photos"]');
       expect(last.text()).toBe('+1');
       await last.trigger('click');

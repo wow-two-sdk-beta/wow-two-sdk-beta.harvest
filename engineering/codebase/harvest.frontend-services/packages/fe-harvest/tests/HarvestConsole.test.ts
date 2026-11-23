@@ -1254,6 +1254,7 @@ describe('post page and cards', () => {
     const focusStops = several!.findAll('a[href],button:not([disabled]),[tabindex="0"]');
     expect(focusStops.map((el) => el.attributes('aria-label') ?? el.text())).toEqual([
       'Fashion Show Line 2026',
+      'Harvested 3 hours ago',
       'Previous slide',
       'Next slide',
       'Open the original of Fashion Show Line 2026',
@@ -1303,28 +1304,30 @@ describe('post page and cards', () => {
     expect(card!.find('[role="img"][aria-label="1 of 1"]').exists()).toBe(false);
   });
 
-  it('leads a card’s last line with the event dates and the posted age, each behind its own icon', async () => {
+  it('shows the harvest age on raw cards whose source lacks a publication date', async () => {
     const wrapper = mountConsole({
       options: { client: createHarvestClient({ fetch: fixtureFetch() }) },
       panels: () => h(SourcePanel, { sourceId: 'source-1', tab: 'posts', view: 'cards' }),
     });
     await flushPromises();
-    const [event, article] = wrapper.findAll('ul[aria-label="Posts"] > li');
-    const dates = event!.get('[data-event-dates]');
-    expect(dates.text()).toContain('21 Nov 2099');
-    expect(dates.find('svg').exists()).toBe(true);
-    expect(article!.find('[data-event-dates]').exists()).toBe(false);
-    expect(event!.text()).not.toMatch(/posted \d|ago/);
+    const cards = wrapper.findAll('ul[aria-label="Posts"] > li');
+    expect(cards).toHaveLength(2);
+    for (const card of cards) {
+      expect(card.findAll('[data-post-age]').map((pill) => pill.attributes('data-post-age'))).toEqual(['harvested']);
+      expect(card.get('[data-post-age="harvested"] svg').classes()).toContain('lucide-import-icon');
+    }
+    expect(cards[0]!.text()).not.toContain('21 Nov 2099');
   });
 
-  it('drops the label a chosen filter chip already states, and keeps the card’s height', async () => {
+  it('filters by source kind without labeling raw cards by kind', async () => {
     const wrapper = mountConsole({
       options: { client: createHarvestClient({ fetch: fixtureFetch() }) },
       panels: () => h(SourcePanel, { sourceId: 'source-1', tab: 'posts', view: 'cards' }),
     });
     await flushPromises();
-    const kindPills = () => wrapper.findAll('ul[aria-label="Posts"] > li [data-tone]').map((pill) => pill.text());
-    expect(kindPills()).toContain('event');
+    const cardPills = () => wrapper.findAll('ul[aria-label="Posts"] > li [data-tone]').map((pill) => pill.text());
+    expect(cardPills()).not.toContain('event');
+    expect(cardPills()).not.toContain('article');
     const events = wrapper.get('button[aria-label^="Events "]');
     const label = events.attributes('aria-label');
     await events.trigger('pointerenter');
@@ -1334,8 +1337,8 @@ describe('post page and cards', () => {
     await events.trigger('click');
     await flushPromises();
     expect(wrapper.findAll('ul[aria-label="Posts"] > li')).toHaveLength(1);
-    expect(kindPills()).not.toContain('event');
-    expect(wrapper.find('ul[aria-label="Posts"] > li [data-tone]').exists()).toBe(true);
+    expect(cardPills().length).toBeGreaterThan(0);
+    expect(cardPills()).not.toContain('event');
   });
 
   it('debounces search into the Posts query and renders the server count', async () => {

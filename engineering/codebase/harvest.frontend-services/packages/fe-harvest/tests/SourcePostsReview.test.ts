@@ -288,7 +288,7 @@ describe('post list review refinements', () => {
   });
 
   it('counts a search against the source total, and falls back to the sections when the host sends none', async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const unsent = { ...source(), sections: [{ posts: 3 }, { posts: 2 }] } as unknown as SourceOverviewModel;
     const wrapper = mount(SourcePostsTab, { props: { source: unsent, view: 'cards' }, attachTo: document.body });
     wrappers.push(wrapper);
@@ -335,8 +335,17 @@ describe('post list review refinements', () => {
     expect(several.find('[role="group"][aria-label="Language"]').exists()).toBe(true);
   });
 
-  it('shows removed state in rows and explicit event timing in both views', async () => {
-    query().mockResolvedValue(ok(page([post('gone', { state: 'gone', eventTiming: 'finished' })])));
+  it('shows posted and harvested ages on cards and event timing in rows', async () => {
+    const now = Date.now();
+    const postedAt = new Date(now - 16 * 60 * 60_000).toISOString();
+    const firstSeenAt = new Date(now - 8 * 60 * 60_000).toISOString();
+    query().mockResolvedValue(
+      ok(
+        page([
+          post('gone', { state: 'gone', eventTiming: 'finished', pipelineId: 'pipeline-1', postedAt, firstSeenAt }),
+        ]),
+      ),
+    );
     const wrapper = mount(SourcePostsTab, { props: { source: source(), view: 'rows' }, attachTo: document.body });
     wrappers.push(wrapper);
     await flushPromises();
@@ -344,7 +353,18 @@ describe('post list review refinements', () => {
     expect(wrapper.get('[role="rowgroup"]').text()).toContain('finished');
     await wrapper.setProps({ view: 'cards' });
     await nextTick();
-    expect(wrapper.get('[data-event-dates]').text()).toContain('finished');
+    const card = wrapper.get('ul[aria-label="Posts"] > li');
+    expect(card.text()).not.toContain('finished');
+    expect(card.text()).not.toContain('concerts');
+    const [posted, harvested] = card.findAll('[data-post-age]');
+    expect(posted!.text()).toBe('16 h');
+    expect(posted!.attributes('aria-label')).toBe('Posted 16 hours ago');
+    expect(posted!.get('time').attributes('datetime')).toBe(postedAt);
+    expect(posted!.get('svg').classes()).toContain('lucide-file-up-icon');
+    expect(harvested!.text()).toBe('8 h');
+    expect(harvested!.attributes('aria-label')).toBe('Harvested 8 hours ago');
+    expect(harvested!.get('time').attributes('datetime')).toBe(firstSeenAt);
+    expect(harvested!.get('svg').classes()).toContain('lucide-import-icon');
     expect(wrapper.get('[role="img"][aria-label="Removed from the source"]').attributes('tabindex')).toBe('0');
     expect(wrapper.find('[title]').exists()).toBe(false);
   });
@@ -405,6 +425,7 @@ describe('post list review refinements', () => {
     const stops = card.findAll('a[href],button:not([disabled]),[tabindex="0"]');
     expect(stops[0]!.text()).toBe('Concert ru');
     const language = card.get('[tabindex="0"][aria-label="Russian"]');
+    expect(language.text()).toBe('ru');
     await language.trigger('focus');
     await vi.waitFor(() => expect(document.body.querySelector('[role="tooltip"]')?.textContent).toBe('Russian'));
     expect(card.find('[title]').exists()).toBe(false);

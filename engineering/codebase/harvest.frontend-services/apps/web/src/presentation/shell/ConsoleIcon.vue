@@ -10,6 +10,7 @@ export const ConsoleIconPaths = {
   subscribers:
     'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7 M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6 M16 4.5a3.5 3.5 0 0 1 0 6.5 M18 14.5c1.8.8 3 2.9 3 5.5',
   access: 'M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z M9 12l2 2 4-4',
+  media: 'M3 5h18v14H3z M3 16l5-5 4 4 3-3 6 6 M16 9h.01',
   panel: 'M3 4h18v16H3z M9 4v16',
   cards: 'M4 4h7v7H4z M13 4h7v7h-7z M4 13h7v7H4z M13 13h7v7h-7z',
   rows: 'M4 6h16 M4 12h16 M4 18h16',

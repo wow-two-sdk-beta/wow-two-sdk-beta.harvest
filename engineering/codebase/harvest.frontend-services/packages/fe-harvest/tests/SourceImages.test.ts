@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import { defineComponent, h, ref, shallowRef, type ShallowRef, type VNode } from 'vue';
+import { defineComponent, h, shallowRef, type ShallowRef, type VNode } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHarvestClient, type HarvestClient } from '../src/kit';
 import { provideHarvestConsole, type HarvestConsole } from '../src/admin/harvestConsole/HarvestConsole';
@@ -9,7 +9,6 @@ import SourceImage from '../src/admin/harvestConsole/SourceImage.vue';
 const Source = '11111111-1111-1111-1111-111111111111';
 const Asset = '22222222-2222-2222-2222-222222222222';
 const Path = `/api/sources/${Source}/assets/${Asset}`;
-const OtherPath = `/api/sources/33333333-3333-3333-3333-333333333333/assets/${Asset}`;
 const PublicImage = 'https://photos.example.test/public.jpg';
 const createObjectURL = vi.fn<(blob: Blob) => string>();
 const revokeObjectURL = vi.fn<(url: string) => void>();
@@ -52,37 +51,53 @@ describe('authenticated source media', () => {
     expect(String(fetch.mock.calls[0]?.[0])).not.toContain('hv_fixture');
   });
 
-  it('uses private blob URLs for thumbnails and lightbox, never forwarding credentials to public images', async () => {
-    const fetch = vi.fn<typeof globalThis.fetch>(
-      async () => new Response('image bytes', { headers: { 'Content-Type': 'image/jpeg' } }),
+  it('loads preview presets, fetches only the selected original and keeps public images on their original URLs', async () => {
+    const paths = Array.from({ length: 6 }, (_, index) => Path.slice(0, -1) + (index + 1));
+    const imageResponse = () => new Response('image bytes', { headers: { 'Content-Type': 'image/jpeg' } });
+    let finishOriginal!: (response: Response) => void;
+    const fetch = vi.fn<typeof globalThis.fetch>(async (url) =>
+      url === paths[4] ? new Promise((resolve) => (finishOriginal = resolve)) : imageResponse(),
     );
+    const requested = () => fetch.mock.calls.map(([url]) => String(url));
     const client = shallowRef<HarvestClient | null>(createHarvestClient({ apiKey: 'hv_fixture', fetch }));
-    const images = ref([Path, PublicImage]);
+    const images = [...paths, PublicImage];
     const view = mount(
-      withClient(client, () => h(PhotoGallery, { images: images.value })),
+      withClient(client, () => h(PhotoGallery, { images })),
       { attachTo: document.body },
     );
     try {
-      expect(view.findAll('img').map((image) => image.attributes('src'))).not.toContain(Path);
       await flushPromises();
-      expect(fetch).toHaveBeenCalledTimes(1);
-      expect(fetch.mock.calls[0]?.[0]).toBe(Path);
-      expect(view.findAll('img').map((image) => image.attributes('src'))).toEqual([
-        'blob:private-image-1',
-        PublicImage,
-      ]);
-      await view.get('button[aria-label="Open photo 1"]').trigger('click');
-      await vi.waitFor(() =>
-        expect(document.body.querySelector('[role="dialog"] img')?.getAttribute('src')).toBe('blob:private-image-1'),
-      );
-      images.value = [OtherPath];
+      const previews = [`${paths[0]}?preset=s3`, ...paths.slice(1, 5).map((path) => `${path}?preset=s2`)];
+      expect(requested()).toEqual(previews);
+      const overflow = view.get('button[aria-label="View all 7 photos"]');
+      const lastPreview = overflow.get('img').attributes('src');
+      expect(lastPreview).toMatch(/^blob:/);
+      await overflow.trigger('click');
+      const dialog = () => document.body.querySelector<HTMLElement>('[role="dialog"]')!;
+      const main = () => dialog().querySelector('figure img')!;
+      await vi.waitFor(() => expect(main().getAttribute('src')).toBe(lastPreview));
       await flushPromises();
-      expect(revokeObjectURL).toHaveBeenCalledWith('blob:private-image-1');
-      expect(fetch.mock.calls[1]?.[0]).toBe(OtherPath);
-      client.value = null;
+      const rail = Array.from(dialog().querySelectorAll('[role="group"] img'), (image) => image.getAttribute('src'));
+      expect(rail.slice(0, 6).every((src) => src?.startsWith('blob:'))).toBe(true);
+      expect(rail[4]).not.toBe(lastPreview);
+      expect(rail[6]).toBe(PublicImage);
+      const thumbnailRequests = paths.map((path) => `${path}?preset=s1`);
+      expect(requested().slice(5).sort()).toEqual([...thumbnailRequests, paths[4]].sort());
+      const pending = fetch.mock.calls.find(([url]) => url === paths[4])?.[1]?.signal;
+
+      dialog().querySelector<HTMLButtonElement>('button[aria-label="Show image 6"]')!.click();
+      await vi.waitFor(() => {
+        expect(main().getAttribute('alt')).toBe('Photo 6');
+        expect(main().getAttribute('src')).toMatch(/^blob:/);
+        expect(main().getAttribute('src')).not.toBe(rail[5]);
+      });
+      expect(requested().at(-1)).toBe(paths[5]);
+      expect(requested().filter((url) => !url.includes('?'))).toEqual(paths.slice(4));
+      const selected = main().getAttribute('src');
+      expect(pending?.aborted).toBe(true);
+      finishOriginal(imageResponse());
       await flushPromises();
-      expect(revokeObjectURL).toHaveBeenCalledWith('blob:private-image-2');
-      expect(view.findAll('img')).toHaveLength(0);
+      expect(main().getAttribute('src')).toBe(selected);
     } finally {
       view.unmount();
     }

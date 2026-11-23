@@ -163,6 +163,12 @@ export const routes: RouteConfig = [
         handle: { title: 'Access', description: 'What this session may do, and the workspaces it sees.' },
         lazy: lazyRoute(() => import('../../presentation/console/pages/AccessPage.vue')),
       },
+      {
+        path: 'settings/media',
+        id: 'media',
+        handle: { title: 'Media' },
+        lazy: lazyRoute(() => import('../../presentation/console/pages/MediaPage.vue')),
+      },
       ...RemovedPages.map((path) => ({ path, redirect: { name: 'sources' } })),
     ],
   },

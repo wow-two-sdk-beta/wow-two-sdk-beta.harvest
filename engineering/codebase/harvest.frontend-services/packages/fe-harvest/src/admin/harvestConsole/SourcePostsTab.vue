@@ -21,7 +21,8 @@ import FilterToggleGroup from './FilterToggleGroup.vue';
 import HarvestPill from './HarvestPill.vue';
 import ListingCardFacts from './ListingCardFacts.vue';
 import PillIcon from './PillIcon.vue';
-import { postGalleryGridClass } from './PostGalleryStyles';
+import PostAgePill from './PostAgePill.vue';
+import { postCardAspectClass, postGalleryGridClass } from './PostGalleryStyles';
 import PostPills from './PostPills.vue';
 import { kindGlyphOf, sectionGlyphOf } from './PostGlyphs';
 import { labelsStatedBy } from './PostLabels';
@@ -31,14 +32,14 @@ import { languageName } from './SourceSections';
 import { useHarvestConsole } from './HarvestConsole';
 import { useAdaptiveList } from './UseAdaptiveList';
 import { useSourcePostPages } from './UseSourcePostPages';
-import { ageOf, agoOf, eventDatesOf, imageSrcOf, timingOf, webUrlOf, type GalleryView } from './SourceWords';
+import { agoOf, eventDatesOf, imageSrcOf, timingOf, webUrlOf, type GalleryView } from './SourceWords';
 
 /**
  * A source's posts, newest first: a search, filter chips by section and by kind with their counts, and the posts as
  * rows or cards. The tab label carries the source's total; while a search or filter narrows the list, a pill first in
  * the controls reads how many posts match (`12 of 88`), and a source whose posts share one language names it in a pill
  * after the filters. A card is filled edge to edge by the post's first image, its text at the bottom where the blur
- * fades into the image. The dates and publication age share a line when they fit. Missing images show the source icon
+ * fades into the image. The publication and first harvest ages share a line when they fit. Missing images show the source icon
  * and failed images show an unavailable-image icon. The grid shares its card width with the Processed tab. The pool
  * keeps posts of every kind; a subscriber receives only its matches. A post opens on its own page, with its facts and
  * revisions — revisions never show in the list. This is the raw view: only what the source gave and its reader mapped,
@@ -153,10 +154,7 @@ const all = computed({
 });
 const statedLabels = computed(() =>
   labelsStatedBy({
-    kind: displayedFilters.value.kind ? [displayedFilters.value.kind] : [],
-    section: (hasPublisherCategories.value ? displayedFilters.value.publisherCategory : displayedFilters.value.section)
-      ? ['selected']
-      : [],
+    section: displayedFilters.value.publisherCategory ? ['selected'] : [],
     language: uniformLanguage.value
       ? [uniformLanguage.value]
       : displayedFilters.value.language
@@ -178,12 +176,6 @@ async function showMore(event: MouseEvent) {
 function startOf(post: SourcePostModel) {
   return [eventDatesOf(post.startsAt, post.endsAt), eventStatusOf(post)].filter(Boolean).join(' · ') || undefined;
 }
-/** An event's dates for a card's chip: the text, and whether it is `ongoing`, `finished` or neither. */
-function eventChipOf(post: SourcePostModel) {
-  const text = eventDatesOf(post.startsAt, post.endsAt);
-  return text ? { text, timing: eventStatusOf(post) } : undefined;
-}
-
 function eventStatusOf(post: SourcePostModel) {
   if (!post.eventTiming) return timingOf(post.startsAt, post.endsAt);
   if (post.eventTiming === 'endUnknown') return 'end unknown';
@@ -382,20 +374,15 @@ function sectionOf(post: SourcePostModel) {
           </div>
         </div>
       </div>
-      <ul
-        v-else
-        ref="post-list"
-        :class="postGalleryGridClass"
-        aria-label="Posts"
-        :style="padding"
-      >
+      <ul v-else ref="post-list" :class="postGalleryGridClass" aria-label="Posts" :style="padding">
         <li
           v-for="(post, index) in shown"
           :key="post.postId"
           :aria-posinset="window.start + index + 1"
           :aria-setsize="page?.total"
           v-bind="{ 'data-post-index': window.start + index }"
-          class="group/post-card relative isolate flex aspect-[4/5] min-w-0 flex-col justify-end overflow-hidden rounded-2xl border border-border bg-muted hover:border-primary/40 has-[a[data-post-link]:focus-visible]:outline-2 has-[a[data-post-link]:focus-visible]:outline-offset-2 has-[a[data-post-link]:focus-visible]:outline-ring"
+          :class="postCardAspectClass"
+          class="group/post-card relative isolate flex min-w-0 flex-col justify-end overflow-hidden rounded-2xl border border-border bg-muted hover:border-primary/40 has-[a[data-post-link]:focus-visible]:outline-2 has-[a[data-post-link]:focus-visible]:outline-offset-2 has-[a[data-post-link]:focus-visible]:outline-ring"
         >
           <div class="relative isolate z-10 flex min-w-0 flex-col gap-2 px-4 pb-4 text-white">
             <div
@@ -411,9 +398,7 @@ function sectionOf(post: SourcePostModel) {
             </ConsoleLink>
             <PostPills
               v-if="!post.listing || post.state === 'gone'"
-              :kind="post.kind"
-              :pipeline-id="post.pipelineId"
-              :publisher-category="post.publisherCategory ?? (hasPublisherCategories ? null : undefined)"
+              :publisher-category="post.publisherCategory"
               :language="post.language"
               :removed="post.state === 'gone'"
               :hidden="statedLabels"
@@ -421,36 +406,12 @@ function sectionOf(post: SourcePostModel) {
               on-image
               compact
             />
-            <HarvestPill v-if="post.duplicate" tone="outline" class="w-fit bg-black/30 text-white">Duplicate</HarvestPill>
+            <HarvestPill v-if="post.duplicate" tone="glass" class="w-fit">duplicate</HarvestPill>
             <ListingCardFacts v-if="post.listing" :listing="post.listing" on-image />
-            <p
-              v-if="post.postedAt || (!post.listing && eventChipOf(post))"
-              class="flex min-w-0 flex-wrap items-start gap-x-3 text-[13px] leading-5 text-white/75"
-            >
-              <span
-                v-if="eventChipOf(post)"
-                class="inline-flex min-w-0 max-w-full items-center gap-1"
-                :class="
-                  eventChipOf(post)?.timing === 'ongoing'
-                    ? 'text-emerald-200'
-                    : eventChipOf(post)?.timing === 'finished'
-                      ? 'opacity-60'
-                      : ''
-                "
-                v-bind="{ 'data-event-dates': eventChipOf(post)?.timing ?? '' }"
-              >
-                <PillIcon name="dates" />
-                <span>{{ eventChipOf(post)?.text }}</span>
-                <span v-if="eventChipOf(post)?.timing">· {{ eventChipOf(post)?.timing }}</span>
-              </span>
-              <span v-if="post.postedAt" class="inline-flex shrink-0 items-center gap-1" v-bind="{ 'data-posted': '' }">
-                <span class="inline-flex items-center gap-1" aria-hidden="true">
-                  <PillIcon name="history" />
-                  {{ ageOf(post.postedAt) }}
-                </span>
-                <span class="sr-only">posted {{ agoOf(post.postedAt) }}</span>
-              </span>
-            </p>
+            <div class="flex min-w-0 flex-wrap items-center gap-1.5">
+              <PostAgePill v-if="post.postedAt" :at="post.postedAt" kind="posted" tone="glass" />
+              <PostAgePill :at="post.firstSeenAt" kind="harvested" tone="glass" />
+            </div>
           </div>
           <Carousel
             v-if="imagesOf(post).length"
@@ -468,6 +429,7 @@ function sectionOf(post: SourcePostModel) {
                   <SourceImage
                     v-if="!failedImages.has(src)"
                     :src="src"
+                    preset="s3"
                     alt=""
                     class="size-full object-cover"
                     :class="post.state === 'gone' ? 'grayscale' : ''"

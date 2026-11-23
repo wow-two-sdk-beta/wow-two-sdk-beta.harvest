@@ -368,22 +368,18 @@ describe('processed words', () => {
 });
 
 describe('processed tab', () => {
-  it('shows each post with its verdict, tags, extraction summary and the answering brand', async () => {
+  it('shows the processed title, type, extraction summary and answering brand in the gallery', async () => {
     const { wrapper, query } = show([{ items: [runway, essay], total: 2 }]);
     await flushPromises();
 
     expect(query).toHaveBeenCalledWith('afisha', { limit: 30 }, expect.any(AbortSignal));
     expect(wrapper.text()).not.toContain('processed posts');
-    const card = wrapper.get(`article[aria-label="${runway.title}"]`);
-    expect(card.text()).toContain('Relevant');
-    expect(card.text()).toContain('Event');
-    expect(card.get('ul[aria-label="Entity type, verdict, language and AI provider"]').text()).toContain('Russian');
-    expect(card.text()).toContain("Women's Fashion");
-    expect(card.text()).toContain('Style & Fashion');
-    expect(card.text()).toContain('#fashion-show');
-    expect(card.text()).toContain('upcoming');
-    expect(card.text()).toContain('a runway show of autumn collections');
-    expect(card.text()).toContain('Fashion show: The Fashion Show Line 2026');
+    const card = wrapper.get('article:first-child');
+    expect(card.get('header [data-processed-link]').text()).toBe(runway.tags.about);
+    expect(card.get('[data-post-language]').text()).toBe('ru');
+    expect(card.text()).not.toContain(runway.title);
+    expect(card.text()).not.toContain('Relevant');
+    expect(card.find('ul[aria-label="Tags"]').exists()).toBe(false);
     expect(card.get('[aria-label="Event extraction"]').text()).toContain('announcement');
     expect(card.get('[data-line="place"]').text()).toBe('Youth Creativity Palace, Tashkent, UZ');
     expect(card.get('[data-line="terms"]').text()).toContain('150,000 UZS');
@@ -399,12 +395,11 @@ describe('processed tab', () => {
       id: 'afisha',
       processed: 'runway',
     });
-    const other = wrapper.get(`article[aria-label="${essay.title}"]`);
+    const other = wrapper.get('article:nth-child(2)');
     expect(other.get('header [data-ai-brand]').attributes('data-ai-brand')).toBe('openai');
-    expect(other.text()).toContain('Irrelevant');
+    expect(other.text()).toContain('other post');
+    expect(other.text()).not.toContain('Irrelevant');
     expect(other.find('[aria-label="Event extraction"]').exists()).toBe(false);
-    expect(other.find('svg.lucide-runway-show').exists()).toBe(false);
-    expect(other.find('[aria-label*="unsure"]').exists()).toBe(false);
   });
 
   it('keeps the filter row free of a count while nothing narrows the list', async () => {
@@ -484,9 +479,9 @@ describe('processed tab', () => {
       { entityType: 'event', verdict: 'relevant', extracted: true, limit: 30, cursor: 'more' },
       expect.any(AbortSignal),
     );
-    expect(wrapper.findAll('article').map((article) => article.attributes('aria-label'))).toEqual([
-      runway.title,
-      essay.title,
+    expect(wrapper.findAll('article [data-processed-link]').map((link) => link.text())).toEqual([
+      runway.tags.about,
+      'Untitled processed post',
     ]);
     expect(wrapper.findAll('button').some((button) => button.text() === 'Show more')).toBe(false);
   });
@@ -536,18 +531,17 @@ describe('processed card', () => {
     expect(wrapper.get(`[data-line="terms"] svg.lucide-${glyph}`).attributes('aria-hidden')).toBe('true');
   });
 
-  it('opens with the post image under glass pills and a blur fade, the title over it', () => {
+  it('uses the Posts card aspect ratio and puts the processed title over the image', () => {
     const wrapper = card(runway);
     const header = wrapper.get('header');
-    expect(header.classes()).toContain('aspect-[16/9]');
+    expect(header.classes()).toContain('aspect-[4/5]');
     expect(header.get('img').attributes('src')).toBe('https://www.afisha.uz/media/runway.jpg');
     expect(header.get('img').attributes('alt')).toBe('');
-    expect(header.findAll('[data-tone="glass"], [data-tone="glassSuccess"]').map((pill) => pill.text())).toEqual([
-      'Event',
-      'Relevant',
-      'Russian',
-    ]);
-    expect(header.get('a[data-to]').text()).toBe(runway.title);
+    const pills = header.get('ul[aria-label="Processed post badges"]').findAll('[data-tone="glass"]');
+    expect(pills.map((pill) => pill.text())).toEqual(['event', 'ru']);
+    for (const pill of pills) expect(pill.classes()).toContain('bg-black/60');
+    expect(header.find('[data-tone="glassSuccess"]').exists()).toBe(false);
+    expect(header.get('a[data-to]').text()).toBe(runway.tags.about);
     expect(header.find('[class*="backdrop-blur-xl"]').exists()).toBe(true);
     expect(wrapper.find('[data-read-method]').exists()).toBe(false);
   });
@@ -575,22 +569,23 @@ describe('processed card', () => {
   it('falls back to a source-icon tile with quiet pills for a post without an image, or one whose image fails', async () => {
     const wrapper = card(essay);
     const header = wrapper.get('header');
-    expect(header.classes()).not.toContain('aspect-[16/9]');
-    expect(header.classes()).toContain('min-h-20');
+    expect(header.classes()).toContain('aspect-[4/5]');
     expect(header.find('img').exists()).toBe(false);
     expect(header.find('[data-read-method="site"]').exists()).toBe(true);
     expect(header.find('[data-tone="glass"]').exists()).toBe(false);
-    expect(header.find('[data-tone="info"]').exists()).toBe(true);
+    expect(header.get('[data-tone="outline"]').text()).toBe('other post');
+    expect(header.get('[data-processed-link]').text()).toBe('Untitled processed post');
+    expect(header.get('[data-processed-link]').text()).not.toBe(essay.title);
 
     const failing = card(runway);
     await failing.get('header img').trigger('error');
-    expect(failing.get('header').classes()).toContain('min-h-20');
+    expect(failing.get('header').classes()).toContain('aspect-[4/5]');
     expect(failing.find('header img').exists()).toBe(false);
   });
 
   it('shows a post removed from its source', () => {
     const gone = card(mystery);
-    expect(gone.get('header').text()).toContain('removed');
+    expect(gone.get('[data-post-removed]').text()).toBe('removed');
   });
 
   it('opens the original from the Posts card’s glass ↗ button top right, only for a safe web address', async () => {
@@ -598,7 +593,7 @@ describe('processed card', () => {
     const open = wrapper.get('header a[target="_blank"]');
     expect(open.attributes('href')).toBe('https://www.afisha.uz/ru/fashion/1');
     expect(open.attributes('rel')).toBe('noopener noreferrer');
-    expect(open.attributes('aria-label')).toBe(`Open the original of ${runway.title}`);
+    expect(open.attributes('aria-label')).toBe('Open the original post');
     expect(open.classes()).toEqual(
       expect.arrayContaining([
         'absolute',
@@ -639,11 +634,18 @@ describe('processed card', () => {
 
   it('puts the AI provider mark last in the top pill row as a round glass pill, no longer top right', () => {
     const wrapper = card(runway);
-    const row = wrapper.get('ul[aria-label="Entity type, verdict, language and AI provider"]');
+    const row = wrapper.get('ul[aria-label="Processed post badges"]');
     const mark = row.findAll('li').at(-1)!.get('[data-provider-pill]');
     expect(mark.attributes('aria-label')).toBe('Claude Haiku 5.5');
     expect(mark.classes()).toEqual(
-      expect.arrayContaining(['size-6', 'rounded-full', 'border-white/20', 'bg-white/15']),
+      expect.arrayContaining([
+        'size-6',
+        'rounded-full',
+        'border-white/20',
+        'bg-black/60',
+        'text-white',
+        'backdrop-blur-md',
+      ]),
     );
     expect(mark.get('[data-ai-brand]').attributes('data-ai-brand')).toBe('claude');
     expect(wrapper.findAll('[role="img"][aria-label="Claude Haiku 5.5"]')).toHaveLength(1);
@@ -651,9 +653,7 @@ describe('processed card', () => {
     expect(card(essay).get('[data-provider-pill]').classes()).toEqual(
       expect.arrayContaining(['border-border', 'bg-card']),
     );
-    const items = card(mystery).get('ul[aria-label="Entity type, verdict, language and AI provider"]').findAll('li');
-    expect(items.at(-2)!.text()).toBe('removed');
-    expect(items.at(-1)!.find('[data-provider-pill]').exists()).toBe(true);
+    expect(row.findAll('li')).toHaveLength(3);
   });
 
   it('keeps the pass-by-pass hover on the provider pill: each pass with its model, cost, time and tokens', async () => {
@@ -694,6 +694,7 @@ describe('processed card', () => {
     for (const link of links) expect(link.attributes('href')).toContain(encodeURIComponent(place));
     const clicked = vi.fn();
     wrapper.element.addEventListener('click', clicked);
+    links[0]!.element.addEventListener('click', (event) => event.preventDefault());
     links[0]!.trigger('click');
     expect(clicked).not.toHaveBeenCalled();
     const bare = card({
@@ -710,70 +711,78 @@ describe('processed card', () => {
     const wrapper = card(runway);
     const link = wrapper.get('a[data-processed-link]');
     expect(JSON.parse(link.attributes('data-to')!)).toEqual({ kind: 'source', id: 'afisha', processed: 'runway' });
-    expect(link.text()).toBe(runway.title);
+    expect(link.text()).toBe(runway.tags.about);
     expect(link.classes()).toEqual(
       expect.arrayContaining(['after:absolute', 'after:-inset-[100rem]', "after:content-['']"]),
     );
     expect(wrapper.findAll('a[data-to]')).toHaveLength(1);
     expect(wrapper.get('article').classes()).toEqual(expect.arrayContaining(['isolate', 'overflow-hidden']));
     expect(wrapper.get('header').classes()).not.toContain('overflow-hidden');
-    expect(wrapper.get('ul[aria-label="Entity type, verdict, language and AI provider"]').classes()).toContain('z-10');
+    expect(wrapper.get('ul[aria-label="Processed post badges"]').classes()).toContain('z-10');
     expect(wrapper.get('a[target="_blank"]').classes()).toContain('z-20');
     expect(wrapper.get('[aria-label^="2 unsure"]').classes()).toEqual(expect.arrayContaining(['relative', 'z-10']));
-    expect(wrapper.get('ul[aria-label="Tags"] li').classes()).toEqual(expect.arrayContaining(['relative', 'z-10']));
     expect(JSON.parse(card(flat).get('a[data-processed-link]').attributes('data-to')!)).toMatchObject({
       processed: 'flat',
     });
   });
 
-  it('shows the language as a pill with its icon after the verdict, never in the subline', () => {
+  it('shows the two post ages beneath the title and the event date in the extraction', () => {
+    const extraction = runway.extraction!;
+    const now = Date.now();
+    const postedAt = new Date(now - 16 * 60 * 60_000).toISOString();
+    const firstSeenAt = new Date(now - 8 * 60 * 60_000).toISOString();
+    const wrapper = card({
+      ...runway,
+      postedAt,
+      firstSeenAt,
+      extraction: { ...extraction, event: { ...extraction.event!, languages: ['uz', 'en'] } },
+    });
+    const pills = wrapper.get('ul[aria-label="Processed post badges"]');
+    expect(pills.findAll('li').map((item) => item.text())).toEqual(['event', 'ru', '']);
+    expect(pills.get('[data-post-language]').attributes('aria-label')).toBe('Russian');
+    const metadata = wrapper.get('[data-post-metadata]');
+    const [posted, harvested] = metadata.findAll('[data-post-age]');
+    expect(posted!.text()).toBe('16 h');
+    expect(posted!.attributes('aria-label')).toBe('Posted 16 hours ago');
+    expect(posted!.get('time').attributes('datetime')).toBe(postedAt);
+    expect(posted!.get('svg').classes()).toContain('lucide-file-up-icon');
+    expect(harvested!.text()).toBe('8 h');
+    expect(harvested!.attributes('aria-label')).toBe('Harvested 8 hours ago');
+    expect(harvested!.get('time').attributes('datetime')).toBe(firstSeenAt);
+    expect(harvested!.get('svg').classes()).toContain('lucide-import-icon');
+    expect(metadata.find('[data-post-language]').exists()).toBe(false);
+    expect(wrapper.get('[data-line="dates"] svg').classes()).toContain('lucide-calendar-icon');
+    expect(wrapper.get('[data-line="languages"]').text()).toBe('Event language · Uzbek, English');
+    expect(card(showroom).get('[data-post-language]').text()).toBe('uz');
+    expect(card(essay).find('[data-post-language]').exists()).toBe(false);
+    expect(card(essay).find('[data-post-age="posted"]').exists()).toBe(false);
+    expect(
+      card({ ...essay, language: 'und' })
+        .find('[data-post-language]')
+        .exists(),
+    ).toBe(false);
+    expect(card(runway).find('[data-line="languages"]').exists()).toBe(false);
+  });
+
+  it('shows only the extraction summary below the media and omits the body for a tag-only post', () => {
     const wrapper = card(runway);
-    const pills = wrapper.get('ul[aria-label="Entity type, verdict, language and AI provider"]');
-    const language = pills.findAll('li').at(-2)!;
-    expect(pills.findAll('li').map((item) => item.text())).toEqual(['Event', 'Relevant', 'Russian', '']);
-    expect(language.get('[data-tone]').attributes('data-tone')).toBe('glass');
-    expect(language.find('svg').exists()).toBe(true);
-    expect(wrapper.get('header').text()).toContain('Russian');
-    const subline = wrapper.get('header p');
-    expect(subline.text()).toContain('first seen');
-    expect(subline.text()).not.toContain('Russian');
-
-    const uzbek = card(showroom).get('ul[aria-label="Entity type, verdict, language and AI provider"]');
-    expect(uzbek.findAll('li').map((item) => item.text())).toEqual(['Event', 'Uncertain', 'Uzbek', '']);
-    expect(card(showroom).get('header p').text()).not.toContain('Uzbek');
-
-    const quiet = card(essay).get('ul[aria-label="Entity type, verdict, language and AI provider"]');
-    expect(quiet.text()).not.toMatch(/Russian|Uzbek/);
-    expect(card(essay).find('header [data-tone="outline"]').exists()).toBe(false);
+    const body = wrapper.get('[aria-label="Event extraction"]');
+    expect([...wrapper.element.children]).toEqual([wrapper.get('header').element, body.element]);
+    expect(wrapper.find('ul[aria-label="Tags"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain('#fashion-show');
+    expect(body.text()).not.toContain(runway.tags.about);
+    expect(card(essay).element.children).toHaveLength(1);
   });
 
-  it('keeps the tags to a primary domain, two more and four topics, the rest behind a count', () => {
-    const wrapper = card(showroom);
-    const tags = wrapper.get('ul[aria-label="Tags"]');
-    const text = tags.findAll('li').map((item) => item.text());
-    expect(text).toEqual([
-      'Designer Clothing',
-      'Style & Fashion',
-      'Retail',
-      '+2',
-      '#showroom',
-      '#autumn',
-      '#collections',
-      '#designers',
-      '+2',
-      'tags from an earlier text',
-    ]);
-    expect(tags.findAll('[aria-label^="More"]').map((item) => item.attributes('aria-label'))).toEqual([
-      'More domains: Showrooms, Autumn',
-      'More topics: tashkent, fashion',
-    ]);
-    expect(card(runway).find('[aria-label^="More"]').exists()).toBe(false);
-  });
-
-  it('shows a failed tagging as one line, and a failed extraction as a warning with its error', () => {
+  it('puts a tagging failure in the media pills and an extraction failure in the body', async () => {
     const failed = card(mystery);
-    expect(failed.get('[role="status"]').text()).toBe('Tagging failed · model unavailable');
-    expect(failed.find('ul[aria-label="Tags"]').exists()).toBe(false);
+    const pill = failed.get('header [data-tone="outline"][tabindex="0"]');
+    expect(pill.text()).toBe('tagging failed');
+    await pill.trigger('focus');
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain('Tagging failed · model unavailable');
+    });
+    expect(failed.element.children).toHaveLength(1);
     const wrapper = card(showroom);
     const panel = wrapper.get('[aria-label="Event extraction"]');
     expect(panel.get('[data-tone="warning"]').text()).toBe('failed');
@@ -781,15 +790,13 @@ describe('processed card', () => {
     expect(panel.find('[data-line]').exists()).toBe(false);
   });
 
-  it('names the verdict reason, confidence and classifier, and each unsure field with its reason and proposal', async () => {
-    const wrapper = card(runway);
-    const verdict = wrapper.get('header [data-tone="glassSuccess"]');
-    await verdict.trigger('focus');
+  it('explains other posts and shows each unsure field with its reason and proposal', async () => {
+    const other = card(essay).get('header [data-tone="outline"][tabindex="0"]');
+    await other.trigger('focus');
     await vi.waitFor(() => {
-      expect(document.body.textContent).toContain('event under style-fashion');
+      expect(document.body.textContent).toContain('The tagging pass found no event or listing in this post.');
     });
-    expect(document.body.textContent).toContain('94% confident');
-    expect(document.body.textContent).toContain('model:anthropic/claude-haiku-5-5@post-tags:2');
+    const wrapper = card(runway);
     const unsure = wrapper.get('[aria-label="Event extraction"] [aria-label^="2 unsure"]');
     await unsure.trigger('focus');
     await vi.waitFor(() => {
@@ -810,7 +817,9 @@ describe('processed card', () => {
     for (const post of [runway, essay, showroom, mystery]) {
       const wrapper = card(post);
       expect(wrapper.find('footer').exists()).toBe(false);
-      expect(wrapper.find('time').exists()).toBe(false);
+      expect(wrapper.findAll('time').map((time) => time.attributes('datetime'))).toEqual(
+        [post.postedAt, post.firstSeenAt].filter(Boolean),
+      );
       expect(wrapper.find('[data-pass]').exists()).toBe(false);
       expect(wrapper.text()).not.toMatch(/\$0\.|\btok\b|\d(\.\d)?m?s\b|Claude Haiku|answered/);
     }
@@ -867,6 +876,7 @@ describe('processed post kind icons', () => {
       overviewOf: () => source,
       pageTitle: ref<string>(),
       readSourceProcessedPost: async () => ResultExtensions.ok({ post, evidence: [], passes: [] }),
+      querySourcePosts: async () => ResultExtensions.ok({ items: [], total: 0 }),
     } as unknown as HarvestConsole;
     const wrapper = mount(ProcessedPostPanel, {
       props: { sourceId: source.sourceId, postId: post.postId },
