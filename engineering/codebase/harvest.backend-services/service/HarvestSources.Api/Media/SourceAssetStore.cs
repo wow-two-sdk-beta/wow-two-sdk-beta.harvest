@@ -42,6 +42,7 @@ internal sealed class SourceAssetStore([FromKeyedServices(HarvestModuleConstants
                 CROSS JOIN LATERAL (SELECT lower(substring(m.value->>'url' from '^https://([A-Za-z0-9.-]+)/')) AS host) h
                 WHERE s.state='active' AND s.permission IN ('open','granted')
                     AND p.merged_into IS NULL AND p.state<>'gone' AND l.retired_at IS NULL
+                    AND l.first_seen_at >= (SELECT collect_after FROM harvest_source_image_policy WHERE singleton)
                     AND m.value->>'kind'='image' AND m.position<=COALESCE(lim.max_images,@images)
                     AND length(m.value->>'url')<=2000
                     AND ((s.family IN ('site','page','structured','render','feed','listing') AND s.posture='own_fetch'

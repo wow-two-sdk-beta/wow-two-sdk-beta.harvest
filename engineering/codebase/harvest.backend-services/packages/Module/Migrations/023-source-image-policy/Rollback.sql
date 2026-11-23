@@ -1,0 +1,1 @@
+DROP TABLE harvest_source_image_policy;

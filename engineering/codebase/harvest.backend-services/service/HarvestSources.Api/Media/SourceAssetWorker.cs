@@ -11,6 +11,7 @@ namespace HarvestSources.Api.Media;
 /// <summary>Copies eligible source images through Harvest's guarded fetcher and the Files upload API.</summary>
 internal sealed class SourceAssetWorker(
     SourceAssetStore store,
+    SourceImagePolicyStore imagePolicy,
     SourceMediaRules mediaRules,
     IPageFetcher fetcher,
     IFileUploadsBroker uploads,
@@ -89,6 +90,7 @@ internal sealed class SourceAssetWorker(
             ContentType = format.ContentType,
             Visibility = FileVisibility.Private,
             IdempotencyKey = asset.Id.ToString("D"),
+            VariantPresets = asset.Favicon ? [] : await imagePolicy.ReadAsync(deadline.Token),
         }, deadline.Token);
         if (saved is Result<FileModel>.Success success)
             await store.FinishAsync(asset.Id, success.Value.Id.Value, TimeSpan.Zero, SourceAssetOutcomes.Copied, document.Body.Length, ct);

@@ -31,9 +31,10 @@ public sealed partial class SourceAssetsTests
 {
     private const string CdnImage = "https://scontent.example.cdninstagram.com/post.jpg?signature=fixture";
     private const string SecondImage = "https://scontent.example.fbcdn.net/post.jpg?signature=fixture";
+    private static readonly string[] DefaultPresets = ["s1", "s2", "s3", "s4", "s5"];
 
     [Fact]
-    public async Task Existing_Instagram_posts_are_copied_privately_and_served_only_through_their_source()
+    public async Task New_Instagram_posts_are_copied_privately_and_served_only_through_their_source()
     {
         await using var fixture = await Fixture.CreateAsync();
         var lane = await fixture.SourceAsync("instagram", "publisher", "official");
@@ -51,6 +52,7 @@ public sealed partial class SourceAssetsTests
         await worker.CopyAsync((await store.ClaimAsync(default))!, default);
         (await store.ClaimAsync(default)).Should().BeNull();
         fixture.Files.Uploads.Should().HaveCount(2).And.OnlyContain(upload => upload.Visibility == FileVisibility.Private);
+        fixture.Files.Uploads.Should().OnlyContain(upload => upload.VariantPresets!.SequenceEqual(DefaultPresets));
         fixture.Files.Uploads.Select(upload => upload.IdempotencyKey).Should().OnlyHaveUniqueItems();
         fixture.Fetcher.Requests.Should().HaveCount(2).And.OnlyContain(request => !request.CacheResponse && request.Cookies == null && request.RobotsPolicy == RobotsPolicy.Ignore);
         foreach (var request in fixture.Fetcher.Requests)
@@ -69,6 +71,9 @@ public sealed partial class SourceAssetsTests
         (await image.Content.ReadAsByteArrayAsync()).Should().Equal(FixtureFetcher.Png);
         image.Content.Headers.ContentType!.MediaType.Should().Be("image/png");
         image.Headers.CacheControl!.Private.Should().BeTrue();
+        using var preset = await fixture.Client.GetAsync(images[0] + "?preset=s3");
+        preset.StatusCode.Should().Be(HttpStatusCode.OK);
+        fixture.Files.RequestedPresets.Should().Equal("s3");
         using var anonymous = fixture.Host.GetTestClient();
         (await anonymous.GetAsync(images[0])).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         using var narrow = await fixture.ReaderAsync(lane.Tenant, "pipelines:read");
@@ -78,6 +83,38 @@ public sealed partial class SourceAssetsTests
         (await foreign.GetAsync(images[0])).StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await fixture.Client.GetAsync(images[0].Replace(lane.Source, other.Source, StringComparison.Ordinal))).StatusCode.Should().Be(HttpStatusCode.NotFound);
         await store.QueueMissingAsync(default);
+        (await store.ClaimAsync(default)).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Image_policy_is_operator_only_and_applies_to_new_posts_without_backfilling()
+    {
+        const string settings = "/api/settings/source-images";
+        await using var fixture = await Fixture.CreateAsync();
+        var lane = await fixture.SourceAsync("instagram", "publisher", "official");
+        var before = await DataAsync(await fixture.Client.GetAsync(settings));
+        before.GetProperty("postPresets").EnumerateArray().Select(preset => preset.GetString()).Should().Equal(DefaultPresets);
+        before.GetProperty("filesConfigured").GetBoolean().Should().BeTrue();
+        using var tenant = await fixture.ReaderAsync(lane.Tenant, "posts:read");
+        using var forbidden = await tenant.PutAsJsonAsync(settings, new { postPresets = new[] { "s1" } });
+        forbidden.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        using var invalid = await fixture.Client.PutAsJsonAsync(settings, new { postPresets = new[] { "wrong" } });
+        invalid.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        await fixture.CaptureAsync(lane, CdnImage);
+        await fixture.ExecuteAsync("""
+            UPDATE harvest_post_links SET first_seen_at = now() - interval '1 day' WHERE source_id = @source
+            """, ("source", Guid.Parse(lane.Source)));
+        await fixture.CaptureAsync(lane, SecondImage);
+        var saved = await DataAsync(await fixture.Client.PutAsJsonAsync(settings, new { postPresets = new[] { "s3", "s1" } }));
+        saved.GetProperty("postPresets").EnumerateArray().Select(preset => preset.GetString()).Should().Equal("s1", "s3");
+
+        var store = fixture.Host.Services.GetRequiredService<SourceAssetStore>();
+        await store.QueueMissingAsync(default);
+        var asset = (await store.ClaimAsync(default))!;
+        asset.Url.Should().Be(SecondImage);
+        using var worker = fixture.Worker();
+        await worker.CopyAsync(asset, default);
+        fixture.Files.Uploads.Should().ContainSingle().Which.VariantPresets.Should().Equal("s1", "s3");
         (await store.ClaimAsync(default)).Should().BeNull();
     }
 
@@ -435,7 +472,8 @@ public sealed partial class SourceAssetsTests
             return new Fixture(host, database, fetcher, files);
         }
 
-        public SourceAssetWorker Worker() => new(Host.Services.GetRequiredService<SourceAssetStore>(), Host.Services.GetRequiredService<SourceMediaRules>(),
+        public SourceAssetWorker Worker() => new(Host.Services.GetRequiredService<SourceAssetStore>(),
+            Host.Services.GetRequiredService<SourceImagePolicyStore>(), Host.Services.GetRequiredService<SourceMediaRules>(),
             Fetcher, Files, TimeProvider.System, NullLogger<SourceAssetWorker>.Instance);
 
         public async Task<Lane> SourceAsync(string family, string handle, string posture)
@@ -545,6 +583,7 @@ public sealed partial class SourceAssetsTests
     private sealed class FixtureFiles : IFileUploadsBroker, IFileStoreBroker
     {
         public List<UploadSpec> Uploads { get; } = [];
+        public List<string> RequestedPresets { get; } = [];
         public bool Declines { get; set; }
         private readonly Dictionary<FileId, byte[]> content = [];
         public async Task<Result<FileModel>> UploadAsync(Stream stream, UploadSpec spec, CancellationToken cancellationToken = default)
@@ -565,6 +604,11 @@ public sealed partial class SourceAssetsTests
         }
         public Task<Result<FileContent>> OpenReadAsync(FileId id, ByteRange? range = null, CancellationToken cancellationToken = default) =>
             Task.FromResult(Result<FileContent>.Ok(new FileContent(new MemoryStream(content[id]), "image/png", content[id].Length, content[id].Length, null)));
+        public Task<Result<FileContent>> OpenImageAsync(FileId id, string preset, CancellationToken cancellationToken = default)
+        {
+            RequestedPresets.Add(preset);
+            return OpenReadAsync(id, cancellationToken: cancellationToken);
+        }
         public Task<Result<FileModel>> GetAsync(FileId id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<Result<FilePage>> ListAsync(FileQuery query, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<Result<FileModel>> UpdateAsync(FileId id, FilePatch patch, CancellationToken cancellationToken = default) => throw new NotSupportedException();

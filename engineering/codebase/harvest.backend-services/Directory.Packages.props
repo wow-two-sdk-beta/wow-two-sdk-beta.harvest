@@ -11,6 +11,7 @@
     <BackendSdkVersion>10.0.113-beta</BackendSdkVersion>
     <IdentitySdkVersion>10.0.30-beta</IdentitySdkVersion>
     <AiSdkVersion Condition="'$(AiSdkVersion)' == ''">10.0.5-beta</AiSdkVersion>
+    <FilesSdkVersion Condition="'$(FilesSdkVersion)' == ''">10.0.8-beta</FilesSdkVersion>
   </PropertyGroup>
 
   <!--
@@ -36,7 +37,7 @@
     <PackageVersion Include="WoW2.Sdk.Beta.Be.Identity.Auth" Version="$(IdentitySdkVersion)" />
     <PackageVersion Include="WoW2.Sdk.Beta.Be.Identity.Client" Version="$(IdentitySdkVersion)" />
     <PackageVersion Include="WoW2.Sdk.Beta.Be.Identity.Testing" Version="$(IdentitySdkVersion)" />
-    <PackageVersion Include="WoW2.Sdk.Beta.Be.Files.Client" Version="10.0.6-beta" />
+    <PackageVersion Include="WoW2.Sdk.Beta.Be.Files.Client" Version="$(FilesSdkVersion)" />
     <PackageVersion Include="WoW2.Sdk.Beta.Be.Ai.Abstractions" Version="$(AiSdkVersion)" />
     <PackageVersion Include="WoW2.Sdk.Beta.Be.Ai.Hosting" Version="$(AiSdkVersion)" />
     <PackageVersion Include="WoW2.Sdk.Beta.Be.Ai.Module" Version="$(AiSdkVersion)" />

@@ -50,6 +50,7 @@ public static partial class HostConfiguration
     /// <summary>Enables the private source asset worker when a Files service is configured.</summary>
     private static WebApplicationBuilder AddSourceAssets(this WebApplicationBuilder builder)
     {
+        builder.Services.AddSingleton<SourceImagePolicyStore>();
         var configuration = builder.Configuration.GetSection("HarvestAssets:Files");
         if (string.IsNullOrWhiteSpace(configuration["BaseAddress"]))
             return builder;

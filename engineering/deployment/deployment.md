@@ -190,12 +190,21 @@ Set `HarvestAssets:Files:BaseAddress` and either a dedicated Files tenant key in
 Identity client settings under `HarvestAssets:Files:Identity`. The client needs `files.read` and `files.write` in the
 Files tenant used for SCFD. Use a policy allowing raster images and ICO files up to 5 MiB with no orphan expiry.
 
-The internal host queues icons for registered web sources with pipelines and copies HTTPS images from captured posts,
-including existing posts: those on the source's own host, and those on the image domains its adapter declares
+The internal host queues icons for registered web sources with pipelines and copies HTTPS images from newly collected
+posts. Eligible images are on the source's own host or on the image domains its adapter declares
 (`AdapterDescriptor.Media`; OLX declares `olxcdn.com`, first 6 images of a post), a declared domain and its subdomains
 only, with the default port and no credentials in the URL. Requests use Harvest's robots policy and host pacing, and a
 declared domain's images keep the adapter's gap per image host. SCFD serves the stored bytes through the source's
 authorized API and uses the source URL while an image copy is pending or unavailable.
+
+Operators choose which WebP sizes to generate under **System → Media**. New instances enable all five presets
+(`s1` through `s5`) for post photos and posters. The saved selection is instance-wide and applies to future copies. The existing worker
+copies one asset at a time per SCFD instance, including its selected variants. Files keeps original bytes for every
+copy. Source icons request an empty preset list. SCFD cards ask for `s3` and the detail viewer reads the original.
+Subscribers can request the same preset through Files using the delivered file reference.
+
+The collection cutoff is recorded when migration `023-source-image-policy` runs. Older posts with missing copies
+are deferred to the backlogged manual refresh.
 
 The copier records each attempt on the job (migration `020-asset-outcomes`): `outcome` and `finished_at` for every attempt,
 and `bytes`, the bytes uploaded to Files, for a copy. The outcome is one of `copied`; `rejected` (the URL does not parse or

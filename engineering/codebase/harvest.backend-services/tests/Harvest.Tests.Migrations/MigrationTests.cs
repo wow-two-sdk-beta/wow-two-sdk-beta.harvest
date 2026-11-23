@@ -17,7 +17,7 @@ public sealed class MigrationTests : IAsyncLifetime
     private static readonly string[] Migrations =
         ["001-baseline", "002-drop-escalation", "003-fetching", "004-posts-delivery", "005-subscription-filter", "006-source-groups",
             "007-source-assets", "008-pipeline-stages", "009-step-operations", "010-post-unmatched", "011-taxonomy", "012-post-tags",
-            "013-post-extractions", "014-entities", "015-entity-events", "016-model-processing", "017-processing-reruns", "018-subscription-selectors", "019-source-catalog", "020-asset-outcomes", "021-pipeline-auto-off"];
+            "013-post-extractions", "014-entities", "015-entity-events", "016-model-processing", "017-processing-reruns", "018-subscription-selectors", "019-source-catalog", "020-asset-outcomes", "021-pipeline-auto-off", "022-post-duplicates", "023-source-image-policy", "024-enable-image-presets"];
 
     /// <summary>Holds the escalation columns 002 drops.</summary>
     private const string EscalationColumns =
@@ -29,13 +29,13 @@ public sealed class MigrationTests : IAsyncLifetime
         "harvest_api_keys", "harvest_captures", "harvest_check_policies", "harvest_containers", "harvest_enumerations",
         "harvest_fetch_validators", "harvest_host_lane", "harvest_host_policies", "harvest_host_state", "harvest_link_check_log", "harvest_link_events",
         "harvest_link_readings", "harvest_link_schedule", "harvest_pipelines", "harvest_post_links", "harvest_post_texts",
-        "harvest_posts", "harvest_post_merges", "harvest_post_keep_apart", "harvest_post_revisions", "harvest_retention_policies", "harvest_runs",
+        "harvest_posts", "harvest_post_duplicates", "harvest_post_merges", "harvest_post_keep_apart", "harvest_post_revisions", "harvest_retention_policies", "harvest_runs",
         "harvest_schedules", "harvest_source_assets", "harvest_source_groups", "harvest_source_scopes",
         "harvest_sources", "harvest_subscription_event", "harvest_subscriptions", "harvest_tenants", "harvest_usage",
         "harvest_work_item", "harvest_discoveries", "harvest_discovery_scopes", "harvest_catalog_pages",
         "harvest_processing_results", "harvest_step_attempts", "harvest_taxonomy_nodes", "harvest_post_tags", "harvest_post_work",
         "harvest_post_extractions", "harvest_entities", "harvest_entity_occurrences", "harvest_entity_relations",
-        "harvest_entity_keep_apart", "harvest_entity_flags", "harvest_entity_events", "harvest_processing_runs", "harvest_subscription_selectors", "harvest_catalog_sources",
+        "harvest_entity_keep_apart", "harvest_entity_flags", "harvest_entity_events", "harvest_processing_runs", "harvest_subscription_selectors", "harvest_catalog_sources", "harvest_source_image_policy",
     ];
 
     /// <summary>The last ordinal applied before the lint ran in this tier.</summary>
@@ -70,6 +70,8 @@ public sealed class MigrationTests : IAsyncLifetime
 
         applied.Should().Equal(Migrations);
         (await HarvestTablesAsync()).Should().BeEquivalentTo(Tables);
+        (await ScalarAsync<string[]>("SELECT post_presets FROM harvest_source_image_policy")).Should()
+            .Equal("s1", "s2", "s3", "s4", "s5");
         (await ScalarAsync<long>("SELECT count(*) FROM harvest_migration_history WHERE applied_by = 'startup'")).Should().Be(Migrations.Length);
         Unwrap(await Runner.ApplyPendingAsync("startup", CancellationToken.None)).Should().BeEmpty();
     }
@@ -116,9 +118,7 @@ public sealed class MigrationTests : IAsyncLifetime
     {
         Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None));
 
-        Unwrap(await Runner.RollbackAsync(targetOrdinal: 5, CancellationToken.None)).Should()
-            .Equal("021-pipeline-auto-off", "020-asset-outcomes", "019-source-catalog", "018-subscription-selectors", "017-processing-reruns", "016-model-processing", "015-entity-events", "014-entities", "013-post-extractions", "012-post-tags", "011-taxonomy", "010-post-unmatched", "009-step-operations",
-                "008-pipeline-stages", "007-source-assets", "006-source-groups");
+        Unwrap(await Runner.RollbackAsync(targetOrdinal: 5, CancellationToken.None)).Should().Equal(Migrations.Skip(5).Reverse());
         (await ColumnCountAsync("table_name = 'harvest_sources' AND column_name IN ('group_id', 'display_name')")).Should().Be(0);
         (await ScalarAsync<bool>("SELECT to_regclass('harvest_source_groups') IS NULL AND to_regclass('harvest_post_revisions') IS NULL")).Should().BeTrue();
 
@@ -162,9 +162,7 @@ public sealed class MigrationTests : IAsyncLifetime
                   ('{{queued}}','{{pool}}','{{legacy}}','discover','manual',now(),now(),'queued','{}');
             """);
 
-        Unwrap(await Runner.RollbackAsync(targetOrdinal: 7, CancellationToken.None)).Should()
-            .Equal("021-pipeline-auto-off", "020-asset-outcomes", "019-source-catalog", "018-subscription-selectors", "017-processing-reruns", "016-model-processing", "015-entity-events", "014-entities", "013-post-extractions", "012-post-tags", "011-taxonomy", "010-post-unmatched", "009-step-operations",
-                "008-pipeline-stages");
+        Unwrap(await Runner.RollbackAsync(targetOrdinal: 7, CancellationToken.None)).Should().Equal(Migrations.Skip(7).Reverse());
 
         (await ScalarAsync<string>("SELECT string_agg(pipeline_id::text, ',') FROM harvest_schedules WHERE kind = 'discover'"))
             .Should().Be(legacy.ToString());
@@ -198,12 +196,16 @@ public sealed class MigrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Lint_ShouldFindNothing_InFilesAfterTheLintCutoff()
+    public async Task Lint_ShouldFindOnlyTheExistingDuplicateIndexWarning_InFilesAfterTheLintCutoff()
     {
-        // 001-010 were applied everywhere before the rule; every later file expands and keeps existing tables lock-safe.
-        await MigrationLint.AssertCleanAsync(services, lint => lint
+        // Migration 022 has already been applied in development. Keep its checksum and check later indexes normally.
+        var findings = await MigrationLint.CheckAsync(services, lint => lint
             .ExpandOnlyAfter(HarvestModuleConstants.MigrationSetName, LintCutoff)
             .LintAfter(HarvestModuleConstants.MigrationSetName, LintCutoff));
+
+        var existingDuplicateIndex = new MigrationLintFinding(HarvestModuleConstants.MigrationSetName, "022-post-duplicates",
+            "index-concurrently", "CREATE INDEX on the existing table harvest_post_links blocks its writes; build it CONCURRENTLY in a -- @no-transaction file.");
+        findings.Where(finding => finding != existingDuplicateIndex).Should().BeEmpty();
     }
 
     [Fact]
@@ -235,8 +237,7 @@ public sealed class MigrationTests : IAsyncLifetime
         (await ConstraintAsync("ck_harvest_post_work_kind")).Should().Contain("post-tags").And.Contain("extract-event").And.Contain("extract-listing");
         (await ScalarAsync<bool>("SELECT convalidated FROM pg_constraint WHERE conname = 'ck_harvest_post_work_kind'")).Should().BeTrue();
 
-        Unwrap(await Runner.RollbackAsync(targetOrdinal: 12, CancellationToken.None)).Should().Equal("021-pipeline-auto-off", "020-asset-outcomes", "019-source-catalog", "018-subscription-selectors", "017-processing-reruns", "016-model-processing",
-            "015-entity-events", "014-entities", "013-post-extractions");
+        Unwrap(await Runner.RollbackAsync(targetOrdinal: 12, CancellationToken.None)).Should().Equal(Migrations.Skip(12).Reverse());
         (await ScalarAsync<bool>("SELECT to_regclass('harvest_post_extractions') IS NULL")).Should().BeTrue();
         (await ConstraintAsync("ck_harvest_post_work_kind")).Should().NotContain("extract-event");
     }
@@ -269,8 +270,7 @@ public sealed class MigrationTests : IAsyncLifetime
             INSERT INTO harvest_entity_keep_apart(container_id,left_entity_id,right_entity_id,created_at) VALUES('{pool}','{entity}','{entity}',now())
             """, "ck_harvest_entity_keep_apart_order");
 
-        Unwrap(await Runner.RollbackAsync(targetOrdinal: 13, CancellationToken.None)).Should().Equal("021-pipeline-auto-off", "020-asset-outcomes", "019-source-catalog", "018-subscription-selectors", "017-processing-reruns", "016-model-processing",
-            "015-entity-events", "014-entities");
+        Unwrap(await Runner.RollbackAsync(targetOrdinal: 13, CancellationToken.None)).Should().Equal(Migrations.Skip(13).Reverse());
         (await ScalarAsync<bool>("SELECT to_regclass('harvest_entities') IS NULL AND to_regclass('harvest_entity_flags') IS NULL")).Should().BeTrue();
         (await ConstraintAsync("ck_harvest_post_work_kind")).Should().Contain("extract-event").And.NotContain("entity-resolve");
     }
@@ -303,8 +303,7 @@ public sealed class MigrationTests : IAsyncLifetime
             VALUES(gen_random_uuid(),'{pool}',gen_random_uuid(),'event','entity.created',now())
             """, "fk_harvest_entity_events_entity");
 
-        Unwrap(await Runner.RollbackAsync(targetOrdinal: 14, CancellationToken.None)).Should().Equal("021-pipeline-auto-off", "020-asset-outcomes", "019-source-catalog", "018-subscription-selectors", "017-processing-reruns", "016-model-processing",
-            "015-entity-events");
+        Unwrap(await Runner.RollbackAsync(targetOrdinal: 14, CancellationToken.None)).Should().Equal(Migrations.Skip(14).Reverse());
         (await ScalarAsync<bool>("SELECT to_regclass('harvest_entity_events') IS NULL AND to_regclass('harvest_entities') IS NOT NULL")).Should().BeTrue();
     }
 
@@ -312,7 +311,7 @@ public sealed class MigrationTests : IAsyncLifetime
     public async Task ApplyPending_ShouldMapTheAiSwitchToAModeAndBackOnRollback()
     {
         Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None));
-        Unwrap(await Runner.RollbackAsync(targetOrdinal: 15, CancellationToken.None)).Should().Equal("021-pipeline-auto-off", "020-asset-outcomes", "019-source-catalog", "018-subscription-selectors", "017-processing-reruns", "016-model-processing");
+        Unwrap(await Runner.RollbackAsync(targetOrdinal: 15, CancellationToken.None)).Should().Equal(Migrations.Skip(15).Reverse());
         (await ColumnCountAsync("table_name = 'harvest_sources' AND column_name = 'model_processing'")).Should().Be(0);
         Guid pool = Guid.NewGuid(), open = Guid.NewGuid(), closed = Guid.NewGuid();
         await ExecuteAsync($"""
@@ -322,7 +321,7 @@ public sealed class MigrationTests : IAsyncLifetime
                   ('{closed}','{pool}','site','closed.example','whole','complete','own_fetch',now(),now(),false);
             """);
 
-        Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None)).Should().Equal("016-model-processing", "017-processing-reruns", "018-subscription-selectors", "019-source-catalog", "020-asset-outcomes", "021-pipeline-auto-off");
+        Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None)).Should().Equal(Migrations.Skip(15));
         (await ScalarAsync<string>($"SELECT model_processing FROM harvest_sources WHERE id='{open}'")).Should().Be("auto");
         (await ScalarAsync<string>($"SELECT model_processing FROM harvest_sources WHERE id='{closed}'")).Should().Be("off");
         await FailsAsync($"UPDATE harvest_sources SET model_processing='sometimes' WHERE id='{open}'", "ck_harvest_sources_model_processing");
@@ -340,7 +339,7 @@ public sealed class MigrationTests : IAsyncLifetime
         await FailsAsync("INSERT INTO harvest_processing_runs(id,use_cases,scope,created_at) VALUES(gen_random_uuid(),'{rental-terms}','all',now())",
             "ck_harvest_processing_runs_use_cases");
 
-        Unwrap(await Runner.RollbackAsync(targetOrdinal: 15, CancellationToken.None)).Should().Equal("021-pipeline-auto-off", "020-asset-outcomes", "019-source-catalog", "018-subscription-selectors", "017-processing-reruns", "016-model-processing");
+        Unwrap(await Runner.RollbackAsync(targetOrdinal: 15, CancellationToken.None)).Should().Equal(Migrations.Skip(15).Reverse());
         (await ScalarAsync<bool>($"SELECT ai_allowed FROM harvest_sources WHERE id='{open}'")).Should().BeFalse("a manual source reads as not allowed");
         (await ScalarAsync<bool>("SELECT to_regclass('harvest_processing_runs') IS NULL")).Should().BeTrue();
         (await ColumnCountAsync("table_name = 'harvest_post_work' AND column_name IN ('run_id', 'explicit')")).Should().Be(0);
@@ -400,7 +399,7 @@ public sealed class MigrationTests : IAsyncLifetime
             VALUES('{{other}}','{{tenant}}','{{pool}}','selector','pull','ocharo-events','{}',1,now())
             """);
 
-        Unwrap(await Runner.RollbackAsync(targetOrdinal: 17, CancellationToken.None)).Should().Equal("021-pipeline-auto-off", "020-asset-outcomes", "019-source-catalog", "018-subscription-selectors");
+        Unwrap(await Runner.RollbackAsync(targetOrdinal: 17, CancellationToken.None)).Should().Equal(Migrations.Skip(17).Reverse());
 
         (await ScalarAsync<bool>("SELECT to_regclass('harvest_subscription_selectors') IS NULL")).Should().BeTrue();
         (await ScalarAsync<long>("SELECT count(*) FROM harvest_subscriptions WHERE kind = 'selector'")).Should().Be(0);
@@ -411,7 +410,7 @@ public sealed class MigrationTests : IAsyncLifetime
         (await ScalarAsync<bool>("SELECT to_regclass('ux_harvest_subscriptions_tenant_name') IS NULL AND to_regclass('ix_harvest_subscriptions_selectors') IS NULL"))
             .Should().BeTrue();
 
-        Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None)).Should().Equal("018-subscription-selectors", "019-source-catalog", "020-asset-outcomes", "021-pipeline-auto-off");
+        Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None)).Should().Equal(Migrations.Skip(17));
         (await ScalarAsync<bool>("SELECT to_regclass('harvest_subscription_selectors') IS NOT NULL")).Should().BeTrue();
     }
 
@@ -436,12 +435,12 @@ public sealed class MigrationTests : IAsyncLifetime
         await FailsAsync("INSERT INTO harvest_catalog_sources(key,turned_on,changed_by) VALUES('ocharo.afisha',true,'setup')", "pk_harvest_catalog_sources");
         await FailsAsync("INSERT INTO harvest_catalog_sources(key,turned_on,changed_by) VALUES('ocharo.anons',true,'')", "ck_harvest_catalog_sources_changed_by");
 
-        Unwrap(await Runner.RollbackAsync(targetOrdinal: 18, CancellationToken.None)).Should().Equal("021-pipeline-auto-off", "020-asset-outcomes", "019-source-catalog");
+        Unwrap(await Runner.RollbackAsync(targetOrdinal: 18, CancellationToken.None)).Should().Equal(Migrations.Skip(18).Reverse());
         (await ScalarAsync<bool>("SELECT to_regclass('harvest_catalog_sources') IS NULL AND to_regclass('ix_harvest_sources_catalog_key') IS NULL")).Should().BeTrue();
         (await ColumnCountAsync("table_name = 'harvest_sources' AND column_name = 'catalog_key'")).Should().Be(0);
         (await ScalarAsync<long>("SELECT count(*) FROM harvest_sources")).Should().Be(2, "the rollback forgets the choices, never the sources");
 
-        Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None)).Should().Equal("019-source-catalog", "020-asset-outcomes", "021-pipeline-auto-off");
+        Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None)).Should().Equal(Migrations.Skip(18));
         (await ScalarAsync<bool>("SELECT to_regclass('harvest_catalog_sources') IS NOT NULL")).Should().BeTrue();
         (await ColumnCountAsync("table_name = 'harvest_sources' AND column_name = 'catalog_key'")).Should().Be(1);
     }
@@ -465,11 +464,11 @@ public sealed class MigrationTests : IAsyncLifetime
             .Should().BeTrue("a copy made before the release, or not yet tried, stays unrecorded");
         await FailsAsync($"UPDATE harvest_source_assets SET bytes=-1 WHERE id='{queued}'", "ck_harvest_source_assets_bytes");
 
-        Unwrap(await Runner.RollbackAsync(targetOrdinal: 19, CancellationToken.None)).Should().Equal("021-pipeline-auto-off", "020-asset-outcomes");
+        Unwrap(await Runner.RollbackAsync(targetOrdinal: 19, CancellationToken.None)).Should().Equal(Migrations.Skip(19).Reverse());
         (await ColumnCountAsync("table_name = 'harvest_source_assets' AND column_name IN ('bytes', 'outcome', 'finished_at')")).Should().Be(0);
         (await ScalarAsync<long>("SELECT count(*) FROM harvest_source_assets WHERE file_id IS NOT NULL")).Should().Be(1, "the rollback forgets the records, never the copies");
 
-        Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None)).Should().Equal("020-asset-outcomes", "021-pipeline-auto-off");
+        Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None)).Should().Equal(Migrations.Skip(19));
         (await ScalarAsync<bool>($"SELECT bytes IS NULL AND outcome IS NULL FROM harvest_source_assets WHERE id='{copied}'")).Should().BeTrue();
     }
 
@@ -477,7 +476,7 @@ public sealed class MigrationTests : IAsyncLifetime
     public async Task ApplyPending_ShouldAddThePipelineAutoOffColumns_StartTheCountForExistingPipelines_AndDropThemOnRollbackKeepingTheRows()
     {
         Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None));
-        Unwrap(await Runner.RollbackAsync(targetOrdinal: 20, CancellationToken.None)).Should().Equal("021-pipeline-auto-off");
+        Unwrap(await Runner.RollbackAsync(targetOrdinal: 20, CancellationToken.None)).Should().Equal(Migrations.Skip(20).Reverse());
         Guid pool = Guid.NewGuid(), source = Guid.NewGuid(), existing = Guid.NewGuid(), created = Guid.NewGuid();
         await ExecuteAsync($$"""
             INSERT INTO harvest_containers(id,kind,created_at) VALUES('{{pool}}','pool',now());
@@ -489,7 +488,7 @@ public sealed class MigrationTests : IAsyncLifetime
             VALUES(gen_random_uuid(),'{{pool}}','{{existing}}','capture','interval',interval '1 hour',now());
             """);
 
-        Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None)).Should().Equal("021-pipeline-auto-off");
+        Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None)).Should().Equal(Migrations.Skip(20));
         await ExecuteAsync($$"""
             INSERT INTO harvest_pipelines(id,container_id,source_id,scope_key,state,state_since,created_at)
             VALUES('{{created}}','{{pool}}','{{source}}','created','active',now(),now())
@@ -506,13 +505,13 @@ public sealed class MigrationTests : IAsyncLifetime
         await ExecuteAsync($"UPDATE harvest_pipelines SET auto_off_after=0 WHERE id='{existing}'");
         await ExecuteAsync($"UPDATE harvest_pipelines SET auto_off_after=1000 WHERE id='{existing}'");
 
-        Unwrap(await Runner.RollbackAsync(targetOrdinal: 20, CancellationToken.None)).Should().Equal("021-pipeline-auto-off");
+        Unwrap(await Runner.RollbackAsync(targetOrdinal: 20, CancellationToken.None)).Should().Equal(Migrations.Skip(20).Reverse());
         (await ColumnCountAsync("table_name = 'harvest_pipelines' AND column_name IN ('auto_off_after', 'failures_since', 'auto_off_at', "
             + "'auto_off_run_id', 'auto_off_failures', 'auto_off_reason')")).Should().Be(0);
         (await ScalarAsync<long>("SELECT count(*) FROM harvest_pipelines")).Should().Be(2, "the rollback forgets the thresholds, never the pipelines");
         (await ScalarAsync<long>("SELECT count(*) FROM harvest_schedules")).Should().Be(1);
 
-        Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None)).Should().Equal("021-pipeline-auto-off");
+        Unwrap(await Runner.ApplyPendingAsync("test", CancellationToken.None)).Should().Equal(Migrations.Skip(20));
         (await ScalarAsync<long>("SELECT count(*) FROM harvest_pipelines WHERE failures_since IS NOT NULL")).Should().Be(2);
     }
 

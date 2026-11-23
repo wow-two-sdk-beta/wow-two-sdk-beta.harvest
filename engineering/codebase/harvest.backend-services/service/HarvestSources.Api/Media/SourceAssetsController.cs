@@ -17,7 +17,7 @@ namespace HarvestSources.Api.Media;
 public sealed class SourceAssetsController(IRegistrationBroker registry, CallerResolver callers, IServiceProvider services) : ControllerBase
 {
     [HttpGet("/" + RegistrationRouteConstants.Sources + "/{sourceId:guid}/" + SourceRouteConstants.Assets + "/{assetId:guid}")]
-    public async Task<IActionResult> Read(Guid sourceId, Guid assetId, CancellationToken ct)
+    public async Task<IActionResult> Read(Guid sourceId, Guid assetId, [FromQuery] string? preset, CancellationToken ct)
     {
         if (await callers.ResolveAsync(User, ct) is not { } caller)
             return Unauthorized();
@@ -31,9 +31,14 @@ public sealed class SourceAssetsController(IRegistrationBroker registry, CallerR
         string scope = asset.Favicon ? HarvestScopeConstants.PipelinesRead : HarvestScopeConstants.PostsRead;
         if (!caller.Scopes.Contains(scope))
             return StatusCode(StatusCodes.Status403Forbidden);
+        if (preset is not null && !ImageVariantPresets.TryGetWidth(preset, out _))
+            return BadRequest(new ProblemDetails { Title = "Choose an image preset from s1 through s5." });
         using var serviceCall = FilesClientCalls.AsService();
-        if (await files.OpenReadAsync(new FileId(asset.FileId), cancellationToken: ct)
-            is not Result<FileContent>.Success { Value: var content })
+        var fileId = new FileId(asset.FileId);
+        var response = preset is not null && !asset.Favicon
+            ? await files.OpenImageAsync(fileId, preset, ct)
+            : await files.OpenReadAsync(fileId, cancellationToken: ct);
+        if (response is not Result<FileContent>.Success { Value: var content })
             return NotFound();
         if (SourceImageFormat.From(content.ContentType) is not { } format)
         {
