@@ -93,8 +93,11 @@ and the entity tables name `extract-listing`, and earlier versions of the prompt
 
 ## Answers
 
-The schemas are code-owned (`PostExtractionDefinitions.EventSchema`, `.ListingSchema`); every field is required, unknown
-values are `null` or `unknown`, and every list pick allows `unsure`, which flags the field (scfd-entity-model #9).
+The schemas are code-owned (`PostExtractionDefinitions.EventSchema`, `.ListingSchema`). Event languages may be omitted.
+Unknown enum picks use `unsure` and carry a flag (scfd-entity-model #9).
+
+Event languages come from explicit event wording. `{{language}}` still describes the post. Existing event answers remain
+readable. Register an updated event prompt through the command above to start asking for the new field.
 
 | `extract-event` field | Holds |
 |---|---|
@@ -102,6 +105,7 @@ values are `null` or `unknown`, and every list pick allows `unsure`, which flags
 | `editionLabel` | the year or ordinal as written (`2026`, `9th`) |
 | `occurrences` | `[{starts, ends, precision, certainty: stated · estimated, evidence}]`, ISO dates at `year` · `month` · `day` · `hour` · `minute` |
 | `place` · `organizer` | `{venue, city, country}` · the organizer's name |
+| `languages` | optional `[{code, evidence}]` for the event itself, stored in the extraction's JSON answer |
 | `format` | `expo` · `trade-fair` · `runway` · `festival` · `competition` · `conference` · `market` · `exhibition` · `workshop` · `concert` · `other` · `unsure` |
 | `access` · `prices` | `free` · `ticketed` · `application` · `unknown` · `[{amount, currency, label, evidence}]` |
 | `registration` | `{opens, deadline, link}`, each date `{value, precision, evidence}` |

@@ -304,6 +304,7 @@ internal sealed partial class ModuleSourceOverviewBroker
             Access = Str(answer, "access"),
             Prices = [.. Items(answer, "prices").Select(price => new ProcessedPriceModel(Dec(price, "amount"), Str(price, "currency"), Str(price, "label")))],
             Status = Str(answer, "status"),
+            Languages = [.. Items(answer, "languages").Select(language => Str(language, "code")).OfType<string>()],
         };
     }
 

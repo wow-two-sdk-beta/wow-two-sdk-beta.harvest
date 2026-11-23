@@ -16,8 +16,9 @@ internal sealed record ExtractionTags(string EntityType, IReadOnlyList<PostTagsD
 /// <summary>Represents what quotes are checked against: the title and the whole text, phone-scrubbed as the prompt received
 /// them, of which the model read the first <see cref="Visible"/> characters, and the rendered structured variables the prompt
 /// received (<see cref="Prices"/>, <see cref="Dates"/>, <see cref="Place"/>, and for a listing <see cref="Attributes"/>, the
-/// <c>label: value</c> lines; <c>null</c> when the source gave none).</summary>
-internal sealed record ExtractionCorpus(string Text, int Visible, string? Prices, string? Dates, string? Place, string? Attributes = null)
+/// <c>label: value</c> lines; <c>null</c> when the source gave none). A single captured asking price can back a listing price.</summary>
+internal sealed record ExtractionCorpus(string Text, int Visible, string? Prices, string? Dates, string? Place,
+    string? Attributes = null, PostPrice? ListedPrice = null)
 {
     /// <summary>Initializes a corpus with no structured variables.</summary>
     internal ExtractionCorpus(string text, int visible) : this(text, visible, null, null, null, null)
@@ -50,6 +51,8 @@ internal static partial class PostExtractionContent
     /// <summary>The source-fields schema of a Joymee ad, whose attributes and account type the listing prompt reads.</summary>
     internal const string JoymeeSchema = "joymee.ad.v1";
 
+    private const string HataSchema = "hata.ad.v1";
+
     private const int MaxPrices = 10;
     private const int MaxAttributes = 40;
     private const int MaxLine = 200;
@@ -62,9 +65,11 @@ internal static partial class PostExtractionContent
         string title = PostTagsContent.Title(envelope);
         string text = PhoneScrub.Apply(envelope.Text) ?? "";
         string cut = PostTagsContent.Cut(text, maxTextChars);
+        var listed = envelope.Prices is [{ Role: PriceRole.Listed, Amount: > 0, Free: false, Min: null, Max: null } price]
+            ? price : null;
         return new($"{title}\n{text}", title.Length + 1 + cut.Length, Render(Prices(envelope.Prices), "none"),
             Render(PostTagsContent.Dates(envelope.Dates), "none"), Render(PostTagsContent.Place(envelope.Location), "unknown"),
-            Render(Attributes(envelope), ""));
+            Render(Attributes(envelope), ""), listed);
     }
 
     /// <summary>Builds the prompt variables: the post fields <c>title</c>, <c>text</c> (phone-scrubbed, then cut), <c>sourceCategory</c>,
@@ -115,10 +120,11 @@ internal static partial class PostExtractionContent
     }
 
     /// <summary>Renders the post's own listing attributes, one <c>label: value</c> line each in the source's order and language,
-    /// phone-scrubbed; an OLX ad (<c>olx.ad.v1</c>) or a Joymee ad (<c>joymee.ad.v1</c>) carries them, and every other source, or an ad with none, reads empty.</summary>
+    /// phone-scrubbed. The OLX, Joymee and HATA adapters carry these attributes.</summary>
     internal static string Attributes(PostEnvelope envelope)
     {
-        if (AdFields(envelope, OlxSchema, JoymeeSchema) is not { } fields || !fields.TryGetProperty("attributes", out var attributes) || attributes.ValueKind != JsonValueKind.Object)
+        if (AdFields(envelope, OlxSchema, JoymeeSchema, HataSchema) is not { } fields
+            || !fields.TryGetProperty("attributes", out var attributes) || attributes.ValueKind != JsonValueKind.Object)
             return "";
         var lines = new List<string>();
         foreach (var attribute in attributes.EnumerateObject())

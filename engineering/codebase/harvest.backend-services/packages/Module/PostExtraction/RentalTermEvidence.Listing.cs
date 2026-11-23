@@ -111,7 +111,9 @@ internal static partial class RentalTermEvidence
         _ => null,
     };
 
-    [GeneratedRegex(@"\b(?:комм?исс?[а-я]*|komm?iss?[a-z']*|commission|vositachilik\s+haqi|воситачилик\s+ҳақи)\b", PatternOptions)]
+    [GeneratedRegex(@"\b(?:комм?исс?[а-я]*|komm?iss?[a-z']*|commission|vositachilik\s+haqq?i|воситачилик\s+ҳақи"
+        + @"|(?:ри[эе]лторск|маклерск|агентск)[а-я]*\s+услуг[а-я]*|услуг[а-я]*\s+(?:ри[эе]лтор|маклер|агент)[а-я]*"
+        + @"|(?:broker|agent)\s+fee|makler(?:lik)?\s+(?:xizmati|haqq?i))\b", PatternOptions)]
     private static partial Regex CommissionCue();
 
     [GeneratedRegex(@"(?<![\p{L}\d])(?<count>" + Number + @")\s*(?:%|процент(?:ов|а)?(?![\p{L}])|проц(?![\p{L}])|foiz\w*|фоиз\w*|percent(?![\p{L}]))", PatternOptions)]

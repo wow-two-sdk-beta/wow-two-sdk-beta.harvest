@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using AwesomeAssertions;
 using Harvest.Tests.Integration.Posts;
 using Harvest.Tests.Integration.Tagging;
@@ -12,6 +13,8 @@ using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Delivery;
 using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Sources;
+using WoW.Two.Sdk.Beta.Be.Harvest.Sources;
 
 namespace Harvest.Tests.Integration.PostExtraction;
 
@@ -58,8 +61,10 @@ public sealed class PostExtractionTests
     [Fact]
     public async Task Tagging_ShouldQueueExtractionForAWantedPair_AndStoreTheCheckedAnswerWithoutTouchingThePost()
     {
-        await using var host = await StartAsync(Want("event", "style-fashion"));
-        var saved = await host.SaveAsync("fw", Title, Text);
+        await using var host = await StartAsync(true, services => services.AddHarvestSources(), Want("event", "style-fashion"));
+        const string languageQuote = "The runway presentations will be given in Uzbek and Russian.";
+        string text = $"{Text} {languageQuote}";
+        var saved = await host.SaveAsync("fw", Title, text);
         host.Caller.Enqueue(ScriptedAiModelCaller.Answer(TagsHost.Answer(domains: [new { node = "style-fashion/womens-fashion", primary = true }])));
         (await WorkAsync(host, saved.Post.Id, "extract-event")).Should().Be(0, "extraction waits for done tags");
 
@@ -67,7 +72,12 @@ public sealed class PostExtractionTests
 
         (await WorkAsync(host, saved.Post.Id, "extract-event")).Should().Be(1);
         (await WorkAsync(host, saved.Post.Id, "extract-listing")).Should().Be(0);
-        host.Caller.Enqueue(ScriptedAiModelCaller.Answer(EventAnswer()));
+        var output = JsonNode.Parse(EventAnswer())!.AsObject();
+        output["languages"] = JsonSerializer.SerializeToNode(new[]
+        {
+            new { code = "uz", evidence = languageQuote }, new { code = "ru", evidence = languageQuote },
+        });
+        host.Caller.Enqueue(ScriptedAiModelCaller.Answer(output.ToJsonString()));
 
         (await Extraction(host).ProcessDueAsync()).Should().Be(1);
 
@@ -84,7 +94,14 @@ public sealed class PostExtractionTests
             root.GetProperty("prices")[0].GetProperty("amount").GetDecimal().Should().Be(50_000m);
             root.GetProperty("registration").GetProperty("deadline").GetProperty("value").GetString().Should().Be("2026-12-01");
             root.GetProperty("fashion").GetProperty("segments")[0].GetString().Should().Be("apparel");
+            root.GetProperty("languages").EnumerateArray().Select(language => language.GetProperty("code").GetString())
+                .Should().Equal("uz", "ru");
         }
+        var overview = host.Scoped.GetRequiredService<ISourceOverviewBroker>();
+        var details = PostHost.Value(await overview.GetSourceProcessedPostAsync(host.SourceId, saved.Post.Id));
+        details.Post.Language.Should().Be("en");
+        details.Post.Extraction!.Event!.Languages.Should().Equal("uz", "ru");
+        details.Evidence.Single(field => field.Field == "languages").Quotes.Should().Equal(languageQuote);
         (await WorkAsync(host, saved.Post.Id, "extract-event")).Should().Be(0);
         (await Extraction(host).ProcessDueAsync()).Should().Be(0);
 
@@ -95,7 +112,7 @@ public sealed class PostExtractionTests
             .Should().Equal("Start:2026-12-12:Estimated", "End:2026-12-14:Estimated");
         post.Base.Extras.Keys.Should().NotContain(key => key.StartsWith("extract", StringComparison.OrdinalIgnoreCase));
         var call = host.Caller.Requests.Should().HaveCount(2).And.Subject.Last();
-        call.User.Should().Be($"{Title}\n{Text}\nnone\nnone\nevent\nstyle-fashion/womens-fashion\nupcoming\nTashkent Fashion Week");
+        call.User.Should().Be($"{Title}\n{text}\nnone\nnone\nevent\nstyle-fashion/womens-fashion\nupcoming\nTashkent Fashion Week");
     }
 
     [Fact]

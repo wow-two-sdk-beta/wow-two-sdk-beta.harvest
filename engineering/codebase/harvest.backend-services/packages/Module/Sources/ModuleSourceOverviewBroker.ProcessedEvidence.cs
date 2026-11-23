@@ -33,6 +33,10 @@ internal sealed partial class ModuleSourceOverviewBroker
             foreach (var name in new[] { "opens", "deadline" })
                 if (Child(registration, name) is { ValueKind: JsonValueKind.Object } date)
                     Add(found, $"registration.{name}", Str(date, "value"), null, Str(date, "evidence"));
+            var languageQuotes = Items(answer, "languages").Select(language => Str(language, "evidence"))
+                .OfType<string>().Where(quote => !string.IsNullOrWhiteSpace(quote)).Distinct().ToList();
+            if (languageQuotes.Count > 0)
+                found.Add(new ProcessedEvidenceModel("languages", null, "stated", languageQuotes));
         }
         else if (useCase == ListingUseCase)
         {

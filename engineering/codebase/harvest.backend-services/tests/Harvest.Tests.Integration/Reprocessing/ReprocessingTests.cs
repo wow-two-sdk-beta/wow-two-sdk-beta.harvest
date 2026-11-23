@@ -271,7 +271,8 @@ public sealed class ReprocessingTests
         resolved.Should().NotBeNull();
         Render(ExtractUser, resolved!).Should().Be(sent);
         resolved!["entityType"].Should().Be("event");
-        resolved.Keys.Should().BeEquivalentTo(PostExtractionDefinitions.Variables);
+        resolved.Keys.Should().BeEquivalentTo([.. PostExtractionDefinitions.Variables, "eventFormats"]);
+        resolved["eventFormats"].Should().Be(PostExtractionDefinitions.EventFormatDefinitions);
         (await source.ResolveAsync(PostExtractionConstants.ListingUseCase, $"harvest:post:{saved.Post.Id:D}"))
             .Should().BeNull("the post is tagged an event");
         (await source.ResolveAsync(PostTagsConstants.UseCase, $"harvest:post:{saved.Post.Id:D}"))!["title"].Should().Be(Title);

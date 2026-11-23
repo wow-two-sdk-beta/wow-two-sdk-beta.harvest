@@ -12,7 +12,7 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
 ///   - <c>extract-event</c>: <c>name</c> (<c>{en, original}</c>, without year or ordinal), <c>editionLabel</c>,
 ///     <c>occurrences</c> (<c>[{starts, ends, precision, certainty, evidence}]</c>), <c>place</c>, <c>organizer</c>,
 ///     <c>format</c>, <c>access</c>, <c>prices</c>, <c>registration</c>, <c>participation</c>, <c>status</c>,
-///     <c>relation</c>, <c>fashion</c> and <c>flags</c>
+///     <c>relation</c>, <c>fashion</c>, <c>flags</c> and optional <c>languages</c>
 ///   - <c>extract-listing</c> (schema version 2, <c>ListingAnswer.cs</c>): <c>title</c>, <c>categoryPath</c>, <c>propertyKind</c>,
 ///     <c>invalid</c>, <c>offerType</c>, <c>price</c>, <c>item</c> (building and unit), <c>furnished</c>, the amenity lists,
 ///     <c>location</c>, <c>landmarks</c>, <c>author</c> (<c>{kind}</c>, no names or contacts), <c>noAgents</c>, <c>relation</c>,
@@ -101,7 +101,11 @@ public static class PostExtractionDefinitions
     private static string BuildSchema(Type answer)
     {
         var options = new JsonSchemaExporterOptions { TreatNullObliviousAsNonNullable = true };
-        return EvidenceWire.Options.GetJsonSchemaAsNode(answer, options).AsObject().ToJsonString();
+        var schema = EvidenceWire.Options.GetJsonSchemaAsNode(answer, options).AsObject();
+        if (answer == typeof(ExtractEventAnswer))
+            schema["properties"]!["languages"]!["description"] =
+                "Languages explicitly stated for the event itself. Use BCP 47 codes and quote the wording that states which language the event is conducted in. Omit when unstated. Do not infer from the post's language, locale, location, or event name.";
+        return schema.ToJsonString();
     }
 }
 
@@ -120,7 +124,15 @@ internal sealed record ExtractEventAnswer(
     EventStatus Status,
     EntityRelation Relation,
     FashionDetails? Fashion,
-    IReadOnlyList<PostTagsFlag> Flags);
+    IReadOnlyList<PostTagsFlag> Flags)
+{
+    /// <summary>Gets the languages explicitly stated for the event, with their source quotes.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<EventLanguage>? Languages { get; init; }
+}
+
+/// <summary>Represents a stated language of the event itself.</summary>
+internal sealed record EventLanguage(string Code, string Evidence);
 
 /// <summary>Represents the event's canonical name without year or ordinal, in English and as the source writes it.</summary>
 internal sealed record EventName(string En, string? Original);

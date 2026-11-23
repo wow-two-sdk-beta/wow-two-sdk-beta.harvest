@@ -201,6 +201,9 @@ public sealed record ProcessedEventSummary
 
     /// <summary>Gets the event's state as the post tells it.</summary>
     public string? Status { get; init; }
+
+    /// <summary>Gets the language tags stated for the event itself.</summary>
+    public IReadOnlyList<string> Languages { get; init; } = [];
 }
 
 /// <summary>Represents one run of an event as an extraction answer states it.</summary>

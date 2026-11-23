@@ -220,7 +220,14 @@ internal sealed class PostExtractionBroker(
             return false;
         try
         {
-            return JsonNode.DeepEquals(JsonNode.Parse(schema), JsonNode.Parse(expected));
+            var stored = JsonNode.Parse(schema);
+            var current = JsonNode.Parse(expected);
+            if (JsonNode.DeepEquals(stored, current))
+                return true;
+            // The previous event schema may run until its registered prompt is refreshed.
+            return useCase.Key == PostExtractionConstants.EventUseCase
+                && current?["properties"] is JsonObject properties && properties.Remove("languages")
+                && JsonNode.DeepEquals(stored, current);
         }
         catch (JsonException)
         {

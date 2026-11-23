@@ -37,6 +37,7 @@ internal static partial class PostExtractionValidation
     internal const string BadDate = "the date does not match its precision";
     internal const string ContactRemoved = "a contact was removed";
     internal const string ChoseUnsure = "the model chose unsure";
+    private const string InvalidLanguage = "the language tag is invalid or unspecified";
 
     /// <summary>Checks an <c>extract-event</c> answer.</summary>
     internal static ValidatedExtraction ValidateEvent(ExtractEventAnswer answer, ExtractionCorpus corpus, ExtractionTags tags)
@@ -101,6 +102,7 @@ internal static partial class PostExtractionValidation
 
         var place = answer.Place ?? new EventPlace(null, null, null);
         var relation = Relation(answer.Relation, flags);
+        var languages = ValidateEventLanguages(answer.Languages, corpus, flags);
         var validated = answer with
         {
             Name = name,
@@ -113,9 +115,50 @@ internal static partial class PostExtractionValidation
             Participation = participation,
             Relation = relation,
             Fashion = fashion,
+            Languages = languages.Count > 0 ? languages : null,
             Flags = [.. flags.Take(MaxFlags)],
         };
         return new(JsonSerializer.SerializeToElement(validated, EvidenceWire.Options), Name(relation.Role), validated.Flags);
+    }
+
+    private static List<EventLanguage> ValidateEventLanguages(IReadOnlyList<EventLanguage>? claims, ExtractionCorpus corpus,
+        List<PostTagsFlag> flags)
+    {
+        var languages = new List<EventLanguage>();
+        var codes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var claim in claims ?? [])
+        {
+            if (claim is null)
+                continue;
+            if (LanguageCode(claim.Code) is not { } code)
+            {
+                flags.Add(new("languages", InvalidLanguage, null));
+                continue;
+            }
+            if (!codes.Contains(code) && Evidence(claim.Evidence, corpus, "languages", flags) is { } evidence)
+            {
+                codes.Add(code);
+                languages.Add(new(code, evidence));
+            }
+        }
+        return languages;
+    }
+
+    private static string? LanguageCode(string? raw)
+    {
+        string? code = raw?.Trim();
+        if (code is not { Length: >= 2 and <= 63 } || code.Any(character => !char.IsAsciiLetterOrDigit(character) && character != '-'))
+            return null;
+        try
+        {
+            var culture = CultureInfo.GetCultureInfo(code);
+            return culture.TwoLetterISOLanguageName is "und" or "mul" or "mis" or "zxx" || culture.Name.Length == 0
+                ? null : culture.Name;
+        }
+        catch (CultureNotFoundException)
+        {
+            return null;
+        }
     }
 
     /// <summary>Checks an <c>extract-listing</c> answer (schema version 2).</summary>
@@ -127,13 +170,7 @@ internal static partial class PostExtractionValidation
         Unsure(answer.Furnished == ListingFurnished.Unsure, "furnished", flags);
         Unsure(answer.Author?.Kind == ListingAuthorKind.Unsure, "author", flags);
 
-        ListingAsk? price = null;
-        if (answer.Price is { } ask && Price(ask.Amount, ask.Evidence, corpus, "price", flags) is { } evidence)
-        {
-            price = ask with { Evidence = evidence };
-            Unsure(ask.Currency == ListingCurrency.Unsure, "price.currency", flags);
-            Unsure(ask.Period == ListingAskPeriod.Unsure, "price.period", flags);
-        }
+        var price = ListingPrice(answer, corpus, flags);
 
         var category = (answer.CategoryPath ?? []).Select(step => Clip(step?.Trim(), 80)).OfType<string>()
             .Where(step => step.Length > 0).Take(6).ToList();
@@ -189,6 +226,30 @@ internal static partial class PostExtractionValidation
             Flags = [.. flags.Take(MaxFlags)],
         };
         return new(JsonSerializer.SerializeToElement(validated, EvidenceWire.Options), Name(relation.Role), validated.Flags);
+    }
+
+    /// <summary>Checks the asking price and uses the captured price quote when it supports the same amount and currency.</summary>
+    private static ListingAsk? ListingPrice(ExtractListingAnswer answer, ExtractionCorpus corpus, List<PostTagsFlag> flags)
+    {
+        if (answer.Price is not { } ask)
+            return null;
+
+        int priorFlagCount = flags.Count;
+        string? evidence = Price(ask.Amount, ask.Evidence, corpus, "price", flags);
+        if (evidence is null && answer.Invalid is null && corpus.ListedPrice is { } listed
+            && listed.Amount == ask.Amount && ask.Currency != ListingCurrency.Unsure
+            && string.Equals(listed.Currency?.Trim(), ask.Currency.ToString(), StringComparison.OrdinalIgnoreCase)
+            && corpus.Prices is { } listedEvidence && RentalTermEvidence.StatesAmount(listedEvidence, ask.Amount))
+        {
+            evidence = listedEvidence;
+            flags.RemoveRange(priorFlagCount, flags.Count - priorFlagCount);
+        }
+        if (evidence is null)
+            return null;
+
+        Unsure(ask.Currency == ListingCurrency.Unsure, "price.currency", flags);
+        Unsure(ask.Period == ListingAskPeriod.Unsure, "price.period", flags);
+        return ask with { Evidence = evidence };
     }
 
     /// <summary>Clamps the offered thing's numbers to what a listing can hold, drops an area above the total, flags a floor above the

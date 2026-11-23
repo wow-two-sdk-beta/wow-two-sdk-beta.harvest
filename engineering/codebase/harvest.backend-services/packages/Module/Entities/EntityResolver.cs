@@ -537,6 +537,8 @@ internal sealed class EntityResolver(NpgsqlConnection connection, NpgsqlTransact
         var facts = JsonSerializer.SerializeToNode(answer, EvidenceWire.Options) as JsonObject ?? new JsonObject();
         foreach (var key in new[] { "occurrences", "relation", "flags", "status", "editionLabel" })
             facts.Remove(key);
+        if (answer.Languages is { Count: > 0 } languages)
+            facts["languages"] = JsonSerializer.SerializeToNode(languages.Select(language => language.Code));
         StripEvidence(facts);
         return facts;
     }

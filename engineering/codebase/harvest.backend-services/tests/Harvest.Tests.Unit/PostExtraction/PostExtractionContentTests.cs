@@ -54,12 +54,13 @@ public sealed class PostExtractionContentTests
     }
 
     [Fact]
-    public void VariablesFor_ShouldAddNothingForAnEventPass()
+    public void VariablesFor_ShouldAddEventFormats_ForAnEventPass()
     {
         var variables = PostExtractionContent.VariablesFor("extract-event", Olx(new Dictionary<string, string> { ["Этаж"] = "3" }), null, Event, 6000,
             section: "apartments-rent");
 
-        variables.Keys.Should().BeEquivalentTo([.. PostExtractionDefinitions.Variables]);
+        variables.Keys.Should().BeEquivalentTo([.. PostExtractionDefinitions.Variables, "eventFormats"]);
+        variables["eventFormats"].Should().Be(PostExtractionDefinitions.EventFormatDefinitions);
         variables.Should().NotContainKeys("attributes", "section", "seller");
     }
 

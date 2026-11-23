@@ -60,6 +60,25 @@ public sealed class PostExtractionValidationTests
     }
 
     [Fact]
+    public void ValidateEvent_ShouldKeepDistinctStatedLanguagesWithQuotes()
+    {
+        const string quote = "The show will be held in Uzbek and Russian.";
+        var corpus = new ExtractionCorpus(quote, quote.Length);
+        var answer = Event() with
+        {
+            Languages = [new("UZ", quote), new("ru", quote), new("uz", quote), new("en", "Held in English."), new("und", quote)],
+        };
+
+        var validated = PostExtractionValidation.ValidateEvent(answer, corpus, Fashion);
+        var languages = validated.Answer.GetProperty("languages").EnumerateArray().ToList();
+
+        languages.Select(language => language.GetProperty("code").GetString()).Should().Equal("uz", "ru");
+        languages.Select(language => language.GetProperty("evidence").GetString()).Should().OnlyContain(value => value == quote);
+        validated.Flags.Should().HaveCount(2).And.OnlyContain(flag => flag.Field == "languages");
+        PostExtractionValidation.ValidateEvent(Event(), corpus, Fashion).Answer.TryGetProperty("languages", out _).Should().BeFalse();
+    }
+
+    [Fact]
     public void ValidateEvent_ShouldRefuseAQuoteBeyondWhatTheModelRead()
     {
         var answer = Event() with { Occurrences = [new("2026-12-01", null, DatePrecision.Day, DateCertainty.Stated, "1 dekabrgacha")] };
@@ -295,12 +314,47 @@ public sealed class PostExtractionValidationTests
         wrong.Answer.GetProperty("price").ValueKind.Should().Be(JsonValueKind.Null);
     }
 
+    [Fact]
+    public void ValidateListing_ShouldRecoverAnAskingPrice_OnlyWhenTheCapturedPriceMatches()
+    {
+        var sourcePrice = new PostPrice { Amount = 1700m, Currency = "USD" };
+        var post = new PostEnvelope
+        {
+            Title = "Kvartira", Text = "Цена 1600 USD в месяц.", Extraction = Stamp(), Prices = [sourcePrice],
+        };
+        var ask = Listing() with { Price = Ask(1700m, "1 700 dollars") };
+        var corpus = Corpus(post);
+
+        var recovered = PostExtractionValidation.ValidateListing(ask, corpus, Rental);
+        var different = PostExtractionValidation.ValidateListing(ask with { Price = Ask(1700m, "1 700 сум", ListingCurrency.Uzs) }, corpus, Rental);
+        var rejected = PostExtractionValidation.ValidateListing(ask with { Invalid = ListingInvalidReason.MultiListing }, corpus, Rental);
+        var ambiguous = PostExtractionValidation.ValidateListing(ask, Corpus(post with
+        {
+            Prices = [sourcePrice, sourcePrice with { Amount = 1600m }],
+        }), Rental);
+        var quoted = PostExtractionValidation.ValidateListing(ask with { Price = Ask(1600m, "Цена 1600 USD") }, corpus, Rental);
+
+        var price = recovered.Answer.GetProperty("price");
+        price.GetProperty("amount").GetDecimal().Should().Be(1700m);
+        price.GetProperty("evidence").GetString().Should().Be("listed: 1700 USD");
+        recovered.Flags.Should().NotContain(flag => flag.Field == "price");
+        different.Answer.GetProperty("price").ValueKind.Should().Be(JsonValueKind.Null);
+        rejected.Answer.GetProperty("price").ValueKind.Should().Be(JsonValueKind.Null);
+        ambiguous.Answer.GetProperty("price").ValueKind.Should().Be(JsonValueKind.Null);
+        quoted.Answer.GetProperty("price").GetProperty("amount").GetDecimal().Should().Be(1600m);
+    }
+
     [Theory]
     [InlineData("Комиссия 50% от месячной аренды", 50, true)]
     [InlineData("Комиссия 50% от месячной аренды", 5, false)]
     [InlineData("Агентская комиссия 0,5 месячной аренды", 50, false)]
     [InlineData("Komissiya 30 foiz", 30, true)]
     [InlineData("Комиссия 10 процентов", 10, true)]
+    [InlineData("Риэлторские услуги 50%", 50, true)]
+    [InlineData("Услуга риелтора 50%", 50, true)]
+    [InlineData("Maklerlik haqqi 30 foiz", 30, true)]
+    [InlineData("Услуги 50%", 50, false)]
+    [InlineData("Предоплата 50%", 50, false)]
     public void CheckListingTerms_ShouldReadAPercentCommission(string quote, int percent, bool kept)
     {
         var terms = ListingRentalTerms.Empty with
@@ -482,7 +536,8 @@ public sealed class PostExtractionValidationTests
         kept.Answer.GetProperty("price").GetProperty("evidence").GetString().Should().Be("listed: 800000 UZS/month");
         wrongAmount.Answer.GetProperty("price").ValueKind.Should().Be(JsonValueKind.Null);
         wrongAmount.Flags.Should().Contain(new PostTagsFlag("price", PostExtractionValidation.AmountNotQuoted, "900000"));
-        elsewhere.Flags.Should().Contain(new PostTagsFlag("price", PostExtractionValidation.QuoteNotFound, null));
+        elsewhere.Answer.GetProperty("price").GetProperty("evidence").GetString().Should().Be("listed: 800000 UZS/month");
+        elsewhere.Flags.Should().NotContain(flag => flag.Field == "price");
     }
 
     [Fact]

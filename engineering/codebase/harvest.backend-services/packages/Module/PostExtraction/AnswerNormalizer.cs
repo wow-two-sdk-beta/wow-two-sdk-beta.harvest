@@ -17,13 +17,14 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
 ///   - an unknown object property is removed
 ///   - every drop and replacement adds a <c>{field, reason, proposed}</c> flag to the answer's own <c>flags</c> list, which
 ///     the checks that follow carry on like the model's flags
-///   - a wrong JSON type, a missing property and a number or null where an enum is expected are left alone: the strict read
-///     still rejects them
+///   - a listing minimum-stay claim with an invalid count turns that term unknown and adds a flag
+///   - other wrong types and missing properties go to the strict read
 /// </remarks>
 internal sealed class AnswerNormalizer(JsonSerializerOptions wire)
 {
     internal const string OutsideList = "value outside the list";
     internal const string UnknownField = "unknown field";
+    internal const string InvalidMinimumStay = "the minimum stay has no positive numeric count";
     internal const int MaxProposed = 40;
 
     private const string FlagsProperty = "flags";
@@ -41,6 +42,8 @@ internal sealed class AnswerNormalizer(JsonSerializerOptions wire)
             if (JsonNode.Parse(output) is not JsonObject root)
                 return output;
             var pass = new Pass();
+            if (answer == typeof(ExtractListingAnswer))
+                NormalizeMinimumStay(root, pass);
             VisitObject(root, wire.GetTypeInfo(answer), "", pass);
             if (!pass.Changed)
                 return output;
@@ -52,6 +55,26 @@ internal sealed class AnswerNormalizer(JsonSerializerOptions wire)
         {
             // Not JSON, or a repeated property name (the node tree throws when it first reads one): the strict read decides.
             return output;
+        }
+    }
+
+    private static void NormalizeMinimumStay(JsonObject root, Pass pass)
+    {
+        if (root["rentalTerms"] is not JsonObject terms || terms["minimumStay"] is not JsonObject minimum
+            || minimum["claims"] is not JsonArray claims)
+            return;
+
+        foreach (var claim in claims)
+        {
+            if (claim is not JsonObject item || item["value"] is not JsonObject duration)
+                continue;
+            if (duration["count"] is JsonValue value && value.TryGetValue<decimal>(out var count) && count > 0)
+                continue;
+
+            minimum["status"] = "unknown";
+            minimum["claims"] = new JsonArray();
+            pass.Flag("rentalTerms.minimumStay", InvalidMinimumStay, null);
+            return;
         }
     }
 

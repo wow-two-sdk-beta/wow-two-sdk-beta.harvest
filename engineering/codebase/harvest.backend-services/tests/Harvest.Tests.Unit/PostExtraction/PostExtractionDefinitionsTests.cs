@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Schema;
 using AwesomeAssertions;
+using WoW.Two.Sdk.Beta.Be.Ai.Prompts;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
 
@@ -12,7 +13,7 @@ namespace Harvest.Tests.Unit.PostExtraction;
 public sealed class PostExtractionDefinitionsTests
 {
     [Fact]
-    public void EventSchema_ShouldRequireEveryField_AndDisallowOthers()
+    public void EventSchema_ShouldKeepLanguagesOptional_AndDisallowUnknownFields()
     {
         var schema = Parse(PostExtractionDefinitions.EventSchema);
 
@@ -24,6 +25,24 @@ public sealed class PostExtractionDefinitionsTests
         Names(occurrence["properties"]!["certainty"]!["enum"]).Should().Equal("stated", "estimated");
         Names(schema["properties"]!["name"]!["required"]).Should().BeEquivalentTo("en", "original");
         Names(schema["properties"]!["place"]!["required"]).Should().BeEquivalentTo("venue", "city", "country");
+        Names(schema["properties"]!["languages"]!["items"]!["required"]).Should().BeEquivalentTo("code", "evidence");
+    }
+
+    [Fact]
+    public void EventSchema_ShouldAllowTheRegisteredSchemaWithoutLanguages()
+    {
+        var schema = Parse(PostExtractionDefinitions.EventSchema);
+        var useCase = new UseCaseModel
+        {
+            Key = "extract-event", PromptMode = PromptMode.Versioned, KeepOutputs = true, OutputSchema = schema.ToJsonString(),
+        };
+        PostExtractionBroker.Compatible(useCase).Should().BeTrue();
+
+        schema["properties"]!.AsObject().Remove("languages");
+        PostExtractionBroker.Compatible(useCase with { OutputSchema = schema.ToJsonString() }).Should().BeTrue();
+
+        schema["properties"]!.AsObject().Remove("format");
+        PostExtractionBroker.Compatible(useCase with { OutputSchema = schema.ToJsonString() }).Should().BeFalse();
     }
 
     [Fact]
@@ -181,6 +200,36 @@ public sealed class PostExtractionDefinitionsTests
         PostExtractionDefinitions.Parse<ExtractListingAnswer>(FullListing.Replace("\"urgent\":false,", "")).Should().BeNull();
         PostExtractionDefinitions.Parse<ExtractListingAnswer>(FullListing.Replace("\"flags\":[]", "\"x\":1")).Should().BeNull();
         PostExtractionDefinitions.Parse<ExtractListingAnswer>("not json").Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("null", false)]
+    [InlineData("\"6\"", false)]
+    [InlineData("0", false)]
+    [InlineData("6", true)]
+    public void Parse_ShouldKeepTheListing_WhenTheMinimumStayCountNeedsRepair(string count, bool valid)
+    {
+        var payload = Parse(FullListing);
+        payload["rentalTerms"]!["minimumStay"] = JsonNode.Parse($$$"""
+            {"status":"present","claims":[{"evidence":"от 6 месяцев","value":{"count":{{{count}}},"unit":"month"}}]}
+            """);
+
+        var parsed = PostExtractionDefinitions.Parse<ExtractListingAnswer>(payload.ToJsonString());
+
+        parsed.Should().NotBeNull();
+        parsed!.Price!.Amount.Should().Be(500);
+        parsed.RentalTerms!.MinimumStay.Status.Should().Be(valid ? RentalTermStatus.Present : RentalTermStatus.Unknown);
+        if (valid)
+        {
+            parsed.RentalTerms.MinimumStay.Claims.Should().ContainSingle().Which.Value!.Count.Should().Be(6);
+            parsed.Flags.Should().BeEmpty();
+        }
+        else
+        {
+            parsed.RentalTerms.MinimumStay.Claims.Should().BeEmpty();
+            parsed.Flags.Should().ContainSingle().Which.Should().Be(
+                new PostTagsFlag("rentalTerms.minimumStay", AnswerNormalizer.InvalidMinimumStay, null));
+        }
     }
 
     private static readonly string[] ContactWords = ["phone", "contact", "email", "mail", "telegram", "whatsapp", "viber", "handle", "registered", "realtorname", "authorname"];
