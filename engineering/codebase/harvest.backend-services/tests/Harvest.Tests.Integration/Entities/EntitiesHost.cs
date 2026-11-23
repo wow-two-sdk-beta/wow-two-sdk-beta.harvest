@@ -95,13 +95,14 @@ internal static class EntitiesHost
 
     /// <summary>Builds a stored <c>extract-event</c> answer.</summary>
     internal static string Event(string en, string? original = null, object[]? runs = null, string? city = "Tashkent", string role = "announcement",
-        string[]? changes = null, string? relationStatus = null, string status = "scheduled", string? editionLabel = null) =>
+        string[]? changes = null, string? relationStatus = null, string status = "scheduled", string? editionLabel = null,
+        string? venue = null) =>
         JsonSerializer.Serialize(new
         {
             name = new { en, original },
             editionLabel,
             occurrences = runs ?? [],
-            place = new { venue = (string?)null, city, country = "Uzbekistan" },
+            place = new { venue, city, country = "Uzbekistan" },
             organizer = (string?)null,
             format = "runway",
             access = "ticketed",

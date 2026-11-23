@@ -34,12 +34,16 @@ public static class PostExtractionDefinitions
     /// (<c>business</c> · <c>private</c> · <c>unknown</c>, empty for other sources).</summary>
     public static IReadOnlyList<string> ListingVariables { get; } = ["attributes", "section", "seller"];
 
-    /// <summary>Returns the variables a use case's prompt may use: <see cref="Variables"/> for <c>extract-event</c>, and for
-    /// <c>extract-listing</c> those plus <see cref="ListingVariables"/>; none for another key.</summary>
+    /// <summary>Gets the allowed event format keys and human-readable definitions for extraction and matching prompts.
+    /// The keys serialize from the same enum as the extraction schema.</summary>
+    public static string EventFormatDefinitions { get; } = string.Join('\n', Enum.GetValues<EventFormat>().Select(format =>
+        $"{JsonSerializer.SerializeToElement(format, EvidenceWire.Options).GetString()} - {Describe(format)}"));
+
+    /// <summary>Returns the variables a use case's prompt may use, including its extra event or listing context.</summary>
     /// <param name="useCase"><c>extract-event</c> or <c>extract-listing</c>.</param>
     public static IReadOnlyList<string> VariablesOf(string useCase) => useCase switch
     {
-        PostExtractionConstants.EventUseCase => Variables,
+        PostExtractionConstants.EventUseCase => [.. Variables, "eventFormats"],
         PostExtractionConstants.ListingUseCase => [.. Variables, .. ListingVariables],
         _ => [],
     };
@@ -76,6 +80,23 @@ public static class PostExtractionDefinitions
             return null;
         }
     }
+
+    private static string Describe(EventFormat format) => format switch
+    {
+        EventFormat.Expo => "Large organized showcase with many exhibitors presenting work or products.",
+        EventFormat.TradeFair => "Industry or business fair for exhibitors, buyers and professional trade.",
+        EventFormat.Runway => "A fashion show with a runway or an organized presentation of a collection.",
+        EventFormat.Festival => "A named festival with a program of activities or performances.",
+        EventFormat.Competition => "A judged or scored contest, tournament or competition.",
+        EventFormat.Conference => "An organized forum, summit or conference with professional or educational sessions.",
+        EventFormat.Market => "A market or bazaar where vendors offer goods directly to visitors.",
+        EventFormat.Exhibition => "A curated display of artworks, artifacts or collections.",
+        EventFormat.Workshop => "A hands-on class or session in which participants practice or make something.",
+        EventFormat.Concert => "A scheduled performance primarily centered on live music.",
+        EventFormat.Other => "A recognizable event format outside the available categories, such as a public talk.",
+        EventFormat.Unsure => "There is insufficient evidence to determine the format.",
+        _ => throw new ArgumentOutOfRangeException(nameof(format)),
+    };
 
     private static string BuildSchema(Type answer)
     {

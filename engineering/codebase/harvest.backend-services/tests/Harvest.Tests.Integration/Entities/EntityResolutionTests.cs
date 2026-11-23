@@ -82,6 +82,63 @@ public sealed class EntityResolutionTests
     }
 
     [Fact]
+    public async Task DatedAnnouncementsAndReports_ShouldKeepDistinctEditionsInTheSameYear()
+    {
+        await using var host = await StartAsync();
+        const string name = "Teplo Fest";
+        var (_, winter) = await host.EventAsync("teplo-winter", Event(name, null,
+            [Run("2025-12-26", "2025-12-28")], editionLabel: "2025"));
+        var (_, autumn) = await host.EventAsync("teplo-autumn", Event(name, null,
+            [Run("2025-09-19", "2025-09-21")], editionLabel: "2025"));
+        var (_, report) = await host.EventAsync("teplo-other-dated-report", Event(name, null,
+            [Run("2025-09-28")], editionLabel: "2025", role: "report", status: "held"));
+
+        autumn.EntityId.Should().Be(winter.EntityId);
+        Assert.NotEqual(winter.OccurrenceId, autumn.OccurrenceId);
+        (await OccurrenceAsync(host, autumn.OccurrenceId!.Value))
+            .Should().Be("2025-09-19:2025-09-21:stated:scheduled:0");
+        report.EntityId.Should().Be(winter.EntityId);
+        Assert.NotEqual(autumn.OccurrenceId, report.OccurrenceId);
+        Assert.NotEqual(winter.OccurrenceId, report.OccurrenceId);
+        (await OccurrenceAsync(host, report.OccurrenceId!.Value)).Should().StartWith("2025-09-28:");
+    }
+
+    [Fact]
+    public async Task LookupAdvice_ShouldResolveDifferentLanguageNamesWithTheSameVenueAndDate()
+    {
+        var advisor = new SelectOnlyCandidate();
+        await using var host = await TagsHost.StartAsync(enabled: false, ai: false, configure: services =>
+        {
+            services.AddHarvestEntities();
+            services.AddSingleton<IEventMatchAdvisor>(advisor);
+        });
+        var (_, first) = await host.EventAsync("poetry-invite",
+            Event("She'riyat Kechasi", null, [Run("2026-11-13")], venue: "Teplo Store"));
+        var (_, report) = await host.EventAsync("poetry-recap",
+            Event("Poetry Evening at Teplo Store", null, [Run("2026-11-13")], role: "report", status: "held", venue: "Teplo Store"));
+
+        advisor.Calls.Should().Be(1);
+        report.EntityId.Should().Be(first.EntityId);
+        report.OccurrenceId.Should().Be(first.OccurrenceId);
+    }
+
+    private sealed class SelectOnlyCandidate : IEventMatchAdvisor
+    {
+        internal int Calls { get; private set; }
+
+        public async Task<EventMatchDecision?> AdviseAsync(EventMatchEvidence evidence,
+            Func<string?, CancellationToken, Task<IReadOnlyList<EventMatchCandidate>>> lookup, CancellationToken cancellationToken)
+        {
+            Calls++;
+            var candidates = await lookup(null, cancellationToken);
+            candidates.Should().ContainSingle();
+            candidates[0].Venue.Should().Be("Teplo Store");
+            candidates[0].StartsOn.Should().Be(evidence.StartsOn);
+            return new("link", candidates[0].EntityId);
+        }
+    }
+
+    [Fact]
     public async Task Updates_ShouldMoveStatusAndDatesWithHistory_AndNeverLetAnEstimateOverrideAStatedDate()
     {
         await using var host = await StartAsync();

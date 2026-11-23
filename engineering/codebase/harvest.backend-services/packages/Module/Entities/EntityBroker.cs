@@ -17,7 +17,8 @@ internal sealed class EntityBroker(
     [FromKeyedServices(HarvestModuleConstants.ServiceKey)] NpgsqlDataSource dataSource,
     IOptionsMonitor<EntityOptions> options,
     TimeProvider time,
-    ILogger<EntityBroker> logger) : IEntityBroker
+    ILogger<EntityBroker> logger,
+    IEventMatchAdvisor? advisor = null) : IEntityBroker
 {
     private const int MaxBackfill = 100_000;
     private const int MaxMergeHops = 10;
@@ -26,9 +27,11 @@ internal sealed class EntityBroker(
     /// <inheritdoc />
     public async Task<Result<EntityResolveModel>> ResolveAsync(Guid postId, bool dryRun = false, CancellationToken cancellationToken = default)
     {
+        var advice = dryRun || advisor is null ? null
+            : await EntityMatchLookup.AdviseAsync(dataSource, advisor, logger, postId, null, cancellationToken);
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-        var outcome = await ResolveAsync(connection, transaction, postId, null, cancellationToken);
+        var outcome = await ResolveAsync(connection, transaction, postId, null, cancellationToken, advice);
         if (outcome is Result<EntityResolveModel>.Success && !dryRun)
             await transaction.CommitAsync(cancellationToken);
         else
@@ -218,14 +221,17 @@ internal sealed class EntityBroker(
     {
         var settings = options.CurrentValue;
         string owner = $"{Environment.MachineName}:{Environment.ProcessId}:{Guid.NewGuid():N}";
-        var claims = await EntityStore.ClaimAsync(dataSource, owner, time.GetUtcNow(), settings.LeaseDuration, settings.BatchSize, cancellationToken);
+        int batch = advisor is null ? settings.BatchSize : Math.Min(settings.BatchSize, 3);
+        var claims = await EntityStore.ClaimAsync(dataSource, owner, time.GetUtcNow(), settings.LeaseDuration, batch, cancellationToken);
         foreach (var claim in claims)
         {
             try
             {
+                var advice = advisor is null ? null
+                    : await EntityMatchLookup.AdviseAsync(dataSource, advisor, logger, claim.PostId, claim.ContentHash, cancellationToken);
                 await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
                 await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-                var result = await ResolveAsync(connection, transaction, claim.PostId, claim.ContentHash, cancellationToken);
+                var result = await ResolveAsync(connection, transaction, claim.PostId, claim.ContentHash, cancellationToken, advice);
                 await transaction.CommitAsync(cancellationToken);
                 if (result is Result<EntityResolveModel>.Failure { Error: var error })
                     logger.LogDebug("Entity resolution of post {PostId} dropped: {Reason}", claim.PostId, error.Message);
@@ -244,7 +250,7 @@ internal sealed class EntityBroker(
     /// <summary>Resolves a post inside the caller's transaction; with <paramref name="expectedHash"/>, only while the post's
     /// content still has that hash.</summary>
     private async Task<Result<EntityResolveModel>> ResolveAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid postId,
-        byte[]? expectedHash, CancellationToken ct)
+        byte[]? expectedHash, CancellationToken ct, EventMatchSuggestion? advice)
     {
         var post = await EntityStore.ReadPostAsync(connection, transaction, postId, ct);
         if (post is null || !post.Current)
@@ -258,7 +264,7 @@ internal sealed class EntityBroker(
                 "Extract the post first: its current title and text have no done extraction answer."));
         var tags = await PostExtractionStore.ReadTagsAsync(connection, transaction, postId, post.ContentHash, ct);
         IReadOnlyList<PostTagsDomain> domains = tags?.Domains ?? [];
-        var resolver = new EntityResolver(connection, transaction, options.CurrentValue, time.GetUtcNow());
+        var resolver = new EntityResolver(connection, transaction, options.CurrentValue, time.GetUtcNow(), advice);
         var outcomes = new List<EntityResolveOutcome>();
         foreach (var answer in answers)
             outcomes.Add(await resolver.ResolveAsync(post, answer, domains, ct));

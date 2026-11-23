@@ -9,6 +9,8 @@ using WoW.Two.Sdk.Beta.Be.Ai.Runs;
 using WoW.Two.Sdk.Beta.Be.Ai.Testing.Providers;
 using WoW.Two.Sdk.Beta.Be.Foundation.Errors;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
+using WoW.Two.Sdk.Beta.Be.Harvest.Delivery;
+using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
 
 namespace Harvest.Tests.Integration.PostExtraction;
@@ -23,6 +25,35 @@ public sealed class PostExtractionTests
         + "Dizaynerlar uchun ro'yxatdan o'tish 1 dekabrgacha davom etadi.";
     private const string User = "{{title}}\n{{text}}\n{{dates}}\n{{prices}}\n{{entityType}}\n{{domains}}\n{{timeframe}}\n{{titleEn}}";
     private const string Work = "SELECT count(*) FROM harvest_post_work WHERE post_id=@post AND kind=@kind";
+
+    [Fact]
+    public async Task EventSelector_ShouldDeliverAnUnknownKindCapture_AfterAConfirmedEventExtraction()
+    {
+        await using var host = await StartAsync(Want("event", "style-fashion"));
+        var subscription = PostHost.Value(await host.Delivery.SubscribeAsync(new SubscriptionDeclaration
+        {
+            TenantId = host.TenantId, ContainerId = host.ContainerId, Name = "fashion-events",
+            Schema = PostEnvelopeConstants.EventSchema,
+            Selector = new SubscriptionSelector { EntityTypes = ["event"], Topics = ["textile"] },
+        }));
+        var capture = PostStoreTests.Envelope(Title, Text) with { Kind = null };
+        var saved = await host.SaveAsync("fw", Title, Text, envelope: capture);
+        host.Caller.Enqueue(ScriptedAiModelCaller.Answer(TagsHost.Answer(topics: ["textile"])));
+        await host.Tags.ProcessDueAsync();
+        (await host.ScalarAsync<long>("SELECT count(*) FROM harvest_subscription_event WHERE subscription_id=@subscription",
+            ("subscription", subscription.Id))).Should().Be(0);
+
+        host.Caller.Enqueue(ScriptedAiModelCaller.Answer(EventAnswer()));
+        (await Extraction(host).ProcessDueAsync()).Should().Be(1);
+
+        var post = PostHost.Value(await host.Posts.GetPostAsync(host.ContainerId, saved.Post.Id));
+        post.Base.Kind.Should().Be(PostKind.Event);
+        (await host.ScalarAsync<long>("""
+            SELECT count(*) FROM harvest_subscription_event WHERE subscription_id=@subscription
+                AND post_id=@post AND type='post.new' AND matched->'clauses' ? 'topic:textile'
+            """, ("subscription", subscription.Id), ("post", saved.Post.Id))).Should().Be(1);
+        post.Base.Dates.Should().Contain(date => date.Role == DateRole.Start && date.Value == "2026-12-12");
+    }
 
     [Fact]
     public async Task Tagging_ShouldQueueExtractionForAWantedPair_AndStoreTheCheckedAnswerWithoutTouchingThePost()

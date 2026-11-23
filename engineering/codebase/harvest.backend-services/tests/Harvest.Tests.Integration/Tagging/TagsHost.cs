@@ -13,6 +13,7 @@ using WoW.Two.Sdk.Beta.Be.Data.Migrations.Bespoke;
 using WoW.Two.Sdk.Beta.Be.Foundation.Results;
 using WoW.Two.Sdk.Beta.Be.Harvest.Containers;
 using WoW.Two.Sdk.Beta.Be.Harvest.Delivery;
+using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Delivery;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Posts;
@@ -116,7 +117,8 @@ internal sealed class TagsHost(ServiceProvider services, AsyncServiceScope scope
     }
 
     /// <summary>Saves a capture of <paramref name="key"/> with the given title and text, now.</summary>
-    internal async Task<CaptureSaveResult> SaveAsync(string key, string title, string text, Guid? sourceId = null, string domain = "mstar.uz")
+    internal async Task<CaptureSaveResult> SaveAsync(string key, string title, string text, Guid? sourceId = null, string domain = "mstar.uz",
+        PostEnvelope? envelope = null)
     {
         var capture = new Capture
         {
@@ -124,7 +126,8 @@ internal sealed class TagsHost(ServiceProvider services, AsyncServiceScope scope
             CapturedAtUtc = Clock.GetUtcNow(), Body = Encoding.UTF8.GetBytes($"{title}\n{text}"), ContentProjection = $"{title}\n{text}",
             HttpStatus = 200, ContentType = "text/html",
         };
-        return PostHost.Value(await Posts.SaveCaptureAsync(ContainerId, sourceId ?? SourceId, null, capture, PostStoreTests.Envelope(title, text)));
+        return PostHost.Value(await Posts.SaveCaptureAsync(ContainerId, sourceId ?? SourceId, null, capture,
+            envelope ?? PostStoreTests.Envelope(title, text)));
     }
 
     /// <summary>Builds a schema-valid answer.</summary>

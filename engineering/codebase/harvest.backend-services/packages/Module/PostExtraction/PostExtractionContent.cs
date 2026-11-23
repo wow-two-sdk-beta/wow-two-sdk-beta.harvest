@@ -90,9 +90,8 @@ internal static partial class PostExtractionContent
         ["titleEn"] = string.IsNullOrWhiteSpace(tags.TitleEn) ? "unknown" : tags.TitleEn,
     };
 
-    /// <summary>Builds the prompt variables of one use case: <see cref="Variables"/> for <c>extract-event</c>, and for
-    /// <c>extract-listing</c> those plus <c>attributes</c>, <c>section</c> and <c>seller</c>, so an eval subject resolves exactly
-    /// what the pass sends.</summary>
+    /// <summary>Builds the prompt variables for one use case, including allowed event formats or listing details.
+    /// An eval subject resolves exactly what the pass sends.</summary>
     /// <param name="useCase"><c>extract-event</c> or <c>extract-listing</c>.</param>
     /// <param name="envelope">The post's current fields.</param>
     /// <param name="sourceCategory">The category hint: the source tags, else the section.</param>
@@ -104,7 +103,9 @@ internal static partial class PostExtractionContent
         int maxTextChars, DateTimeOffset? firstSeen = null, string? section = null)
     {
         var variables = Variables(envelope, sourceCategory, tags, maxTextChars, firstSeen);
-        if (useCase == PostExtractionConstants.ListingUseCase)
+        if (useCase == PostExtractionConstants.EventUseCase)
+            variables["eventFormats"] = PostExtractionDefinitions.EventFormatDefinitions;
+        else if (useCase == PostExtractionConstants.ListingUseCase)
         {
             variables["attributes"] = Attributes(envelope);
             variables["section"] = Section(section);

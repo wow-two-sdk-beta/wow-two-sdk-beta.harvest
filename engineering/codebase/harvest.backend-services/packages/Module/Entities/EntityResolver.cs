@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Npgsql;
+using WoW.Two.Sdk.Beta.Be.Harvest.Module.Posts;
 using WoW.Two.Sdk.Beta.Be.Harvest.Extraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.PostExtraction;
 using WoW.Two.Sdk.Beta.Be.Harvest.Module.Tagging;
@@ -23,7 +24,8 @@ namespace WoW.Two.Sdk.Beta.Be.Harvest.Module.Entities;
 ///     overrides a stated one. A listing's role follows its author: the same author's ad is an <c>update</c>, another
 ///     author's an <c>announcement</c> with its own offer
 /// </remarks>
-internal sealed class EntityResolver(NpgsqlConnection connection, NpgsqlTransaction transaction, EntityOptions options, DateTimeOffset now)
+internal sealed class EntityResolver(NpgsqlConnection connection, NpgsqlTransaction transaction, EntityOptions options, DateTimeOffset now,
+    EventMatchSuggestion? advice = null)
 {
     private const string EventUseCase = PostExtractionConstants.EventUseCase;
     private const string ListingUseCase = PostExtractionConstants.ListingUseCase;
@@ -33,15 +35,16 @@ internal sealed class EntityResolver(NpgsqlConnection connection, NpgsqlTransact
         CancellationToken ct)
     {
         if (answer.UseCase == EventUseCase && PostExtractionDefinitions.Parse<ExtractEventAnswer>(answer.Json) is { } eventAnswer)
-            return await EventAsync(post, eventAnswer, answer.Role, domains, ct);
+            return await EventAsync(post, eventAnswer, answer, domains, ct);
         if (answer.UseCase == ListingUseCase && PostExtractionDefinitions.Parse<ExtractListingAnswer>(answer.Json) is { } listingAnswer)
             return await ListingAsync(post, listingAnswer, answer.Role, domains, ct);
         return new EntityResolveOutcome { UseCase = answer.UseCase, Outcome = "unsure", Reason = "answer-unreadable" };
     }
 
-    private async Task<EntityResolveOutcome> EventAsync(EntityPost post, ExtractEventAnswer answer, string role, IReadOnlyList<PostTagsDomain> domains,
-        CancellationToken ct)
+    private async Task<EntityResolveOutcome> EventAsync(EntityPost post, ExtractEventAnswer answer, EntityAnswer saved,
+        IReadOnlyList<PostTagsDomain> domains, CancellationToken ct)
     {
+        string role = saved.Role;
         string? english = Clean(answer.Name?.En), original = Clean(answer.Name?.Original);
         string[] keys = [.. new[] { EntityNames.Key(english), EntityNames.Key(original) }.Where(key => key.Length > 0).Distinct()];
         if (keys.Length == 0)
@@ -75,6 +78,19 @@ internal sealed class EntityResolver(NpgsqlConnection connection, NpgsqlTransact
         }
 
         var decision = Decide(scored, bound);
+        if (advice is not null && decision.Kind != DecisionKind.Bind
+            && post.ContentHash.AsSpan().SequenceEqual(advice.ContentHash) && saved.UpdatedAt == advice.AnswerUpdatedAt)
+        {
+            if (advice.Decision is { Decision: "link", EntityId: { } id } && !apart.Contains(id)
+                && await ReadConfirmedCandidateAsync(post.ContainerId, id, advice.EntityUpdatedAt, ct) is { } candidate)
+                decision = new(DecisionKind.Bind, candidate);
+            else if (advice.Decision.Decision == "create")
+                decision = new(DecisionKind.Create, null);
+            else if (advice.Decision.Decision == "review" || advice.Decision.Decision == "link")
+                return await UnsureAsync(post, EventUseCase, "match", "needs-event-review", advice.Decision.EntityId, null, ct);
+        }
+        if (decision.Kind == DecisionKind.Create && role is "mention" or "unsure")
+            return await UnsureAsync(post, EventUseCase, "match", "mention-without-event", null, null, ct);
         if (decision.Kind is DecisionKind.Weak or DecisionKind.Ambiguous)
             return await UnsureAsync(post, EventUseCase, "match", decision.Kind == DecisionKind.Weak ? "weak-match" : "ambiguous",
                 decision.Candidate!.Entity.Id, Confidence(decision.Candidate.Score), ct);
@@ -104,6 +120,18 @@ internal sealed class EntityResolver(NpgsqlConnection connection, NpgsqlTransact
             UseCase = EventUseCase, Outcome = created ? "created" : "bound", EntityId = entity.Id, OccurrenceId = target?.Id, Role = role,
             Changes = changes, Confidence = confidence,
         };
+    }
+
+    private async Task<Candidate?> ReadConfirmedCandidateAsync(Guid containerId, Guid candidateId, DateTimeOffset? version,
+        CancellationToken ct)
+    {
+        if (version is not { } stamp || await PostSql.ScalarAsync(connection, transaction, """
+            SELECT 1 FROM harvest_entities WHERE container_id=@container AND id=@id AND entity_type='event'
+                AND merged_into IS NULL AND updated_at=@version
+            """, ct, ("container", containerId), ("id", candidateId), ("version", stamp)) is null
+            || await EntityStore.ReadEntityAsync(connection, transaction, candidateId, ct) is not { } entity)
+            return null;
+        return new(entity, await EntityStore.ReadOccurrencesAsync(connection, transaction, candidateId, ct), options.MinMatchConfidence);
     }
 
     private (OccurrenceRow? Target, List<string> Changes) ApplyEvent(EntityPost post, EntityRow entity, List<OccurrenceRow> rows,
@@ -299,15 +327,22 @@ internal sealed class EntityResolver(NpgsqlConnection connection, NpgsqlTransact
             row.Deleted = true;
     }
 
-    /// <summary>Returns the occurrence a span is: dates overlapping within the window, the closest first and a real one
-    /// before a predicted one; else the one occurrence of the edition label's year.</summary>
+    /// <summary>Matches an overlapping occurrence first. The date window and edition year accommodate an estimate;
+    /// disjoint stated spans are separate occurrences.</summary>
     internal OccurrenceRow? Match(IEnumerable<OccurrenceRow> rows, EventSpan span, int? editionYear)
     {
         var live = rows.Where(row => !row.Deleted).ToList();
-        var overlapping = live.Where(row => Overlaps(row, span))
-            .OrderBy(row => Math.Abs(row.Starts.DayNumber - span.Starts.DayNumber)).ThenBy(row => row.Predicted).FirstOrDefault();
-        return overlapping ?? ByYear(live, editionYear);
+        var exact = Closest(live.Where(row => EntityDates.Overlap(row.Starts, row.Last, span.Starts, span.Last, 0)), span);
+        if (exact is not null)
+            return exact;
+
+        var uncertain = live.Where(row => row.Certainty != "stated" || span.Certainty != "stated").ToList();
+        return Closest(uncertain.Where(row => Overlaps(row, span)), span) ?? ByYear(uncertain, editionYear);
     }
+
+    private static OccurrenceRow? Closest(IEnumerable<OccurrenceRow> rows, EventSpan span) =>
+        rows.OrderBy(row => row.Predicted)
+            .ThenBy(row => Math.Abs(row.Starts.DayNumber - span.Starts.DayNumber)).FirstOrDefault();
 
     private bool Overlaps(OccurrenceRow row, EventSpan span) =>
         EntityDates.Overlap(row.Starts, row.Last, span.Starts, span.Last, options.EventDateWindowDays);
@@ -327,10 +362,12 @@ internal sealed class EntityResolver(NpgsqlConnection connection, NpgsqlTransact
         bool report)
     {
         var matched = spans.Select(span => Match(rows, span, editionYear)).FirstOrDefault(match => match is not null)
-            ?? (spans.Count == 0 ? ByYear(rows, editionYear) : null)
-            ?? rows.FirstOrDefault(row => row.Id == boundOccurrence && !row.Deleted);
-        if (matched is not null)
+            ?? (spans.Count == 0 ? ByYear(rows, editionYear) : null);
+        if (matched is not null || (report && spans.Any(span => span.Certainty == "stated")))
             return matched;
+        var bound = rows.FirstOrDefault(row => row.Id == boundOccurrence && !row.Deleted);
+        if (bound is not null)
+            return bound;
         var reference = spans.Count > 0 ? spans[0].Starts : post.PostedOn ?? DateOnly.FromDateTime(now.UtcDateTime);
         var real = rows.Where(row => !row.Deleted && !row.Predicted
             && Math.Abs(row.Starts.DayNumber - reference.DayNumber) <= options.UpdateWindowDays).ToList();
@@ -610,7 +647,7 @@ internal sealed class EntityResolver(NpgsqlConnection connection, NpgsqlTransact
     private static string? PeriodName(ListingAskPeriod? period) => period is { } named && named != ListingAskPeriod.Unsure ? Wire(named) : null;
 
     /// <summary>Names an enum value as the answer writes it (<c>rent-or-sale</c>, <c>management-company</c>).</summary>
-    private static string Wire<T>(T value) where T : struct, Enum => JsonSerializer.SerializeToElement(value, EvidenceWire.Options).GetString()!;
+    internal static string Wire<T>(T value) where T : struct, Enum => JsonSerializer.SerializeToElement(value, EvidenceWire.Options).GetString()!;
 
     private static void StripEvidence(JsonNode? node)
     {

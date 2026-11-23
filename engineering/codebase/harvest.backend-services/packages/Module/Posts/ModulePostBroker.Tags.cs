@@ -97,13 +97,17 @@ internal sealed partial class ModulePostBroker
 
     /// <summary>Reads the done answers a resolve writes back: the tags for the post's current title and text, else the
     /// newest, so tags stay on the post until a new answer replaces them; and the done <c>extract-event</c> answer about
-    /// the same content as those tags, so the verdict's kind and an estimated date always come from one reading.</summary>
+    /// the same content as those tags. Only an identified, dated event about the current content can supply a missing
+    /// post kind.</summary>
     private static async Task<(StoredPostTags? Tags, StoredEventExtraction? Event)> ReadStoredAnswersAsync(NpgsqlConnection connection,
         NpgsqlTransaction transaction, Guid postId, byte[] contentHash, CancellationToken ct)
     {
         await using var command = PostSql.Command(connection, transaction, """
             SELECT t.entity_type,t.domains::text,t.topics,t.title_en,t.confidence,t.prompt_version,t.model,
-                e.post_id IS NOT NULL,e.answer->>'format',(e.answer->'occurrences'->0)::text,t.timeframe,t.prompt_hash
+                e.post_id IS NOT NULL,e.answer->>'format',(e.answer->'occurrences'->0)::text,t.timeframe,t.prompt_hash,
+                COALESCE(e.content_hash=@hash AND e.role IN ('announcement','update','report')
+                    AND (NULLIF(btrim(e.answer->'name'->>'en'),'') IS NOT NULL
+                        OR NULLIF(btrim(e.answer->'name'->>'original'),'') IS NOT NULL),false)
             FROM harvest_post_tags t
             LEFT JOIN harvest_post_extractions e ON e.post_id=t.post_id AND e.content_hash=t.content_hash
                 AND e.use_case=@useCase AND e.status='done' AND t.entity_type='event'
@@ -119,7 +123,7 @@ internal sealed partial class ModulePostBroker
             reader.IsDBNull(11) || !reader.GetString(11).StartsWith(PostTagsConstants.RuleHashPrefix, StringComparison.Ordinal)
                 ? null : reader.GetString(11)[PostTagsConstants.RuleHashPrefix.Length..]);
         return (tags, StoredEventExtraction.Read(reader.GetBoolean(7), reader.IsDBNull(8) ? null : reader.GetString(8),
-            reader.IsDBNull(9) ? null : reader.GetString(9)));
+            reader.IsDBNull(9) ? null : reader.GetString(9), reader.GetBoolean(12)));
     }
 
     /// <summary>Reads what extraction takes from a done tags answer — entity type, domains, about, timeframe and English

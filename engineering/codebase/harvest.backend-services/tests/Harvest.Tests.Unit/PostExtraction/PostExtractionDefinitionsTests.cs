@@ -125,7 +125,7 @@ public sealed class PostExtractionDefinitionsTests
         PostExtractionDefinitions.Variables.Should().Contain(["title", "text", "dates", "place", "prices", "postedAt", "entityType", "domains",
             "about", "timeframe", "titleEn"]);
         PostExtractionDefinitions.Variables.Should().NotContain(["attributes", "section", "seller"]);
-        PostExtractionDefinitions.VariablesOf("extract-event").Should().Equal(PostExtractionDefinitions.Variables);
+        PostExtractionDefinitions.VariablesOf("extract-event").Should().Equal([.. PostExtractionDefinitions.Variables, "eventFormats"]);
         PostExtractionDefinitions.VariablesOf("extract-listing").Should().Equal([.. PostExtractionDefinitions.Variables, "attributes", "section", "seller"]);
         PostExtractionDefinitions.VariablesOf("post-tags").Should().BeEmpty();
         PostExtractionDefinitions.OutputSchema("extract-event").Should().Be(PostExtractionDefinitions.EventSchema);
