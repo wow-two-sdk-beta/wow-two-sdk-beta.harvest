@@ -34,6 +34,15 @@ export interface HostHealthModel {
   readonly running: number;
 }
 
+/** A confirmed content match to another source URL. */
+export interface PostDuplicateModel {
+  readonly groupId: string;
+  readonly referencePostId: string;
+  readonly referenceUrl: string;
+  readonly match: 'exact' | 'similar';
+  readonly similarity: number;
+}
+
 /** Mirrors one source view of a canonical post. */
 export interface PostLinkModel {
   readonly id: string;
@@ -53,6 +62,7 @@ export interface PostLinkModel {
   readonly lastCheckRunKind?: string;
   readonly checkCount?: number;
   readonly sourceFields?: Readonly<Record<string, unknown>>;
+  readonly duplicate?: PostDuplicateModel;
 }
 
 /** Mirrors a canonical post, its source links and field provenance. */

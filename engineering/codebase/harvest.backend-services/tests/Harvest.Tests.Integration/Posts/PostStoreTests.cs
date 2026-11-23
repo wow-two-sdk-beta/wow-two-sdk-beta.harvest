@@ -95,6 +95,59 @@ public sealed class PostStoreTests
     }
 
     [Fact]
+    public async Task DifferentExternalUrls_ShouldStoreDirectDuplicateGroupsAndRefreshWhenAReadingChanges()
+    {
+        await using var host = await PostHost.StartAsync();
+        const string text = "On March 5 at 16:30 Teplo hosts a masterclass on creating the atmosphere of a spring holiday.";
+        const string newText = "The same studio will host a poetry evening on March 12 with a different host and a new program.";
+        var primary = Capture(host, "class-original", text) with { OriginKey = "https://example.com/original" };
+        var firstCopy = Capture(host, "class-copy-1", text) with { OriginKey = "https://example.com/copy1" };
+        var secondCopy = Capture(host, "class-copy-2", text) with { OriginKey = "https://example.com/copy2" };
+
+        var original = PostHost.Value(await host.Posts.SaveCaptureAsync(host.ContainerId, host.SourceId, null,
+            primary, Envelope("Masterclass", text)));
+        var duplicate = PostHost.Value(await host.Posts.SaveCaptureAsync(host.ContainerId, host.SourceId, null,
+            firstCopy, Envelope("Masterclass", text)));
+        var another = PostHost.Value(await host.Posts.SaveCaptureAsync(host.ContainerId, host.SourceId, null,
+            secondCopy, Envelope("Masterclass", text)));
+        duplicate.Post.Links.Single().Duplicate.Should().Be(new PostDuplicateModel(original.LinkId,
+            original.Post.Id, primary.Url, "exact", 1f));
+        another.Post.Links.Single().Duplicate.Should().Be(duplicate.Post.Links.Single().Duplicate);
+
+        var edit = PostHost.Value(await host.Posts.SaveCaptureAsync(host.ContainerId, host.SourceId, null,
+            primary with { CapturedAtUtc = primary.CapturedAtUtc.AddMinutes(1), ContentProjection = newText },
+            Envelope("Poetry evening", newText)));
+        edit.Post.Links.Single().Duplicate.Should().BeNull();
+        var reread = PostHost.Value(await host.Posts.GetPostAsync(host.ContainerId, duplicate.Post.Id));
+        var secondReread = PostHost.Value(await host.Posts.GetPostAsync(host.ContainerId, another.Post.Id));
+        var grouped = new[] { reread.Links.Single().Duplicate, secondReread.Links.Single().Duplicate };
+        grouped.Count(item => item is not null && item.GroupId != original.LinkId).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task DuplicateFlag_ShouldRequireAnotherUrlAndCompatibleMedia()
+    {
+        await using var host = await PostHost.StartAsync();
+        const string text = "The community gallery is showing ceramic works by local makers throughout the spring exhibition.";
+        var post = Capture(host, "shared-caption", text) with { OriginKey = "https://example.com/post/one" };
+        var reading = Envelope("Ceramic works", text) with
+        {
+            Media = [new() { Kind = MediaKind.Image, Url = "https://example.com/media/one.jpg" }],
+        };
+        var original = PostHost.Value(await host.Posts.SaveCaptureAsync(host.ContainerId, host.SourceId, null, post, reading));
+        var alias = PostHost.Value(await host.Posts.SaveCaptureAsync(host.ContainerId, host.SourceId, null,
+            post with { ExternalKey = "same-external-url" }, reading));
+        alias.Post.Id.Should().Be(original.Post.Id);
+        alias.Post.Links.Should().OnlyContain(link => link.Duplicate == null);
+
+        var other = Capture(host, "second-media", text) with { OriginKey = "https://example.com/post/two" };
+        var differentMedia = PostHost.Value(await host.Posts.SaveCaptureAsync(host.ContainerId, host.SourceId, null, other,
+            reading with { Media = [new() { Kind = MediaKind.Image, Url = "https://example.com/media/two.jpg" }] }));
+        differentMedia.Post.Id.Should().NotBe(original.Post.Id);
+        differentMedia.Post.Links.Single().Duplicate.Should().BeNull();
+    }
+
+    [Fact]
     public async Task SaveCapture_ShouldResolveFieldsByAuthority_WhenOriginsIdentifyTheSamePost()
     {
         await using var host = await PostHost.StartAsync();

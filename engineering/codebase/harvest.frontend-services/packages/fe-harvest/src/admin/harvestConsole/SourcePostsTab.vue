@@ -365,6 +365,7 @@ function sectionOf(post: SourcePostModel) {
               </ConsoleLink>
               <ListingCardFacts v-if="post.listing" :listing="post.listing" />
               <span v-else-if="startOf(post)" class="block text-[13px] text-muted-foreground">{{ startOf(post) }}</span>
+              <HarvestPill v-if="post.duplicate" tone="outline" class="mt-1">Duplicate</HarvestPill>
               <HarvestPill v-if="post.state === 'gone'" tone="outline" class="mt-1">
                 <PillIcon name="unlink" />
                 removed
@@ -420,6 +421,7 @@ function sectionOf(post: SourcePostModel) {
               on-image
               compact
             />
+            <HarvestPill v-if="post.duplicate" tone="outline" class="w-fit bg-black/30 text-white">Duplicate</HarvestPill>
             <ListingCardFacts v-if="post.listing" :listing="post.listing" on-image />
             <p
               v-if="post.postedAt || (!post.listing && eventChipOf(post))"

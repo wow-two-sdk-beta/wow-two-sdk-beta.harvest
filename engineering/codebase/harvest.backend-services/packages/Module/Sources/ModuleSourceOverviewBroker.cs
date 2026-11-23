@@ -173,13 +173,17 @@ internal sealed partial class ModuleSourceOverviewBroker(
                     LEFT JOIN harvest_source_assets a ON a.source_id=@source AND a.kind='image' AND a.origin_url=m.value->>'url'
                     WHERE m.value->>'kind'='image' AND m.value->>'url' IS NOT NULL ORDER BY m.position LIMIT @images)) ELSE ARRAY[]::text[] END,
                 coalesce(nullif(fl.locale, ''), nullif(p.base->'language'->>'code', 'und')),
-                CASE WHEN @listing AND p.kind='listing' THEN COALESCE(reading.fields,p.base)::text END
+                CASE WHEN @listing AND p.kind='listing' THEN COALESCE(reading.fields,p.base)::text END,
+                dr.id,dr.post_id,dr.url,d.match,d.similarity
             FROM harvest_posts p
             JOIN LATERAL (
-                SELECT l.id,l.url,l.locale FROM harvest_post_links l WHERE l.container_id=p.container_id AND l.post_id=p.id AND l.source_id=@source
+                SELECT l.id,l.url,l.locale,l.url_key FROM harvest_post_links l WHERE l.container_id=p.container_id AND l.post_id=p.id AND l.source_id=@source
                 ORDER BY l.first_seen_at,l.id LIMIT 1
             ) fl ON true
             LEFT JOIN harvest_link_readings reading ON @listing AND p.kind='listing' AND reading.link_id=fl.id AND reading.container_id=p.container_id
+            LEFT JOIN harvest_post_duplicates d ON d.container_id=p.container_id AND d.link_id=fl.id
+            LEFT JOIN harvest_post_links dr ON dr.container_id=p.container_id AND dr.id=d.reference_link_id
+                AND dr.retired_at IS NULL AND dr.url_key<>fl.url_key
             LEFT JOIN LATERAL (
                 SELECT r.pipeline_id FROM harvest_post_links l
                 JOIN harvest_captures c ON c.container_id=l.container_id AND c.link_id=l.id
@@ -218,6 +222,7 @@ internal sealed partial class ModuleSourceOverviewBroker(
             ImageUrls = images,
             Language = reader.IsDBNull(13) ? null : reader.GetString(13),
             Listing = reader.IsDBNull(14) ? null : ListingSummary(reader.GetString(14), url),
+            Duplicate = ModulePostBroker.ReadDuplicate(reader, 15),
         };
     }
 

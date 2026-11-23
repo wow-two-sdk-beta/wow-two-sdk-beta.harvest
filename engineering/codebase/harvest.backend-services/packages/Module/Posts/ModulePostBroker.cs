@@ -143,6 +143,8 @@ internal sealed partial class ModulePostBroker(
                     "UPDATE harvest_posts SET published_at=@published WHERE id=@id AND published_at IS NULL",
                     cancellationToken, ("published", published.ToUniversalTime()), ("id", link.PostId));
             await ResolveAsync(connection, transaction, containerId, link.PostId, now, !isNewPost, cancellationToken);
+            if (changed)
+                await RefreshDuplicatesAsync(connection, transaction, containerId, link.Id, now, cancellationToken);
             var post = (await ReadPostAsync(connection, transaction, containerId, link.PostId, cancellationToken))!;
             await DeliveryEventWriter.AppendAsync(connection, transaction, post, isNewPost ? "post.new" : "post.changed", runId, link.Id, now, postFilters, cancellationToken);
             await transaction.CommitAsync(cancellationToken);

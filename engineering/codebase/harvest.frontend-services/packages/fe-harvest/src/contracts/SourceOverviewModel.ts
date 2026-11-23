@@ -1,3 +1,4 @@
+import type { PostDuplicateModel } from './EngineModels';
 import type { SourceListingSummary } from './ListingModels';
 import type { ModelProcessingMode, SourcePermission, SourceFamily, SourceState, WorkKind } from './RegistrationEnums';
 
@@ -152,6 +153,8 @@ export interface SourcePostModel {
   readonly postedAt?: string;
   /** The link's URL. */
   readonly url?: string;
+  /** A confirmed content match to a different external URL. */
+  readonly duplicate?: PostDuplicateModel;
   /** The post's first image, as the source published it; omitted when it has none. */
   readonly imageUrl?: string;
   /** The post's images in order, as the source published them, at most 12; omitted by an older host. */

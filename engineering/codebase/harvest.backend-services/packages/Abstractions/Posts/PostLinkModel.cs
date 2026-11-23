@@ -13,6 +13,9 @@ public sealed record PostLinkModel
     public required string ExternalKey { get; init; }
     /// <summary>Gets the public URL.</summary>
     public required string Url { get; init; }
+
+    /// <summary>Gets the confirmed content match to another external URL, when one exists.</summary>
+    public PostDuplicateModel? Duplicate { get; init; }
     /// <summary>Gets the link's existence state.</summary>
     public required LinkState State { get; init; }
     /// <summary>Gets how the source presents the post.</summary>

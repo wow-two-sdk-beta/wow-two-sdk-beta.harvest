@@ -46,6 +46,9 @@ public sealed record SourcePostModel
     /// <summary>Gets the URL of the source's first link to the post.</summary>
     public string? Url { get; init; }
 
+    /// <summary>Gets the confirmed content match to another external URL, when one exists.</summary>
+    public PostDuplicateModel? Duplicate { get; init; }
+
     /// <summary>Gets the first image address, using the private stored copy when available.</summary>
     public string? ImageUrl { get; init; }
 

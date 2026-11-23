@@ -67,7 +67,8 @@ internal sealed partial class ModulePostBroker
         await using (var command = PostSql.Command(connection, transaction, """
                          SELECT l.id,l.source_id,l.external_key,l.url,l.state,l.role,l.latest_capture_id,l.latest_captured_at,
                              s.last_checked_at,s.last_seen_at,s.next_check_at,s.last_outcome,
-                             c.http_status,c.run_id,r.kind,COALESCE(s.check_count,0),(n.fields->'extras'->'source')::text
+                             c.http_status,c.run_id,r.kind,COALESCE(s.check_count,0),(n.fields->'extras'->'source')::text,
+                             dr.id,dr.post_id,dr.url,d.match,d.similarity
                          FROM harvest_post_links l
                          LEFT JOIN harvest_link_schedule s ON s.container_id=l.container_id AND s.link_id=l.id
                          LEFT JOIN harvest_link_readings n ON n.container_id=l.container_id AND n.link_id=l.id
@@ -76,6 +77,9 @@ internal sealed partial class ModulePostBroker
                              WHERE container_id=l.container_id AND link_id=l.id ORDER BY checked_at DESC,id DESC LIMIT 1
                          ) c ON true
                          LEFT JOIN harvest_runs r ON r.container_id=l.container_id AND r.id=c.run_id
+                         LEFT JOIN harvest_post_duplicates d ON d.container_id=l.container_id AND d.link_id=l.id
+                         LEFT JOIN harvest_post_links dr ON dr.container_id=l.container_id AND dr.id=d.reference_link_id
+                              AND dr.retired_at IS NULL AND dr.url_key<>l.url_key
                          WHERE l.container_id=@container AND l.post_id=@post AND l.retired_at IS NULL
                          ORDER BY l.first_seen_at,l.id
                          """, ("container", containerId), ("post", postId)))
@@ -95,6 +99,7 @@ internal sealed partial class ModulePostBroker
                     LastCheckRunKind = reader.IsDBNull(14) ? null : reader.GetString(14),
                     CheckCount = reader.GetInt32(15),
                     SourceFields = reader.IsDBNull(16) ? null : JsonSerializer.Deserialize<JsonElement>(reader.GetString(16)),
+                    Duplicate = ReadDuplicate(reader, 17),
                 });
         var sourceUrl = post.FieldSources.TryGetValue("extras", out var extraLink)
             ? links.FirstOrDefault(link => link.Id == extraLink)?.Url : links.FirstOrDefault()?.Url;
